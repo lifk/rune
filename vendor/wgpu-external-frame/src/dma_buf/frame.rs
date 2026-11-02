@@ -6,6 +6,8 @@ const DRM_FORMAT_ABGR8888: u32 = u32::from_le_bytes(*b"AB24");
 const DRM_FORMAT_XBGR8888: u32 = u32::from_le_bytes(*b"XB24");
 const DRM_FORMAT_R8: u32 = u32::from_le_bytes(*b"R8  ");
 const DRM_FORMAT_R8G8: u32 = u32::from_le_bytes(*b"RG88");
+const DRM_FORMAT_R16: u32 = u32::from_le_bytes(*b"R16 ");
+const DRM_FORMAT_R16G16: u32 = u32::from_le_bytes(*b"RG16");
 
 /// The DRM format modifier that means "no modifier was negotiated".
 ///
@@ -31,6 +33,10 @@ pub enum DmaBufFormat {
     R8,
     /// Two-channel 8-bit; NV12 interleaved chroma.
     R8G8,
+    /// Single-channel 16-bit; P010 luma.
+    R16,
+    /// Two-channel 16-bit; P010 interleaved chroma.
+    R16G16,
 }
 
 impl DmaBufFormat {
@@ -48,6 +54,8 @@ impl DmaBufFormat {
             DRM_FORMAT_XBGR8888 => Self::Rgbx8,
             DRM_FORMAT_R8 => Self::R8,
             DRM_FORMAT_R8G8 => Self::R8G8,
+            DRM_FORMAT_R16 => Self::R16,
+            DRM_FORMAT_R16G16 => Self::R16G16,
             _ => panic!("unsupported DMA-BUF DRM fourcc 0x{value:08x}"),
         }
     }
@@ -62,6 +70,8 @@ impl DmaBufFormat {
             Self::Rgbx8 => DRM_FORMAT_XBGR8888,
             Self::R8 => DRM_FORMAT_R8,
             Self::R8G8 => DRM_FORMAT_R8G8,
+            Self::R16 => DRM_FORMAT_R16,
+            Self::R16G16 => DRM_FORMAT_R16G16,
         }
     }
 
@@ -77,6 +87,8 @@ impl DmaBufFormat {
             Self::Rgba8 | Self::Rgbx8 => wgpu::TextureFormat::Rgba8Unorm,
             Self::R8 => wgpu::TextureFormat::R8Unorm,
             Self::R8G8 => wgpu::TextureFormat::Rg8Unorm,
+            Self::R16 => wgpu::TextureFormat::R16Unorm,
+            Self::R16G16 => wgpu::TextureFormat::Rg16Unorm,
         }
     }
 

@@ -29,17 +29,22 @@ pub enum SurfaceFit {
 pub enum Matrix {
     Bt601,
     Bt709,
+    Bt2020,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Transfer {
     Srgb,
     Bt709,
+    Pq,
+    Hlg,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Format {
     Bgra,
     Nv12Video,
     Nv12Full,
+    P010Video,
+    P010Full,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct ColorInfo {
@@ -385,6 +390,7 @@ pub fn nv12_reference(y: u8, cb: u8, cr: u8, format: Format, color: ColorInfo) -
     let (kr, kb) = match color.matrix {
         Matrix::Bt601 => (0.299, 0.114),
         Matrix::Bt709 => (0.2126, 0.0722),
+        Matrix::Bt2020 => (0.2627, 0.0593),
     };
     let r = y + 2.0 * (1.0 - kr) * v;
     let b = y + 2.0 * (1.0 - kb) * u;
@@ -405,6 +411,25 @@ pub fn linear(x: f32, transfer: Transfer) -> f32 {
                 x / 4.5
             } else {
                 ((x + 0.099) / 1.099).powf(1.0 / 0.45)
+            }
+        }
+        Transfer::Pq => {
+            let m1 = 0.1593017578125;
+            let m2 = 78.84375;
+            let c1 = 0.8359375;
+            let c2 = 18.8515625;
+            let c3 = 18.6875;
+            let p = x.clamp(0.0, 1.0).powf(1.0 / m2);
+            ((p - c1).max(0.0) / (c2 - c3 * p).max(1e-6)).powf(1.0 / m1)
+        }
+        Transfer::Hlg => {
+            let a = 0.17883277;
+            let b = 0.28466892;
+            let c = 0.55991073;
+            if x <= 0.5 {
+                x * x / 3.0
+            } else {
+                (((x - c) / a).exp() + b) / 12.0
             }
         }
     }

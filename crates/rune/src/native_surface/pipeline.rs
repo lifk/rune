@@ -317,9 +317,24 @@ impl SurfaceRenderer {
                         Format::Bgra => 0.0,
                         Format::Nv12Video => 1.0,
                         Format::Nv12Full => 2.0,
+                        Format::P010Video => 3.0,
+                        Format::P010Full => 4.0,
                     },
-                    if f.color.matrix == Matrix::Bt709 { 1.0 } else { 0.0 },
-                    if self.srgb_blend { 2.0 } else if f.color.transfer == Transfer::Srgb { 0.0 } else { 1.0 },
+                    match f.color.matrix {
+                        Matrix::Bt601 => 0.0,
+                        Matrix::Bt709 => 1.0,
+                        Matrix::Bt2020 => 2.0,
+                    },
+                    if self.srgb_blend {
+                        2.0
+                    } else {
+                        match f.color.transfer {
+                            Transfer::Srgb => 0.0,
+                            Transfer::Bt709 => 1.0,
+                            Transfer::Pq => 3.0,
+                            Transfer::Hlg => 4.0,
+                        }
+                    },
                     d.opacity,
                 ],
                 sampling: [if exact { 1.0 } else { 0.0 }, f.size[0] as f32, f.size[1] as f32, if mirrored { 1.0 } else { 0.0 }],

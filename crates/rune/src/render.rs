@@ -472,8 +472,9 @@ impl Gpu {
         // DMA-BUF import is opt-in on Vulkan; an unsupported adapter simply leaves it off and
         // the surface reports why instead of failing the window.
         #[cfg(target_os = "linux")]
-        let optional_features =
-            optional_features | wgpu::Features::VULKAN_EXTERNAL_MEMORY_DMA_BUF;
+        let optional_features = optional_features
+            | wgpu::Features::VULKAN_EXTERNAL_MEMORY_DMA_BUF
+            | wgpu::Features::TEXTURE_FORMAT_16BIT_NORM;
         let required_features = adapter.features() & optional_features;
         // A compositor that asks for immediates (`Compositor::features`) gets all the adapter has.
         let max_immediate_size = if required_features.contains(wgpu::Features::IMMEDIATES) { adapter.limits().max_immediate_size } else { 0 };
