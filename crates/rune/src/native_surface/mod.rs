@@ -63,6 +63,8 @@ pub struct ByteFrame {
 
 pub(crate) enum Source {
     Bytes(ByteFrame),
+    #[cfg(target_os = "linux")]
+    Dmabuf(dmabuf::DmabufFrame),
     #[cfg(target_os = "macos")]
     PixelBuffer(macos::PixelBuffer),
     #[cfg(target_os = "windows")]
@@ -230,6 +232,27 @@ impl NativeSurface {
     }
     pub fn push_bytes(&self, frame: ByteFrame, frame_id: u64) -> Result<(), String> {
         self.push_bytes_oriented(frame, frame_id, Orient::UP)
+    }
+
+    /// Hand over a decoder's buffer without copying it to the CPU.
+    ///
+    /// The frame is validated by [`dmabuf::DmabufFrame::new`] before it gets here. The import
+    /// runs later, on the renderer's thread, because it needs the GPU device; a failure is
+    /// reported through [`Self::last_error`] and the surface draws nothing.
+    #[cfg(target_os = "linux")]
+    pub fn push_dmabuf(&self, frame: dmabuf::DmabufFrame, frame_id: u64) -> Result<(), String> {
+        let size = [frame.width, frame.height];
+        let format = frame.format;
+        let color = frame.color;
+        self.replace(Frame {
+            id: frame_id,
+            source: Source::Dmabuf(frame),
+            size,
+            format,
+            color,
+            orient: Orient::UP,
+        });
+        Ok(())
     }
     pub(crate) fn push_bytes_oriented(&self, frame: ByteFrame, frame_id: u64, orient: Orient) -> Result<(), String> {
         let [w, h] = [frame.width, frame.height];

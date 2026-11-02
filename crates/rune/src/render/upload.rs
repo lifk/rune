@@ -269,6 +269,14 @@ impl Renderer {
 
     pub fn prepare_surfaces(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, draws: &[crate::native_surface::SurfaceDraw], viewport: (u32,u32)) {
         if !draws.is_empty() && self.surfaces.is_none() {
+            #[cfg(target_os = "linux")]
+            let mut surfaces = match &self.adapter {
+                Some(adapter) => {
+                    crate::native_surface::SurfaceRenderer::new_with_adapter(device, self.format, adapter)
+                }
+                None => crate::native_surface::SurfaceRenderer::new(device, self.format),
+            };
+            #[cfg(not(target_os = "linux"))]
             let mut surfaces = crate::native_surface::SurfaceRenderer::new(device, self.format);
             surfaces.set_srgb_blend(self.srgb_blend);
             surfaces.set_staging(self.uploads.staging(device, queue));

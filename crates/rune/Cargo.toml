@@ -177,6 +177,10 @@ windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_Wind
 accesskit_unix = { version = "0.24.1", optional = true }
 libc = "0.2"
 libloading = "0.8"
+# DMA-BUF import (Vulkan external memory / EGL). Its `wgpu` dependency tracks 30.0.1, the same
+# version Rune pins; the crate covers packed 32-bit formats, which is what `vaapipostproc`
+# exports when asked for BGRA. See `native_surface/dmabuf.rs` for why NV12 takes another step.
+wgpu-external-frame = "0.4"
 zbus = { version = "6", default-features = false, features = ["tokio", "proxy", "service"], optional = true }
 tokio = { version = "1", features = ["rt", "net", "time", "sync", "macros"], optional = true }
 futures-util = { version = "0.3", optional = true }
