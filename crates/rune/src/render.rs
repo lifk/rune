@@ -469,6 +469,11 @@ impl Gpu {
         // Precompiled uber shaders: a metallib on macOS, DXBC on Windows.
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         let optional_features = optional_features | wgpu::Features::PASSTHROUGH_SHADERS;
+        // DMA-BUF import is opt-in on Vulkan; an unsupported adapter simply leaves it off and
+        // the surface reports why instead of failing the window.
+        #[cfg(target_os = "linux")]
+        let optional_features =
+            optional_features | wgpu::Features::VULKAN_EXTERNAL_MEMORY_DMA_BUF;
         let required_features = adapter.features() & optional_features;
         // A compositor that asks for immediates (`Compositor::features`) gets all the adapter has.
         let max_immediate_size = if required_features.contains(wgpu::Features::IMMEDIATES) { adapter.limits().max_immediate_size } else { 0 };
@@ -705,6 +710,9 @@ enum BatchBind {
 
 pub struct Renderer {
     surfaces: Option<crate::native_surface::SurfaceRenderer>,
+    /// Kept for DMA-BUF import, which needs to know the backend it runs on.
+    #[cfg(target_os = "linux")]
+    adapter: Option<wgpu::Adapter>,
     pipeline: wgpu::RenderPipeline,
     format: wgpu::TextureFormat,
     shader: dxbc::Shaders,
@@ -751,7 +759,16 @@ impl Renderer {
     }
 
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Renderer {
-        Self::create(device, format, None, cfg!(target_os = "macos"))
+        Self::create(device, format, None, cfg!(target_os = "macos"), None)
+    }
+
+    /// Like [`Self::new`], with the adapter that DMA-BUF surfaces import through.
+    pub fn new_with_adapter(
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        adapter: &wgpu::Adapter,
+    ) -> Renderer {
+        Self::create(device, format, None, cfg!(target_os = "macos"), Some(adapter))
     }
 
     pub fn set_srgb_blend(&mut self, enabled: bool) {
@@ -764,17 +781,25 @@ impl Renderer {
     /// Opt-in retained geometry. IDs map instances to shared translation/opacity nodes.
     /// Upload geometry once with `prepare`, then use `present_at` without rebuilding instances.
     pub fn with_springs(device: &wgpu::Device, format: wgpu::TextureFormat, nodes: &[crate::gpu::springs::Node], ids: &[u32]) -> Renderer {
-        Self::create(device, format, Some((nodes, ids)), true)
+        Self::create(device, format, Some((nodes, ids)), true, None)
     }
 
     /// A renderer that starts with the Classic uber shader, as on macOS, and builds Windfoil when
     /// text first draws from outlines (render/variant.rs); for checking that path elsewhere.
     #[doc(hidden)]
     pub fn new_classic(device: &wgpu::Device, format: wgpu::TextureFormat) -> Renderer {
-        Self::create(device, format, None, true)
+        Self::create(device, format, None, true, None)
     }
 
-    fn create(device: &wgpu::Device, format: wgpu::TextureFormat, properties: Option<(&[crate::gpu::springs::Node], &[u32])>, classic: bool) -> Renderer {
+    fn create(
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        properties: Option<(&[crate::gpu::springs::Node], &[u32])>,
+        classic: bool,
+        adapter: Option<&wgpu::Adapter>,
+    ) -> Renderer {
+        #[cfg(not(target_os = "linux"))]
+        let _ = adapter;
         let spring_shader = if properties.is_some() {
             let source = format!("{CLIP_WGSL}\n{}\n{}", include_str!("shader.wgsl"), crate::gpu::springs::SHADER);
             Some(device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -827,6 +852,8 @@ impl Renderer {
         let springs = properties.map(|(nodes, ids)| crate::gpu::springs::Bindings::new(device, spring_layout.as_ref().unwrap(), nodes, ids));
         Renderer {
             surfaces: None,
+            #[cfg(target_os = "linux")]
+            adapter: adapter.cloned(),
             pipeline,
             format,
             shader,

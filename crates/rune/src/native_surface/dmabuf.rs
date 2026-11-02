@@ -10,8 +10,17 @@
 //! that looks exactly like a driver bug.
 
 use std::os::fd::OwnedFd;
+use std::sync::Mutex;
+
+use wgpu_external_frame::dma_buf::{
+    DRM_FORMAT_MOD_INVALID, DmaBufFormat, DmaBufFrame as ImportFrame, DmaBufImport,
+    DmaBufImporter, DmaBufPlane,
+};
 
 use super::{ColorInfo, Format};
+
+/// The producer's ownership of a buffer, released once the GPU is done reading it.
+pub use wgpu_external_frame::dma_buf::DmaBufLease as Lease;
 
 /// One plane of a DMA-BUF: where the pixels start inside `fd`, in bytes.
 #[derive(Debug)]
@@ -37,6 +46,8 @@ pub struct DmabufFrame {
     /// DRM format modifier; `DRM_FORMAT_MOD_LINEAR` is `0`.
     pub modifier: u64,
     pub planes: Vec<Plane>,
+    /// Moved into the imported frame, which releases it after the copy completes.
+    lease: Mutex<Option<Box<dyn Lease>>>,
 }
 
 impl DmabufFrame {
@@ -85,6 +96,47 @@ impl DmabufFrame {
             color,
             modifier,
             planes,
+            lease: Mutex::new(None),
+        })
+    }
+
+    /// Attaches the producer's lease. It is released after the GPU has copied the frame, not
+    /// when the decoder hands it over — that is what keeps a pooled buffer from being refilled
+    /// while the shader is still reading it.
+    pub fn with_lease(mut self, lease: Box<dyn Lease>) -> Self {
+        self.lease = Mutex::new(Some(lease));
+        self
+    }
+
+    /// The frame in the importer's shape.
+    ///
+    /// Only packed BGRA is accepted: `wgpu-external-frame` imports one 32-bit plane, and an
+    /// NV12 buffer needs two images with a multi-plane modifier. Export BGRA from
+    /// `vaapipostproc` until the multi-plane path lands; handing NV12 here is a visible error,
+    /// never a sheared picture.
+    pub(crate) fn to_external(&self) -> Result<ImportFrame, String> {
+        if self.format != Format::Bgra {
+            return Err("DMA-BUF import takes BGRA; NV12 needs the multi-plane path".into());
+        }
+        if self.modifier == DRM_FORMAT_MOD_INVALID {
+            return Err("DMA-BUF has no negotiated DRM modifier".into());
+        }
+        let plane = self.planes.first().ok_or("BGRA frame has no plane")?;
+        let fd = plane.fd.try_clone().map_err(|e| format!("duplicate DMA-BUF plane: {e}"))?;
+        let offset = u32::try_from(plane.offset).map_err(|_| "DMA-BUF plane offset exceeds u32")?;
+        let stride = u32::try_from(plane.stride).map_err(|_| "DMA-BUF stride exceeds u32")?;
+        let frame = ImportFrame::new(
+            self.width,
+            self.height,
+            DmaBufFormat::Bgra8,
+            self.modifier,
+            vec![DmaBufPlane { fd, offset, stride }],
+            None,
+        );
+        let lease = self.lease.lock().map_err(|_| "DMA-BUF lease lock poisoned")?.take();
+        Ok(match lease {
+            Some(lease) => frame.with_lease(lease),
+            None => frame,
         })
     }
 
@@ -119,6 +171,85 @@ impl DmabufFrame {
             Format::Bgra => "BGRA",
             Format::Nv12Video | Format::Nv12Full => "NV12",
         }
+    }
+}
+
+/// Imports one frame into a texture wgpu owns, then releases the producer.
+///
+/// The copy runs on the GPU: publish this texture to the renderer instead of sampling the
+/// producer's buffer directly, and the decoder may refill its pool as soon as the copy
+/// completes. That is one blit more than a direct import, and it is the price of not
+/// hand-writing the Vulkan acquire/release barriers around an external image.
+pub(crate) struct Importer {
+    inner: DmaBufImporter,
+}
+
+impl Importer {
+    pub(crate) fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        adapter: &wgpu::Adapter,
+    ) -> Result<Self, String> {
+        let backend = adapter.get_info().backend;
+        if backend == wgpu::Backend::Vulkan
+            && !device
+                .features()
+                .contains(wgpu::Features::VULKAN_EXTERNAL_MEMORY_DMA_BUF)
+        {
+            return Err(
+                "this Vulkan device cannot import DMA-BUF frames (VK_EXT_external_memory_dma_buf \
+                 is off); use the CPU frame path or update Mesa"
+                    .into(),
+            );
+        }
+        if !matches!(backend, wgpu::Backend::Vulkan | wgpu::Backend::Gl) {
+            return Err(format!(
+                "DMA-BUF import needs a Vulkan or GLES device, not {backend:?}"
+            ));
+        }
+        Ok(Self {
+            inner: DmaBufImporter::new(device, queue, adapter),
+        })
+    }
+
+    /// Copies a frame into a wgpu-owned texture and returns the two planes the shader samples.
+    ///
+    /// The producer's lease is released in `on_submitted_work_done`, not here: the decoder
+    /// must not recycle the buffer before the blit that reads it has finished.
+    pub(crate) fn import(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        frame: &DmabufFrame,
+    ) -> Result<[wgpu::Texture; 2], String> {
+        let mut external = frame.to_external()?;
+        let (width, height) = external.visible_size();
+        let destination = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("DMA-BUF frame"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: external.format.texture_format(),
+            usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let copy: DmaBufImport = self.inner.copy_into(&mut external, &destination);
+        let guard = copy.guard;
+        let mut command_buffers = copy.command_buffers;
+        command_buffers.push(copy.encoder.finish());
+        external.presented();
+        queue.submit(command_buffers);
+        queue.on_submitted_work_done(move || {
+            // The import guard destroys the external image, and only now may the pool reuse it.
+            drop(guard);
+            external.release(None);
+        });
+        Ok([destination.clone(), destination])
     }
 }
 
@@ -229,5 +360,35 @@ mod tests {
         let f = frame(640, 480, Format::Nv12Video, &[640, 640]).expect("valid");
         // If Plane held a borrowed fd this would not compile; the assertion is the type itself.
         let _borrowed: &dyn AsFd = &f.planes[0].fd;
+    }
+
+    #[test]
+    fn packed_bgra_maps_to_the_importers_single_plane_format() {
+        let f = frame(640, 480, Format::Bgra, &[2560]).expect("valid");
+        let external = f.to_external().expect("packed frames import");
+        assert_eq!(external.format, DmaBufFormat::Bgra8);
+        assert_eq!(external.visible_size(), (640, 480));
+        assert_eq!(external.planes.len(), 1);
+    }
+
+    #[test]
+    fn nv12_is_refused_with_a_reason_instead_of_shearing() {
+        let f = frame(640, 480, Format::Nv12Video, &[640, 640]).expect("valid");
+        let error = f.to_external().unwrap_err();
+        assert!(error.contains("BGRA") && error.contains("NV12"), "{error}");
+    }
+
+    #[test]
+    fn a_missing_modifier_is_refused_before_vulkan_sees_it() {
+        let f = DmabufFrame::new(
+            640,
+            480,
+            Format::Bgra,
+            ColorInfo::default(),
+            DRM_FORMAT_MOD_INVALID,
+            vec![plane(2560)],
+        )
+        .expect("valid");
+        assert!(f.to_external().is_err());
     }
 }

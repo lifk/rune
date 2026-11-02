@@ -75,6 +75,10 @@ pub struct SurfaceRenderer {
     srgb_blend: bool,
     /// The owning `Renderer`'s uploads, when it has one; queue writes otherwise.
     staging: Option<rune_staging::Staging>,
+    #[cfg(target_os = "linux")]
+    adapter: Option<wgpu::Adapter>,
+    #[cfg(target_os = "linux")]
+    importer: Option<dmabuf::Importer>,
     #[cfg(target_os = "macos")]
     importer: Option<macos::Importer>,
     #[cfg(target_os = "windows")]
@@ -163,10 +167,35 @@ impl SurfaceRenderer {
             draws: Vec::new(),
             srgb_blend: false,
             staging: None,
+            #[cfg(target_os = "linux")]
+            adapter: None,
+            #[cfg(target_os = "linux")]
+            importer: None,
             #[cfg(target_os = "macos")]
             importer: None,
             #[cfg(target_os = "windows")]
             shared: None,
+        }
+    }
+
+    /// Like [`Self::new`], but remembers the adapter DMA-BUF import needs.
+    ///
+    /// Only the window's renderer gets one; headless tests and overlays keep the CPU path.
+    pub fn new_with_adapter(
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        adapter: &wgpu::Adapter,
+    ) -> Self {
+        #[cfg(target_os = "linux")]
+        {
+            let mut surface = Self::new(device, format);
+            surface.adapter = Some(adapter.clone());
+            surface
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = adapter;
+            Self::new(device, format)
         }
     }
 
@@ -368,6 +397,20 @@ impl SurfaceRenderer {
                     upload(device, queue, b.width / 2, b.height / 2, wgpu::TextureFormat::Rg8Unorm, &b.planes[1])
                 };
                 [a, b]
+            }
+            #[cfg(target_os = "linux")]
+            Source::Dmabuf(b) => {
+                let adapter = self
+                    .adapter
+                    .clone()
+                    .ok_or("this renderer has no adapter for DMA-BUF import")?;
+                if self.importer.is_none() {
+                    self.importer = Some(dmabuf::Importer::new(device, queue, &adapter)?);
+                }
+                self.importer
+                    .as_ref()
+                    .ok_or("DMA-BUF importer was not created")?
+                    .import(device, queue, b)?
             }
             #[cfg(target_os = "macos")]
             Source::PixelBuffer(b) => {
