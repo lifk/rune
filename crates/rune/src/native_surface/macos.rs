@@ -48,6 +48,7 @@ impl PixelBuffer {
                 match color.matrix {
                     Matrix::Bt601 => kCVImageBufferYCbCrMatrix_ITU_R_601_4,
                     Matrix::Bt709 => kCVImageBufferYCbCrMatrix_ITU_R_709_2,
+                    Matrix::Bt2020 => kCVImageBufferYCbCrMatrix_ITU_R_2020,
                 }
                 .as_ref(),
                 CVAttachmentMode::ShouldPropagate,
@@ -57,6 +58,8 @@ impl PixelBuffer {
                 match color.transfer {
                     Transfer::Srgb => kCVImageBufferTransferFunction_sRGB,
                     Transfer::Bt709 => kCVImageBufferTransferFunction_ITU_R_709_2,
+                    Transfer::Pq => kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ,
+                    Transfer::Hlg => kCVImageBufferTransferFunction_ITU_R_2100_HLG,
                 }
                 .as_ref(),
                 CVAttachmentMode::ShouldPropagate,

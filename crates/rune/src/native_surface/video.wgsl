@@ -19,16 +19,61 @@ fn linear(v: vec3<f32>) -> vec3<f32> {
     if u.color.z < 0.5 { return select(pow((x + 0.055) / 1.055, vec3<f32>(2.4)), x / 12.92, x <= vec3<f32>(0.04045)); }
     return select(pow((x + 0.099) / 1.099, vec3<f32>(1.0 / 0.45)), x / 4.5, x < vec3<f32>(0.081));
 }
+fn pq_eotf(v: vec3<f32>) -> vec3<f32> {
+    let m1 = 0.1593017578125; let m2 = 78.84375;
+    let c1 = 0.8359375; let c2 = 18.8515625; let c3 = 18.6875;
+    let p = pow(max(v, vec3<f32>(0.0)), vec3<f32>(1.0 / m2));
+    return pow(max(p - vec3<f32>(c1), vec3<f32>(0.0)) / max(vec3<f32>(c2) - vec3<f32>(c3) * p, vec3<f32>(1e-6)), vec3<f32>(1.0 / m1));
+}
+fn hlg_eotf(v: vec3<f32>) -> vec3<f32> {
+    let a = 0.17883277; let b = 0.28466892; let c = 0.55991073;
+    let low = (v * v) / 3.0;
+    let high = (exp((v - vec3<f32>(c)) / a) + vec3<f32>(b)) / 12.0;
+    return select(high, low, v <= vec3<f32>(0.5));
+}
+fn bt2020_to_709(v: vec3<f32>) -> vec3<f32> {
+    return vec3<f32>(
+        dot(v, vec3<f32>(1.6605, -0.5876, -0.0728)),
+        dot(v, vec3<f32>(-0.1246, 1.1329, -0.0083)),
+        dot(v, vec3<f32>(-0.0182, -0.1006, 1.1187)),
+    );
+}
+fn tone_map(v: vec3<f32>) -> vec3<f32> {
+    // PQ's output is normalized to 10,000 nits; 4x exposure maps a 4,000-nit
+    // highlight to ~0.8 before the Reinhard shoulder.
+    let x = max(v, vec3<f32>(0.0)) * 4.0;
+    return x / (vec3<f32>(1.0) + x);
+}
 fn convert(a: vec4<f32>, uv: vec2<f32>) -> vec4<f32> {
     if u.color.x < 0.5 { return vec4<f32>(linear(a.rgb) * a.a, a.a); }
-    var y = a.r;
-    var c = uv - vec2<f32>(128.0 / 255.0);
-    if u.color.x < 1.5 { y = (y - 16.0 / 255.0) * (255.0 / 219.0); c *= 255.0 / 224.0; }
+    let p010 = u.color.x > 2.5;
+    let limited = u.color.x < 1.5 || (u.color.x > 2.5 && u.color.x < 3.5);
+    let ten_bit = p010;
+    let scale = select(1.0, 1.0009765625, ten_bit);
+    let center = select(128.0 / 255.0, 512.0 / 1023.0, ten_bit);
+    var y = a.r * scale;
+    var c = (uv - vec2<f32>(center)) * scale;
+    if limited {
+        if ten_bit {
+            y = (y - 64.0 / 1023.0) * (1023.0 / 876.0);
+            c *= 1023.0 / 896.0;
+        } else {
+            y = (y - 16.0 / 255.0) * (255.0 / 219.0);
+            c *= 255.0 / 224.0;
+        }
+    }
     var kr = 0.299; var kb = 0.114;
-    if u.color.y > 0.5 { kr = 0.2126; kb = 0.0722; }
+    if u.color.y > 1.5 { kr = 0.2627; kb = 0.0593; }
+    else if u.color.y > 0.5 { kr = 0.2126; kb = 0.0722; }
     let r = y + 2.0 * (1.0 - kr) * c.y;
     let b = y + 2.0 * (1.0 - kb) * c.x;
     let g = (y - kr * r - kb * b) / (1.0 - kr - kb);
+    if u.color.z > 2.5 {
+        let encoded = vec3<f32>(r, g, b);
+        var hdr = select(hlg_eotf(encoded), pq_eotf(encoded), u.color.z < 3.5);
+        hdr = bt2020_to_709(hdr);
+        return vec4<f32>(tone_map(hdr), 1.0);
+    }
     return vec4<f32>(linear(vec3<f32>(r,g,b)), 1.0);
 }
 fn sample_linear(uv: vec2<f32>) -> vec4<f32> {

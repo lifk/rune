@@ -94,6 +94,8 @@ impl DmabufFrame {
             // the full width. Anything narrower cannot hold the frame.
             let min = if format == Format::Bgra || i == 0 {
                 u64::from(width) * Self::bytes_per_pixel(format)
+            } else if matches!(format, Format::P010Video | Format::P010Full) {
+                u64::from(width) * 2
             } else {
                 u64::from(width)
             };
@@ -183,6 +185,7 @@ impl DmabufFrame {
         match code {
             DRM_FORMAT_XRGB8888 | DRM_FORMAT_ARGB8888 => Some(Format::Bgra),
             DRM_FORMAT_NV12 => Some(Format::Nv12Video),
+            DRM_FORMAT_P010 => Some(Format::P010Video),
             _ => None,
         }
     }
@@ -190,7 +193,7 @@ impl DmabufFrame {
     pub fn plane_count(format: Format) -> usize {
         match format {
             Format::Bgra => 1,
-            Format::Nv12Video | Format::Nv12Full => 2,
+            Format::Nv12Video | Format::Nv12Full | Format::P010Video | Format::P010Full => 2,
         }
     }
 
@@ -198,6 +201,7 @@ impl DmabufFrame {
         match format {
             Format::Bgra => 4,
             Format::Nv12Video | Format::Nv12Full => 1,
+            Format::P010Video | Format::P010Full => 2,
         }
     }
 
@@ -205,6 +209,7 @@ impl DmabufFrame {
         match format {
             Format::Bgra => "BGRA",
             Format::Nv12Video | Format::Nv12Full => "NV12",
+            Format::P010Video | Format::P010Full => "P010",
         }
     }
 }
@@ -277,10 +282,16 @@ impl Importer {
     ) -> Result<[wgpu::Texture; 2], String> {
         if frame.format != Format::Bgra {
             let (width, height) = (frame.width, frame.height);
-            let mut y = frame.to_external_plane(0, DmaBufFormat::R8, width, height)?;
+            let p010 = matches!(frame.format, Format::P010Video | Format::P010Full);
+            let (y_format, uv_format) = if p010 {
+                (DmaBufFormat::R16, DmaBufFormat::R16G16)
+            } else {
+                (DmaBufFormat::R8, DmaBufFormat::R8G8)
+            };
+            let mut y = frame.to_external_plane(0, y_format, width, height)?;
             let mut uv = frame.to_external_plane(
                 1,
-                DmaBufFormat::R8G8,
+                uv_format,
                 width.div_ceil(2),
                 height.div_ceil(2),
             )?;

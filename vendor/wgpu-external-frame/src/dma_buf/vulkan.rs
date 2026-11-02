@@ -341,6 +341,8 @@ fn create_import_image(raw: &ash::Device, frame: &DmaBufFrame, plane: &DmaBufPla
             DmaBufFormat::Rgba8 | DmaBufFormat::Rgbx8 => vk::Format::R8G8B8A8_UNORM,
             DmaBufFormat::R8 => vk::Format::R8_UNORM,
             DmaBufFormat::R8G8 => vk::Format::R8G8_UNORM,
+            DmaBufFormat::R16 => vk::Format::R16_UNORM,
+            DmaBufFormat::R16G16 => vk::Format::R16G16_UNORM,
         })
         .extent(vk::Extent3D {
             width: frame.width,
