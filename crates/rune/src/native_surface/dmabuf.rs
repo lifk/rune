@@ -9,7 +9,7 @@
 //! is rejected before it can reach the renderer, because a wrong stride shows as diagonal shearing
 //! that looks exactly like a driver bug.
 
-use std::os::fd::OwnedFd;
+use std::os::fd::{FromRawFd, OwnedFd, RawFd};
 use std::sync::Mutex;
 
 use wgpu_external_frame::dma_buf::{
@@ -48,6 +48,21 @@ pub struct DmabufFrame {
     pub planes: Vec<Plane>,
     /// Moved into the imported frame, which releases it after the copy completes.
     lease: Mutex<Option<Box<dyn Lease>>>,
+}
+
+impl Plane {
+    /// Duplicates a producer-owned descriptor, so the frame owns its fd and the producer can
+    /// close or recycle its original as soon as it hands the buffer over.
+    pub fn from_raw_fd(fd: RawFd, offset: u64, stride: u64) -> Result<Plane, String> {
+        // SAFETY: `libc::dup` only reads the descriptor table and returns a new owned descriptor.
+        let duplicated = unsafe { libc::dup(fd) };
+        if duplicated < 0 {
+            return Err(std::io::Error::last_os_error().to_string());
+        }
+        // SAFETY: `dup` succeeded, so this is a fresh valid descriptor owned by this value.
+        let fd = unsafe { OwnedFd::from_raw_fd(duplicated) };
+        Ok(Plane { fd, offset, stride })
+    }
 }
 
 impl DmabufFrame {
@@ -267,7 +282,7 @@ pub const DRM_FORMAT_P010: u32 = fourcc(*b"P010");
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::fd::AsFd;
+    use std::os::fd::{AsFd, AsRawFd};
 
     fn plane(stride: u64) -> Plane {
         // A real plane owns a dmabuf fd; for validation any open fd will do.
@@ -288,6 +303,14 @@ mod tests {
             0,
             strides.iter().map(|s| plane(*s)).collect(),
         )
+    }
+
+    #[test]
+    fn from_raw_fd_duplicates_a_live_descriptor() {
+        let file = std::fs::File::open("/dev/null").expect("open /dev/null");
+        let plane = Plane::from_raw_fd(file.as_raw_fd(), 0, 4).expect("dup");
+        assert!(plane.fd.as_fd().as_raw_fd() >= 0);
+        assert!(Plane::from_raw_fd(-1, 0, 4).is_err());
     }
 
     #[test]
