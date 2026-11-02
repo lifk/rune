@@ -1,0 +1,276 @@
+name: CI
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: ["**"]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  CARGO_TERM_COLOR: always
+  # Build dependencies shared by every Linux job, written once.
+  LINUX_DEPS: >-
+    nasm libasound2-dev libva-dev libfontconfig1-dev libgbm-dev libxcb1-dev
+    libglib2.0-dev libpango1.0-dev libgdk-pixbuf-2.0-dev libgtk-4-dev
+    libpipewire-0.3-dev libudev-dev libegl-dev libwayland-dev libxkbcommon-dev
+    mesa-vulkan-drivers libvulkan1
+
+jobs:
+  test:
+    name: Test / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # `shaderloom` compiles WGSL to DXIL on Windows through `dxc`
+      - name: Install DirectX Shader Compiler
+        if: runner.os == 'Windows'
+        uses: tracel-ai/github-actions/install-dxc@295f2fdbae5271f4f8ad56d634e4ff6a95daafc8
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@nextest
+      - run: cargo nextest run --workspace --all-targets --all-features --no-tests warn
+      # Each platform module compiles only on its own target, so rustdoc is
+      # run where the module exists: Windows here, macOS and iOS in
+      # lint-apple, Linux in lint, Android in lint-android.
+      - name: Document
+        if: runner.os == 'Windows'
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --all-features
+
+  # The Linux leg runs the tests inside a KVM guest rather than on the
+  # runner. The `dma_buf` tests assert the DMA-BUF import extensions, and
+  # lavapipe only exposes `VK_EXT_image_drm_format_modifier` — which
+  # `validate_import` hard-requires — when the kernel offers a dma-buf source
+  # the driver can see (`caps.dmabuf` is set by `winsys->get_fd`, NULL for the
+  # sw winsys lvp links, or by a successful `open("/dev/udmabuf")`; Mesa
+  # lp_screen.c). The runner's Azure kernel ships neither udmabuf nor any
+  # dmabuf-capable DRM device, so lavapipe there can never satisfy the gate —
+  # the tests would fail, not skip. A stock Ubuntu generic kernel provides
+  # both `udmabuf` (built-in) and `vkms` (module): virtme-ng boots it over an
+  # `ubuntu:26.04` (Mesa 26) rootfs in seconds, and the test binaries are
+  # archived on the runner and only executed inside the guest, so the guest
+  # needs no toolchain or network.
+  test-linux:
+    name: Test / ubuntu-latest
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ubuntu:26.04
+      # Pinned guest kernel from the resolute archive (the same archive the
+      # rootfs image carries): the unsigned image deb provides vmlinuz and
+      # linux-modules the module tree, including `vkms`; `udmabuf` is built
+      # in (CONFIG_UDMABUF=y). Bump KERNEL_PKG to move the pin.
+      KERNEL_PKG: 7.0.0-38.38
+      KVER: 7.0.0-38-generic
+      # What the guest needs at run time: the GL/Vulkan halves of the
+      # interop (EGL + GLES on llvmpipe, Vulkan on lavapipe) plus `kmod` for
+      # modprobe and `udev` for the virtio-serial ports virtme-ng uses to
+      # run the exec script and propagate its exit code.
+      GUEST_DEPS: >-
+        libegl1 libgles2 libgl1-mesa-dri mesa-vulkan-drivers libvulkan1
+        kmod udev
+      GUEST_DIR: guest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get -c .github/apt.conf update
+          sudo apt-get -c .github/apt.conf install -y $LINUX_DEPS
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@nextest
+      # The runner exposes /dev/kvm but the runner user cannot open it.
+      - name: Grant the runner user KVM access
+        run: sudo chmod 666 /dev/kvm
+      - name: Restore the guest rootfs
+        id: guest-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.GUEST_DIR }}
+          key: guest-v1-${{ env.IMAGE }}-${{ env.KERNEL_PKG }}-${{ hashFiles('.github/workflows/ci.yml') }}
+      # Built from the image's own archive so versions stay consistent: the
+      # kernel packages are downloaded (never installed into the runner's
+      # /boot), the runtime deps installed in a container, and that
+      # container's filesystem exported to become the guest root.
+      - name: Build the guest rootfs
+        if: steps.guest-cache.outputs.cache-hit != 'true'
+        run: |
+          set -eux
+          mkdir -p "$GUEST_DIR/rootfs" "$GUEST_DIR/dl"
+          docker run --rm \
+            -e KERNEL_PKG -e KVER \
+            -v "$PWD/$GUEST_DIR/dl:/dl" \
+            -v "$PWD/.github/apt.conf:/etc/apt/apt.conf.d/99ci:ro" \
+            -w /dl \
+            "$IMAGE" \
+            sh -c 'apt-get update && apt-get download \
+                   "linux-image-unsigned-$KVER=$KERNEL_PKG" \
+                   "linux-modules-$KVER=$KERNEL_PKG"'
+          docker run --name guest-rootfs \
+            -e GUEST_DEPS -e KVER \
+            -v "$PWD/$GUEST_DIR/dl:/dl" \
+            -v "$PWD/.github/apt.conf:/etc/apt/apt.conf.d/99ci:ro" \
+            "$IMAGE" \
+            sh -c '
+              apt-get update
+              apt-get install -y --no-install-recommends $GUEST_DEPS
+              for deb in /dl/*.deb; do dpkg -x "$deb" /; done
+              depmod "$KVER"
+            '
+          docker export guest-rootfs | tar -x -C "$GUEST_DIR/rootfs"
+          docker rm guest-rootfs
+          rm -rf "$GUEST_DIR/dl"
+          # Mountpoints virtme-ng mounts onto must exist in the rootfs.
+          mkdir -p "$GUEST_DIR/rootfs/work" "$GUEST_DIR/rootfs/cargo"
+      - name: Install virtme-ng and QEMU
+        run: |
+          sudo apt-get -c .github/apt.conf install -y qemu-system-x86
+          pipx install virtme-ng
+      - name: Archive the test binaries
+        run: >-
+          cargo nextest archive
+          --workspace --all-targets --all-features
+          --archive-file target/nextest-tests.tar.zst
+      # --force-initramfs: 9p/virtiofs are modules in the distro kernel, so
+      # the initramfs must load them before the root mount. udmabuf is
+      # built into the guest kernel, so modprobe would fail spuriously; the
+      # device check keeps a hard failure if the pin ever lands on a kernel
+      # where it is neither built in nor loaded.
+      - name: Run the tests inside the KVM guest
+        run: >-
+          timeout 900 vng
+          --run "$GUEST_DIR/rootfs/boot/vmlinuz-$KVER"
+          --root "$GUEST_DIR/rootfs"
+          --user root
+          --force-initramfs
+          --rwdir "/work=$GITHUB_WORKSPACE"
+          --rwdir "/cargo=$HOME/.cargo"
+          --overlay-rwdir /root
+          --memory 4G
+          --cpus 2
+          --exec 'test -c /dev/udmabuf || modprobe udmabuf; modprobe vkms; cd /work && /cargo/bin/cargo-nextest nextest run --archive-file target/nextest-tests.tar.zst --workspace-remap /work --no-tests warn'
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get -c .github/apt.conf update
+          sudo apt-get -c .github/apt.conf install -y $LINUX_DEPS
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Document
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --all-features
+
+  # The Lint job runs on Linux, where the Apple module is compiled out, so the
+  # Apple targets are linted here. The iOS targets cannot run on a hosted
+  # runner, so their test binaries are built and linked rather than run.
+  lint-apple:
+    name: Lint / ${{ matrix.target }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-darwin, aarch64-apple-ios, aarch64-apple-ios-sim]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - run: cargo clippy --workspace --all-targets --all-features --target ${{ matrix.target }} -- -D warnings
+      - name: Document
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --all-features --target ${{ matrix.target }}
+      - name: Build the iOS test binaries
+        if: matrix.target != 'aarch64-apple-darwin'
+        run: cargo test --workspace --all-features --target ${{ matrix.target }} --no-run
+
+  # The Android module is compiled out everywhere else. Its import tests need
+  # an Android device's GPU and gralloc, so CI lints the Android build and
+  # links the test binary; the tests run on hardware.
+  lint-android:
+    name: Lint / aarch64-linux-android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk
+      - run: cargo ndk --target arm64-v8a --platform 29 clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Document
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo ndk --target arm64-v8a --platform 29 doc --workspace --no-deps --all-features
+      - name: Build the Android test binaries
+        run: cargo ndk --target arm64-v8a --platform 29 test --workspace --all-features --no-run
+
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The floor is whatever `Cargo.toml` declares, read here rather than
+      # written twice: a hardcoded version in CI drifts from the manifest and
+      # then gates a number nobody declared.
+      - name: Read rust-version from Cargo.toml
+        id: msrv
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)"
+          if [ -z "$version" ]; then
+            echo "::error::Cargo.toml declares no rust-version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # Installing a toolchain is not building with it: the action only
+          # sets the rustup default, and this repository's
+          # `rust-toolchain.toml` overrides the default for every cargo
+          # invocation inside the checkout. Without this env var the job
+          # compiled on `stable` and proved nothing about the floor.
+          echo "RUSTUP_TOOLCHAIN=$version" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get -c .github/apt.conf update
+          sudo apt-get -c .github/apt.conf install -y $LINUX_DEPS
+      - uses: Swatinem/rust-cache@v2
+      # Proof in the log that the floor is what compiled, so a later change to
+      # the pin or the action cannot quietly make this a second stable run.
+      - name: Show the toolchain this job builds with
+        run: rustc --version && cargo --version
+      - run: cargo check --workspace --all-features

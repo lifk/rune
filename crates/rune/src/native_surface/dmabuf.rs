@@ -13,8 +13,8 @@ use std::os::fd::{FromRawFd, OwnedFd, RawFd};
 use std::sync::Mutex;
 
 use wgpu_external_frame::dma_buf::{
-    DRM_FORMAT_MOD_INVALID, DmaBufFormat, DmaBufFrame as ImportFrame, DmaBufImport,
-    DmaBufImporter, DmaBufPlane,
+    DRM_FORMAT_MOD_INVALID, DmaBufFormat, DmaBufFrame as ImportFrame, DmaBufImport, DmaBufImporter,
+    DmaBufPlane,
 };
 
 use super::{ColorInfo, Format};
@@ -130,25 +130,45 @@ impl DmabufFrame {
     /// `vaapipostproc` until the multi-plane path lands; handing NV12 here is a visible error,
     /// never a sheared picture.
     pub(crate) fn to_external(&self) -> Result<ImportFrame, String> {
-        if self.format != Format::Bgra {
-            return Err("DMA-BUF import takes BGRA; NV12 needs the multi-plane path".into());
-        }
+        self.to_external_plane(0, DmaBufFormat::Bgra8, self.width, self.height)
+    }
+
+    /// One plane as a single-plane import. NV12's luma is R8 and its chroma is
+    /// R8G8; each gets its own `wgpu-external-frame` import because upstream
+    /// imports one packed plane per image.
+    fn to_external_plane(
+        &self,
+        index: usize,
+        format: DmaBufFormat,
+        width: u32,
+        height: u32,
+    ) -> Result<ImportFrame, String> {
         if self.modifier == DRM_FORMAT_MOD_INVALID {
             return Err("DMA-BUF has no negotiated DRM modifier".into());
         }
-        let plane = self.planes.first().ok_or("BGRA frame has no plane")?;
-        let fd = plane.fd.try_clone().map_err(|e| format!("duplicate DMA-BUF plane: {e}"))?;
+        let plane = self
+            .planes
+            .get(index)
+            .ok_or("DMA-BUF frame has no such plane")?;
+        let fd = plane
+            .fd
+            .try_clone()
+            .map_err(|e| format!("duplicate DMA-BUF plane: {e}"))?;
         let offset = u32::try_from(plane.offset).map_err(|_| "DMA-BUF plane offset exceeds u32")?;
         let stride = u32::try_from(plane.stride).map_err(|_| "DMA-BUF stride exceeds u32")?;
         let frame = ImportFrame::new(
-            self.width,
-            self.height,
-            DmaBufFormat::Bgra8,
+            width,
+            height,
+            format,
             self.modifier,
             vec![DmaBufPlane { fd, offset, stride }],
             None,
         );
-        let lease = self.lease.lock().map_err(|_| "DMA-BUF lease lock poisoned")?.take();
+        let lease = self
+            .lease
+            .lock()
+            .map_err(|_| "DMA-BUF lease lock poisoned")?
+            .take();
         Ok(match lease {
             Some(lease) => frame.with_lease(lease),
             None => frame,
@@ -187,6 +207,24 @@ impl DmabufFrame {
             Format::Nv12Video | Format::Nv12Full => "NV12",
         }
     }
+}
+
+fn plane_texture(device: &wgpu::Device, external: &ImportFrame, label: &str) -> wgpu::Texture {
+    let (width, height) = external.visible_size();
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: external.format.texture_format(),
+        usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    })
 }
 
 /// Imports one frame into a texture wgpu owns, then releases the producer.
@@ -237,22 +275,37 @@ impl Importer {
         queue: &wgpu::Queue,
         frame: &DmabufFrame,
     ) -> Result<[wgpu::Texture; 2], String> {
+        if frame.format != Format::Bgra {
+            let (width, height) = (frame.width, frame.height);
+            let mut y = frame.to_external_plane(0, DmaBufFormat::R8, width, height)?;
+            let mut uv = frame.to_external_plane(
+                1,
+                DmaBufFormat::R8G8,
+                width.div_ceil(2),
+                height.div_ceil(2),
+            )?;
+            let y_destination = plane_texture(device, &y, "DMA-BUF luma");
+            let uv_destination = plane_texture(device, &uv, "DMA-BUF chroma");
+            let y_copy: DmaBufImport = self.inner.copy_into(&mut y, &y_destination);
+            let uv_copy: DmaBufImport = self.inner.copy_into(&mut uv, &uv_destination);
+            let (y_guard, uv_guard) = (y_copy.guard, uv_copy.guard);
+            let mut command_buffers = y_copy.command_buffers;
+            command_buffers.push(y_copy.encoder.finish());
+            command_buffers.extend(uv_copy.command_buffers);
+            command_buffers.push(uv_copy.encoder.finish());
+            y.presented();
+            uv.presented();
+            queue.submit(command_buffers);
+            queue.on_submitted_work_done(move || {
+                drop(y_guard);
+                drop(uv_guard);
+                y.release(None);
+                uv.release(None);
+            });
+            return Ok([y_destination, uv_destination]);
+        }
         let mut external = frame.to_external()?;
-        let (width, height) = external.visible_size();
-        let destination = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("DMA-BUF frame"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: external.format.texture_format(),
-            usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
+        let destination = plane_texture(device, &external, "DMA-BUF frame");
         let copy: DmaBufImport = self.inner.copy_into(&mut external, &destination);
         let guard = copy.guard;
         let mut command_buffers = copy.command_buffers;
@@ -323,8 +376,14 @@ mod tests {
 
     #[test]
     fn a_packed_frame_maps_to_bgra_and_a_semi_planar_one_to_nv12() {
-        assert_eq!(DmabufFrame::from_fourcc(DRM_FORMAT_XRGB8888), Some(Format::Bgra));
-        assert_eq!(DmabufFrame::from_fourcc(DRM_FORMAT_NV12), Some(Format::Nv12Video));
+        assert_eq!(
+            DmabufFrame::from_fourcc(DRM_FORMAT_XRGB8888),
+            Some(Format::Bgra)
+        );
+        assert_eq!(
+            DmabufFrame::from_fourcc(DRM_FORMAT_NV12),
+            Some(Format::Nv12Video)
+        );
     }
 
     #[test]
@@ -356,14 +415,25 @@ mod tests {
 
     #[test]
     fn the_plane_count_is_enforced_in_both_directions() {
-        assert!(frame(640, 480, Format::Nv12Video, &[640]).unwrap_err().contains("2 plane"));
-        assert!(frame(640, 480, Format::Bgra, &[2560, 2560]).unwrap_err().contains("1 plane"));
+        assert!(
+            frame(640, 480, Format::Nv12Video, &[640])
+                .unwrap_err()
+                .contains("2 plane")
+        );
+        assert!(
+            frame(640, 480, Format::Bgra, &[2560, 2560])
+                .unwrap_err()
+                .contains("1 plane")
+        );
     }
 
     #[test]
     fn a_stride_narrower_than_the_row_is_refused_with_the_numbers() {
         let err = frame(1920, 1080, Format::Nv12Video, &[1900, 1920]).unwrap_err();
-        assert!(err.contains("plane 0") && err.contains("1900") && err.contains("1920"), "{err}");
+        assert!(
+            err.contains("plane 0") && err.contains("1900") && err.contains("1920"),
+            "{err}"
+        );
     }
 
     #[test]

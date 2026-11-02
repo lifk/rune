@@ -5410,8 +5410,6 @@ dependencies = [
 [[package]]
 name = "wgpu-external-frame"
 version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b0f57d53023798db6ab76e5d40053d57bc469abedb75131928bb8d6569b1d4a"
 dependencies = [
  "ash",
  "glow",
@@ -5420,8 +5418,10 @@ dependencies = [
  "ndk",
  "objc2 0.6.5",
  "objc2-core-foundation",
+ "objc2-core-video",
  "objc2-io-surface",
  "objc2-metal 0.3.2",
+ "pollster",
  "sync_wrapper",
  "thiserror 2.0.21",
  "wgpu",
