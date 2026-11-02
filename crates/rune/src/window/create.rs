@@ -136,7 +136,7 @@ impl<S: 'static> Host<S> {
         }
         let target_format = if self.rt.srgb_blend() { config.format.remove_srgb_suffix() } else { config.format };
         if let Some(gpu) = gpu {
-            let mut renderer = prewarmed.unwrap_or_else(|| Renderer::new(&gpu.device, target_format));
+            let mut renderer = prewarmed.unwrap_or_else(|| Renderer::new_with_adapter(&gpu.device, target_format, &gpu.adapter));
             renderer.set_srgb_blend(self.rt.srgb_blend());
             self.gpu = Some((gpu, renderer));
         }

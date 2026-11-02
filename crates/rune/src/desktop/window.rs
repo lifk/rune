@@ -380,7 +380,7 @@ impl<S: 'static> Member for Window<S> {
                 renderer
             }
             None => {
-                let mut renderer = Renderer::new_with_adapter(&gpu.device, format, &gpu.adapter);
+                let mut renderer = Renderer::new(&gpu.device, format);
                 renderer.set_srgb_blend(self.rt.srgb_blend());
                 self.renderer.insert(renderer)
             }
