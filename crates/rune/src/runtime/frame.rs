@@ -168,6 +168,9 @@ impl<S: 'static> Runtime<S> {
         self.minimize_request |= std::mem::take(&mut tx.minimize);
         self.titlebar.toggle_maximized |= std::mem::take(&mut tx.toggle_maximized);
         self.titlebar.toggle_full_screen |= std::mem::take(&mut tx.toggle_full_screen);
+        if let Some(fullscreen) = tx.fullscreen.take() {
+            self.fullscreen_request = Some(fullscreen);
+        }
         for ev in std::mem::take(&mut tx.keys) { self.key(ev); }
         self.latch_playground(tx);
         for prefix in std::mem::take(&mut tx.evict_memos) { self.invalidate_memos_by_prefix(&prefix); }

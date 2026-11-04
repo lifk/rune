@@ -699,6 +699,11 @@ pub struct Runtime<S: 'static> {
     pub shell_request: Option<Shell>,
     /// A handler or `update` asked to minimize the window (`Tx::minimize`); the shell takes it.
     pub(crate) minimize_request: bool,
+    /// A handler, update or `AppHandle` asked for fullscreen (`Tx::set_fullscreen`); the shell
+    /// takes it. Last request wins.
+    pub(crate) fullscreen_request: Option<bool>,
+    /// The last fullscreen mode the shell applied, so a recreated window restores it.
+    pub(crate) fullscreen: bool,
     /// Links handlers asked to open that this runtime left unopened (`Runtime::take_url_requests`).
     pub(crate) url_requests: Vec<String>,
     /// True when attached to a live window, overlay or web canvas, not a headless or scripted run.
@@ -1009,6 +1014,8 @@ impl<S: 'static> Runtime<S> {
             clipboard: None,
             shell_request: None,
             minimize_request: false,
+            fullscreen_request: None,
+            fullscreen: false,
             url_requests: Vec::new(),
             open_urls_natively: false,
             popups: Default::default(),

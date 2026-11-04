@@ -28,6 +28,11 @@ impl<S: 'static> Host<S> {
             }
         }
         let maximize = self.open_maximized && !self.shown && self.options.resizable;
+        // A window the app asked to be fullscreen opens that way; a borderless window already
+        // covers its display.
+        if self.rt.fullscreen && !self.options.borderless {
+            attrs = attrs.with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+        }
         // Windows maximizes it once cloaked: maximizing shows a window.
         #[cfg(not(target_os = "windows"))]
         { attrs = attrs.with_maximized(maximize); }
