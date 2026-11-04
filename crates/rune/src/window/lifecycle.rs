@@ -43,6 +43,9 @@ impl<S: 'static> Host<S> {
         }
         w.visible = true;
         w.occluded = false;
+        if self.rt.fullscreen {
+            w.window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+        }
         self.rt.set_live_visible(!w.minimized());
         self.rt.cancel_timer_frame();
         self.idle = true;
@@ -125,6 +128,9 @@ impl<S: 'static> Host<S> {
         if requests.focus { self.focus(event_loop); }
         // After the show it may follow; `focus` and `minimize` are last-wins (`AppHandle`).
         self.rt.minimize_request |= requests.minimize;
+        if let Some(fullscreen) = requests.fullscreen {
+            self.rt.fullscreen_request = Some(fullscreen);
+        }
         self.shell(event_loop);
         // A pop-up or file dialog a quiet update asked for may have been answered at once.
         let answered = quiet && ((!stale_before && self.rt.needs_commit()) || self.rt.has_pending_input());
@@ -203,6 +209,9 @@ impl<S: 'static> Host<S> {
         }
         for _ in 0..8 {
             let minimize = std::mem::take(&mut self.rt.minimize_request);
+            if let Some(fullscreen) = self.rt.fullscreen_request.take() {
+                self.fullscreen(fullscreen);
+            }
             match self.rt.shell_request.take() {
                 Some(Shell::Quit) => {
                     let _ = crate::quit::send(crate::quit::Event::Start { ending: false });
@@ -231,7 +240,12 @@ impl<S: 'static> Host<S> {
             if self.file_dialog.open(&mut self.rt, window.map(|w| &**w)) && let Some(w) = shown { w.request_redraw(); }
             // A callback that ran (a menu that couldn't open) may have asked to close, quit or
             // minimize.
-            if self.rt.shell_request.is_none() && !self.rt.minimize_request { return; }
+            if self.rt.shell_request.is_none()
+                && !self.rt.minimize_request
+                && self.rt.fullscreen_request.is_none()
+            {
+                return;
+            }
         }
     }
 

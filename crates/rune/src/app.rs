@@ -695,6 +695,14 @@ impl<S: 'static> AppHandle<S> {
         self.request(|q| { q.minimize = true; q.focus = false; });
     }
 
+    /// Put the window into or out of fullscreen, as the window manager's fullscreen action
+    /// would. A hidden window remembers the request and opens fullscreen; a panel, launcher or
+    /// overlay ignores it. On Wayland this is a compositor request, so the actual mode is the
+    /// compositor's to grant.
+    pub fn set_fullscreen(&self, fullscreen: bool) {
+        self.request(|q| q.fullscreen = Some(fullscreen));
+    }
+
     /// Quit the app: every open window's `App::on_quit` runs, the window closes without
     /// `on_close`, and `run` returns.
     ///
@@ -765,6 +773,8 @@ pub(crate) struct Requests<S> {
     pub focus: bool,
     /// `AppHandle::minimize`, after `window`. It and `focus` are last-wins.
     pub minimize: bool,
+    /// `AppHandle::set_fullscreen` / `Tx::set_fullscreen`; last-wins.
+    pub fullscreen: Option<bool>,
     pub position: Option<(i32, i32)>,
     pub place: Option<crate::windows::PlaceRequest>,
     pub quit: bool,
@@ -776,7 +786,7 @@ pub(crate) struct Requests<S> {
 impl<S> Requests<S> {
     /// Nothing but updates: no wake for `poll`, no window, focus or geometry request.
     pub(crate) fn only_updates(&self) -> bool {
-        !self.woken && self.window.is_none() && !self.focus && !self.minimize && self.position.is_none() && self.place.is_none()
+        !self.woken && self.window.is_none() && !self.focus && !self.minimize && self.fullscreen.is_none() && self.position.is_none() && self.place.is_none()
     }
 }
 
@@ -787,6 +797,7 @@ impl<S> Default for Requests<S> {
             dock: None,
             focus: false,
             minimize: false,
+            fullscreen: None,
             position: None,
             place: None,
             quit: false,
@@ -1092,6 +1103,22 @@ mod tests {
         app.handle().minimize();
         let requests = app.shared.take();
         assert!(requests.minimize && requests.window.is_none());
+    }
+
+    #[test]
+    fn fullscreen_reaches_the_shell_from_handlers_updates_and_handles() {
+        let mut rt = Runtime::new(0u32, |_: &u32, _: &mut Cx<u32>| el(), (100.0, 100.0), Env::default());
+        assert_eq!(rt.fullscreen_request, None);
+        rt.update(|_, tx| tx.set_fullscreen(true));
+        assert_eq!(rt.fullscreen_request, Some(true), "a handler's request is latched");
+        assert!(!rt.fullscreen, "nothing applied it yet");
+        rt.update(|_, tx| { tx.set_fullscreen(true); tx.set_fullscreen(false); });
+        assert_eq!(rt.fullscreen_request, Some(false), "the last request wins");
+        let app = App::new(spec());
+        app.handle().set_fullscreen(true);
+        let requests = app.shared.take();
+        assert_eq!(requests.fullscreen, Some(true));
+        assert!(requests.minimize == false && requests.window.is_none());
     }
 
     #[test]

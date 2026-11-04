@@ -62,6 +62,8 @@ pub struct Tx {
     pub(crate) toggle_maximized: bool,
     /// `Tx::toggle_full_screen`.
     pub(crate) toggle_full_screen: bool,
+    /// `Tx::set_fullscreen`; the shell takes the latest.
+    pub(crate) fullscreen: Option<bool>,
     /// `Tx::send_key`, in order.
     pub(crate) keys: Vec<crate::KeyEvent>,
     /// `Tx::drop_point`.
@@ -255,6 +257,13 @@ impl Tx {
     /// Does nothing for overlays and headless runs.
     pub fn toggle_full_screen(&mut self) {
         self.toggle_full_screen = true;
+    }
+
+    /// Put this window into or out of fullscreen after this handler. A hidden window remembers
+    /// the request and opens fullscreen; a panel, launcher or overlay ignores it. On Wayland
+    /// the compositor grants the mode, so it may not change immediately (or at all).
+    pub fn set_fullscreen(&mut self, fullscreen: bool) {
+        self.fullscreen = Some(fullscreen);
     }
 
     /// Deliver `ev` once this handler is done, as if it were typed: to the focused field, then
