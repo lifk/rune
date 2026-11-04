@@ -125,13 +125,19 @@ impl DmabufFrame {
         self
     }
 
-    /// The frame in the importer's shape.
+    /// The packed frame in the importer's shape.
     ///
-    /// Only packed BGRA is accepted: `wgpu-external-frame` imports one 32-bit plane, and an
-    /// NV12 buffer needs two images with a multi-plane modifier. Export BGRA from
-    /// `vaapipostproc` until the multi-plane path lands; handing NV12 here is a visible error,
+    /// Only BGRA takes this path: `wgpu-external-frame` imports one 32-bit plane. NV12 and
+    /// P010 need two images (luma and chroma) and go through `DmabufImporter::import`, which
+    /// calls `to_external_plane` for each. Handing a planar frame here is a visible error,
     /// never a sheared picture.
     pub(crate) fn to_external(&self) -> Result<ImportFrame, String> {
+        if self.format != Format::Bgra {
+            return Err(format!(
+                "{} needs the two-plane import; the packed path only accepts BGRA",
+                Self::format_name(self.format)
+            ));
+        }
         self.to_external_plane(0, DmaBufFormat::Bgra8, self.width, self.height)
     }
 
@@ -179,8 +185,8 @@ impl DmabufFrame {
 
     /// The `wgpu`/Rune format a DRM fourcc maps to, or `None` when we cannot sample it yet.
     ///
-    /// P010 (10-bit HDR) is deliberately absent: it arrives with the tone-mapping work, and
-    /// pretending to support it would show a green or sheared picture instead of an error.
+    /// NV12 and P010 are imported as two planes by `DmabufImporter::import`; the packed
+    /// `to_external` path stays BGRA-only. An unknown fourcc is refused rather than guessed.
     pub fn from_fourcc(code: u32) -> Option<Format> {
         match code {
             DRM_FORMAT_XRGB8888 | DRM_FORMAT_ARGB8888 => Some(Format::Bgra),
@@ -398,8 +404,11 @@ mod tests {
     }
 
     #[test]
-    fn ten_bit_is_refused_rather_than_sampled_wrong() {
-        assert_eq!(DmabufFrame::from_fourcc(DRM_FORMAT_P010), None);
+    fn ten_bit_p010_is_accepted_and_unknown_formats_are_refused() {
+        assert_eq!(
+            DmabufFrame::from_fourcc(DRM_FORMAT_P010),
+            Some(Format::P010Video)
+        );
         assert_eq!(DmabufFrame::from_fourcc(fourcc(*b"RG24")), None);
     }
 
@@ -476,7 +485,7 @@ mod tests {
     }
 
     #[test]
-    fn nv12_is_refused_with_a_reason_instead_of_shearing() {
+    fn nv12_does_not_take_the_packed_bgra_path() {
         let f = frame(640, 480, Format::Nv12Video, &[640, 640]).expect("valid");
         let error = f.to_external().unwrap_err();
         assert!(error.contains("BGRA") && error.contains("NV12"), "{error}");
