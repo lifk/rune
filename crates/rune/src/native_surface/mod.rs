@@ -397,6 +397,22 @@ pub fn nv12_reference(y: u8, cb: u8, cr: u8, format: Format, color: ColorInfo) -
     let g = (y - kr * r - kb * b) / (1.0 - kr - kb);
     [r, g, b].map(|x| linear(x.clamp(0.0, 1.0), color.transfer))
 }
+/// The SDR tone-map curve for PQ, mirrored in `video.wgsl`: display linear with 1.0 = 10,000
+/// nits, reference white (100 nits) at 0.8, and a Reinhard shoulder that keeps 4,000 nits
+/// just below clipping.
+pub fn tone_map_pq(linear: f32) -> f32 {
+    let x = linear.max(0.0) * 400.0;
+    x / (1.0 + x)
+}
+
+/// The same shoulder for HLG: scene linear, 0.75 signal is reference white, and the exposure
+/// is about 15 rather than 400. HLG and PQ cannot share one multiplier without one of them
+/// being far too dark.
+pub fn tone_map_hlg(linear: f32) -> f32 {
+    let x = linear.max(0.0) * 15.0;
+    x / (1.0 + x)
+}
+
 pub fn linear(x: f32, transfer: Transfer) -> f32 {
     match transfer {
         Transfer::Srgb => {
@@ -517,5 +533,33 @@ mod tests {
                 assert_eq!(nv12_reference(0, 128, 128, Format::Nv12Full, c), [0.0; 3]);
             }
         }
+    }
+
+    #[test]
+    fn pq_reference_white_maps_to_four_fifths() {
+        // PQ code 0.508 is 100 nits, the reference white an SDR grade expects.
+        let white = linear(0.508, Transfer::Pq);
+        assert!(
+            (tone_map_pq(white) - 0.8).abs() < 0.03,
+            "{}",
+            tone_map_pq(white)
+        );
+        // 1,000 and 4,000 nits approach but do not clip.
+        assert!(tone_map_pq(0.1) > 0.97);
+        assert!(tone_map_pq(0.4) > 0.99);
+        assert_eq!(tone_map_pq(0.0), 0.0);
+    }
+
+    #[test]
+    fn hlg_reference_white_maps_to_four_fifths() {
+        // HLG's 0.75 signal is its reference white; 1.0 is the 1,000-nit peak.
+        let white = linear(0.75, Transfer::Hlg);
+        assert!(
+            (tone_map_hlg(white) - 0.8).abs() < 0.03,
+            "{}",
+            tone_map_hlg(white)
+        );
+        assert!(tone_map_hlg(linear(1.0, Transfer::Hlg)) > 0.9);
+        assert_eq!(tone_map_hlg(0.0), 0.0);
     }
 }

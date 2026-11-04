@@ -38,10 +38,12 @@ fn bt2020_to_709(v: vec3<f32>) -> vec3<f32> {
         dot(v, vec3<f32>(-0.0182, -0.1006, 1.1187)),
     );
 }
-fn tone_map(v: vec3<f32>) -> vec3<f32> {
-    // PQ's output is normalized to 10,000 nits; 4x exposure maps a 4,000-nit
-    // highlight to ~0.8 before the Reinhard shoulder.
-    let x = max(v, vec3<f32>(0.0)) * 4.0;
+fn tone_map(v: vec3<f32>, hlg: bool) -> vec3<f32> {
+    // PQ's output is display linear with 1.0 = 10,000 nits, so SDR reference white (100 nits)
+    // is 0.01; 400 puts it at 0.8 after the shoulder, and a 4,000-nit highlight lands at 0.994.
+    // HLG's output is scene linear: its 0.75 signal is reference white (≈0.265), which needs
+    // about 15 instead. One curve, two exposures; neither is a brightness knob.
+    let x = max(v, vec3<f32>(0.0)) * select(400.0, 15.0, hlg);
     return x / (vec3<f32>(1.0) + x);
 }
 fn convert(a: vec4<f32>, uv: vec2<f32>) -> vec4<f32> {
@@ -72,7 +74,7 @@ fn convert(a: vec4<f32>, uv: vec2<f32>) -> vec4<f32> {
         let encoded = vec3<f32>(r, g, b);
         var hdr = select(hlg_eotf(encoded), pq_eotf(encoded), u.color.z < 3.5);
         hdr = bt2020_to_709(hdr);
-        return vec4<f32>(tone_map(hdr), 1.0);
+        return vec4<f32>(tone_map(hdr, u.color.z > 3.5), 1.0);
     }
     return vec4<f32>(linear(vec3<f32>(r,g,b)), 1.0);
 }
