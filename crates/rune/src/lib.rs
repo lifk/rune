@@ -349,6 +349,7 @@ pub use video::Player;
 pub use video::PlayerState;
 pub use video::Video;
 pub use window::WindowHandle;
+pub use window::set_design_height;
 pub use windows::AnyWindowSpec;
 pub use windows::ConfiguredWindowOptions;
 pub use windows::Display;

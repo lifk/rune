@@ -38,6 +38,26 @@ mod win;
 use win::Win;
 mod first_frame;
 use first_frame::FirstFrame;
+
+/// A TV/console UI scale: the logical viewport height in points. Zero means the display's own
+/// scale factor. Set before `run`; the runtime scale becomes the window's physical height
+/// divided by this, so a 720 design is 1.5x at 1080p and 3x at 4K with one number.
+static DESIGN_HEIGHT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Set the design height for a UI that should keep a fixed logical viewport (a 10-foot layout).
+/// `None` returns to the display's scale factor. Call before the app runs; a later call applies
+/// on the next resize. Headless renders keep using `Env::scale`/`--scale`.
+pub fn set_design_height(height: Option<f32>) {
+    let bits = height
+        .filter(|h| h.is_finite() && *h > 0.0)
+        .map_or(0, f32::to_bits);
+    DESIGN_HEIGHT.store(bits, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub(crate) fn design_height() -> Option<f32> {
+    let bits = DESIGN_HEIGHT.load(std::sync::atomic::Ordering::Relaxed);
+    (bits != 0).then(|| f32::from_bits(bits))
+}
 mod draw;
 mod redraw;
 use redraw::{Redraw, RedrawEffect, RedrawEvent};
@@ -456,6 +476,23 @@ struct Host<S: 'static> {
     present_log: Option<Arc<crate::frame::present_time::metal::Log>>,
     #[cfg(target_os = "macos")]
     frame_wake: Waker,
+}
+
+impl<S> Host<S> {
+    /// The runtime's scale: the design height when one is set, else the window's own factor.
+    fn effective_scale(&self) -> f32 {
+        if let Some(design) = design_height()
+            && let Some(w) = self.win.as_ref()
+        {
+            let physical = w.window.inner_size().height as f32;
+            if physical >= 1.0 {
+                return (physical / design).clamp(0.5, 8.0);
+            }
+        }
+        self.win
+            .as_ref()
+            .map_or(self.rt.env.scale, |w| w.window.scale_factor() as f32)
+    }
 }
 
 impl<S: 'static> Host<S> {

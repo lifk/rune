@@ -217,9 +217,9 @@ impl<S: 'static> Host<S> {
         };
         if stops { self.land_frame(); }
         if matches!(event, WindowEvent::Moved(_) | WindowEvent::ScaleFactorChanged { .. }) { self.sync_origin(); }
+        let scale = self.effective_scale();
         let (Some(l), Some((gpu, ..))) = (self.win.as_mut(), self.gpu.as_ref()) else { return };
         let rt = &mut self.rt;
-        let scale = l.window.scale_factor() as f32;
         let (chrome, titlebar) = (self.chrome, self.titlebar);
         // A finger presses through `WindowEvent::Touch`; the mouse events a system makes up
         // from it (Windows promotes touches) would press a second time.
@@ -288,7 +288,9 @@ impl<S: 'static> Host<S> {
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 #[cfg(target_os = "macos")]
                 if let Some(shadow) = &l.native.shadow { shadow.redraw(); }
-                let scale = scale_factor as f32;
+                // A design height keeps the logical viewport fixed across displays, so a
+                // ScaleFactorChanged must not undo it.
+                let scale = if design_height().is_some() { scale } else { scale_factor as f32 };
                 let size = l.window.inner_size();
                 // Still the old scale's size: Windows resizes the window after this event.
                 #[cfg(target_os = "windows")]
