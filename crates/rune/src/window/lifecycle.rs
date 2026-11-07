@@ -96,12 +96,16 @@ impl<S: 'static> Host<S> {
         self.shortcuts.drain();
         self.menus.drain();
         let (mut had_updates, mut updated) = (false, false);
-        let requests = self.shared.drain(|f| {
+        let mut requests = self.shared.drain(|f| {
             had_updates = true;
             updated |= self.rt.update_if(f);
             self.menus.drain();
         });
-        let changed = clipboard || answered || updated || self.rt.drag_ends_pending();
+        let keyed = !requests.keys.is_empty();
+        for key in requests.keys.drain(..) {
+            self.rt.key(key);
+        }
+        let changed = clipboard || answered || updated || keyed || self.rt.drag_ends_pending();
         // Only updates that changed nothing (`AppHandle::update_if`), or an empty startup drain
         // after `try_create` already drew the first frame, ran: no poll, no frame.
         let quiet = (had_updates || (!wake && !stale_before)) && !changed && requests.only_updates()

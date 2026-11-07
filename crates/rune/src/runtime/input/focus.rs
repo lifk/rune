@@ -237,6 +237,18 @@ impl<S: 'static> Runtime<S> {
         }
         changed
     }
+    /// Focus the node with this key, if it exists in the built tree. Returns its path so the
+    /// caller can reveal it.
+    pub(crate) fn focus_by_key(&mut self, key: &str) -> Option<String> {
+        let path = self
+            .nodes
+            .iter()
+            .find(|node| node.key.as_deref() == Some(key))
+            .map(|node| node.path.clone())?;
+        self.set_focus(Some(path.clone()), true);
+        Some(path)
+    }
+
     pub(super) fn sync_requested_focus(&mut self, nodes: &mut Vec<Node>) -> bool {
         let asked = self.focus_request.take();
         for old in &self.nodes {

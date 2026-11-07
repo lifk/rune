@@ -582,6 +582,11 @@ impl<S: 'static> Runtime<S> {
         { self.live_check = None; }
         tx.keep_on_screen.clear();
         let mut scroll_to = std::mem::take(&mut tx.scroll_to);
+        for key in std::mem::take(&mut tx.focus_keys) {
+            if let Some(path) = self.focus_by_key(&key) {
+                scroll_to.push(ScrollReveal::into_view(None, path));
+            }
+        }
         for (path, v) in &mut self.virtuals {
             if let Some(key) = v.reveal_selected.take() && !pointer_hover {
                 // Use the keyed ancestor path so identical row keys in other lists do not
