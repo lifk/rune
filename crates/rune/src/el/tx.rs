@@ -55,6 +55,8 @@ pub struct Tx {
     pub(crate) scroll_offsets: Vec<crate::runtime::ScrollRequest>,
     /// Elements to hold where they show across this commit (`Tx::keep_on_screen`).
     pub(crate) keep_on_screen: Vec<String>,
+    /// Keys to focus by name (`Tx::focus_key`), for a launch or a route change.
+    pub(crate) focus_keys: Vec<String>,
     pub(crate) wakes: Vec<std::time::Duration>,
     pub(crate) shell: Option<Shell>,
     pub(crate) minimize: bool,
@@ -131,6 +133,12 @@ pub enum Shell {
 }
 
 impl Tx {
+    /// Focus the element keyed `key`, as a controller or a launch does, and reveal it. The
+    /// element must be in the tree built this frame; a missing key is ignored.
+    pub fn focus_key(&mut self, key: impl Into<String>) {
+        self.focus_keys.push(key.into());
+    }
+
     /// Pick from the last presented frame, with the geometry and visibility rules of
     /// [`Runtime::element_at`](crate::Runtime::element_at). Runs `f` after this handler,
     /// before its view commit. Pass `PointerEvent::window_x` and `window_y`, not local points.
@@ -177,7 +185,9 @@ impl Tx {
     /// Work only a frame carries out that changes its pixels without a model change: a scroll
     /// or a text flight. A `wake_after` only schedules.
     pub(crate) fn frame_work(&self) -> bool {
-        !self.pick_reads.is_empty() || !self.scroll_to.is_empty() || !self.scroll_bottom.is_empty() || !self.scroll_pages.is_empty() || !self.scroll_offsets.is_empty()
+        !self.pick_reads.is_empty()
+            || !self.focus_keys.is_empty()
+            || !self.scroll_to.is_empty() || !self.scroll_bottom.is_empty() || !self.scroll_pages.is_empty() || !self.scroll_offsets.is_empty()
             || !self.keep_on_screen.is_empty() || !self.text_flights.is_empty() || !self.launches.is_empty() || self.select.is_some()
     }
 

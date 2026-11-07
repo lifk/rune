@@ -634,6 +634,17 @@ impl<S: 'static> AppHandle<S> {
         self.request(|q| q.woken = true);
     }
 
+    /// Send a key to the window's runtime, as if the keyboard produced it. For a background input
+    /// source (a gamepad listener) that maps its buttons through the same focus and shortcut path.
+    /// Safe from another thread; wakes the loop.
+    pub fn key(&self, key: crate::KeyEvent) {
+        self.request(|q| {
+            q.keys.push(key);
+            q.woken = true;
+        });
+        self.wake();
+    }
+
     /// Show the window (creating it if needed), restore it if minimized, and activate the app
     /// with it in front, including the first open of a window that doesn't exist yet. A
     /// nonactivating panel takes keys without activating. The window open at launch doesn't
@@ -780,13 +791,22 @@ pub(crate) struct Requests<S> {
     pub quit: bool,
     /// `AppHandle::wake` asked for `poll`.
     pub woken: bool,
+    /// Keys a background input source (a gamepad) sent for the runtime, in order.
+    pub keys: Vec<crate::KeyEvent>,
     pub updates: Vec<Update<S>>,
 }
 
 impl<S> Requests<S> {
     /// Nothing but updates: no wake for `poll`, no window, focus or geometry request.
     pub(crate) fn only_updates(&self) -> bool {
-        !self.woken && self.window.is_none() && !self.focus && !self.minimize && self.fullscreen.is_none() && self.position.is_none() && self.place.is_none()
+        !self.woken
+            && self.window.is_none()
+            && !self.focus
+            && !self.minimize
+            && self.fullscreen.is_none()
+            && self.position.is_none()
+            && self.place.is_none()
+            && self.keys.is_empty()
     }
 }
 
@@ -802,6 +822,7 @@ impl<S> Default for Requests<S> {
             place: None,
             quit: false,
             woken: false,
+            keys: Vec::new(),
             updates: Vec::new(),
         }
     }
