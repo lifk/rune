@@ -350,6 +350,20 @@ pub use video::PlayerState;
 pub use video::Video;
 pub use window::WindowHandle;
 pub use window::set_design_height;
+
+/// Return activates any focused control that takes a press, not only rows and links. A TV
+/// remote reports its OK button as Return, so a 10-foot app opts in once at startup; desktop
+/// apps keep Return for the default button. Space always presses the focused control.
+static RETURN_ACTIVATES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Opt in to "Return presses the focused control", the behaviour a remote's OK button needs.
+pub fn set_return_activates(on: bool) {
+    RETURN_ACTIVATES.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub(crate) fn return_activates() -> bool {
+    RETURN_ACTIVATES.load(std::sync::atomic::Ordering::Relaxed)
+}
 pub use windows::AnyWindowSpec;
 pub use windows::ConfiguredWindowOptions;
 pub use windows::Display;

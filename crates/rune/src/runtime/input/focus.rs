@@ -122,8 +122,10 @@ impl<S: 'static> Runtime<S> {
     /// link, a `focus_highlight` row, or an item of a menu, list, tree or grid group.
     /// Under `Cx::web_focus` a focused button presses on Return too, as an HTML one does.
     fn takes_return(&self, i: usize) -> bool {
-        self.link_focused(i) || self.nodes[i].focus.highlight.is_some()
+        self.link_focused(i)
+            || self.nodes[i].focus.highlight.is_some()
             || (self.defaults.web_focus && self.nodes[i].handlers.on_press.is_some() && self.takes_focus(&self.nodes[i]))
+            || (crate::return_activates() && self.nodes[i].handlers.on_press.is_some())
             || self.group(i).is_some_and(|g| LIST_ROLES.contains(&self.nodes[g].role) || VERTICAL_ROLES.contains(&self.nodes[g].role))
     }
     /// Return with no modifiers presses the window's default button (`El::default_button`)
