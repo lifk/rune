@@ -205,6 +205,10 @@ pub(super) fn merge(tx: &mut Tx, one: Tx) {
     tx.toggle_maximized |= one.toggle_maximized;
     tx.toggle_full_screen |= one.toggle_full_screen;
     tx.keys.extend(one.keys);
+    // A `Tx::focus_key` from `App::poll` or `AppHandle::update` names an element to focus;
+    // dropping it here leaves a launched 10-foot screen with nothing focused, and arrows and
+    // Space then do nothing.
+    tx.focus_keys.extend(one.focus_keys);
     if one.title.is_some() { tx.title = one.title; }
     tx.playground.extend(one.playground);
     tx.open_urls.extend(one.open_urls);

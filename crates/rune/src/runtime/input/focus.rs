@@ -848,6 +848,26 @@ mod tests {
     #[derive(Default)]
     struct Menu { open: bool, checked: Option<usize>, picks: Vec<usize>, follows: bool, search: bool, field: crate::TextEdit }
     const ITEMS: [&str; 4] = ["Alpha", "Beta", "Bravo", "Charlie"];
+    fn focus_key_view(s: &Press, _: &mut Cx<Press>) -> El {
+        crate::col().size(200.0, 100.0).child(
+            crate::el().key("card").size(80.0, 40.0).focusable(true)
+                .on_press(|s: &mut Press| s.pressed = true),
+        )
+    }
+    #[derive(Default)]
+    struct Press { pressed: bool }
+
+    #[test]
+    fn focus_key_then_space_presses_the_element() {
+        let mut rt = Runtime::new(Press::default(), focus_key_view, (200.0, 100.0), crate::Env::new(true, 1.0));
+        rt.frame(0.0);
+        rt.update(|_, tx| tx.focus_key("card"));
+        rt.frame(0.016);
+        assert_eq!(rt.focused_key().as_deref(), Some("card"), "the request lands");
+        press(&mut rt, Key::Text(" ".into()));
+        assert!(rt.state.pressed, "Space presses the element named by focus_key");
+    }
+
     fn menu_view(s: &Menu, _: &mut Cx<Menu>) -> El {
         let mut root = col().key("root").size(300.0, 300.0)
             .child(button("popup").role("combobox").on_press(|s: &mut Menu| s.open = true))
