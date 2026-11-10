@@ -245,7 +245,8 @@ impl<S: 'static> Runtime<S> {
 
     /// What [`Tx::focused`] reports: the focused link's id, else the focused element's key,
     /// else its path's last segment (a field in a virtual row that scrolled out has no node).
-    pub(super) fn focused_key(&self) -> Option<String> {
+    /// An app reads it after a `Tx::focus_key` request to know whether the focus landed.
+    pub fn focused_key(&self) -> Option<String> {
         let path = self.focus.path()?;
         if let Some(id) = self.focused_index().and_then(|i| self.focused_link_id(i)) { return Some(id); }
         Some(self.focused_index().and_then(|i| self.nodes[i].key.clone())
