@@ -21,12 +21,31 @@ impl Reorder {
     /// Measures a commit taking the stack from `old` to `new` presented order, given each row's
     /// presented height (`None` for a row with none) and the gap between rows. A commit that
     /// lands its changes (`animates` false) moves nothing.
-    pub(super) fn measure(&mut self, animates: bool, old: &[NodeId], new: &[NodeId], gap: f32, h: impl Fn(NodeId) -> Option<f32>) {
+    pub(super) fn measure(
+        &mut self,
+        animates: bool,
+        old: &[NodeId],
+        new: &[NodeId],
+        gap: f32,
+        h: impl Fn(NodeId) -> Option<f32>,
+    ) {
         self.jumps.clear();
-        if !animates || old == new { return; }
-        let old_at: HashMap<NodeId, usize> = old.iter().enumerate().filter(|(_, id)| h(**id).is_some()).map(|(k, id)| (*id, k)).collect();
-        let kept: Vec<(NodeId, usize)> = new.iter().filter_map(|id| old_at.get(id).map(|&k| (*id, k))).collect();
-        if kept.windows(2).all(|w| w[0].1 < w[1].1) { return; }
+        if !animates || old == new {
+            return;
+        }
+        let old_at: HashMap<NodeId, usize> = old
+            .iter()
+            .enumerate()
+            .filter(|(_, id)| h(**id).is_some())
+            .map(|(k, id)| (*id, k))
+            .collect();
+        let kept: Vec<(NodeId, usize)> = new
+            .iter()
+            .filter_map(|id| old_at.get(id).map(|&k| (*id, k)))
+            .collect();
+        if kept.windows(2).all(|w| w[0].1 < w[1].1) {
+            return;
+        }
         let mut before: Vec<(usize, NodeId)> = kept.iter().map(|&(id, k)| (k, id)).collect();
         before.sort_unstable_by_key(|&(k, _)| k);
         let mut top = 0.0;
@@ -38,7 +57,9 @@ impl Reorder {
         let mut top = 0.0;
         for (id, _) in kept {
             let jump = was[&id] - top;
-            if jump.abs() > 1.0 / 64.0 { self.jumps.insert(id, jump); }
+            if jump.abs() > 1.0 / 64.0 {
+                self.jumps.insert(id, jump);
+            }
             top += h(id).unwrap_or(0.0) + gap;
         }
     }
@@ -51,18 +72,40 @@ impl Reorder {
 impl<S: 'static> Runtime<S> {
     /// How far node `i`, a growth row, jumped because its stack's rows changed order this commit.
     pub(super) fn reorder_jump(&self, nodes: &[Node], i: usize) -> f32 {
-        nodes[i].parent.and_then(|p| self.stacks.get(&nodes[p].id)).map_or(0.0, |s| s.reorder.jump(nodes[i].id))
+        nodes[i]
+            .parent
+            .and_then(|p| self.stacks.get(&nodes[p].id))
+            .map_or(0.0, |s| s.reorder.jump(nodes[i].id))
     }
 
     /// Starts row `id`'s offset `jump` points down from where it shows, so it stays where it was
     /// drawn, and springs it to `to` on `anim`, keeping the speed it had.
-    pub(super) fn slide_reordered(&mut self, id: NodeId, jump: f32, to: rune_motion::Vec2, anim: Anim) {
-        let now = self.scene.get(id, prop::OFFSET).unwrap_or(rune_motion::Vec2::ZERO);
-        let speed = self.scene.store().velocity(id, prop::OFFSET).filter(|v| *v != rune_motion::Vec2::ZERO);
-        self.scene.set(id, prop::OFFSET, rune_motion::Vec2::new(now.x, now.y + jump));
+    pub(super) fn slide_reordered(
+        &mut self,
+        id: NodeId,
+        jump: f32,
+        to: rune_motion::Vec2,
+        anim: Anim,
+    ) {
+        let now = self
+            .scene
+            .get(id, prop::OFFSET)
+            .unwrap_or(rune_motion::Vec2::ZERO);
+        let speed = self
+            .scene
+            .store()
+            .velocity(id, prop::OFFSET)
+            .filter(|v| *v != rune_motion::Vec2::ZERO);
+        self.scene.set(
+            id,
+            prop::OFFSET,
+            rune_motion::Vec2::new(now.x, now.y + jump),
+        );
         self.scene.animate(id, prop::OFFSET, to, anim);
         if let Some(v) = speed {
-            self.scene.store_mut().animate_with_velocity(id, prop::OFFSET, to, v, anim);
+            self.scene
+                .store_mut()
+                .animate_with_velocity(id, prop::OFFSET, to, v, anim);
         }
     }
 }

@@ -49,8 +49,10 @@ fn markdown_reads_as_a_document() {
     let mut rt = mount(App::default(), markdown);
     let tree = rt.accessibility_json();
     let headings = with_role(&tree, "heading");
-    assert_eq!(headings.iter().map(|h| (h["name"].as_str().unwrap(), h["level"].as_u64().unwrap())).collect::<Vec<_>>(),
-        [("Release notes", 1), ("Changes", 2)]);
+    assert_eq!(
+        headings.iter().map(|h| (h["name"].as_str().unwrap(), h["level"].as_u64().unwrap())).collect::<Vec<_>>(),
+        [("Release notes", 1), ("Changes", 2)]
+    );
     let link = node(&tree, "https://example.com/guide");
     assert_eq!((said(link), link["url"].as_str()), (("link", "the guide"), Some("https://example.com/guide")));
     assert!(can(link, "click"));
@@ -62,7 +64,10 @@ fn markdown_reads_as_a_document() {
     assert_eq!(lists[1]["setSize"], 2);
     assert!(named(&tree, "•").is_empty() && named(&tree, "1.").is_empty(), "list markers are decoration");
     let tasks = with_role(&tree, "check-box");
-    assert_eq!(tasks.iter().map(|t| (said(t).1, has(t, "checked"))).collect::<Vec<_>>(), [("tests pass", true), ("docs", false)]);
+    assert_eq!(
+        tasks.iter().map(|t| (said(t).1, has(t, "checked"))).collect::<Vec<_>>(),
+        [("tests pass", true), ("docs", false)]
+    );
     assert!(can(tasks[1], "click") && can(tasks[1], "focus"));
     assert_eq!(with_role(&tree, "code").len(), 1);
     assert_eq!(with_role(&tree, "blockquote").len(), 1);

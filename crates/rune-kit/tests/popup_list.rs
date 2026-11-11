@@ -67,13 +67,7 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
 fn runtime(count: usize) -> Runtime<State> {
     let mut composer = TextEdit::new("");
     composer.focused = true;
-    let s = State {
-        composer,
-        open: true,
-        count,
-        active: Some(0),
-        ..State::default()
-    };
+    let s = State { composer, open: true, count, active: Some(0), ..State::default() };
     let mut rt = Runtime::new(s, view, (480.0, 480.0), Env::new(true, 1.0));
     rt.frame(0.0);
     rt
@@ -151,8 +145,15 @@ fn option_changes_land_at_once_by_default() {
     rt.update(|s, _| s.open = true);
     rt.frame(1.0 / 60.0);
     let opening = find(&rt, "commands-content").unwrap();
-    assert!(opening.opacity < 1.0 || opening.scale < 1.0, "the popover enters: {} at {}", opening.opacity, opening.scale);
-    for _ in 0..60 { rt.frame(1.0 / 60.0); }
+    assert!(
+        opening.opacity < 1.0 || opening.scale < 1.0,
+        "the popover enters: {} at {}",
+        opening.opacity,
+        opening.scale
+    );
+    for _ in 0..60 {
+        rt.frame(1.0 / 60.0);
+    }
 
     for (count, height) in [(2, 64.0), (0, 36.0), (3, 92.0)] {
         // The composer's text changes too, in a commit that animates its layout.
@@ -184,7 +185,12 @@ fn option_changes_land_at_once_by_default() {
     rt.update(|s, _| s.open = false);
     rt.frame(1.0 / 60.0);
     let closing = find(&rt, "commands-content").expect("the popover is still closing");
-    assert!(closing.exiting && (closing.opacity < 1.0 || closing.scale < 1.0), "it leaves: {} at {}", closing.opacity, closing.scale);
+    assert!(
+        closing.exiting && (closing.opacity < 1.0 || closing.scale < 1.0),
+        "it leaves: {} at {}",
+        closing.opacity,
+        closing.scale
+    );
 }
 
 #[test]
@@ -255,14 +261,18 @@ fn hover_fires_on_active_click_fires_on_choose_and_outside_text_edit_keeps_focus
 #[test]
 fn hover_changes_do_not_scroll_now_or_on_the_next_frame() {
     let mut rt = runtime(40);
-    for _ in 0..60 { rt.frame(1.0 / 60.0); }
+    for _ in 0..60 {
+        rt.frame(1.0 / 60.0);
+    }
     let row = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("commands-option-cmd-8")).unwrap();
     let (x, y) = (row.visible[0] + 10.0, row.visible[1] + 2.0);
     let before = row.rect;
     rt.pointer_move(x, y);
     rt.frame(0.0);
     assert_eq!(rt.state.active, Some(8));
-    for _ in 0..3 { rt.frame(1.0 / 60.0); }
+    for _ in 0..3 {
+        rt.frame(1.0 / 60.0);
+    }
     let after = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("commands-option-cmd-8")).unwrap().rect;
     assert_eq!(before, after, "hovering a partly clipped row must not reveal it");
     assert_eq!(rt.state.hovered, [8]);
@@ -272,14 +282,20 @@ fn hover_changes_do_not_scroll_now_or_on_the_next_frame() {
 fn pressing_popup_padding_or_empty_state_keeps_the_composer_focused() {
     for count in [0, 3] {
         let mut rt = runtime(count);
-        for _ in 0..60 { rt.frame(1.0 / 60.0); }
+        for _ in 0..60 {
+            rt.frame(1.0 / 60.0);
+        }
         let popup = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("commands-content")).unwrap().rect;
         let (x, y) = (popup[0] + 1.0, popup[1] + 1.0);
-        rt.pointer_down(x, y); rt.pointer_up(x, y); rt.frame(0.0);
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        rt.frame(0.0);
         assert!(rt.state.composer.focused, "padding, count {count}");
         if count == 0 {
             let (x, y) = rt.find("empty").unwrap();
-            rt.pointer_down(x, y); rt.pointer_up(x, y); rt.frame(0.0);
+            rt.pointer_down(x, y);
+            rt.pointer_up(x, y);
+            rt.frame(0.0);
             assert!(rt.state.composer.focused, "empty state");
         }
     }
@@ -289,13 +305,18 @@ fn pressing_popup_padding_or_empty_state_keeps_the_composer_focused() {
 fn ordinary_listbox_selection_does_not_reveal_and_press_still_blurs() {
     fn ordinary(s: &State, _: &mut Cx<State>) -> El {
         let k = Kit::neutral(true);
-        col().child(TextInput::new(&s.composer).on_edit(|s: &mut State| &mut s.composer).build(&k))
-            .child(col().key("ordinary-list").role("listbox").h(100.0)
-                .scroll(rune::ScrollSpec { stick_bottom: false })
-                .child(col().growth(rune::GrowthSpec::default()).virtualize(28.0).children((0..40).map(|i| {
-                    rune::el().key(format!("row-{i}")).role("option").h(28.0)
-                        .focus_selected(s.active == Some(i)).on_press(|_: &mut State| {})
-                }))))
+        col().child(TextInput::new(&s.composer).on_edit(|s: &mut State| &mut s.composer).build(&k)).child(
+            col().key("ordinary-list").role("listbox").h(100.0).scroll(rune::ScrollSpec { stick_bottom: false }).child(
+                col().growth(rune::GrowthSpec::default()).virtualize(28.0).children((0..40).map(|i| {
+                    rune::el()
+                        .key(format!("row-{i}"))
+                        .role("option")
+                        .h(28.0)
+                        .focus_selected(s.active == Some(i))
+                        .on_press(|_: &mut State| {})
+                })),
+            ),
+        )
     }
     let mut s = State::default();
     s.composer.focused = true;
@@ -304,9 +325,12 @@ fn ordinary_listbox_selection_does_not_reveal_and_press_still_blurs() {
     rt.frame(0.0);
     let first = |rt: &Runtime<State>| rt.elements().into_iter().find(|e| e.key.as_deref() == Some("row-0")).unwrap();
     assert!(first(&rt).visible[3] > 0.0, "restoring selection must not scroll");
-    rt.update(|s, _| s.active = Some(38)); rt.frame(0.0);
+    rt.update(|s, _| s.active = Some(38));
+    rt.frame(0.0);
     assert!(first(&rt).visible[3] > 0.0, "programmatic selection must not scroll");
     let (x, y) = rt.find("row-0").unwrap();
-    rt.pointer_down(x, y); rt.pointer_up(x, y); rt.frame(0.0);
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.frame(0.0);
     assert!(!rt.state.composer.focused, "ordinary listbox presses still blur the field");
 }

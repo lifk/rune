@@ -12,7 +12,9 @@ impl Env {
     }
 }
 impl Default for Env {
-    fn default() -> Self { Self::new(true, 1.0) }
+    fn default() -> Self {
+        Self::new(true, 1.0)
+    }
 }
 
 /// What a view declares for the elements that don't style themselves.
@@ -72,14 +74,22 @@ impl<S> Cx<S> {
     /// does for a sub-view (a plugin's panel) that panicked partway.
     pub fn retype<T>(&self) -> Cx<T> {
         Cx {
-            env: self.env, titlebar_inset: self.titlebar_inset, chrome: self.chrome, caption_color: self.caption_color,
+            env: self.env,
+            titlebar_inset: self.titlebar_inset,
+            chrome: self.chrome,
+            caption_color: self.caption_color,
             defaults: self.defaults,
             titlebar: self.titlebar,
             system_accent: self.system_accent,
             system_scroll_bars: self.system_scroll_bars,
-            system_reduced_motion: self.system_reduced_motion, reduced_motion: self.reduced_motion, time_scale: self.time_scale,
-            caret: self.caret.clone(), caret_read: self.caret_read.clone(),
-            layout: self.layout.clone(), layout_reads: self.layout_reads.clone(), _s: PhantomData,
+            system_reduced_motion: self.system_reduced_motion,
+            reduced_motion: self.reduced_motion,
+            time_scale: self.time_scale,
+            caret: self.caret.clone(),
+            caret_read: self.caret_read.clone(),
+            layout: self.layout.clone(),
+            layout_reads: self.layout_reads.clone(),
+            _s: PhantomData,
         }
     }
 
@@ -90,7 +100,8 @@ impl<S> Cx<S> {
         self.reduced_motion = other.reduced_motion;
         self.time_scale = other.time_scale;
         self.defaults = other.defaults;
-        self.caret_read.set(self.caret_read.get() || other.caret_read.get());
+        self.caret_read
+            .set(self.caret_read.get() || other.caret_read.get());
         let mut reads = self.layout_reads.borrow_mut();
         for read in other.layout_reads.into_inner() {
             layout_read::note_read_at(&mut reads, &read.key, read.same, read.at);
@@ -161,7 +172,11 @@ impl<S> Cx<S> {
     /// CSS `outline: 2px solid; outline-offset: 2.5px`. It shows only for keyboard focus, as
     /// `:focus-visible` does. Set it on every run of the view.
     pub fn focus_ring(&mut self, width: f32, offset: f32, color: Color) {
-        self.defaults.focus_ring = Some(crate::el::Outline { width, offset, color });
+        self.defaults.focus_ring = Some(crate::el::Outline {
+            width,
+            offset,
+            color,
+        });
     }
     /// How [`El::help`](crate::El::help) tooltips look, where they sit and how long they wait,
     /// in place of the system's ([`HelpLook::system`](crate::HelpLook::system)): a design
@@ -218,9 +233,13 @@ impl<S> Cx<S> {
     /// Apply these inside a full-canvas root so backgrounds can extend to the screen edges.
     pub fn safe_area(&self) -> [f32; 4] {
         #[cfg(target_arch = "wasm32")]
-        { crate::platform::web::safe_area() }
+        {
+            crate::platform::web::safe_area()
+        }
         #[cfg(not(target_arch = "wasm32"))]
-        { [0.0; 4] }
+        {
+            [0.0; 4]
+        }
     }
     /// The host's OS accessibility preference, independent of this commit's override.
     pub fn system_reduced_motion(&self) -> bool {

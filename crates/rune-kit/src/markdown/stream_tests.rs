@@ -66,7 +66,11 @@ fn an_open_span_never_shows_its_markers() {
 #[test]
 fn an_open_span_draws_as_it_will_end() {
     assert_eq!(styled(&stream("…and **Settings ›"), Style::Strong), ["Settings ›"]);
-    assert_eq!(styled(&stream("…and **Settings › Appearance*"), Style::Strong), ["Settings › Appearance"], "a closer half typed");
+    assert_eq!(
+        styled(&stream("…and **Settings › Appearance*"), Style::Strong),
+        ["Settings › Appearance"],
+        "a closer half typed"
+    );
     assert_eq!(styled(&stream("an _important"), Style::Em), ["important"]);
     assert_eq!(styled(&stream("was ~~old"), Style::Strike), ["old"]);
     assert_eq!(styled(&stream("**bold _and em"), Style::Em), ["and em"]);
@@ -80,7 +84,13 @@ fn an_open_span_draws_as_it_will_end() {
 
 #[test]
 fn a_link_still_arriving_draws_as_a_link() {
-    for src in ["see [the do", "see [the docs]", "see [the docs](", "see [the docs](https://ex", "see [the docs](https://example.com \"Ti"] {
+    for src in [
+        "see [the do",
+        "see [the docs]",
+        "see [the docs](",
+        "see [the docs](https://ex",
+        "see [the docs](https://example.com \"Ti",
+    ] {
         let blocks = stream(src);
         assert_eq!(shown(&blocks), if src.ends_with("do") { "see the do" } else { "see the docs" }, "{src:?}");
         assert_eq!(styled(&blocks, Style::Link), [if src.ends_with("do") { "the do" } else { "the docs" }], "{src:?}");
@@ -127,9 +137,18 @@ fn a_header_line_waits_until_it_is_a_table() {
         let blocks = stream(src);
         assert!(blocks.iter().all(|b| !shown(std::slice::from_ref(b)).contains("File")), "{src:?} draws {blocks:?}");
     }
-    assert!(matches!(&stream("| File | Change")[0], Block::Table(t) if t.head.len() == 2), "two cells draw as the header");
-    assert!(matches!(&stream("| File |\n|---|\n")[0], Block::Table(_)), "a one-column table once its delimiter row ends");
-    assert!(matches!(&stream("| a | *")[0], Block::Table(t) if t.head.len() == 2), "a marker left out doesn't undo the header");
+    assert!(
+        matches!(&stream("| File | Change")[0], Block::Table(t) if t.head.len() == 2),
+        "two cells draw as the header"
+    );
+    assert!(
+        matches!(&stream("| File |\n|---|\n")[0], Block::Table(_)),
+        "a one-column table once its delimiter row ends"
+    );
+    assert!(
+        matches!(&stream("| a | *")[0], Block::Table(t) if t.head.len() == 2),
+        "a marker left out doesn't undo the header"
+    );
     assert_eq!(shown(&stream("| a | *")), "a\n", "and its cell waits, empty");
     // Shown as a paragraph once it's known not to be a table.
     assert!(matches!(&stream("| File\nis a word")[0], Block::Para(_)));
@@ -158,6 +177,10 @@ fn a_stream_grows_its_parse_like_a_whole_one() {
         let (blocks, sources, tasks, starts, maps) = stream_cached(src);
         let (want, want_sources, want_tasks, _, want_starts, want_maps) = parse_streaming(src, true);
         assert_eq!(*blocks, want, "blocks of {src:?}");
-        assert_eq!((&*sources, &*tasks, &*starts, &*maps), (&want_sources[..], &want_tasks[..], &want_starts[..], &want_maps[..]), "{src:?}");
+        assert_eq!(
+            (&*sources, &*tasks, &*starts, &*maps),
+            (&want_sources[..], &want_tasks[..], &want_starts[..], &want_maps[..]),
+            "{src:?}"
+        );
     }
 }

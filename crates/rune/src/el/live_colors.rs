@@ -21,7 +21,11 @@ impl El {
         self
     }
     /// Bind both stops of the vertical gradient [`El::gradient`] sets, top and bottom.
-    pub fn live_gradient(mut self, top: impl Into<Binding<Color>>, bottom: impl Into<Binding<Color>>) -> Self {
+    pub fn live_gradient(
+        mut self,
+        top: impl Into<Binding<Color>>,
+        bottom: impl Into<Binding<Color>>,
+    ) -> Self {
         self.bind_live(Bound::new(top, Property::GradientTop));
         self.bind_live(Bound::new(bottom, Property::GradientBottom));
         self

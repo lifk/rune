@@ -144,32 +144,71 @@ impl Tx {
     /// before its view commit. Pass `PointerEvent::window_x` and `window_y`, not local points.
     /// No picking data is copied or maintained when this is unused. Queries made by `f`
     /// itself wait until the next frame.
-    pub fn element_at<S: 'static>(&mut self, x: f32, y: f32, f: impl FnOnce(&mut S, Option<crate::Picked>, &mut Tx) + 'static) {
+    pub fn element_at<S: 'static>(
+        &mut self,
+        x: f32,
+        y: f32,
+        f: impl FnOnce(&mut S, Option<crate::Picked>, &mut Tx) + 'static,
+    ) {
         self.pick_read(None, x, y, crate::Pick::default(), f);
     }
 
     /// [`Tx::element_at`] with options ([`Pick`](crate::Pick)).
-    pub fn element_at_with<S: 'static>(&mut self, x: f32, y: f32, pick: crate::Pick, f: impl FnOnce(&mut S, Option<crate::Picked>, &mut Tx) + 'static) {
+    pub fn element_at_with<S: 'static>(
+        &mut self,
+        x: f32,
+        y: f32,
+        pick: crate::Pick,
+        f: impl FnOnce(&mut S, Option<crate::Picked>, &mut Tx) + 'static,
+    ) {
         self.pick_read(None, x, y, pick, f);
     }
 
     /// [`Tx::element_at`] restricted to `within` and its descendants. The scope accepts a
     /// key or key path like [`Cx::layout`](crate::Cx::layout); other drawn subtrees do not
     /// occlude this query. A missing scope returns `None`.
-    pub fn element_at_in<S: 'static>(&mut self, within: impl Into<String>, x: f32, y: f32, f: impl FnOnce(&mut S, Option<crate::Picked>, &mut Tx) + 'static) {
+    pub fn element_at_in<S: 'static>(
+        &mut self,
+        within: impl Into<String>,
+        x: f32,
+        y: f32,
+        f: impl FnOnce(&mut S, Option<crate::Picked>, &mut Tx) + 'static,
+    ) {
         self.pick_read(Some(within.into()), x, y, crate::Pick::default(), f);
     }
 
     /// [`Tx::element_at_in`] with options ([`Pick`](crate::Pick)).
-    pub fn element_at_in_with<S: 'static>(&mut self, within: impl Into<String>, x: f32, y: f32, pick: crate::Pick, f: impl FnOnce(&mut S, Option<crate::Picked>, &mut Tx) + 'static) {
+    pub fn element_at_in_with<S: 'static>(
+        &mut self,
+        within: impl Into<String>,
+        x: f32,
+        y: f32,
+        pick: crate::Pick,
+        f: impl FnOnce(&mut S, Option<crate::Picked>, &mut Tx) + 'static,
+    ) {
         self.pick_read(Some(within.into()), x, y, pick, f);
     }
 
-    fn pick_read<S: 'static>(&mut self, within: Option<String>, x: f32, y: f32, pick: crate::Pick, f: impl FnOnce(&mut S, Option<crate::Picked>, &mut Tx) + 'static) {
+    fn pick_read<S: 'static>(
+        &mut self,
+        within: Option<String>,
+        x: f32,
+        y: f32,
+        pick: crate::Pick,
+        f: impl FnOnce(&mut S, Option<crate::Picked>, &mut Tx) + 'static,
+    ) {
         let f: PickFn = Box::new(move |s, picked, tx| {
-            if let Some(s) = s.cast::<S>() { f(s, picked, tx); }
+            if let Some(s) = s.cast::<S>() {
+                f(s, picked, tx);
+            }
         });
-        self.pick_reads.push(PickRead { within, x, y, pick, f: Rc::new(std::cell::Cell::new(Some(f))) });
+        self.pick_reads.push(PickRead {
+            within,
+            x,
+            y,
+            pick,
+            f: Rc::new(std::cell::Cell::new(Some(f))),
+        });
     }
 
     /// [`Runtime::invalidate_memos_by_prefix`](crate::Runtime::invalidate_memos_by_prefix) on
@@ -180,28 +219,40 @@ impl Tx {
     }
 
     /// Whether this runtime has an attached motion or tooling trace.
-    pub fn tracing(&self) -> bool { self.trace.is_some() }
+    pub fn tracing(&self) -> bool {
+        self.trace.is_some()
+    }
 
     /// Work only a frame carries out that changes its pixels without a model change: a scroll
     /// or a text flight. A `wake_after` only schedules.
     pub(crate) fn frame_work(&self) -> bool {
         !self.pick_reads.is_empty()
             || !self.focus_keys.is_empty()
-            || !self.scroll_to.is_empty() || !self.scroll_bottom.is_empty() || !self.scroll_pages.is_empty() || !self.scroll_offsets.is_empty()
-            || !self.keep_on_screen.is_empty() || !self.text_flights.is_empty() || !self.launches.is_empty() || self.select.is_some()
+            || !self.scroll_to.is_empty()
+            || !self.scroll_bottom.is_empty()
+            || !self.scroll_pages.is_empty()
+            || !self.scroll_offsets.is_empty()
+            || !self.keep_on_screen.is_empty()
+            || !self.text_flights.is_empty()
+            || !self.launches.is_empty()
+            || self.select.is_some()
     }
 
     /// An app marker on the next frame, e.g. `tx.trace_event(format_args!("lab:{step:?}"))`.
     /// Formatting is skipped when tracing is off. Avoid eagerly constructing a `String`.
     pub fn trace_event(&mut self, event: impl std::fmt::Display) {
-        if let Some(trace) = &mut self.trace { trace.events.push(event.to_string()); }
+        if let Some(trace) = &mut self.trace {
+            trace.events.push(event.to_string());
+        }
     }
 
     /// A sample-and-hold scalar (`position`, `level`, or `phase`), e.g. `phase:recording`.
     /// No allocation when tracing is off. Use a compositor's `Runtime::trace_channel` for
     /// presented geometry that changes between commits.
     pub fn trace_channel(&mut self, name: &'static str, kind: &'static str, value: f32) {
-        if let Some(trace) = &mut self.trace { trace.channels.push((name, kind, value)); }
+        if let Some(trace) = &mut self.trace {
+            trace.channels.push((name, kind, value));
+        }
     }
 
     /// Wake the app's poll hook after an unscaled duration. Every deadline due by a frame
@@ -232,7 +283,9 @@ impl Tx {
     /// frame. A timed state stores its deadline and asks for it here, and its poll checks
     /// `clock >= due` to fire the timer as an event.
     pub fn wake_at(&mut self, due: f64) {
-        self.wakes.push(std::time::Duration::from_secs_f64((due - self.clock).max(0.0)));
+        self.wakes.push(std::time::Duration::from_secs_f64(
+            (due - self.clock).max(0.0),
+        ));
     }
 
     /// Close the window after this handler, as the close button would (`App::on_close` runs).
@@ -296,7 +349,10 @@ impl Tx {
     /// own) and malformed links are refused here with the reason and nothing opens. Headless
     /// runs and tests open nothing; read the requests with `Runtime::take_url_requests`.
     pub fn open_url(&mut self, url: &str) -> Result<(), crate::open_url::OpenUrlError> {
-        self.open_urls.push(crate::open_url::Link { url: crate::open_url::check(url)?, same_tab: false });
+        self.open_urls.push(crate::open_url::Link {
+            url: crate::open_url::check(url)?,
+            same_tab: false,
+        });
         Ok(())
     }
 
@@ -306,7 +362,10 @@ impl Tx {
     /// On web a link without a scheme (`/notes/42`) is relative to the page. Native opens it as
     /// `open_url` does, and headless runs record it with the others.
     pub fn open_url_same_tab(&mut self, url: &str) -> Result<(), crate::open_url::OpenUrlError> {
-        self.open_urls.push(crate::open_url::Link { url: crate::open_url::check_same_tab(url)?, same_tab: true });
+        self.open_urls.push(crate::open_url::Link {
+            url: crate::open_url::check_same_tab(url)?,
+            same_tab: true,
+        });
         Ok(())
     }
 
@@ -319,12 +378,19 @@ impl Tx {
     /// clock, so `--tree` and scripts see it; their frames keep the launch canvas size.
     /// Overlays ignore it: use `OverlayHandle::resize`.
     pub fn resize_window(&mut self, size: (f32, f32)) {
-        self.frame_request(crate::window::frame::FrameRequest { size: Some(size), animate: true, ..Default::default() });
+        self.frame_request(crate::window::frame::FrameRequest {
+            size: Some(size),
+            animate: true,
+            ..Default::default()
+        });
     }
 
     /// [`Tx::resize_window`] without the animation.
     pub fn resize_window_instant(&mut self, size: (f32, f32)) {
-        self.frame_request(crate::window::frame::FrameRequest { size: Some(size), ..Default::default() });
+        self.frame_request(crate::window::frame::FrameRequest {
+            size: Some(size),
+            ..Default::default()
+        });
     }
 
     /// Centre the window on its screen as AppKit's `center` does: centred across, slightly
@@ -332,7 +398,10 @@ impl Tx {
     /// size, on the same spring; alone it jumps, or retargets a resize already moving.
     /// Wayland and headless runs ignore it.
     pub fn center_window(&mut self) {
-        self.frame_request(crate::window::frame::FrameRequest { center: true, ..Default::default() });
+        self.frame_request(crate::window::frame::FrameRequest {
+            center: true,
+            ..Default::default()
+        });
     }
 
     /// Drop keyboard focus, as a click on empty space does: after this handler, nothing is
@@ -473,7 +542,9 @@ impl Tx {
     }
     /// A handler that declined its event (`taken` false) takes back its `live_only`.
     pub(crate) fn took(taken: bool, tx: &mut Tx) -> bool {
-        if !taken { tx.live_only = false; }
+        if !taken {
+            tx.live_only = false;
+        }
         taken
     }
     /// Apply this change with no animation (direct manipulation): layout snaps, and any

@@ -80,7 +80,11 @@ pub(crate) fn raw_device(device: &wgpu::Device) -> Option<&ProtocolObject<dyn MT
 
 /// A texture over `raw`, made on `raw_device`'s device and matching `desc`, which `owner` keeps valid.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-pub(crate) fn texture_from_raw(raw: Obj<dyn objc2_metal::MTLTexture>, desc: &wgpu::TextureDescriptor<'_>, owner: Owner) -> wgpu::Texture {
+pub(crate) fn texture_from_raw(
+    raw: Obj<dyn objc2_metal::MTLTexture>,
+    desc: &wgpu::TextureDescriptor<'_>,
+    owner: Owner,
+) -> wgpu::Texture {
     wgpu::Texture::from_custom(resource::MetalTexture::from_raw(raw, desc, owner), desc)
 }
 
@@ -88,35 +92,59 @@ pub(crate) fn texture_from_raw(raw: Obj<dyn objc2_metal::MTLTexture>, desc: &wgp
 /// for a precompiled library Metal refused or that lacks one of them.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn module_ready(module: &wgpu::ShaderModule) -> bool {
-    module.as_custom::<shader::ShaderModule>().is_some_and(shader::ShaderModule::ready)
+    module
+        .as_custom::<shader::ShaderModule>()
+        .is_some_and(shader::ShaderModule::ready)
 }
 
 /// The MSL this backend compiles `wgsl`'s `vs` and `fs` to, in MSL `lang`, for a render
 /// pipeline whose one bind group has `entries`.
 #[cfg(test)]
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-pub(crate) fn render_msl(wgsl: &str, entries: &[wgpu::BindGroupLayoutEntry], lang: (u8, u8)) -> [String; 2] {
+pub(crate) fn render_msl(
+    wgsl: &str,
+    entries: &[wgpu::BindGroupLayoutEntry],
+    lang: (u8, u8),
+) -> [String; 2] {
     let ir = shader::Ir::parse("render_msl", wgsl, wgpu::ShaderRuntimeChecks::checked());
-    let group = layout::BindGroupLayout::new(&wgpu::BindGroupLayoutDescriptor { label: None, entries });
+    let group = layout::BindGroupLayout::new(&wgpu::BindGroupLayoutDescriptor {
+        label: None,
+        entries,
+    });
     let layout = layout::PipelineLayout::from_groups(&[Some(&group)], 0);
-    [(wgpu::naga::ShaderStage::Vertex, "vs", 0), (wgpu::naga::ShaderStage::Fragment, "fs", 1)].map(|(kind, entry, s)| {
-        let point = shader::Point { kind, entry: Some(entry), constants: &[] };
-        shader::translate(&ir, &point, &layout.raw.stages[s], false, lang).unwrap_or_else(|e| panic!("{e}")).source
+    [
+        (wgpu::naga::ShaderStage::Vertex, "vs", 0),
+        (wgpu::naga::ShaderStage::Fragment, "fs", 1),
+    ]
+    .map(|(kind, entry, s)| {
+        let point = shader::Point {
+            kind,
+            entry: Some(entry),
+            constants: &[],
+        };
+        shader::translate(&ir, &point, &layout.raw.stages[s], false, lang)
+            .unwrap_or_else(|e| panic!("{e}"))
+            .source
     })
 }
 
 /// How many pipelines compiled at runtime because the precompiled library lacked them.
-pub(crate) fn builtin_misses() -> usize { builtin::misses() }
+pub(crate) fn builtin_misses() -> usize {
+    builtin::misses()
+}
 
 /// The wgpu features this backend can offer: a compositor that wants others draws with wgpu
 /// unless the app or `RUNE_GPU_BACKEND` asked for this backend (`backend::wgpu_for`).
-pub(crate) const FEATURES: wgpu::Features = wgpu::Features::TIMESTAMP_QUERY.union(wgpu::Features::IMMEDIATES);
+pub(crate) const FEATURES: wgpu::Features =
+    wgpu::Features::TIMESTAMP_QUERY.union(wgpu::Features::IMMEDIATES);
 
 /// The most immediate data a pipeline takes: what `setVertexBytes` and `setFragmentBytes` copy.
 const MAX_IMMEDIATE_SIZE: u32 = 4096;
 
 /// Whether `adapter` is this backend's.
-pub(crate) fn owns_adapter(adapter: &wgpu::Adapter) -> bool { adapter.as_custom::<MetalAdapter>().is_some() }
+pub(crate) fn owns_adapter(adapter: &wgpu::Adapter) -> bool {
+    adapter.as_custom::<MetalAdapter>().is_some()
+}
 
 /// Whether this backend draws: the default, unless `App::gpu_backend` or `RUNE_GPU_BACKEND`
 /// picks wgpu.
@@ -131,17 +159,25 @@ pub(crate) fn instance() -> wgpu::Instance {
 
 /// Whether `queue` is this backend's.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-pub(crate) fn owns(queue: &wgpu::Queue) -> bool { queue.as_custom::<submit::MetalQueue>().is_some() }
+pub(crate) fn owns(queue: &wgpu::Queue) -> bool {
+    queue.as_custom::<submit::MetalQueue>().is_some()
+}
 
 /// Staging's in-place writer: a Metal buffer the GPU only reads takes writes into its storage.
 fn write_in_place(buffer: &wgpu::Buffer, offset: u64, data: &[u8]) -> bool {
-    buffer.as_custom::<resource::MetalBuffer>().is_some_and(|b| b.store.write_ahead(&b.shared, offset, data, || true))
+    buffer
+        .as_custom::<resource::MetalBuffer>()
+        .is_some_and(|b| b.store.write_ahead(&b.shared, offset, data, || true))
 }
 
 /// The CAMetalLayer a surface of this backend presents into.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-pub(crate) fn layer<'s>(surface: &'s wgpu::Surface<'_>) -> Option<&'s objc2_video::runtime::AnyObject> {
-    surface.as_custom::<surface::MetalSurface>().map(|s| -> &objc2_video::runtime::AnyObject { s.layer() })
+pub(crate) fn layer<'s>(
+    surface: &'s wgpu::Surface<'_>,
+) -> Option<&'s objc2_video::runtime::AnyObject> {
+    surface
+        .as_custom::<surface::MetalSurface>()
+        .map(|s| -> &objc2_video::runtime::AnyObject { s.layer() })
 }
 
 macro_rules! send_sync {
@@ -166,18 +202,36 @@ pub(crate) use unsupported;
 struct MetalInstance;
 
 impl InstanceInterface for MetalInstance {
-    fn new(_: wgpu::InstanceDescriptor) -> Self { MetalInstance }
-    unsafe fn create_surface(&self, target: wgpu::SurfaceTargetUnsafe) -> Result<DispatchSurface, wgpu::CreateSurfaceError> {
+    fn new(_: wgpu::InstanceDescriptor) -> Self {
+        MetalInstance
+    }
+    unsafe fn create_surface(
+        &self,
+        target: wgpu::SurfaceTargetUnsafe,
+    ) -> Result<DispatchSurface, wgpu::CreateSurfaceError> {
         Ok(unsafe { surface::create(target) })
     }
-    fn request_adapter(&self, options: &wgpu::RequestAdapterOptions<'_, '_>) -> Pin<Box<dyn RequestAdapterFuture>> {
-        let device = preferred(devices(), options.power_preference).expect("Rune's Metal backend needs a Metal device");
+    fn request_adapter(
+        &self,
+        options: &wgpu::RequestAdapterOptions<'_, '_>,
+    ) -> Pin<Box<dyn RequestAdapterFuture>> {
+        let device = preferred(devices(), options.power_preference)
+            .expect("Rune's Metal backend needs a Metal device");
         Box::pin(ready(Ok(DispatchAdapter::custom(MetalAdapter { device }))))
     }
-    fn poll_all_devices(&self, _: bool) -> bool { true }
-    fn wgsl_language_features(&self) -> wgpu::WgslLanguageFeatures { wgpu::WgslLanguageFeatures::empty() }
+    fn poll_all_devices(&self, _: bool) -> bool {
+        true
+    }
+    fn wgsl_language_features(&self) -> wgpu::WgslLanguageFeatures {
+        wgpu::WgslLanguageFeatures::empty()
+    }
     fn enumerate_adapters(&self, _: wgpu::Backends) -> Pin<Box<dyn EnumerateAdapterFuture>> {
-        Box::pin(ready(devices().into_iter().map(|device| DispatchAdapter::custom(MetalAdapter { device })).collect()))
+        Box::pin(ready(
+            devices()
+                .into_iter()
+                .map(|device| DispatchAdapter::custom(MetalAdapter { device }))
+                .collect(),
+        ))
     }
 }
 
@@ -196,14 +250,24 @@ fn devices() -> Vec<Obj<dyn MTLDevice>> {
 
 /// The first integrated GPU, or for `HighPerformance` the first discrete one, else the first: the
 /// order wgpu ranks adapters in.
-fn preferred(devices: Vec<Obj<dyn MTLDevice>>, power: wgpu::PowerPreference) -> Option<Obj<dyn MTLDevice>> {
+fn preferred(
+    devices: Vec<Obj<dyn MTLDevice>>,
+    power: wgpu::PowerPreference,
+) -> Option<Obj<dyn MTLDevice>> {
     let integrated = power != wgpu::PowerPreference::HighPerformance;
-    let at = devices.iter().position(|d| d.hasUnifiedMemory() == integrated).unwrap_or(0);
+    let at = devices
+        .iter()
+        .position(|d| d.hasUnifiedMemory() == integrated)
+        .unwrap_or(0);
     devices.into_iter().nth(at)
 }
 
 fn info(device: &ProtocolObject<dyn MTLDevice>) -> wgpu::AdapterInfo {
-    let kind = if device.hasUnifiedMemory() { wgpu::DeviceType::IntegratedGpu } else { wgpu::DeviceType::DiscreteGpu };
+    let kind = if device.hasUnifiedMemory() {
+        wgpu::DeviceType::IntegratedGpu
+    } else {
+        wgpu::DeviceType::DiscreteGpu
+    };
     let mut info = wgpu::AdapterInfo::new(kind, wgpu::Backend::Metal);
     info.name = device.name().to_string();
     info.driver = "rune metal".into();
@@ -213,29 +277,66 @@ fn info(device: &ProtocolObject<dyn MTLDevice>) -> wgpu::AdapterInfo {
 /// What a Metal GPU of the Apple or Mac 2 families can do, in wgpu's terms.
 fn limits() -> wgpu::Limits {
     wgpu::Limits {
-        max_texture_dimension_1d: 16384, max_texture_dimension_2d: 16384, max_buffer_size: 1 << 30, max_immediate_size: MAX_IMMEDIATE_SIZE,
+        max_texture_dimension_1d: 16384,
+        max_texture_dimension_2d: 16384,
+        max_buffer_size: 1 << 30,
+        max_immediate_size: MAX_IMMEDIATE_SIZE,
         ..wgpu::Limits::default()
     }
 }
 
 impl AdapterInterface for MetalAdapter {
-    fn request_device(&self, desc: &wgpu::DeviceDescriptor<'_>) -> Pin<Box<dyn RequestDeviceFuture>> {
+    fn request_device(
+        &self,
+        desc: &wgpu::DeviceDescriptor<'_>,
+    ) -> Pin<Box<dyn RequestDeviceFuture>> {
         let (device, queue) = device::new(self.device.clone(), desc);
-        Box::pin(ready(Ok((DispatchDevice::custom(device), DispatchQueue::custom(queue)))))
+        Box::pin(ready(Ok((
+            DispatchDevice::custom(device),
+            DispatchQueue::custom(queue),
+        ))))
     }
-    fn is_surface_supported(&self, _: &DispatchSurface) -> bool { true }
+    fn is_surface_supported(&self, _: &DispatchSurface) -> bool {
+        true
+    }
     fn features(&self) -> wgpu::Features {
-        if query::supported(&self.device) { FEATURES } else { FEATURES - wgpu::Features::TIMESTAMP_QUERY }
+        if query::supported(&self.device) {
+            FEATURES
+        } else {
+            FEATURES - wgpu::Features::TIMESTAMP_QUERY
+        }
     }
-    fn limits(&self) -> wgpu::Limits { limits() }
-    fn downlevel_capabilities(&self) -> wgpu::DownlevelCapabilities { Default::default() }
-    fn get_info(&self) -> wgpu::AdapterInfo { info(&self.device) }
-    fn get_texture_format_features(&self, format: wgpu::TextureFormat) -> wgpu::TextureFormatFeatures {
+    fn limits(&self) -> wgpu::Limits {
+        limits()
+    }
+    fn downlevel_capabilities(&self) -> wgpu::DownlevelCapabilities {
+        Default::default()
+    }
+    fn get_info(&self) -> wgpu::AdapterInfo {
+        info(&self.device)
+    }
+    fn get_texture_format_features(
+        &self,
+        format: wgpu::TextureFormat,
+    ) -> wgpu::TextureFormatFeatures {
         use wgpu::TextureFormatFeatureFlags as F;
-        let float = format.sample_type(None, None).is_some_and(|t| matches!(t, wgpu::TextureSampleType::Float { .. }));
-        let flags = if float { F::FILTERABLE | F::BLENDABLE } else { F::empty() };
-        wgpu::TextureFormatFeatures { allowed_usages: wgpu::TextureUsages::all(), flags }
+        let float = format
+            .sample_type(None, None)
+            .is_some_and(|t| matches!(t, wgpu::TextureSampleType::Float { .. }));
+        let flags = if float {
+            F::FILTERABLE | F::BLENDABLE
+        } else {
+            F::empty()
+        };
+        wgpu::TextureFormatFeatures {
+            allowed_usages: wgpu::TextureUsages::all(),
+            flags,
+        }
     }
-    fn get_presentation_timestamp(&self) -> wgpu::PresentationTimestamp { wgpu::PresentationTimestamp(0) }
-    fn cooperative_matrix_properties(&self) -> Vec<wgpu::wgt::CooperativeMatrixProperties> { Vec::new() }
+    fn get_presentation_timestamp(&self) -> wgpu::PresentationTimestamp {
+        wgpu::PresentationTimestamp(0)
+    }
+    fn cooperative_matrix_properties(&self) -> Vec<wgpu::wgt::CooperativeMatrixProperties> {
+        Vec::new()
+    }
 }

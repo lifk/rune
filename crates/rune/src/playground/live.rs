@@ -71,8 +71,29 @@ pub(crate) struct Live<S: 'static> {
 
 impl<S: 'static> Live<S> {
     pub(super) fn new(playground: Playground<S>, spec: &crate::AppSpec<S>, menu: bool) -> Self {
-        let Playground { pages, triggers, sides, stages, sizes, shortcut, bar, enabled: _, scenes: show, fresh, keep, variants, typing, dark: app_dark, folds, mut widths, group_order } = playground;
-        let controls = Controls { save_widths: widths.save.take(), ..Controls::default() };
+        let Playground {
+            pages,
+            triggers,
+            sides,
+            stages,
+            sizes,
+            shortcut,
+            bar,
+            enabled: _,
+            scenes: show,
+            fresh,
+            keep,
+            variants,
+            typing,
+            dark: app_dark,
+            folds,
+            mut widths,
+            group_order,
+        } = playground;
+        let controls = Controls {
+            save_widths: widths.save.take(),
+            ..Controls::default()
+        };
         let mut live = Live {
             owned: pages.iter().map(|_| None).collect(),
             pages,
@@ -119,18 +140,42 @@ impl<S: 'static> Live<S> {
         // Scene names as `find` takes them: a path or a name, matching case if it can.
         let scene = |live: &Self, name: &str| {
             let at = live.find_in(name, &(0..live.scenes.len()).collect::<Vec<_>>());
-            if at.is_none() { eprintln!("rune: the playground has a trigger, side column or stage for {name:?}, which isn't one of AppSpec::scenes"); }
+            if at.is_none() {
+                eprintln!(
+                    "rune: the playground has a trigger, side column or stage for {name:?}, which isn't one of AppSpec::scenes"
+                );
+            }
             at
         };
-        live.triggers = triggers.into_iter().filter_map(|(name, t)| Some((scene(&live, name)?, t))).collect();
-        live.sides = sides.into_iter().filter_map(|(name, view)| Some((scene(&live, name)?, view))).collect();
-        live.stages = stages.into_iter().filter_map(|(name, stage)| Some((scene(&live, name)?, stage))).collect();
-        live.variants = variants.into_iter().filter_map(|(name, variant, apply)| Some((scene(&live, name)?, variant, apply))).collect();
+        live.triggers = triggers
+            .into_iter()
+            .filter_map(|(name, t)| Some((scene(&live, name)?, t)))
+            .collect();
+        live.sides = sides
+            .into_iter()
+            .filter_map(|(name, view)| Some((scene(&live, name)?, view)))
+            .collect();
+        live.stages = stages
+            .into_iter()
+            .filter_map(|(name, stage)| Some((scene(&live, name)?, stage)))
+            .collect();
+        live.variants = variants
+            .into_iter()
+            .filter_map(|(name, variant, apply)| Some((scene(&live, name)?, variant, apply)))
+            .collect();
         live.variant = vec![0; live.count()];
-        let listed: Vec<usize> = (0..live.count()).filter(|&i| live.scenes.get(i).is_none_or(|(name, _)| show.is_none_or(|show| show(name)))).collect();
+        let listed: Vec<usize> = (0..live.count())
+            .filter(|&i| {
+                live.scenes
+                    .get(i)
+                    .is_none_or(|(name, _)| show.is_none_or(|show| show(name)))
+            })
+            .collect();
         live.order = live.tree_order(&listed, &group_order);
         live.selected = live.order.first().copied().unwrap_or(0);
-        if live.folds.start { live.folded = live.all_groups(); }
+        if live.folds.start {
+            live.folded = live.all_groups();
+        }
         live.load_widths();
         live
     }
@@ -151,7 +196,15 @@ impl<S: 'static> Live<S> {
     }
 
     pub(super) fn group(&self, i: usize) -> &'static str {
-        split(self.path(i), if i < self.scenes.len() { "Scenes" } else { "Pages" }).0
+        split(
+            self.path(i),
+            if i < self.scenes.len() {
+                "Scenes"
+            } else {
+                "Pages"
+            },
+        )
+        .0
     }
 
     pub(super) fn name(&self, i: usize) -> &'static str {
@@ -165,21 +218,43 @@ impl<S: 'static> Live<S> {
 
     pub(super) fn own(&self) -> Option<(&dyn OwnStory, &dyn Any)> {
         let (i, page) = self.page()?;
-        let Kind::Own(own) = &page.kind else { return None };
+        let Kind::Own(own) = &page.kind else {
+            return None;
+        };
         Some((own.as_ref(), self.owned[i].as_deref()?))
     }
 
     pub(super) fn is_live_page(&self) -> bool {
-        matches!(self.page(), Some((_, Page { kind: Kind::Live(_), .. })))
+        matches!(
+            self.page(),
+            Some((
+                _,
+                Page {
+                    kind: Kind::Live(_),
+                    ..
+                }
+            ))
+        )
     }
 
     /// How the stage lays out the open story.
     pub(super) fn layout(&self) -> Stage {
         if self.selected < self.scenes.len() {
-            return self.stages.iter().rev().find(|(s, _)| *s == self.selected).map_or(Stage::Center, |(_, stage)| *stage);
+            return self
+                .stages
+                .iter()
+                .rev()
+                .find(|(s, _)| *s == self.selected)
+                .map_or(Stage::Center, |(_, stage)| *stage);
         }
         match self.page() {
-            Some((_, Page { kind: Kind::Own(own), .. })) => own.layout(),
+            Some((
+                _,
+                Page {
+                    kind: Kind::Own(own),
+                    ..
+                },
+            )) => own.layout(),
             _ => Stage::Center,
         }
     }
@@ -188,19 +263,31 @@ impl<S: 'static> Live<S> {
     pub(super) fn has_triggers(&self, i: usize) -> bool {
         match i.checked_sub(self.scenes.len()) {
             None => self.triggers.iter().any(|(s, _)| *s == i),
-            Some(p) => matches!(self.pages.get(p), Some(Page { kind: Kind::Own(own), .. }) if !own.triggers().is_empty()),
+            Some(p) => {
+                matches!(self.pages.get(p), Some(Page { kind: Kind::Own(own), .. }) if !own.triggers().is_empty())
+            }
         }
     }
 
     /// The open story's triggers, R's first.
     pub(super) fn triggers(&self) -> Vec<(char, &'static str)> {
-        if self.is_live_page() { return Vec::new(); }
+        if self.is_live_page() {
+            return Vec::new();
+        }
         let mut keys = match (self.scenes.get(self.selected), self.own()) {
-            (Some(_), _) => self.triggers.iter().filter(|(s, _)| *s == self.selected).map(|(_, t)| (t.key, t.label)).collect(),
+            (Some(_), _) => self
+                .triggers
+                .iter()
+                .filter(|(s, _)| *s == self.selected)
+                .map(|(_, t)| (t.key, t.label))
+                .collect(),
             (None, Some((own, _))) => own.triggers(),
             (None, None) => Vec::new(),
         };
-        let replay = keys.iter().position(|(k, _)| *k == 'r').map_or((('r'), "Replay"), |i| keys.remove(i));
+        let replay = keys
+            .iter()
+            .position(|(k, _)| *k == 'r')
+            .map_or((('r'), "Replay"), |i| keys.remove(i));
         keys.insert(0, replay);
         keys
     }
@@ -219,7 +306,10 @@ impl<S: 'static> Live<S> {
 
     /// Whether the only requests that swap the stage are replays, which keep its story.
     pub(crate) fn pending_replays_only(&self) -> bool {
-        self.pending.iter().filter(|r| r.swaps_stage()).all(|r| matches!(r, Request::Replay | Request::Variant(_)))
+        self.pending
+            .iter()
+            .filter(|r| r.swaps_stage())
+            .all(|r| matches!(r, Request::Replay | Request::Variant(_)))
     }
 
     /// Applies the requests handlers made since the last commit; true when anything changed.
@@ -240,7 +330,9 @@ impl<S: 'static> Live<S> {
                 Request::Toggle if self.open => self.close(real),
                 Request::Toggle => {
                     self.open = true;
-                    if self.folds.start { self.reveal(self.selected); }
+                    if self.folds.start {
+                        self.reveal(self.selected);
+                    }
                     self.select(self.selected, real);
                 }
                 Request::Select(i) => {
@@ -270,7 +362,9 @@ impl<S: 'static> Live<S> {
     /// Folds a group, unfolds it, or toggles it. A filter shows every match, so folds wait
     /// until it's cleared. A selection whose row goes moves to the header that hid it.
     pub(super) fn fold(&mut self, group: &'static str, fold: Option<bool>) {
-        if !self.query().is_empty() { return; }
+        if !self.query().is_empty() {
+            return;
+        }
         let folded = self.folded.contains(&group);
         match fold.unwrap_or(!folded) {
             true if !folded => self.refold(|f| f.push(group)),
@@ -291,14 +385,20 @@ impl<S: 'static> Live<S> {
 
     /// The open story's stage made again, then its `'r'` trigger.
     pub(super) fn replay(&mut self, real: &mut S) {
-        if self.is_live_page() { return; }
-        if let Some((i, _)) = self.page() { self.owned[i] = None; }
+        if self.is_live_page() {
+            return;
+        }
+        if let Some((i, _)) = self.page() {
+            self.owned[i] = None;
+        }
         self.select(self.selected, real);
     }
 
     /// [`Playground::keep`], from the scene's stage as it goes.
     pub(super) fn keep(&mut self, real: &mut S) {
-        if let (Some(keep), Some(scene)) = (self.keep, &self.scene) { keep(&scene.state, real); }
+        if let (Some(keep), Some(scene)) = (self.keep, &self.scene) {
+            keep(&scene.state, real);
+        }
     }
 
     pub(super) fn close(&mut self, real: &mut S) {
@@ -316,24 +416,38 @@ impl<S: 'static> Live<S> {
     pub(super) fn select(&mut self, i: usize, real: &mut S) {
         self.keep(real);
         if let Some(left) = self.selected.checked_sub(self.scenes.len())
-            && let (Some(Page { kind: Kind::Own(own), .. }), Some(Some(stage))) = (self.pages.get(left), self.owned.get_mut(left))
+            && let (
+                Some(Page {
+                    kind: Kind::Own(own),
+                    ..
+                }),
+                Some(Some(stage)),
+            ) = (self.pages.get(left), self.owned.get_mut(left))
         {
             own.stop(stage.as_mut());
         }
         self.selected = i.min(self.count().saturating_sub(1));
         self.scene = None;
         self.generation += 1;
-        let scene_clock = crate::SceneClock { now: self.now, dt: 1.0 / 60.0 };
+        let scene_clock = crate::SceneClock {
+            now: self.now,
+            dt: 1.0 / 60.0,
+        };
         if let Some((_, f)) = self.scenes.get(self.selected) {
             let (init, fresh, variant) = (self.init, self.fresh, self.scene_variant());
             let state = crate::with_scene_clock(scene_clock, || {
                 let mut s = fresh.map_or_else(init, |fresh| fresh(real));
                 f(&mut s);
-                if let Some(variant) = variant { variant(&mut s); }
+                if let Some(variant) = variant {
+                    variant(&mut s);
+                }
                 s
             });
             self.scene = Some(Box::new(Staged::new(state)));
-        } else if let Some((i, page)) = self.page() && let Kind::Own(own) = &page.kind && self.owned[i].is_none() {
+        } else if let Some((i, page)) = self.page()
+            && let Kind::Own(own) = &page.kind
+            && self.owned[i].is_none()
+        {
             let variant = self.variant[self.selected];
             let stage = crate::with_scene_clock(scene_clock, || own.init(&*real, variant));
             self.owned[i] = Some(stage);
@@ -345,16 +459,31 @@ impl<S: 'static> Live<S> {
 
     /// Queues the open story's trigger on `key`, to run at the next poll from now.
     pub(super) fn trigger(&mut self, key: char) {
-        if !self.open { return; }
+        if !self.open {
+            return;
+        }
         let now = self.now;
         if let Some(scene) = &mut self.scene {
-            if let Some((_, t)) = self.triggers.iter().find(|(s, t)| *s == self.selected && t.key == key) {
+            if let Some((_, t)) = self
+                .triggers
+                .iter()
+                .find(|(s, t)| *s == self.selected && t.key == key)
+            {
                 scene.script.push((now, t.queued()));
             }
             return;
         }
-        let Some(i) = self.selected.checked_sub(self.scenes.len()) else { return };
-        if let (Some(Page { kind: Kind::Own(own), .. }), Some(Some(stage))) = (self.pages.get(i), self.owned.get_mut(i)) {
+        let Some(i) = self.selected.checked_sub(self.scenes.len()) else {
+            return;
+        };
+        if let (
+            Some(Page {
+                kind: Kind::Own(own),
+                ..
+            }),
+            Some(Some(stage)),
+        ) = (self.pages.get(i), self.owned.get_mut(i))
+        {
             own.trigger(stage.as_mut(), key, now);
         }
     }

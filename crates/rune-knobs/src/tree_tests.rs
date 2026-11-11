@@ -1,7 +1,8 @@
 use super::*;
 use crate::Knob;
 
-const A: Knob = Knob::new("Header fade", 0.0, 10.0, 5.0).about("How tall the fade under the header is");
+const A: Knob =
+    Knob::new("Header fade", 0.0, 10.0, 5.0).about("How tall the fade under the header is");
 const B: Knob = Knob::choice("Table look", &["Lines", "Zebra"], 0);
 const C: Knob = Knob::new("Row gap", 0.0, 8.0, 2.0);
 const D: Knob = Knob::new("Dock radius", 0.0, 24.0, 14.0);
@@ -18,7 +19,14 @@ fn seen(gs: &[usize]) -> BTreeSet<usize> {
 
 fn key(k: &mut Knobs, ev: Key) -> Did {
     let p = plan(k, GROUPS, seen(&[0, 3]));
-    k.tree_key(GROUPS, &p, &KeyEvent { key: ev, mods: Default::default() })
+    k.tree_key(
+        GROUPS,
+        &p,
+        &KeyEvent {
+            key: ev,
+            mods: Default::default(),
+        },
+    )
 }
 
 #[test]
@@ -27,12 +35,29 @@ fn everything_starts_folded_with_a_dot_on_whats_on_screen() {
     let p = plan(&k, GROUPS, seen(&[0, 3]));
     assert_eq!(p.sections.len(), 3, "Item page, Sidebar, Dock");
     assert_eq!(p.sections[0].head, Head::Page("Item page"));
-    assert!(p.sections.iter().all(|s| s.head == Head::Bare || !s.open), "every page folded");
-    assert!(p.sections.iter().flat_map(|s| &s.subs).all(|s| !s.open), "every group folded");
+    assert!(
+        p.sections.iter().all(|s| s.head == Head::Bare || !s.open),
+        "every page folded"
+    );
+    assert!(
+        p.sections.iter().flat_map(|s| &s.subs).all(|s| !s.open),
+        "every group folded"
+    );
     assert!(p.sections[0].seen && !p.sections[1].seen);
     assert!(p.sections[0].subs[0].seen && !p.sections[0].subs[1].seen);
-    assert_eq!(p.sections[2].head, Head::Bare, "a group on its own needs no page");
-    assert_eq!(rows(&p), vec![Node::Page("Item page"), Node::Page("Sidebar"), Node::Group(3)]);
+    assert_eq!(
+        p.sections[2].head,
+        Head::Bare,
+        "a group on its own needs no page"
+    );
+    assert_eq!(
+        rows(&p),
+        vec![
+            Node::Page("Item page"),
+            Node::Page("Sidebar"),
+            Node::Group(3)
+        ]
+    );
 }
 
 #[test]
@@ -58,8 +83,14 @@ fn reopening_folds_all_but_the_group_last_left_open() {
     k.close();
     k.show();
     let p = plan(&k, GROUPS, seen(&[]));
-    assert!(p.sections[0].open && p.sections[0].subs[1].open, "Tables and its page open");
-    assert!(!p.sections[0].subs[0].open && !p.sections[1].open, "the rest folded");
+    assert!(
+        p.sections[0].open && p.sections[0].subs[1].open,
+        "Tables and its page open"
+    );
+    assert!(
+        !p.sections[0].subs[0].open && !p.sections[1].open,
+        "the rest folded"
+    );
     k.set_folded("Tables", true);
     k.close();
     k.show();
@@ -73,7 +104,10 @@ fn on_screen_layout_lists_whats_showing_first() {
     k.set(&LAYOUT, 1.0);
     let p = plan(&k, GROUPS, seen(&[1, 3]));
     assert_eq!(p.sections[0].head, Head::Caption(SEEN));
-    assert_eq!(p.sections[0].subs.iter().map(|s| s.g).collect::<Vec<_>>(), vec![1, 3]);
+    assert_eq!(
+        p.sections[0].subs.iter().map(|s| s.g).collect::<Vec<_>>(),
+        vec![1, 3]
+    );
     assert!(p.sections[0].subs[0].full, "it names its page");
     assert_eq!(p.sections[1].head, Head::Caption(REST));
     assert!(p.sections[1].subs.iter().all(|s| !s.open));
@@ -86,27 +120,56 @@ fn tabs_layout_opens_on_the_page_thats_showing() {
     let p = plan(&k, GROUPS, seen(&[2]));
     assert_eq!(p.tab, Some("Sidebar"));
     assert_eq!(p.tabs.len(), 3);
-    assert_eq!(p.sections[0].subs.iter().map(|s| s.g).collect::<Vec<_>>(), vec![2]);
-    k.tree_key(GROUPS, &p, &KeyEvent { key: Key::Text("]".into()), mods: Default::default() });
+    assert_eq!(
+        p.sections[0].subs.iter().map(|s| s.g).collect::<Vec<_>>(),
+        vec![2]
+    );
+    k.tree_key(
+        GROUPS,
+        &p,
+        &KeyEvent {
+            key: Key::Text("]".into()),
+            mods: Default::default(),
+        },
+    );
     assert_eq!(plan(&k, GROUPS, seen(&[2])).tab, Some("Dock"));
 }
 
 #[test]
 fn slash_then_a_query_filters_by_name_and_description() {
     let mut k = Knobs::default();
-    assert_eq!(key(&mut k, Key::Text("t".into())), Did::Not, "a letter alone doesn't filter");
+    assert_eq!(
+        key(&mut k, Key::Text("t".into())),
+        Did::Not,
+        "a letter alone doesn't filter"
+    );
     assert!(k.query.is_empty());
     key(&mut k, Key::Text("/".into()));
     assert!(k.filtering);
-    assert_eq!(key(&mut k, Key::Text("t".into())), Did::Not, "the field takes typing, not the tree");
+    assert_eq!(
+        key(&mut k, Key::Text("t".into())),
+        Did::Not,
+        "the field takes typing, not the tree"
+    );
     assert_eq!(key(&mut k, Key::Right), Did::Not, "and ← →");
     k.set_query("tall");
     k.refilter(GROUPS, &plan(&k, GROUPS, seen(&[])));
     let p = plan(&k, GROUPS, seen(&[]));
-    assert_eq!(rows(&p), vec![Node::Group(0), Node::Knob(0, 0)], "matches A's description");
-    assert_eq!(k.at(), Some(Node::Knob(0, 0)), "the keyboard lands on the first match");
+    assert_eq!(
+        rows(&p),
+        vec![Node::Group(0), Node::Knob(0, 0)],
+        "matches A's description"
+    );
+    assert_eq!(
+        k.at(),
+        Some(Node::Knob(0, 0)),
+        "the keyboard lands on the first match"
+    );
     key(&mut k, Key::Escape);
-    assert!(!k.filtering && k.query == "tall", "Esc stops typing and keeps the matches");
+    assert!(
+        !k.filtering && k.query == "tall",
+        "Esc stops typing and keeps the matches"
+    );
     key(&mut k, Key::Escape);
     assert!(k.query.is_empty(), "a second Esc clears the filter");
 }
@@ -139,7 +202,11 @@ fn arrows_walk_rows_and_fold_headers() {
     assert_eq!(key(&mut k, Key::Left), Did::Fold);
     assert!(k.folded.contains("Item page"));
     assert_eq!(key(&mut k, Key::Down), Did::Now);
-    assert_eq!(k.at(), Some(Node::Page("Sidebar")), "the folded page's rows are skipped");
+    assert_eq!(
+        k.at(),
+        Some(Node::Page("Sidebar")),
+        "the folded page's rows are skipped"
+    );
     assert_eq!(key(&mut k, Key::Right), Did::Fold);
     assert!(k.unfolded.contains("Sidebar"));
     key(&mut k, Key::Right);

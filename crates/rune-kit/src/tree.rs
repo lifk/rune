@@ -178,7 +178,13 @@ impl<T> TreeModel<T> {
 
     /// Removes every node, the selection and the filter.
     pub fn clear(&mut self) {
-        *self = TreeModel { key: std::mem::take(&mut self.key), multi: self.multi, viewport: self.viewport, row_height: self.row_height, ..TreeModel::new() };
+        *self = TreeModel {
+            key: std::mem::take(&mut self.key),
+            multi: self.multi,
+            viewport: self.viewport,
+            row_height: self.row_height,
+            ..TreeModel::new()
+        };
     }
 
     pub fn len(&self) -> usize {
@@ -260,14 +266,18 @@ impl<T> TreeModel<T> {
         }
         // A cursor or anchor inside a closing folder moves up to it.
         if !open {
-            if let Some(c) = self.cursor && self.is_under(c, i) {
+            if let Some(c) = self.cursor
+                && self.is_under(c, i)
+            {
                 if !self.multi && self.nodes[c].selected {
                     self.select_only(i);
                 } else {
                     self.cursor = Some(i);
                 }
             }
-            if let Some(a) = self.anchor && self.is_under(a, i) {
+            if let Some(a) = self.anchor
+                && self.is_under(a, i)
+            {
                 self.anchor = Some(i);
             }
         }
@@ -668,7 +678,9 @@ impl<T> TreeModel<T> {
             Some(r) => r,
             None => 0,
         };
-        (0..len).map(|k| (start + k) % len).find(|&r| label(&self.nodes[v.rows[r]].data).to_lowercase().starts_with(&prefix))
+        (0..len)
+            .map(|k| (start + k) % len)
+            .find(|&r| label(&self.nodes[v.rows[r]].data).to_lowercase().starts_with(&prefix))
     }
 }
 

@@ -11,7 +11,10 @@ fn flow(src: &str) -> Flowchart {
 }
 
 fn edges(f: &Flowchart) -> Vec<(&str, &str)> {
-    f.edges.iter().map(|e| (f.nodes[e.from].id.as_str(), f.nodes[e.to].id.as_str())).collect()
+    f.edges
+        .iter()
+        .map(|e| (f.nodes[e.from].id.as_str(), f.nodes[e.to].id.as_str()))
+        .collect()
 }
 
 #[test]
@@ -20,7 +23,11 @@ fn directions_shapes_and_labels() {
         "flowchart LR\n  A[Start] --> B(Round)\n  B --> C([Stadium]) --> D[[Sub]]\n  D --> E[(Database)] & F((Circle))\n  F --> G>Flag] --> H{Decide?} --> I{{Hex}}\n  I --> J[/Lean/] --> K[/Trap\\]\n  K --> L[\\Back\\] --> M[\\Top/] --> N(((Stop)))",
     );
     assert_eq!(f.dir, Dir::Right);
-    let shapes: Vec<(&str, &str, NodeShape)> = f.nodes.iter().map(|n| (n.id.as_str(), n.label.as_str(), n.shape)).collect();
+    let shapes: Vec<(&str, &str, NodeShape)> = f
+        .nodes
+        .iter()
+        .map(|n| (n.id.as_str(), n.label.as_str(), n.shape))
+        .collect();
     assert_eq!(
         shapes,
         vec![
@@ -54,10 +61,20 @@ fn v11_at_shapes_subgraph_endpoints_and_link_styles() {
          core --> GPU@{ shape: hex, label: \"wgpu\" }\n\
          linkStyle 0 stroke:#22c55e,stroke-width:2px",
     );
-    assert_eq!(f.nodes.len(), 4, "placeholder node for `core` was redirected and removed");
-    assert_eq!(edges(&f), [("App", "El"), ("El", "Store"), ("Store", "GPU")]);
+    assert_eq!(
+        f.nodes.len(),
+        4,
+        "placeholder node for `core` was redirected and removed"
+    );
+    assert_eq!(
+        edges(&f),
+        [("App", "El"), ("El", "Store"), ("Store", "GPU")]
+    );
     let store = f.nodes.iter().find(|n| n.id == "Store").unwrap();
-    assert_eq!((store.shape, store.label.as_str()), (NodeShape::Cylinder, "AnimationStore"));
+    assert_eq!(
+        (store.shape, store.label.as_str()),
+        (NodeShape::Cylinder, "AnimationStore")
+    );
     assert!(f.edges[0].style.stroke.is_some());
     assert_eq!(f.edges[0].style.width, Some(2.0));
 }
@@ -130,14 +147,25 @@ fn every_v11_shape_name_reads_and_draws() {
 
 #[test]
 fn icons_and_images_draw_as_their_frame() {
-    let f = flow("flowchart TD\n  A@{ icon: \"fa:user\", form: \"circle\", label: \"User\" }\n  B@{ img: \"https://example.com/a.png\", label: \"Pic\" }\n  A --> B");
-    let nodes: Vec<(&str, NodeShape)> = f.nodes.iter().map(|n| (n.label.as_str(), n.shape)).collect();
-    assert_eq!(nodes, [("User", NodeShape::Circle), ("Pic", NodeShape::Rect)]);
+    let f = flow(
+        "flowchart TD\n  A@{ icon: \"fa:user\", form: \"circle\", label: \"User\" }\n  B@{ img: \"https://example.com/a.png\", label: \"Pic\" }\n  A --> B",
+    );
+    let nodes: Vec<(&str, NodeShape)> = f
+        .nodes
+        .iter()
+        .map(|n| (n.label.as_str(), n.shape))
+        .collect();
+    assert_eq!(
+        nodes,
+        [("User", NodeShape::Circle), ("Pic", NodeShape::Rect)]
+    );
 }
 
 #[test]
 fn named_edges_and_their_settings_add_no_nodes() {
-    let f = flow("flowchart LR\n  A e1@--> B\n  B e2@-.-> C\n  e1@{ animate: true }\n  e2@{ animation: fast }");
+    let f = flow(
+        "flowchart LR\n  A e1@--> B\n  B e2@-.-> C\n  e1@{ animate: true }\n  e2@{ animation: fast }",
+    );
     assert_eq!(edges(&f), [("A", "B"), ("B", "C")]);
     assert_eq!(f.edges[1].line, Line::Dotted);
     assert_eq!(f.nodes.len(), 3);
@@ -149,7 +177,10 @@ fn link_styles_heads_lengths_and_labels() {
         "graph TD\nA --> B\nA --- C\nA -.-> D\nA ==> E\nA -- yes --> F\nA -->|no| G\nA <--> H\nA --o I\nA --x J\nA ---> K\nA -. maybe .-> L\nA == sure ==> M\nA ~~~ N\nA-->O;O-->P",
     );
     let e = |to: &str| f.edges.iter().find(|e| f.nodes[e.to].id == to).expect(to);
-    assert_eq!((e("B").line, e("B").end, e("B").minlen), (Line::Solid, Head::Arrow, 1));
+    assert_eq!(
+        (e("B").line, e("B").end, e("B").minlen),
+        (Line::Solid, Head::Arrow, 1)
+    );
     assert_eq!((e("C").line, e("C").end), (Line::Solid, Head::None));
     assert_eq!((e("D").line, e("D").end), (Line::Dotted, Head::Arrow));
     assert_eq!((e("E").line, e("E").end), (Line::Thick, Head::Arrow));
@@ -159,10 +190,20 @@ fn link_styles_heads_lengths_and_labels() {
     assert_eq!(e("I").end, Head::Circle);
     assert_eq!(e("J").end, Head::Cross);
     assert_eq!(e("K").minlen, 2);
-    assert_eq!((e("L").line, e("L").label.as_deref()), (Line::Dotted, Some("maybe")));
-    assert_eq!((e("M").line, e("M").label.as_deref()), (Line::Thick, Some("sure")));
+    assert_eq!(
+        (e("L").line, e("L").label.as_deref()),
+        (Line::Dotted, Some("maybe"))
+    );
+    assert_eq!(
+        (e("M").line, e("M").label.as_deref()),
+        (Line::Thick, Some("sure"))
+    );
     assert_eq!(e("N").line, Line::Invisible);
-    assert_eq!(e("P").from, f.nodes.iter().position(|n| n.id == "O").unwrap(), "`;` separates statements");
+    assert_eq!(
+        e("P").from,
+        f.nodes.iter().position(|n| n.id == "O").unwrap(),
+        "`;` separates statements"
+    );
 }
 
 #[test]
@@ -181,9 +222,23 @@ fn quoted_edge_labels_nested_brackets_and_styles() {
     assert_eq!(to_d.label.as_deref(), Some("capuchin ≈ Cappuccino"));
     let to_f = f.edges.iter().rfind(|e| f.nodes[e.to].id == "F").unwrap();
     assert_eq!(to_f.label.as_deref(), Some("a | b"));
-    assert_eq!(f.nodes.iter().find(|n| n.id == "E").unwrap().label, "Call fn(x)");
-    assert_eq!(f.nodes.iter().find(|n| n.id == "G").unwrap().label, "items[0]");
-    assert!(f.nodes.iter().find(|n| n.id == "D").unwrap().style.fill.is_some());
+    assert_eq!(
+        f.nodes.iter().find(|n| n.id == "E").unwrap().label,
+        "Call fn(x)"
+    );
+    assert_eq!(
+        f.nodes.iter().find(|n| n.id == "G").unwrap().label,
+        "items[0]"
+    );
+    assert!(
+        f.nodes
+            .iter()
+            .find(|n| n.id == "D")
+            .unwrap()
+            .style
+            .fill
+            .is_some()
+    );
 }
 
 #[test]
@@ -199,13 +254,30 @@ fn subgraphs_nest_and_claim_nodes() {
     assert_eq!(cluster("a2"), Some(0), "first used outside, then inside");
     assert_eq!(cluster("x1"), Some(1));
     assert_eq!(cluster("b2"), Some(2));
-    assert!(f.nodes.iter().find(|n| n.id == "a1").unwrap().style.fill.is_some());
-    assert!(f.nodes.iter().find(|n| n.id == "b1").unwrap().style.fill.is_some());
+    assert!(
+        f.nodes
+            .iter()
+            .find(|n| n.id == "a1")
+            .unwrap()
+            .style
+            .fill
+            .is_some()
+    );
+    assert!(
+        f.nodes
+            .iter()
+            .find(|n| n.id == "b1")
+            .unwrap()
+            .style
+            .fill
+            .is_some()
+    );
 }
 
 #[test]
 fn quoted_labels_breaks_and_dashed_ids() {
-    let f = flow("graph TD\n  web-server[\"Web (edge) server\"] --> db[(\"Postgres<br/>primary\")]");
+    let f =
+        flow("graph TD\n  web-server[\"Web (edge) server\"] --> db[(\"Postgres<br/>primary\")]");
     assert_eq!(f.nodes[0].id, "web-server");
     assert_eq!(f.nodes[0].label, "Web (edge) server");
     assert_eq!(f.nodes[1].label, "Postgres\nprimary");
@@ -213,7 +285,14 @@ fn quoted_labels_breaks_and_dashed_ids() {
 
 #[test]
 fn only_sources_where_nothing_reads_are_rejected() {
-    for src in ["graph TD", "graph TD\nend", "graph TD\n-->", "graph LR\n  this is not valid", "graph TD\n%% just a comment", "notADiagram\nA --> B"] {
+    for src in [
+        "graph TD",
+        "graph TD\nend",
+        "graph TD\n-->",
+        "graph LR\n  this is not valid",
+        "graph TD\n%% just a comment",
+        "notADiagram\nA --> B",
+    ] {
         assert!(crate::parse(src).is_none(), "{src:?}");
     }
 }
@@ -224,7 +303,11 @@ fn an_unclosed_shape_is_a_rectangle_with_its_text_as_written() {
     // so one stray slash doesn't turn the whole chart back into source.
     let src = "flowchart LR\n  A[List + count] --> B[/items split view]\n  B --> C[Details]\n  C --> D[Pause / Resume / Delete]";
     let f = flow(src);
-    let nodes: Vec<(&str, &str, NodeShape)> = f.nodes.iter().map(|n| (n.id.as_str(), n.label.as_str(), n.shape)).collect();
+    let nodes: Vec<(&str, &str, NodeShape)> = f
+        .nodes
+        .iter()
+        .map(|n| (n.id.as_str(), n.label.as_str(), n.shape))
+        .collect();
     assert_eq!(
         nodes,
         [
@@ -235,13 +318,22 @@ fn an_unclosed_shape_is_a_rectangle_with_its_text_as_written() {
         ]
     );
     assert_eq!(edges(&f), [("A", "B"), ("B", "C"), ("C", "D")]);
-    assert!(crate::scene(src, &DiagramStyle::neutral(true), None).is_some(), "the whole chart draws, no fallback");
+    assert!(
+        crate::scene(src, &DiagramStyle::neutral(true), None).is_some(),
+        "the whole chart draws, no fallback"
+    );
     let label = |src: &str| flow(src).nodes[0].label.clone();
     assert_eq!(label("graph TD\nA[\\back slash]"), "\\back slash");
     assert_eq!(label("graph TD\nA(open round"), "open round");
     assert_eq!(label("graph TD\nA[unclosed --> B"), "unclosed --> B");
-    assert_eq!(label("flowchart TD\n  A{\"quote never closes} --> B"), "\"quote never closes} --> B");
-    assert_eq!(flow("graph TD\nA@{ shape: not_a_shape } --> B").nodes[0].shape, NodeShape::Rect);
+    assert_eq!(
+        label("flowchart TD\n  A{\"quote never closes} --> B"),
+        "\"quote never closes} --> B"
+    );
+    assert_eq!(
+        flow("graph TD\nA@{ shape: not_a_shape } --> B").nodes[0].shape,
+        NodeShape::Rect
+    );
     assert_eq!(flow("graph TD\nA@{ unclosed --> B").nodes[0].label, "A");
 }
 
@@ -251,7 +343,11 @@ fn punctuation_in_labels_is_plain_text() {
     // the unclosed `[/…]` (which Mermaid itself rejects) is a rectangle on purpose.
     let src = "flowchart LR\n  a[setting.some_name] --> b[run_* + /go]\n  c[(store -> row)] --> d[Item.Worker]\n  d --> e[/api/v2/item]";
     let f = flow(src);
-    let nodes: Vec<(&str, &str, NodeShape)> = f.nodes.iter().map(|n| (n.id.as_str(), n.label.as_str(), n.shape)).collect();
+    let nodes: Vec<(&str, &str, NodeShape)> = f
+        .nodes
+        .iter()
+        .map(|n| (n.id.as_str(), n.label.as_str(), n.shape))
+        .collect();
     assert_eq!(
         nodes,
         [
@@ -263,7 +359,10 @@ fn punctuation_in_labels_is_plain_text() {
         ]
     );
     assert_eq!(edges(&f), [("a", "b"), ("c", "d"), ("d", "e")]);
-    assert!(crate::scene(src, &DiagramStyle::neutral(false), None).is_some(), "the whole chart draws, no fallback");
+    assert!(
+        crate::scene(src, &DiagramStyle::neutral(false), None).is_some(),
+        "the whole chart draws, no fallback"
+    );
 }
 
 #[test]
@@ -290,9 +389,15 @@ fn a_statement_that_does_not_read_is_skipped() {
 
 #[test]
 fn going_past_the_bounds_still_rejects() {
-    let deep = (0..=crate::MAX_DEPTH).map(|d| format!("subgraph s{d}\nA{d}")).collect::<Vec<_>>().join("\n");
+    let deep = (0..=crate::MAX_DEPTH)
+        .map(|d| format!("subgraph s{d}\nA{d}"))
+        .collect::<Vec<_>>()
+        .join("\n");
     assert!(crate::parse(&format!("graph TD\n{deep}")).is_none());
-    let wide = (0..crate::MAX_ITEMS).map(|i| format!("N{i} --> M{i}")).collect::<Vec<_>>().join("\n");
+    let wide = (0..crate::MAX_ITEMS)
+        .map(|i| format!("N{i} --> M{i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
     assert!(crate::parse(&format!("graph TD\n{wide}")).is_none());
 }
 
@@ -307,8 +412,14 @@ fn every_prefix_of_a_source_parses_or_falls_back_without_panicking() {
 #[test]
 fn boundary_points_sit_on_the_outline() {
     let c = [0.0, 0.0];
-    assert_eq!(boundary(NodeShape::Rect, c, [100.0, 40.0], [0.0, 100.0]), [0.0, 20.0]);
-    assert_eq!(boundary(NodeShape::Rect, c, [100.0, 40.0], [100.0, 0.0]), [50.0, 0.0]);
+    assert_eq!(
+        boundary(NodeShape::Rect, c, [100.0, 40.0], [0.0, 100.0]),
+        [0.0, 20.0]
+    );
+    assert_eq!(
+        boundary(NodeShape::Rect, c, [100.0, 40.0], [100.0, 0.0]),
+        [50.0, 0.0]
+    );
     let d = boundary(NodeShape::Diamond, c, [100.0, 40.0], [100.0, 40.0]);
     assert!((d[0].abs() / 50.0 + d[1].abs() / 20.0 - 1.0).abs() < 1e-4);
     let e = boundary(NodeShape::Circle, c, [40.0, 40.0], [30.0, 40.0]);

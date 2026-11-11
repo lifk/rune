@@ -44,7 +44,8 @@ pub(crate) unsafe extern "C-unwind" fn ui_virtual_list(state: *mut ffi::lua_Stat
                 let mut p = Props::new(&frame.env);
                 let mut viewport = col();
                 viewport.set_w_full();
-                let (mut count, mut estimate, mut version, mut key) = (0usize, 32.0f32, None, None::<String>);
+                let (mut count, mut estimate, mut version, mut key) =
+                    (0usize, 32.0f32, None, None::<String>);
                 let (mut render, mut row_key, mut visible, mut gap) = (None, None, None, 0.0f32);
                 let mut iter = 0;
                 while {
@@ -54,19 +55,44 @@ pub(crate) unsafe extern "C-unwind" fn ui_virtual_list(state: *mut ffi::lua_Stat
                     let v = props::read(state, -1);
                     match (props::key_atom(state, -2), v) {
                         (Ok(Atom::Count), Value::Num(n)) => count = n.max(0.0) as usize,
-                        (Ok(Atom::EstimatedRowHeight), Value::Num(n)) => estimate = n.max(1.0) as f32,
+                        (Ok(Atom::EstimatedRowHeight), Value::Num(n)) => {
+                            estimate = n.max(1.0) as f32
+                        }
                         (Ok(Atom::Version), _) => version = Some(version_hash(state, -1)?),
-                        (Ok(Atom::RenderRow), Value::Func) => render = Some(frame.env.reference(state, -1)),
-                        (Ok(Atom::RowKey), Value::Func) => row_key = Some(frame.env.reference(state, -1)),
-                        (Ok(Atom::OnVisibleRows), Value::Func) => visible = Some(frame.env.reference(state, -1)),
+                        (Ok(Atom::RenderRow), Value::Func) => {
+                            render = Some(frame.env.reference(state, -1))
+                        }
+                        (Ok(Atom::RowKey), Value::Func) => {
+                            row_key = Some(frame.env.reference(state, -1))
+                        }
+                        (Ok(Atom::OnVisibleRows), Value::Func) => {
+                            visible = Some(frame.env.reference(state, -1))
+                        }
                         (Ok(Atom::Gap), Value::Num(n)) => gap = n as f32,
                         (Ok(Atom::Key), Value::Str(s)) => key = Some(s.to_owned()),
                         (Ok(Atom::Key), Value::Num(n)) => key = Some(props::format_num(n)),
-                        (Ok(atom @ (Atom::Count | Atom::EstimatedRowHeight | Atom::RenderRow | Atom::RowKey | Atom::OnVisibleRows | Atom::Gap)), other) => {
-                            return Err(format!("ui.virtualList {atom:?} can't be a {}", props::name(other)));
+                        (
+                            Ok(
+                                atom @ (Atom::Count
+                                | Atom::EstimatedRowHeight
+                                | Atom::RenderRow
+                                | Atom::RowKey
+                                | Atom::OnVisibleRows
+                                | Atom::Gap),
+                            ),
+                            other,
+                        ) => {
+                            return Err(format!(
+                                "ui.virtualList {atom:?} can't be a {}",
+                                props::name(other)
+                            ));
                         }
-                        (Ok(Atom::OnPress), _) => frame.env.warn_once("ui.virtualList takes no onPress".into()),
-                        (Ok(atom), _) => p.decode_at(&mut viewport, state, atom, -1, &frame.env, false)?,
+                        (Ok(Atom::OnPress), _) => frame
+                            .env
+                            .warn_once("ui.virtualList takes no onPress".into()),
+                        (Ok(atom), _) => {
+                            p.decode_at(&mut viewport, state, atom, -1, &frame.env, false)?
+                        }
                         (Err(name), _) => frame.env.warn_once(format!("unknown prop {name}")),
                     }
                     ffi::lua_settop(state, -3);
@@ -78,7 +104,11 @@ pub(crate) unsafe extern "C-unwind" fn ui_virtual_list(state: *mut ffi::lua_Stat
                 let spec = Spec {
                     count,
                     estimate,
-                    keys_version: if row_key.is_none() { Some(env.salt) } else { Some(version) },
+                    keys_version: if row_key.is_none() {
+                        Some(env.salt)
+                    } else {
+                        Some(version)
+                    },
                     version,
                     render,
                     key: row_key,
@@ -102,36 +132,57 @@ pub(crate) unsafe extern "C-unwind" fn ui_virtual_list(state: *mut ffi::lua_Stat
 pub(crate) fn attach<S: 'static>(viewport: El, spec: Spec) -> El {
     let keys = spec.clone();
     let rows = spec.clone();
-    let mut stack = col().key("rows").w_full().gap(spec.gap).growth(GrowthSpec::default()).virtual_rows(
-        spec.count,
-        spec.estimate,
-        move |s: &S, i| match &keys.key {
-            Some(cb) => upgrade(&cb.script).and_then(|script| script.around_read(s, || script.row_key(cb, i))).unwrap_or_else(|| i.to_string()).into(),
-            None => i.to_string().into(),
-        },
-        move |s: &S, i| {
-            let Some(script) = upgrade(&rows.render.script) else { return rune::el() };
-            script
-                .around_read(s, || {
-                    let key = match &rows.key {
-                        Some(cb) => script.row_key(cb, i),
-                        None => i.to_string(),
-                    };
-                    // Rune keys the row by `key` whatever its memo id; keying the root by that id
-                    // keeps memo from reporting a replaced key.
-                    let id = format!("{}/{key}", rows.id);
-                    rune::memo::memo_with_hash(id.clone(), rows.version, || script.row::<S>(&rows, i).key(id))
-                })
-                .unwrap_or_else(rune::el)
-        },
-    );
+    let mut stack = col()
+        .key("rows")
+        .w_full()
+        .gap(spec.gap)
+        .growth(GrowthSpec::default())
+        .virtual_rows(
+            spec.count,
+            spec.estimate,
+            move |s: &S, i| match &keys.key {
+                Some(cb) => upgrade(&cb.script)
+                    .and_then(|script| script.around_read(s, || script.row_key(cb, i)))
+                    .unwrap_or_else(|| i.to_string())
+                    .into(),
+                None => i.to_string().into(),
+            },
+            move |s: &S, i| {
+                let Some(script) = upgrade(&rows.render.script) else {
+                    return rune::el();
+                };
+                script
+                    .around_read(s, || {
+                        let key = match &rows.key {
+                            Some(cb) => script.row_key(cb, i),
+                            None => i.to_string(),
+                        };
+                        // Rune keys the row by `key` whatever its memo id; keying the root by that id
+                        // keeps memo from reporting a replaced key.
+                        let id = format!("{}/{key}", rows.id);
+                        rune::memo::memo_with_hash(id.clone(), rows.version, || {
+                            script.row::<S>(&rows, i).key(id)
+                        })
+                    })
+                    .unwrap_or_else(rune::el)
+            },
+        );
     if let Some(v) = spec.keys_version {
         stack = stack.virtual_rows_version(v);
     }
     if let Some(cb) = spec.visible {
         stack = stack.on_visible_rows(move |s: &mut S, range| {
-            let Some(script) = cb.script.upgrade() else { return false };
-            let event = Event { kind: "visible-rows", key: None, mods: None, rows: Some((range.start + 1, range.end)), entered: None, fields: Rc::new([]) };
+            let Some(script) = cb.script.upgrade() else {
+                return false;
+            };
+            let event = Event {
+                kind: "visible-rows",
+                key: None,
+                mods: None,
+                rows: Some((range.start + 1, range.end)),
+                entered: None,
+                fields: Rc::new([]),
+            };
             script.around_write(s, None, |tx| script.handle(&cb, event, tx));
             true
         });

@@ -65,7 +65,15 @@ impl DirectWrite {
             let factory2 = factory.cast().ok()?;
             let loader = factory.CreateInMemoryFontFileLoader().ok()?;
             factory.RegisterFontFileLoader(&loader).ok()?;
-            Some(DirectWrite { factory, factory2, loader, sources: HashMap::new(), faces: HashMap::new(), tables: Default::default(), scratch: Vec::new() })
+            Some(DirectWrite {
+                factory,
+                factory2,
+                loader,
+                sources: HashMap::new(),
+                faces: HashMap::new(),
+                tables: Default::default(),
+                scratch: Vec::new(),
+            })
         }
     }
 
@@ -87,20 +95,41 @@ impl DirectWrite {
             bidiLevel: 0,
         };
         let lean = (job.skew as f32).to_radians().tan();
-        let transform = DWRITE_MATRIX { m11: 1.0, m12: 0.0, m21: -lean, m22: 1.0, dx: job.phase_x, dy: job.shift_y };
+        let transform = DWRITE_MATRIX {
+            m11: 1.0,
+            m12: 0.0,
+            m21: -lean,
+            m22: 1.0,
+            dx: job.phase_x,
+            dy: job.shift_y,
+        };
         // SAFETY: `run` borrows locals that outlive the analysis; the face is released below.
         let made = unsafe {
-            let analysis = self.factory2.CreateGlyphRunAnalysis(&run, Some(&transform), mode, DWRITE_MEASURING_MODE_NATURAL,
-                DWRITE_GRID_FIT_MODE_ENABLED, DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE, 0.0, 0.0);
+            let analysis = self.factory2.CreateGlyphRunAnalysis(
+                &run,
+                Some(&transform),
+                mode,
+                DWRITE_MEASURING_MODE_NATURAL,
+                DWRITE_GRID_FIT_MODE_ENABLED,
+                DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE,
+                0.0,
+                0.0,
+            );
             analysis.and_then(|a| {
                 let mut bounds = a.GetAlphaTextureBounds(DWRITE_TEXTURE_ALIASED_1x1)?;
                 // Smoothed vertically, a glyph shifted down part of a pixel inks one more row.
                 // Its unshifted mask keeps that row, empty, so a gliding glyph's quad keeps one
                 // size across its y phases and moves rather than growing and shrinking.
-                if job.shift_y == 0.0 && mode == DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC && bounds.bottom > bounds.top {
+                if job.shift_y == 0.0
+                    && mode == DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC
+                    && bounds.bottom > bounds.top
+                {
                     bounds.bottom += 1;
                 }
-                let (w, h) = ((bounds.right - bounds.left).max(0) as u32, (bounds.bottom - bounds.top).max(0) as u32);
+                let (w, h) = (
+                    (bounds.right - bounds.left).max(0) as u32,
+                    (bounds.bottom - bounds.top).max(0) as u32,
+                );
                 self.scratch.clear();
                 self.scratch.resize((w * h) as usize, 0);
                 if w > 0 && h > 0 {
@@ -114,14 +143,17 @@ impl DirectWrite {
         if w == 0 || h == 0 || !self.scratch.iter().any(|&c| c != 0) {
             return Some(Rasterized::Empty);
         }
-        let table = self.tables[job.lum as usize & 7].get_or_insert_with(|| Box::new(skia_gamma::table(job.lum)));
+        let table = self.tables[job.lum as usize & 7]
+            .get_or_insert_with(|| Box::new(skia_gamma::table(job.lum)));
         for c in &mut self.scratch {
             *c = table[*c as usize];
         }
-        Some(match atlas.put(w, h, &self.scratch, bounds.left, -bounds.top) {
-            Some(g) => Rasterized::Placed(g),
-            None => Rasterized::Unplaced,
-        })
+        Some(
+            match atlas.put(w, h, &self.scratch, bounds.left, -bounds.top) {
+                Some(g) => Rasterized::Placed(g),
+                None => Rasterized::Unplaced,
+            },
+        )
     }
 
     /// `job`'s face, the rendering mode Skia picks for its size and the em size to ask for.
@@ -139,21 +171,45 @@ impl DirectWrite {
         let face = self.faces.entry(job.key).or_insert_with(|| {
             let axes = axis_values(job.font, job.coords);
             // SAFETY: the resource outlives the call; DirectWrite copies the axis values.
-            unsafe { source.resource.CreateFontFace(DWRITE_FONT_SIMULATIONS_NONE, &axes).ok()?.cast().ok() }
+            unsafe {
+                source
+                    .resource
+                    .CreateFontFace(DWRITE_FONT_SIMULATIONS_NONE, &axes)
+                    .ok()?
+                    .cast()
+                    .ok()
+            }
         });
         Some((face.clone()?, mode, em))
     }
 
-    fn source(&self, font: FontRef<'_>, blob: &parley::fontique::Blob<u8>, index: u32) -> Option<Source> {
+    fn source(
+        &self,
+        font: FontRef<'_>,
+        blob: &parley::fontique::Blob<u8>,
+        index: u32,
+    ) -> Option<Source> {
         let data = blob.as_ref();
         // SAFETY: the owner keeps `data` alive for as long as DirectWrite holds the reference,
         // so it reads the bytes in place instead of copying them.
         let resource = unsafe {
             let owner = owner::new(blob.clone());
-            let file = self.loader.CreateInMemoryFontFileReference(&self.factory, data.as_ptr().cast(), data.len() as u32, &owner).ok()?;
+            let file = self
+                .loader
+                .CreateInMemoryFontFileReference(
+                    &self.factory,
+                    data.as_ptr().cast(),
+                    data.len() as u32,
+                    &owner,
+                )
+                .ok()?;
             self.factory.CreateFontResource(&file, index).ok()?
         };
-        Some(Source { resource, gasp: gasp(font), hinted: hinted(font) })
+        Some(Source {
+            resource,
+            gasp: gasp(font),
+            hinted: hinted(font),
+        })
     }
 }
 
@@ -171,20 +227,34 @@ fn rendering_mode(source: &Source, ppem: f32) -> (DWRITE_RENDERING_MODE, f32) {
     const SYMMETRIC_SMOOTHING: u16 = 0x0008;
     let gdi = ((ppem * 64.0).round() / 64.0).max(1.0);
     if let Some(ranges) = &source.gasp
-        && let Some(&(_, flags)) = ranges.iter().find(|&&(max, _)| (gdi.round() as i32) <= max as i32)
+        && let Some(&(_, flags)) = ranges
+            .iter()
+            .find(|&&(max, _)| (gdi.round() as i32) <= max as i32)
     {
-        let mode = if flags & SYMMETRIC_SMOOTHING != 0 { DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC } else { DWRITE_RENDERING_MODE_NATURAL };
+        let mode = if flags & SYMMETRIC_SMOOTHING != 0 {
+            DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC
+        } else {
+            DWRITE_RENDERING_MODE_NATURAL
+        };
         return (mode, ppem);
     }
-    if ppem > 20.0 || !source.hinted { (DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC, ppem) } else { (DWRITE_RENDERING_MODE_NATURAL, gdi) }
+    if ppem > 20.0 || !source.hinted {
+        (DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC, ppem)
+    } else {
+        (DWRITE_RENDERING_MODE_NATURAL, gdi)
+    }
 }
 
 fn gasp(font: FontRef<'_>) -> Option<Vec<(u16, u16)>> {
     let t = font.table(u32::from_be_bytes(*b"gasp"))?;
     let u16_at = |i: usize| t.get(i..i + 2).map(|b| u16::from_be_bytes([b[0], b[1]]));
-    if u16_at(0)? < 1 { return None; }
+    if u16_at(0)? < 1 {
+        return None;
+    }
     let n = u16_at(2)? as usize;
-    (0..n).map(|i| Some((u16_at(4 + 4 * i)?, u16_at(6 + 4 * i)?))).collect()
+    (0..n)
+        .map(|i| Some((u16_at(4 + 4 * i)?, u16_at(6 + 4 * i)?)))
+        .collect()
 }
 
 fn hinted(font: FontRef<'_>) -> bool {
@@ -205,12 +275,23 @@ fn axis_values(font: FontRef<'_>, coords: &[i16]) -> Vec<DWRITE_FONT_AXIS_VALUE>
                 for _ in 0..48 {
                     let mid = (lo + hi) * 0.5;
                     let n = v.normalize(mid);
-                    if n > target || (!above && n == target) { hi = mid } else { lo = mid }
+                    if n > target || (!above && n == target) {
+                        hi = mid
+                    } else {
+                        lo = mid
+                    }
                 }
                 hi
             };
-            let value = if target == 0 { v.default_value() } else { (first_at(false) + first_at(true)) * 0.5 };
-            DWRITE_FONT_AXIS_VALUE { axisTag: DWRITE_FONT_AXIS_TAG(v.tag().swap_bytes()), value }
+            let value = if target == 0 {
+                v.default_value()
+            } else {
+                (first_at(false) + first_at(true)) * 0.5
+            };
+            DWRITE_FONT_AXIS_VALUE {
+                axisTag: DWRITE_FONT_AXIS_TAG(v.tag().swap_bytes()),
+                value,
+            }
         })
         .collect()
 }

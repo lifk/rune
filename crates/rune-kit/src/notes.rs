@@ -166,11 +166,7 @@ pub(crate) fn cut(src: &str) -> Vec<Piece> {
                     "size" => Some(Piece::Size(parse_size(body))),
                     _ if info_raw.contains("title=") || info_raw.contains('{') => {
                         let (title, marks) = parse_code_meta(info_raw);
-                        Some(Piece::CodeFence {
-                            title,
-                            marks,
-                            lines: body.iter().map(|s| (*s).to_owned()).collect(),
-                        })
+                        Some(Piece::CodeFence { title, marks, lines: body.iter().map(|s| (*s).to_owned()).collect() })
                     }
                     _ => None,
                 };
@@ -323,7 +319,8 @@ fn fnv1a(s: &str) -> u32 {
 
 fn draw_facts(key: &str, rows: &[(String, String)], k: &Kit) -> El {
     let c = &k.c;
-    let mut list = col().key(key).role("list").w_full().radius(8.0).fill(c.layer_02).border(1.0, c.border_weak).px(14.0).py(6.0);
+    let mut list =
+        col().key(key).role("list").w_full().radius(8.0).fill(c.layer_02).border(1.0, c.border_weak).px(14.0).py(6.0);
     for (idx, (label, val)) in rows.iter().enumerate() {
         if idx > 0 {
             list = list.child(el().w_full().h(1.0).fill(c.border_weak));

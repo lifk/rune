@@ -7,10 +7,14 @@ use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::rc::Rc;
 
-use rune::{Color, Cursor, Drag, El, GrowthSpec, Icon, Phase, ScrollSpec, Span, TextStyle, Tx, col, icon, memo, rich, row, text};
+use rune::{
+    Color, Cursor, Drag, El, GrowthSpec, Icon, Phase, ScrollSpec, Span, TextStyle, Tx, col, icon, memo, rich, row, text,
+};
 
 use super::model::{FileStatus, LineKind, Side};
-use super::state::{Annotation, DiffMode, DiffState, EXPAND_STEP, Expand, GAP_H, HEADER_H, LINE_H, LineRange, LineRef, NOTE_H, Row};
+use super::state::{
+    Annotation, DiffMode, DiffState, EXPAND_STEP, Expand, GAP_H, HEADER_H, LINE_H, LineRange, LineRef, NOTE_H, Row,
+};
 use crate::Kit;
 use crate::palette::tint;
 use crate::syntax::SyntaxTheme;
@@ -73,7 +77,10 @@ pub struct DiffView<S> {
 }
 
 impl<S: 'static> DiffView<S> {
-    pub fn new(get: impl Fn(&S) -> &DiffState + 'static, get_mut: impl Fn(&mut S) -> &mut DiffState + 'static) -> DiffView<S> {
+    pub fn new(
+        get: impl Fn(&S) -> &DiffState + 'static,
+        get_mut: impl Fn(&mut S) -> &mut DiffState + 'static,
+    ) -> DiffView<S> {
         DiffView {
             get: Rc::new(get),
             get_mut: Rc::new(get_mut),
@@ -143,7 +150,8 @@ impl<S: 'static> DiffView<S> {
         }
         let v = Rc::new(View { look, d: self });
         let count = st.rows.len();
-        let mut list = col().key("rows").w_full().growth(GrowthSpec::default()).selection_group(true).role("list").label("Diff");
+        let mut list =
+            col().key("rows").w_full().growth(GrowthSpec::default()).selection_group(true).role("list").label("Diff");
         if !wrap {
             list = list.min_w(v.content_width(st).max(st.view_width()));
         }
@@ -355,14 +363,28 @@ impl<S: 'static> View<S> {
         let key = st.keys[i].as_str();
         match r {
             Row::File(f) => self.file_header(s, st, f as usize, false),
-            Row::Note(f) => memo(key, (self.look.version, st.rev, st.view_width().to_bits()), || self.note(st, f as usize)),
-            Row::Gap { f, gap } => memo(key, (self.look.version, st.rev, st.view_width().to_bits(), self.d.fold_row), || match self.d.fold_row {
-                FoldRow::Summary => self.gap(st, f as usize, gap as usize),
-                FoldRow::LineInfo => self.line_info(st, f as usize, gap as usize),
-            }),
-            _ if !st.annotations().is_empty() && self.d.annotation.is_some() && self.annotated(st, r) => self.line(s, st, i),
+            Row::Note(f) => {
+                memo(key, (self.look.version, st.rev, st.view_width().to_bits()), || self.note(st, f as usize))
+            }
+            Row::Gap { f, gap } => {
+                memo(key, (self.look.version, st.rev, st.view_width().to_bits(), self.d.fold_row), || {
+                    match self.d.fold_row {
+                        FoldRow::Summary => self.gap(st, f as usize, gap as usize),
+                        FoldRow::LineInfo => self.line_info(st, f as usize, gap as usize),
+                    }
+                })
+            }
+            _ if !st.annotations().is_empty() && self.d.annotation.is_some() && self.annotated(st, r) => {
+                self.line(s, st, i)
+            }
             _ => {
-                let version = (self.look.version, st.rev, st.row_selected(i, None), st.copy_side(), st.selection().map(|s| s.start.side));
+                let version = (
+                    self.look.version,
+                    st.rev,
+                    st.row_selected(i, None),
+                    st.copy_side(),
+                    st.selection().map(|s| s.start.side),
+                );
                 memo(key, version, || self.line(s, st, i))
             }
         }
@@ -370,7 +392,9 @@ impl<S: 'static> View<S> {
 
     fn annotated(&self, st: &DiffState, r: Row) -> bool {
         let f = r.file();
-        [Side::Old, Side::New].into_iter().any(|side| st.row_line(r, side).is_some_and(|n| st.annotations_at(f, LineRef::new(side, n)).next().is_some()))
+        [Side::Old, Side::New].into_iter().any(|side| {
+            st.row_line(r, side).is_some_and(|n| st.annotations_at(f, LineRef::new(side, n)).next().is_some())
+        })
     }
 
     fn cells<'a>(&self, st: &'a DiffState, r: Row) -> (Option<Cell<'a>>, Option<Cell<'a>>) {
@@ -380,8 +404,18 @@ impl<S: 'static> View<S> {
         };
         match r {
             Row::Ctx { f, old, new } => {
-                let text = st.side_line(f as usize, Side::New, new).or_else(|| st.side_line(f as usize, Side::Old, old)).unwrap_or("");
-                let c = Cell { kind: LineKind::Context, old: Some(old), new: Some(new), text, changes: &[], no_newline: false };
+                let text = st
+                    .side_line(f as usize, Side::New, new)
+                    .or_else(|| st.side_line(f as usize, Side::Old, old))
+                    .unwrap_or("");
+                let c = Cell {
+                    kind: LineKind::Context,
+                    old: Some(old),
+                    new: Some(new),
+                    text,
+                    changes: &[],
+                    no_newline: false,
+                };
                 (Some(c), None)
             }
             Row::Line { f, h, i } => (Some(of(f, h, i)), None),
@@ -409,7 +443,9 @@ impl<S: 'static> View<S> {
         };
         let Some(build) = self.d.annotation.as_ref() else { return line };
         let notes = |side: Side| -> Vec<El> {
-            st.row_line(r, side).map_or(Vec::new(), |n| st.annotations_at(f, LineRef::new(side, n)).map(|a| note(build(s, a), a)).collect())
+            st.row_line(r, side).map_or(Vec::new(), |n| {
+                st.annotations_at(f, LineRef::new(side, n)).map(|a| note(build(s, a), a)).collect()
+            })
         };
         let (old, new) = (notes(Side::Old), notes(Side::New));
         if old.is_empty() && new.is_empty() {
@@ -428,7 +464,11 @@ impl<S: 'static> View<S> {
                     .row_line(r, Side::Old)
                     .into_iter()
                     .flat_map(|n| st.annotations_at(f, LineRef::new(Side::Old, n)))
-                    .chain(st.row_line(r, Side::New).into_iter().flat_map(|n| st.annotations_at(f, LineRef::new(Side::New, n))))
+                    .chain(
+                        st.row_line(r, Side::New)
+                            .into_iter()
+                            .flat_map(|n| st.annotations_at(f, LineRef::new(Side::New, n))),
+                    )
                     .filter(|a| seen.insert(a.id.clone()));
                 out = out.child(c.children(all.map(|a| note(build(s, a), a))));
             }
@@ -502,7 +542,13 @@ impl<S: 'static> View<S> {
         let half = |side: Side, c: Option<Cell<'a>>| -> El {
             let l = &self.look;
             let key = if side == Side::Old { "old" } else { "new" };
-            let mut h = row().key(key).w_frac(if single.is_some() { 1.0 } else { 0.5 }).min_w(0.0).min_h(LINE_H).items_start().self_stretch();
+            let mut h = row()
+                .key(key)
+                .w_frac(if single.is_some() { 1.0 } else { 0.5 })
+                .min_w(0.0)
+                .min_h(LINE_H)
+                .items_start()
+                .self_stretch();
             let Some(c) = c else {
                 return h.fill(l.empty_bg);
             };
@@ -553,10 +599,21 @@ impl<S: 'static> View<S> {
     /// A line-number cell: pressing it selects the line, shift-pressing extends the selection
     /// to it, and dragging down the numbers selects the lines passed.
     #[allow(clippy::too_many_arguments)]
-    fn number(&self, st: &DiffState, i: usize, f: usize, n: Option<u32>, side: Side, kind: LineKind, selected: bool, digits: u32) -> El {
+    fn number(
+        &self,
+        st: &DiffState,
+        i: usize,
+        f: usize,
+        n: Option<u32>,
+        side: Side,
+        kind: LineKind,
+        selected: bool,
+        digits: u32,
+    ) -> El {
         let l = &self.look;
         let unified = st.mode() == DiffMode::Unified;
-        let mut c = row().w(l.number_w(digits)).min_h(LINE_H).self_stretch().px(8.0).justify_end().items_start().a11y_hidden();
+        let mut c =
+            row().w(l.number_w(digits)).min_h(LINE_H).self_stretch().px(8.0).justify_end().items_start().a11y_hidden();
         if !unified {
             c = c.fill(l.gutter_fill(kind, selected));
         }
@@ -635,11 +692,8 @@ impl<S: 'static> View<S> {
     fn code(&self, st: &DiffState, f: usize, c: &Cell<'_>, copy: bool, side: Side, row_key: &str) -> El {
         let l = &self.look;
         let (src, n) = c.source();
-        let syntax: Vec<(Range<usize>, Color)> = st
-            .highlights(f, src, n)
-            .into_iter()
-            .map(|(r, p)| (r, l.syntax.paint(p)))
-            .collect();
+        let syntax: Vec<(Range<usize>, Color)> =
+            st.highlights(f, src, n).into_iter().map(|(r, p)| (r, l.syntax.paint(p))).collect();
         let word = l.tints(c.kind).map(|t| t.word);
         let spans = layer(c.text.len(), &syntax, word.map_or(&[][..], |_| c.changes), word);
         let (shown, spans, pads) = tabbed(c.text, spans, st.wraps());
@@ -650,11 +704,16 @@ impl<S: 'static> View<S> {
             t = pads.into_iter().fold(t, |t, r| t.uncopied(r));
         }
         let (get, cell) = (self.d.get_mut.clone(), format!("{row_key}.{}", side as u8));
-        let mut code = col().grow(1.0).min_w(0.0).pl(CODE_PAD.0).pr(CODE_PAD.1).child(t).on_hover_change(move |s: &mut S, inside, tx: &mut Tx| {
-            if !get(s).hover_text(side, &cell, inside) { tx.live_only(); }
-        });
+        let mut code = col().grow(1.0).min_w(0.0).pl(CODE_PAD.0).pr(CODE_PAD.1).child(t).on_hover_change(
+            move |s: &mut S, inside, tx: &mut Tx| {
+                if !get(s).hover_text(side, &cell, inside) {
+                    tx.live_only();
+                }
+            },
+        );
         if c.no_newline {
-            code = code.child(text("No newline at end of file").font(l.small).color(l.muted).opacity(0.6).key("eof").pb(2.0));
+            code = code
+                .child(text("No newline at end of file").font(l.small).color(l.muted).opacity(0.6).key("eof").pb(2.0));
         }
         code
     }
@@ -708,10 +767,25 @@ impl<S: 'static> View<S> {
             inner = inner.max_w(w).sticky_left(0.0);
         }
         if hidden > 0 {
-            let count = text(if hidden == 1 { "1 unchanged line".to_owned() } else { format!("{hidden} unchanged lines") }).font(l.small).color(l.muted).key("count");
+            let count =
+                text(if hidden == 1 { "1 unchanged line".to_owned() } else { format!("{hidden} unchanged lines") })
+                    .font(l.small)
+                    .color(l.muted)
+                    .key("count");
             let count = if expandable && hidden > EXPAND_STEP {
                 let get = self.d.get_mut.clone();
-                row().key("all").px(6.0).h(24.0).items_center().radius(6.0).hover(l.hover).cursor(Cursor::Pointer).role("button").label(format!("Show all {hidden} lines")).on_press_tx(move |s: &mut S, _| get(s).expand(f, gap, Expand::All)).child(count)
+                row()
+                    .key("all")
+                    .px(6.0)
+                    .h(24.0)
+                    .items_center()
+                    .radius(6.0)
+                    .hover(l.hover)
+                    .cursor(Cursor::Pointer)
+                    .role("button")
+                    .label(format!("Show all {hidden} lines"))
+                    .on_press_tx(move |s: &mut S, _| get(s).expand(f, gap, Expand::All))
+                    .child(count)
             } else {
                 row().key("all").px(6.0).child(count)
             };
@@ -742,7 +816,12 @@ impl<S: 'static> View<S> {
         } else {
             "No changes"
         };
-        let mut inner = row().key("inner").h(NOTE_H).items_center().pl(self.gutter_w(st, f) + CODE_PAD.0).child(text(msg).font(l.small).color(l.muted));
+        let mut inner = row()
+            .key("inner")
+            .h(NOTE_H)
+            .items_center()
+            .pl(self.gutter_w(st, f) + CODE_PAD.0)
+            .child(text(msg).font(l.small).color(l.muted));
         if let Some(w) = self.view_w(st, false) {
             inner = inner.max_w(w).sticky_left(0.0);
         }
@@ -762,7 +841,8 @@ impl<S: 'static> View<S> {
             .hover(l.hover)
             .cursor(Cursor::Pointer)
             .role("button")
-            .label(if collapsed { "Expand file" } else { "Collapse file" }).expanded(!collapsed)
+            .label(if collapsed { "Expand file" } else { "Collapse file" })
+            .expanded(!collapsed)
             .child(icon(if collapsed { l.triangle_right } else { l.triangle_down }, 16.0).color(l.muted))
             .on_press_tx(move |s: &mut S, tx| {
                 let st = get(s);
@@ -775,9 +855,10 @@ impl<S: 'static> View<S> {
         let mut name = row().key("path").items_center().gap(6.0).min_w(0.0).shrink();
         let (old, new) = (file.old_path.as_deref(), file.new_path.as_deref());
         name = match (file.status, old, new) {
-            (FileStatus::Renamed | FileStatus::Copied, Some(a), Some(b)) => {
-                name.child(path(a, l.muted).key("old")).child(text("→").font(l.label).color(l.faint).key("arrow")).child(path(b, l.text).key("new"))
-            }
+            (FileStatus::Renamed | FileStatus::Copied, Some(a), Some(b)) => name
+                .child(path(a, l.muted).key("old"))
+                .child(text("→").font(l.label).color(l.faint).key("arrow"))
+                .child(path(b, l.text).key("new")),
             _ => name.child(path(file.path(), l.text).key("new")),
         };
         let status = match file.status {
@@ -787,7 +868,8 @@ impl<S: 'static> View<S> {
             FileStatus::Copied => Some(("Copied", l.muted)),
             FileStatus::Modified => None,
         };
-        let mut inner = row().key("inner").w_full().grow(1.0).px(10.0).gap(8.0).items_center().child(toggle).child(name);
+        let mut inner =
+            row().key("inner").w_full().grow(1.0).px(10.0).gap(8.0).items_center().child(toggle).child(name);
         if let Some((word, color)) = status {
             inner = inner.child(text(word).font(l.small).color(color).key("status"));
         }
@@ -832,14 +914,16 @@ fn note(el: El, a: &Annotation) -> El {
 /// Spans for a line from its syntax colours and the byte ranges given `bg` (word changes):
 /// cut where either starts or ends, so each piece has one colour and one background.
 fn layer(len: usize, syntax: &[(Range<usize>, Color)], words: &[Range<usize>], bg: Option<Color>) -> Vec<Span> {
-    let mut cuts: Vec<usize> = syntax.iter().flat_map(|(r, _)| [r.start, r.end]).chain(words.iter().flat_map(|r| [r.start, r.end])).collect();
+    let mut cuts: Vec<usize> =
+        syntax.iter().flat_map(|(r, _)| [r.start, r.end]).chain(words.iter().flat_map(|r| [r.start, r.end])).collect();
     cuts.retain(|&c| c <= len);
     cuts.sort_unstable();
     cuts.dedup();
     let mut out: Vec<Span> = Vec::new();
     for w in cuts.windows(2) {
         let (a, b) = (w[0], w[1]);
-        let color = syntax.get(syntax.partition_point(|(r, _)| r.end <= a)).filter(|(r, _)| r.start <= a).map(|(_, c)| *c);
+        let color =
+            syntax.get(syntax.partition_point(|(r, _)| r.end <= a)).filter(|(r, _)| r.start <= a).map(|(_, c)| *c);
         let on = words.get(words.partition_point(|r| r.end <= a)).is_some_and(|r| r.start <= a);
         let bg = bg.filter(|_| on);
         if color.is_none() && bg.is_none() {
@@ -909,11 +993,13 @@ mod tests {
         let green = Color::BLACK;
         // "let total = 1;" with `let` and `1` coloured, `total` changed.
         let spans = layer(14, &[(0..3, red), (12..13, red)], &[4..9], Some(green));
-        let got: Vec<(u32, u32, Option<Color>, Option<Color>)> = spans.iter().map(|s| (s.start, s.end, s.color, s.bg)).collect();
+        let got: Vec<(u32, u32, Option<Color>, Option<Color>)> =
+            spans.iter().map(|s| (s.start, s.end, s.color, s.bg)).collect();
         assert_eq!(got, vec![(0, 3, Some(red), None), (4, 9, None, Some(green)), (12, 13, Some(red), None)]);
         // A change across a coloured token splits it.
         let spans = layer(10, &[(0..6, red)], &[3..8], Some(green));
-        let got: Vec<(u32, u32, Option<Color>, Option<Color>)> = spans.iter().map(|s| (s.start, s.end, s.color, s.bg)).collect();
+        let got: Vec<(u32, u32, Option<Color>, Option<Color>)> =
+            spans.iter().map(|s| (s.start, s.end, s.color, s.bg)).collect();
         assert_eq!(got, vec![(0, 3, Some(red), None), (3, 6, Some(red), Some(green)), (6, 8, None, Some(green))]);
     }
 
@@ -923,7 +1009,8 @@ mod tests {
         assert_eq!(shown, "a\t  b\t  \t   c");
         assert_eq!(pads, vec![2..4, 6..8, 9..12]);
         assert_eq!(&shown[spans[0].start as usize..spans[0].end as usize], "b");
-        let copied: String = shown.char_indices().filter(|(i, _)| !pads.iter().any(|r| r.contains(i))).map(|(_, c)| c).collect();
+        let copied: String =
+            shown.char_indices().filter(|(i, _)| !pads.iter().any(|r| r.contains(i))).map(|(_, c)| c).collect();
         assert_eq!(copied, "a\tb\t\tc");
     }
 
@@ -932,7 +1019,8 @@ mod tests {
         let (shown, spans, pads) = tabbed("a.b(c) x/ y", vec![Span::new(2, 3)], true);
         assert_eq!(shown, "a.\u{200B}b(\u{200B}c) x/ y");
         assert_eq!(&shown[spans[0].start as usize..spans[0].end as usize], "b");
-        let copied: String = shown.char_indices().filter(|(i, _)| !pads.iter().any(|r| r.contains(i))).map(|(_, c)| c).collect();
+        let copied: String =
+            shown.char_indices().filter(|(i, _)| !pads.iter().any(|r| r.contains(i))).map(|(_, c)| c).collect();
         assert_eq!(copied, "a.b(c) x/ y");
     }
 }

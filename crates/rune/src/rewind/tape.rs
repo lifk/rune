@@ -16,7 +16,13 @@ const MASK_BITS: u32 = 5;
 
 pub(crate) fn quantize(rect: [f32; 4], opacity: f32) -> Q {
     let q = |v: f32, k: f32| (v * k).round().clamp(i32::MIN as f32, i32::MAX as f32) as i32;
-    [q(rect[0], 100.0), q(rect[1], 100.0), q(rect[2], 100.0), q(rect[3], 100.0), q(opacity, 1000.0)]
+    [
+        q(rect[0], 100.0),
+        q(rect[1], 100.0),
+        q(rect[2], 100.0),
+        q(rect[3], 100.0),
+        q(opacity, 1000.0),
+    ]
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -51,10 +57,22 @@ pub(crate) struct Tape {
 impl Tape {
     pub(crate) fn new(window: f64, max_bytes: usize) -> Tape {
         Tape {
-            window, max_bytes, paused: false, viewport: (0.0, 0.0),
-            ids: HashMap::default(), names: Vec::new(), name_bytes: 0,
-            last: Vec::new(), seen: Vec::new(), present: Vec::new(), next_present: Vec::new(), serial: 0,
-            open: None, frames: VecDeque::new(), words: VecDeque::new(), base: Vec::new(),
+            window,
+            max_bytes,
+            paused: false,
+            viewport: (0.0, 0.0),
+            ids: HashMap::default(),
+            names: Vec::new(),
+            name_bytes: 0,
+            last: Vec::new(),
+            seen: Vec::new(),
+            present: Vec::new(),
+            next_present: Vec::new(),
+            serial: 0,
+            open: None,
+            frames: VecDeque::new(),
+            words: VecDeque::new(),
+            base: Vec::new(),
         }
     }
 
@@ -83,7 +101,9 @@ impl Tape {
             }
         };
         let i = id as usize;
-        if self.seen[i] == self.serial { return; }
+        if self.seen[i] == self.serial {
+            return;
+        }
         // On screen last frame: sampled in the frame before this one.
         let was = self.seen[i] != 0 && self.seen[i] == self.serial.wrapping_sub(1);
         self.seen[i] = self.serial;
@@ -91,19 +111,27 @@ impl Tape {
         let old = self.last[i];
         let mut mask = 0u32;
         for f in 0..FIELDS {
-            if !was || old[f] != q[f] { mask |= 1 << f; }
+            if !was || old[f] != q[f] {
+                mask |= 1 << f;
+            }
         }
-        if mask == 0 { return; }
+        if mask == 0 {
+            return;
+        }
         self.words.push_back(id << MASK_BITS | mask);
         for f in 0..FIELDS {
-            if mask & (1 << f) != 0 { self.words.push_back(q[f] as u32); }
+            if mask & (1 << f) != 0 {
+                self.words.push_back(q[f] as u32);
+            }
         }
         self.last[i] = q;
     }
 
     /// Ends the frame: elements on screen last frame and not this one went away.
     pub(crate) fn end(&mut self) {
-        let Some((t, start)) = self.open.take() else { return };
+        let Some((t, start)) = self.open.take() else {
+            return;
+        };
         for &id in &self.present {
             if self.seen[id as usize] != self.serial {
                 self.words.push_back(id << MASK_BITS);
@@ -116,17 +144,25 @@ impl Tape {
     }
 
     fn evict(&mut self, now: f64) {
-        while self.frames.len() > 1 && (self.frames[0].t < now - self.window || self.bytes() > self.max_bytes) {
+        while self.frames.len() > 1
+            && (self.frames[0].t < now - self.window || self.bytes() > self.max_bytes)
+        {
             let mark = self.frames.pop_front().expect("a frame");
             let mut k = 0;
             while k < mark.len as usize {
                 let head = self.words[k];
                 let (id, mask) = ((head >> MASK_BITS) as usize, head & ((1 << MASK_BITS) - 1));
                 k += 1;
-                if mask == 0 { self.base[id] = None; continue; }
+                if mask == 0 {
+                    self.base[id] = None;
+                    continue;
+                }
                 let mut q = self.base[id].unwrap_or([0; FIELDS]);
                 for (f, v) in q.iter_mut().enumerate() {
-                    if mask & (1 << f) != 0 { *v = self.words[k] as i32; k += 1; }
+                    if mask & (1 << f) != 0 {
+                        *v = self.words[k] as i32;
+                        k += 1;
+                    }
                 }
                 self.base[id] = Some(q);
             }
@@ -136,7 +172,9 @@ impl Tape {
 
     /// What the recording holds, roughly: deltas, frame marks, names and per-element state.
     pub(crate) fn bytes(&self) -> usize {
-        self.words.len() * 4 + self.frames.len() * std::mem::size_of::<Mark>() + self.name_bytes
+        self.words.len() * 4
+            + self.frames.len() * std::mem::size_of::<Mark>()
+            + self.name_bytes
             + self.names.len() * (std::mem::size_of::<String>() + 2 * std::mem::size_of::<Q>() + 16)
     }
 
@@ -149,7 +187,10 @@ impl Tape {
             k += 1;
             let mut q = [0; FIELDS];
             for (f, v) in q.iter_mut().enumerate() {
-                if mask & (1 << f) != 0 { *v = words[k] as i32; k += 1; }
+                if mask & (1 << f) != 0 {
+                    *v = words[k] as i32;
+                    k += 1;
+                }
             }
             each(id, mask, &q);
         }

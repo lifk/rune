@@ -39,7 +39,11 @@ fn launch(families: (&str, &str)) -> Runtime<()> {
 fn widths(rt: &Runtime<()>) -> [f32; 3] {
     let elements = rt.elements();
     ["label", "memo-label", "code"].map(|key| {
-        elements.iter().find(|e| e.key.as_deref() == Some(key)).unwrap_or_else(|| panic!("{key}")).target[2]
+        elements
+            .iter()
+            .find(|e| e.key.as_deref() == Some(key))
+            .unwrap_or_else(|| panic!("{key}"))
+            .target[2]
     })
 }
 
@@ -59,17 +63,31 @@ fn a_switch_measures_like_a_fresh_launch_and_rebuilds_memoized_subtrees() {
     let mut rt = launch(LAUNCH);
     let before = widths(&rt);
     let builds = MEMO_BUILDS.get();
-    assert!(switch(&mut rt, "IBM Plex Mono", "Inter"), "a switch asks for a frame");
+    assert!(
+        switch(&mut rt, "IBM Plex Mono", "Inter"),
+        "a switch asks for a frame"
+    );
     let after = widths(&rt);
     assert_eq!(rt.font_families(), ("IBM Plex Mono", "Inter"));
     for i in 0..3 {
-        assert!((after[i] - before[i]).abs() > 1.0, "width {i} changed: {before:?} -> {after:?}");
+        assert!(
+            (after[i] - before[i]).abs() > 1.0,
+            "width {i} changed: {before:?} -> {after:?}"
+        );
     }
     assert_eq!(after, fresh, "matches a fresh launch with those families");
-    assert_eq!(MEMO_BUILDS.get(), builds + 1, "the memoized subtree built again, once");
+    assert_eq!(
+        MEMO_BUILDS.get(),
+        builds + 1,
+        "the memoized subtree built again, once"
+    );
     assert!(rt.stats.shaped > 0, "text shaped again in the new families");
     let (w, _) = rune::text::measure("Hamburgefonstiv 0123", &[], STYLE, None);
-    assert!((w - after[0]).abs() < 0.51, "measure follows: {w} vs {}", after[0]);
+    assert!(
+        (w - after[0]).abs() < 0.51,
+        "measure follows: {w} vs {}",
+        after[0]
+    );
 
     // And back again.
     switch(&mut rt, LAUNCH.0, LAUNCH.1);
@@ -97,7 +115,11 @@ fn every_runtime_on_the_thread_follows() {
     switch(&mut a, "IBM Plex Mono", "IBM Plex Mono");
     b.frame(1.0 / 120.0);
     assert_eq!(widths(&a), fresh);
-    assert_eq!(widths(&b), fresh, "another window follows on its next frame");
+    assert_eq!(
+        widths(&b),
+        fresh,
+        "another window follows on its next frame"
+    );
 }
 
 #[test]
@@ -127,13 +149,26 @@ fn a_window_opened_after_a_switch_starts_in_the_new_families() {
     let mut first = open_window();
     first.frame(0.0);
     let launch_width = rune::text::measure("Hamburgefonstiv 0123", &[], STYLE, None).0;
-    assert!((launch_width - switched_width).abs() > 1.0, "the families measure apart");
+    assert!(
+        (launch_width - switched_width).abs() > 1.0,
+        "the families measure apart"
+    );
     switch(&mut first, switched.0, switched.1);
     let mut second = open_window();
     let (w, _) = rune::text::measure("Hamburgefonstiv 0123", &[], STYLE, None);
-    assert_eq!(w, switched_width, "measure stays in the chosen families before its first frame");
-    assert_eq!(second.font_families(), switched, "the new window starts in the chosen families");
+    assert_eq!(
+        w, switched_width,
+        "measure stays in the chosen families before its first frame"
+    );
+    assert_eq!(
+        second.font_families(),
+        switched,
+        "the new window starts in the chosen families"
+    );
     second.frame(0.0);
     assert_eq!(widths(&second), fresh);
-    assert_eq!(rune::text::measure("Hamburgefonstiv 0123", &[], STYLE, None).0, switched_width);
+    assert_eq!(
+        rune::text::measure("Hamburgefonstiv 0123", &[], STYLE, None).0,
+        switched_width
+    );
 }

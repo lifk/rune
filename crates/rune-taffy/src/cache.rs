@@ -9,8 +9,8 @@
 use taffy::geometry::{Point, Rect, Size};
 use taffy::style::AvailableSpace;
 use taffy::tree::{
-    Baselines, ClearState, CollapsibleMarginSet, LayoutInput, LayoutOutput, OofCandidates, RequestedAxis, RunMode,
-    SizingMode,
+    Baselines, ClearState, CollapsibleMarginSet, LayoutInput, LayoutOutput, OofCandidates,
+    RequestedAxis, RunMode, SizingMode,
 };
 
 const CACHE_SIZE: usize = 9;
@@ -60,12 +60,14 @@ fn available_space_cache_key(input: AvailableSpace) -> u32 {
 
 #[inline(always)]
 fn mixed_cache_key(kd: Option<f32>, avs: AvailableSpace) -> u32 {
-    kd.map(f32::to_bits).unwrap_or_else(|| available_space_cache_key(avs))
+    kd.map(f32::to_bits)
+        .unwrap_or_else(|| available_space_cache_key(avs))
 }
 
 #[inline(always)]
 fn size_mixed_cache_key(kd: Size<Option<f32>>, avs: Size<AvailableSpace>) -> u64 {
-    (mixed_cache_key(kd.width, avs.width) as u64) << 32 | mixed_cache_key(kd.height, avs.height) as u64
+    (mixed_cache_key(kd.width, avs.width) as u64) << 32
+        | mixed_cache_key(kd.height, avs.height) as u64
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,11 +85,14 @@ impl CacheKey {
             RequestedAxis::Vertical => SIGN_BIT_2,
             RequestedAxis::Both => SIGN_BIT_1 | SIGN_BIT_2,
         };
-        let def_w = input.known_dimensions_are_definite.width || input.known_dimensions.width.is_none();
-        let def_h = input.known_dimensions_are_definite.height || input.known_dimensions.height.is_none();
+        let def_w =
+            input.known_dimensions_are_definite.width || input.known_dimensions.width.is_none();
+        let def_h =
+            input.known_dimensions_are_definite.height || input.known_dimensions.height.is_none();
         Self {
             kd_available_space: size_mixed_cache_key(input.known_dimensions, input.available_space),
-            parent_size: (size_option_cache_key(input.parent_size) & NON_SIGN_BITS_MASK) | extra_bits,
+            parent_size: (size_option_cache_key(input.parent_size) & NON_SIGN_BITS_MASK)
+                | extra_bits,
             kd_def: (def_w as u8) | ((def_h as u8) << 1),
         }
     }
@@ -105,7 +110,8 @@ impl CacheKey {
     #[inline(always)]
     fn size_is_valid_for(entry_parent_size: u64, query_parent_size: u64) -> bool {
         let entry_axis = Self::requested_axis_bits(entry_parent_size);
-        entry_axis == BOTH_SIGN_BITS_MASK || entry_axis == Self::requested_axis_bits(query_parent_size)
+        entry_axis == BOTH_SIGN_BITS_MASK
+            || entry_axis == Self::requested_axis_bits(query_parent_size)
     }
 }
 
@@ -213,10 +219,9 @@ impl CompactCache {
             0 => ((self.final_entry.meta >> M0_DEF_SHIFT) & 0b11) as u8,
             1 => ((self.final_entry.meta >> M1_DEF_SHIFT) & 0b11) as u8,
             CACHE_SIZE => ((self.final_entry.meta >> FINAL_DEF_SHIFT) & 0b11) as u8,
-            _ => self
-                .overflow
-                .as_ref()
-                .map_or(0, |ov| ((ov.kd_defs >> ((slot - INLINE_MEASURES) * 2)) & 0b11) as u8),
+            _ => self.overflow.as_ref().map_or(0, |ov| {
+                ((ov.kd_defs >> ((slot - INLINE_MEASURES) * 2)) & 0b11) as u8
+            }),
         }
     }
 
@@ -224,10 +229,17 @@ impl CompactCache {
     fn set_kd_def(&mut self, slot: usize, kd_def: u8) {
         let bits = (kd_def & 0b11) as u32;
         match slot {
-            0 => self.final_entry.meta = (self.final_entry.meta & !(0b11 << M0_DEF_SHIFT)) | (bits << M0_DEF_SHIFT),
-            1 => self.final_entry.meta = (self.final_entry.meta & !(0b11 << M1_DEF_SHIFT)) | (bits << M1_DEF_SHIFT),
+            0 => {
+                self.final_entry.meta =
+                    (self.final_entry.meta & !(0b11 << M0_DEF_SHIFT)) | (bits << M0_DEF_SHIFT)
+            }
+            1 => {
+                self.final_entry.meta =
+                    (self.final_entry.meta & !(0b11 << M1_DEF_SHIFT)) | (bits << M1_DEF_SHIFT)
+            }
             CACHE_SIZE => {
-                self.final_entry.meta = (self.final_entry.meta & !(0b11 << FINAL_DEF_SHIFT)) | (bits << FINAL_DEF_SHIFT);
+                self.final_entry.meta = (self.final_entry.meta & !(0b11 << FINAL_DEF_SHIFT))
+                    | (bits << FINAL_DEF_SHIFT);
             }
             _ => {
                 let shift = (slot - INLINE_MEASURES) * 2;
@@ -264,7 +276,9 @@ impl CompactCache {
         if index < INLINE_MEASURES {
             Some(&self.measures[index])
         } else {
-            self.overflow.as_ref().map(|ov| &ov.measures[index - INLINE_MEASURES])
+            self.overflow
+                .as_ref()
+                .map(|ov| &ov.measures[index - INLINE_MEASURES])
         }
     }
 
@@ -273,7 +287,8 @@ impl CompactCache {
         if index < INLINE_MEASURES {
             &mut self.measures[index]
         } else {
-            &mut self.overflow.get_or_insert_with(Default::default).measures[index - INLINE_MEASURES]
+            &mut self.overflow.get_or_insert_with(Default::default).measures
+                [index - INLINE_MEASURES]
         }
     }
 
@@ -311,7 +326,8 @@ impl CompactCache {
                     right: self.final_entry.overflow_br.width,
                     bottom: self.final_entry.overflow_br.height,
                 };
-                let mut out = LayoutOutput::from_sizes_and_baselines(self.final_entry.size, rect, baselines);
+                let mut out =
+                    LayoutOutput::from_sizes_and_baselines(self.final_entry.size, rect, baselines);
                 if let Some(c) = cold {
                     out.top_margin = c.top_margin;
                     out.bottom_margin = c.bottom_margin;
@@ -356,7 +372,9 @@ impl CompactCache {
                     if (measure_mask & (1 << index)) == 0 {
                         continue;
                     }
-                    let Some(entry) = self.measure_slot(index) else { continue };
+                    let Some(entry) = self.measure_slot(index) else {
+                        continue;
+                    };
                     if entry.kd_available_space == key.kd_available_space
                         && self.kd_def(index) == key.kd_def
                         && CacheKey::x_axis_parent_size(entry.parent_size)
@@ -409,8 +427,13 @@ impl CompactCache {
                     || layout_output.bottom_margin != CollapsibleMarginSet::ZERO
                     || !layout_output.oof_candidates.is_empty();
                 if needs_cold {
-                    self.overflow.get_or_insert_with(Default::default).cold_final = Some(ColdFinalOutput {
-                        overflow_lt: Point { x: r.left, y: r.top },
+                    self.overflow
+                        .get_or_insert_with(Default::default)
+                        .cold_final = Some(ColdFinalOutput {
+                        overflow_lt: Point {
+                            x: r.left,
+                            y: r.top,
+                        },
                         baseline_last: layout_output.baselines.last,
                         top_margin: layout_output.top_margin,
                         bottom_margin: layout_output.bottom_margin,
@@ -430,7 +453,11 @@ impl CompactCache {
                 }
                 let measure_mask = self.final_entry.meta & MEASURE_MASK_BITS;
                 if measure_mask != 0 {
-                    let limit = if self.overflow.is_some() { CACHE_SIZE } else { INLINE_MEASURES };
+                    let limit = if self.overflow.is_some() {
+                        CACHE_SIZE
+                    } else {
+                        INLINE_MEASURES
+                    };
                     for index in 0..limit {
                         if (measure_mask & (1 << index)) == 0 {
                             continue;
@@ -455,7 +482,8 @@ impl CompactCache {
                     }
                 }
                 let entry_index = next as usize;
-                self.final_entry.meta |= (1 << entry_index) | (1 << (RECENT_SHIFT + entry_index as u32));
+                self.final_entry.meta |=
+                    (1 << entry_index) | (1 << (RECENT_SHIFT + entry_index as u32));
                 self.set_kd_def(entry_index, key.kd_def);
                 *self.measure_slot_mut(entry_index) = CompactMeasureEntry {
                     kd_available_space: key.kd_available_space,

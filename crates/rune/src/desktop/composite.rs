@@ -147,48 +147,107 @@ impl Composite {
     pub(super) fn new(gpu: &Gpu, backdrop: &Path, size: (u32, u32)) -> Composite {
         let device = &gpu.device;
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("desktop"), source: wgpu::ShaderSource::Wgsl(SHADER.into()),
+            label: Some("desktop"),
+            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
         });
         let fragment = wgpu::ShaderStages::FRAGMENT;
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("desktop"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
-                    binding: 0, visibility: wgpu::ShaderStages::VERTEX | fragment, count: None,
-                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | fragment,
+                    count: None,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
                 },
                 wgpu::BindGroupLayoutEntry {
-                    binding: 1, visibility: fragment, count: None,
-                    ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2, multisampled: false },
+                    binding: 1,
+                    visibility: fragment,
+                    count: None,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
                 },
-                wgpu::BindGroupLayoutEntry { binding: 2, visibility: fragment, count: None, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering) },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: fragment,
+                    count: None,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                },
             ],
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("desktop"), bind_group_layouts: &[Some(&layout)], immediate_size: 0,
+            label: Some("desktop"),
+            bind_group_layouts: &[Some(&layout)],
+            immediate_size: 0,
         });
-        let pipeline = |vs: &str, fs: &str, format: wgpu::TextureFormat, blend: Option<wgpu::BlendState>| {
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some(fs), layout: Some(&pipeline_layout),
-                vertex: wgpu::VertexState { module: &shader, entry_point: Some(vs), compilation_options: Default::default(), buffers: &[] },
-                primitive: Default::default(), depth_stencil: None, multisample: Default::default(),
-                fragment: Some(wgpu::FragmentState { module: &shader, entry_point: Some(fs), compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState { format, blend, write_mask: wgpu::ColorWrites::ALL })] }),
-                multiview_mask: None, cache: None,
-            })
-        };
+        let pipeline =
+            |vs: &str, fs: &str, format: wgpu::TextureFormat, blend: Option<wgpu::BlendState>| {
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some(fs),
+                    layout: Some(&pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &shader,
+                        entry_point: Some(vs),
+                        compilation_options: Default::default(),
+                        buffers: &[],
+                    },
+                    primitive: Default::default(),
+                    depth_stencil: None,
+                    multisample: Default::default(),
+                    fragment: Some(wgpu::FragmentState {
+                        module: &shader,
+                        entry_point: Some(fs),
+                        compilation_options: Default::default(),
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format,
+                            blend,
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                    }),
+                    multiview_mask: None,
+                    cache: None,
+                })
+            };
         let over = Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING);
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("desktop shadow"), mag_filter: wgpu::FilterMode::Linear, min_filter: wgpu::FilterMode::Linear, ..Default::default()
+            label: Some("desktop shadow"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
         });
         let pixels = fit_backdrop(backdrop, size).unwrap_or_else(|e| die(&e));
-        let (texture, view) = new_texture(device, "desktop backdrop", size, OFFSCREEN_FORMAT, wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST);
+        let (texture, view) = new_texture(
+            device,
+            "desktop backdrop",
+            size,
+            OFFSCREEN_FORMAT,
+            wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        );
         gpu.queue.write_texture(
-            wgpu::TexelCopyTextureInfo { texture: &texture, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
             &pixels,
-            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(size.0 * 4), rows_per_image: Some(size.1) },
-            wgpu::Extent3d { width: size.0, height: size.1, depth_or_array_layers: 1 },
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(size.0 * 4),
+                rows_per_image: Some(size.1),
+            },
+            wgpu::Extent3d {
+                width: size.0,
+                height: size.1,
+                depth_or_array_layers: 1,
+            },
         );
         let uniform = uniform_buffer(device);
         let backdrop = bind(device, &layout, &uniform, &view, &sampler);
@@ -197,17 +256,35 @@ impl Composite {
             window: pipeline("vs_window", "fs_window", OFFSCREEN_FORMAT, over),
             shadow: pipeline("vs_shadow", "fs_shadow", OFFSCREEN_FORMAT, over),
             mask: pipeline("vs_full", "fs_mask", MASK_FORMAT, None),
-            blur: [pipeline("vs_full", "fs_blur_x", MASK_FORMAT, None), pipeline("vs_full", "fs_blur_y", MASK_FORMAT, None)],
-            layout, sampler, backdrop,
+            blur: [
+                pipeline("vs_full", "fs_blur_x", MASK_FORMAT, None),
+                pipeline("vs_full", "fs_blur_y", MASK_FORMAT, None),
+            ],
+            layout,
+            sampler,
+            backdrop,
         }
     }
 
     /// The backdrop, then each window's shadow and pixels, bottom first.
-    pub(super) fn draw<'a>(&self, enc: &mut wgpu::CommandEncoder, target: &wgpu::TextureView, windows: impl Iterator<Item = (&'a Slot, bool)> + Clone) {
+    pub(super) fn draw<'a>(
+        &self,
+        enc: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        windows: impl Iterator<Item = (&'a Slot, bool)> + Clone,
+    ) {
         for (slot, _) in windows.clone().filter(|(_, shadow)| *shadow) {
-            let passes = [(&self.mask, &slot.window, 0), (&self.blur[0], &slot.masks[0].2, 1), (&self.blur[1], &slot.masks[1].2, 0)];
+            let passes = [
+                (&self.mask, &slot.window, 0),
+                (&self.blur[0], &slot.masks[0].2, 1),
+                (&self.blur[1], &slot.masks[1].2, 0),
+            ];
             for (pipeline, source, into) in passes {
-                let mut pass = begin(enc, &slot.masks[into].1, wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT));
+                let mut pass = begin(
+                    enc,
+                    &slot.masks[into].1,
+                    wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                );
                 pass.set_pipeline(pipeline);
                 pass.set_bind_group(0, source, &[]);
                 pass.draw(0..3, 0..1);
@@ -250,9 +327,17 @@ impl Slot {
         let non_srgb = OFFSCREEN_FORMAT.remove_srgb_suffix();
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("desktop window"),
-            size: wgpu::Extent3d { width: px.0.max(1), height: px.1.max(1), depth_or_array_layers: 1 },
-            mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
-            format: OFFSCREEN_FORMAT, usage, view_formats: &[non_srgb],
+            size: wgpu::Extent3d {
+                width: px.0.max(1),
+                height: px.1.max(1),
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: OFFSCREEN_FORMAT,
+            usage,
+            view_formats: &[non_srgb],
         });
         let view = texture.create_view(&Default::default());
         let srgb_blend_view = texture.create_view(&wgpu::TextureViewDescriptor {
@@ -261,7 +346,10 @@ impl Slot {
         });
         // Room for the key window's blur, whole mask texels on each side.
         let pad = ((KEY_SHADOW.0 * scale * 3.0) / DOWN as f32).ceil() as u32 * DOWN;
-        let mask = ((px.0 + 2 * pad).div_ceil(DOWN), (px.1 + 2 * pad).div_ceil(DOWN));
+        let mask = (
+            (px.0 + 2 * pad).div_ceil(DOWN),
+            (px.1 + 2 * pad).div_ceil(DOWN),
+        );
         let uniform = uniform_buffer(device);
         let masks = [0, 1].map(|_| {
             let (t, v) = new_texture(device, "desktop shadow", mask, MASK_FORMAT, usage);
@@ -269,7 +357,17 @@ impl Slot {
             (t, v, b)
         });
         let window = bind(device, &comp.layout, &uniform, &view, &comp.sampler);
-        Slot { px, view, srgb_blend_view, _texture: texture, masks, mask, pad, uniform, window }
+        Slot {
+            px,
+            view,
+            srgb_blend_view,
+            _texture: texture,
+            masks,
+            mask,
+            pad,
+            uniform,
+            window,
+        }
     }
 
     pub(super) fn write(&self, queue: &wgpu::Queue, uniform: Uniform) {
@@ -277,20 +375,49 @@ impl Slot {
     }
 }
 
-fn begin<'e>(enc: &'e mut wgpu::CommandEncoder, view: &wgpu::TextureView, load: wgpu::LoadOp<wgpu::Color>) -> wgpu::RenderPass<'e> {
+fn begin<'e>(
+    enc: &'e mut wgpu::CommandEncoder,
+    view: &wgpu::TextureView,
+    load: wgpu::LoadOp<wgpu::Color>,
+) -> wgpu::RenderPass<'e> {
     enc.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("desktop"),
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-            view, depth_slice: None, resolve_target: None, ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
+            view,
+            depth_slice: None,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load,
+                store: wgpu::StoreOp::Store,
+            },
         })],
-        depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None, multiview_mask: None,
+        depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
+        multiview_mask: None,
     })
 }
 
-fn new_texture(device: &wgpu::Device, label: &str, size: (u32, u32), format: wgpu::TextureFormat, usage: wgpu::TextureUsages) -> (wgpu::Texture, wgpu::TextureView) {
+fn new_texture(
+    device: &wgpu::Device,
+    label: &str,
+    size: (u32, u32),
+    format: wgpu::TextureFormat,
+    usage: wgpu::TextureUsages,
+) -> (wgpu::Texture, wgpu::TextureView) {
     let texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some(label), size: wgpu::Extent3d { width: size.0.max(1), height: size.1.max(1), depth_or_array_layers: 1 },
-        mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2, format, usage, view_formats: &[],
+        label: Some(label),
+        size: wgpu::Extent3d {
+            width: size.0.max(1),
+            height: size.1.max(1),
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage,
+        view_formats: &[],
     });
     let view = texture.create_view(&Default::default());
     (texture, view)
@@ -298,18 +425,36 @@ fn new_texture(device: &wgpu::Device, label: &str, size: (u32, u32), format: wgp
 
 fn uniform_buffer(device: &wgpu::Device) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("desktop window"), size: std::mem::size_of::<Uniform>() as u64,
-        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
+        label: Some("desktop window"),
+        size: std::mem::size_of::<Uniform>() as u64,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
     })
 }
 
-fn bind(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, uniform: &wgpu::Buffer, view: &wgpu::TextureView, sampler: &wgpu::Sampler) -> wgpu::BindGroup {
+fn bind(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    uniform: &wgpu::Buffer,
+    view: &wgpu::TextureView,
+    sampler: &wgpu::Sampler,
+) -> wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("desktop"), layout,
+        label: Some("desktop"),
+        layout,
         entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: uniform.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(view) },
-            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(sampler) },
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Sampler(sampler),
+            },
         ],
     })
 }
@@ -319,19 +464,35 @@ pub(super) fn fit_backdrop(path: &Path, (w, h): (u32, u32)) -> Result<Vec<u8>, S
     let fail = |e: ::image::ImageError| format!("{}: {e}", path.display());
     let (iw, ih) = ::image::image_dimensions(path).map_err(fail)?;
     if iw.max(ih) > MAX_BACKDROP {
-        return Err(format!("{}: {iw}x{ih} pixels; a backdrop is at most {MAX_BACKDROP} pixels a side", path.display()));
+        return Err(format!(
+            "{}: {iw}x{ih} pixels; a backdrop is at most {MAX_BACKDROP} pixels a side",
+            path.display()
+        ));
     }
     let image = ::image::open(path).map_err(fail)?.into_rgba8();
     let (iw, ih) = image.dimensions();
     // The centred part of the source with the output's aspect, then scaled to the output.
     let (cw, ch) = if u64::from(iw) * u64::from(h) > u64::from(ih) * u64::from(w) {
-        (((f64::from(ih) * f64::from(w) / f64::from(h)).round() as u32).clamp(1, iw), ih)
+        (
+            ((f64::from(ih) * f64::from(w) / f64::from(h)).round() as u32).clamp(1, iw),
+            ih,
+        )
     } else {
-        (iw, ((f64::from(iw) * f64::from(h) / f64::from(w)).round() as u32).clamp(1, ih))
+        (
+            iw,
+            ((f64::from(iw) * f64::from(h) / f64::from(w)).round() as u32).clamp(1, ih),
+        )
     };
     let crop = ::image::imageops::crop_imm(&image, (iw - cw) / 2, (ih - ch) / 2, cw, ch);
-    let image = if (cw, ch) == (w, h) { crop.to_image() } else { ::image::imageops::resize(&*crop, w, h, ::image::imageops::FilterType::CatmullRom) };
-    let len = (w as usize).checked_mul(h as usize).and_then(|n| n.checked_mul(4)).ok_or_else(|| format!("{w}x{h} pixels is too large"))?;
+    let image = if (cw, ch) == (w, h) {
+        crop.to_image()
+    } else {
+        ::image::imageops::resize(&*crop, w, h, ::image::imageops::FilterType::CatmullRom)
+    };
+    let len = (w as usize)
+        .checked_mul(h as usize)
+        .and_then(|n| n.checked_mul(4))
+        .ok_or_else(|| format!("{w}x{h} pixels is too large"))?;
     let mut out = Vec::with_capacity(len);
     for p in image.pixels() {
         let [r, g, b, a] = p.0;
@@ -349,4 +510,3 @@ pub(super) fn pixels(size: (f32, f32), scale: f32, max: u32) -> Option<(u32, u32
     };
     Some((side(size.0)?, side(size.1)?))
 }
-

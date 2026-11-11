@@ -28,8 +28,13 @@ unsafe impl Send for Warmed {}
 enum State {
     #[default]
     Idle,
-    Making { until: Instant },
-    Ready { warmed: Warmed, until: Instant },
+    Making {
+        until: Instant,
+    },
+    Ready {
+        warmed: Warmed,
+        until: Instant,
+    },
 }
 
 struct Slot {
@@ -39,7 +44,11 @@ struct Slot {
     live: Mutex<Weak<Gpu>>,
 }
 
-static SLOT: Slot = Slot { state: Mutex::new(State::Idle), changed: Condvar::new(), live: Mutex::new(Weak::new()) };
+static SLOT: Slot = Slot {
+    state: Mutex::new(State::Idle),
+    changed: Condvar::new(),
+    live: Mutex::new(Weak::new()),
+};
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|e| e.into_inner())
@@ -59,48 +68,70 @@ pub(super) fn live() -> Option<Arc<Gpu>> {
 /// unless a surface's device lives or one is being made or waits; either way the warmed one
 /// waits `LINGER` from now. `prepare` runs on the warming thread with the new device, or the
 /// live one, so an app can make its own pipelines off the UI thread.
-pub(super) fn warm(features: wgpu::Features, prepare: Option<Box<dyn FnOnce(&wgpu::Device) + Send>>) {
+pub(super) fn warm(
+    features: wgpu::Features,
+    prepare: Option<Box<dyn FnOnce(&wgpu::Device) + Send>>,
+) {
     if let Some(gpu) = live() {
         if let Some(prepare) = prepare {
-            let _ = std::thread::Builder::new().name("rune-gpu-warm".into()).spawn(move || prepare(&gpu.device));
+            let _ = std::thread::Builder::new()
+                .name("rune-gpu-warm".into())
+                .spawn(move || prepare(&gpu.device));
         }
         return;
     }
     let mut state = lock(&SLOT.state);
     let until = Instant::now() + LINGER;
     match &mut *state {
-        State::Making { until: at } | State::Ready { until: at, .. } => { *at = (*at).max(until); return; }
+        State::Making { until: at } | State::Ready { until: at, .. } => {
+            *at = (*at).max(until);
+            return;
+        }
         State::Idle => *state = State::Making { until },
     }
     drop(state);
-    let spawned = std::thread::Builder::new().name("rune-gpu-warm".into()).spawn(move || {
-        let made = make(features);
-        // Before the slot says ready, so a surface waiting for it gets the app's pipelines too;
-        // outside the lock, so `warm` never waits on them.
-        if let (Some(warmed), Some(prepare)) = (&made, prepare) { prepare(&warmed.0.device); }
-        let mut state = lock(&SLOT.state);
-        let (Some(warmed), State::Making { until }) = (made, &*state) else {
-            *state = State::Idle;
+    let spawned = std::thread::Builder::new()
+        .name("rune-gpu-warm".into())
+        .spawn(move || {
+            let made = make(features);
+            // Before the slot says ready, so a surface waiting for it gets the app's pipelines too;
+            // outside the lock, so `warm` never waits on them.
+            if let (Some(warmed), Some(prepare)) = (&made, prepare) {
+                prepare(&warmed.0.device);
+            }
+            let mut state = lock(&SLOT.state);
+            let (Some(warmed), State::Making { until }) = (made, &*state) else {
+                *state = State::Idle;
+                SLOT.changed.notify_all();
+                return;
+            };
+            let until = *until;
+            *state = State::Ready { warmed, until };
             SLOT.changed.notify_all();
-            return;
-        };
-        let until = *until;
-        *state = State::Ready { warmed, until };
-        SLOT.changed.notify_all();
-        wait_for_surface(state);
-    });
-    if spawned.is_err() { *lock(&SLOT.state) = State::Idle; }
+            wait_for_surface(state);
+        });
+    if spawned.is_err() {
+        *lock(&SLOT.state) = State::Idle;
+    }
 }
 
 /// Keeps what's ready for a surface to take, or lets it go once nothing asked for it by its
 /// time (which `warm` may push back).
 fn wait_for_surface(mut state: std::sync::MutexGuard<'_, State>) {
     loop {
-        let State::Ready { until, .. } = &*state else { return };
+        let State::Ready { until, .. } = &*state else {
+            return;
+        };
         let now = Instant::now();
-        if now >= *until { break; }
+        if now >= *until {
+            break;
+        }
         let wait = *until - now;
-        state = SLOT.changed.wait_timeout(state, wait).unwrap_or_else(|e| e.into_inner()).0;
+        state = SLOT
+            .changed
+            .wait_timeout(state, wait)
+            .unwrap_or_else(|e| e.into_inner())
+            .0;
     }
     let expired = std::mem::take(&mut *state);
     drop(state);
@@ -113,14 +144,25 @@ fn wait_for_surface(mut state: std::sync::MutexGuard<'_, State>) {
 /// already waits in the slot, this one goes.
 pub(crate) fn park(gpu: Gpu, renderer: Renderer, linger: Duration) {
     let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
-    if renderer.surfaces.is_some() { return; }
+    if renderer.surfaces.is_some() {
+        return;
+    }
     let mut state = lock(&SLOT.state);
-    if !matches!(*state, State::Idle) { return; }
-    *state = State::Ready { warmed: Warmed(gpu, renderer), until: Instant::now() + linger };
+    if !matches!(*state, State::Idle) {
+        return;
+    }
+    *state = State::Ready {
+        warmed: Warmed(gpu, renderer),
+        until: Instant::now() + linger,
+    };
     SLOT.changed.notify_all();
     drop(state);
-    let spawned = std::thread::Builder::new().name("rune-gpu-parked".into()).spawn(|| wait_for_surface(lock(&SLOT.state)));
-    if spawned.is_err() { discard(); }
+    let spawned = std::thread::Builder::new()
+        .name("rune-gpu-parked".into())
+        .spawn(|| wait_for_surface(lock(&SLOT.state)));
+    if spawned.is_err() {
+        discard();
+    }
 }
 
 /// A device for a future surface on a GPU that drives a display, with the renderer, and one
@@ -129,14 +171,22 @@ fn make(features: wgpu::Features) -> Option<Warmed> {
     super::gpu_events::starting();
     let gpu = Gpu::try_for_display(Gpu::instance_for(features), features).ok()?;
     let renderer = Renderer::new(&gpu.device, FORMAT);
-    assert!(renderer.surfaces.is_none(), "a new renderer has no native surface renderer");
+    assert!(
+        renderer.surfaces.is_none(),
+        "a new renderer has no native surface renderer"
+    );
     let target = super::Offscreen::with_format(&gpu.device, 8, 8, FORMAT);
     let mut encoder = gpu.device.create_command_encoder(&Default::default());
     drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("rune warm-up"),
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-            view: &target.view, depth_slice: None, resolve_target: None,
-            ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store },
+            view: &target.view,
+            depth_slice: None,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                store: wgpu::StoreOp::Store,
+            },
         })],
         ..Default::default()
     }));
@@ -152,7 +202,13 @@ pub(super) fn take() -> Option<(Gpu, Renderer)> {
     while matches!(*state, State::Making { .. }) {
         state = SLOT.changed.wait(state).unwrap_or_else(|e| e.into_inner());
     }
-    let State::Ready { warmed: Warmed(gpu, renderer), .. } = std::mem::take(&mut *state) else { return None };
+    let State::Ready {
+        warmed: Warmed(gpu, renderer),
+        ..
+    } = std::mem::take(&mut *state)
+    else {
+        return None;
+    };
     SLOT.changed.notify_all();
     Some((gpu, renderer))
 }
@@ -164,7 +220,10 @@ pub(super) fn start() {}
 #[cfg_attr(test, allow(dead_code))]
 pub(super) fn discard() {
     let mut state = lock(&SLOT.state);
-    if let State::Ready { .. } = &*state { drop(std::mem::take(&mut *state)); }
-    else if let State::Making { until } = &mut *state { *until = Instant::now(); }
+    if let State::Ready { .. } = &*state {
+        drop(std::mem::take(&mut *state));
+    } else if let State::Making { until } = &mut *state {
+        *until = Instant::now();
+    }
     SLOT.changed.notify_all();
 }

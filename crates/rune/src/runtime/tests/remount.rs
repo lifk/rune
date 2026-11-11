@@ -36,21 +36,33 @@ fn shown_elements<S>(rt: &Runtime<S>) -> Vec<(String, [i32; 4], Option<String>)>
 fn plain_workspace(tick: &u32, _: &mut Cx<u32>) -> El {
     VIEWS.set(VIEWS.get() + 1);
     SIDES.set(SIDES.get() + 1);
-    let side = col().key("side").w(180.0).h_full().gap(4.0).children(
-        (0..24).map(|i| text(format!("Side {i}: {tick}")).key(format!("s{i}")).h(18.0)),
-    );
-    let list = col().key("rows").w_full().px(8.0).growth(GrowthSpec::default()).virtual_rows(
-        500,
-        36.0,
-        |_: &u32, i| Cow::Owned(format!("r{i}")),
-        |t: &u32, i| {
-            BUILT_ROWS.with_borrow_mut(|b| b.push(i));
-            row().w_full().h(36.0).gap(6.0).children([
-                text(format!("Row {i}")).key("title").grow(1.0),
-                text(format!("v{t}")).key("ver"),
-            ])
-        },
-    );
+    let side = col()
+        .key("side")
+        .w(180.0)
+        .h_full()
+        .gap(4.0)
+        .children((0..24).map(|i| {
+            text(format!("Side {i}: {tick}"))
+                .key(format!("s{i}"))
+                .h(18.0)
+        }));
+    let list = col()
+        .key("rows")
+        .w_full()
+        .px(8.0)
+        .growth(GrowthSpec::default())
+        .virtual_rows(
+            500,
+            36.0,
+            |_: &u32, i| Cow::Owned(format!("r{i}")),
+            |t: &u32, i| {
+                BUILT_ROWS.with_borrow_mut(|b| b.push(i));
+                row().w_full().h(36.0).gap(6.0).children([
+                    text(format!("Row {i}")).key("title").grow(1.0),
+                    text(format!("v{t}")).key("ver"),
+                ])
+            },
+        );
     let footer = text(format!("Footer {tick}")).key("footer").h(28.0);
     row().w_full().h_full().children([
         side,
@@ -60,7 +72,9 @@ fn plain_workspace(tick: &u32, _: &mut Cx<u32>) -> El {
                 .w_full()
                 .grow(1.0)
                 .min_h(0.0)
-                .scroll(ScrollSpec { stick_bottom: false })
+                .scroll(ScrollSpec {
+                    stick_bottom: false,
+                })
                 .child(list),
             footer,
         ]),
@@ -98,7 +112,10 @@ fn scrolling_virtual_rows_without_memo_skips_view_and_keeps_mounted_rows() {
                 built.len()
             );
         } else {
-            assert!(built.is_empty(), "step {step}: non-committing frame built {built:?}");
+            assert!(
+                built.is_empty(),
+                "step {step}: non-committing frame built {built:?}"
+            );
         }
 
         // Force full view on the reference runtime and check exact visible parity.
@@ -111,8 +128,15 @@ fn scrolling_virtual_rows_without_memo_skips_view_and_keeps_mounted_rows() {
         }
         assert_eq!(shown_elements(&rt), shown_elements(&full), "step {step}");
     }
-    assert!(scroll_commits >= 10, "expected window shifts, got {scroll_commits}");
-    assert_eq!(SIDES.get(), full_commits, "only full-commit reference steps ran the sidebar; rt ran 0");
+    assert!(
+        scroll_commits >= 10,
+        "expected window shifts, got {scroll_commits}"
+    );
+    assert_eq!(
+        SIDES.get(),
+        full_commits,
+        "only full-commit reference steps ran the sidebar; rt ran 0"
+    );
 
     // Hover and press on both a kept row and a newly scrolled-in row still work, and a state
     // mutation runs the view again with updated content everywhere.
@@ -131,12 +155,16 @@ fn virtual_remount_reruns_view_when_a_layout_read_of_a_culled_row_changes() {
     fn view(_: &(), cx: &mut Cx<()>) -> El {
         VIEWS.set(VIEWS.get() + 1);
         let r0_mounted = cx.layout("r0").is_some();
-        let list = col().key("rows").w_full().growth(GrowthSpec::default()).virtual_rows(
-            200,
-            40.0,
-            |_: &(), i| Cow::Owned(format!("r{i}")),
-            |_: &(), i| text(format!("Row {i}")).h(40.0),
-        );
+        let list = col()
+            .key("rows")
+            .w_full()
+            .growth(GrowthSpec::default())
+            .virtual_rows(
+                200,
+                40.0,
+                |_: &(), i| Cow::Owned(format!("r{i}")),
+                |_: &(), i| text(format!("Row {i}")).h(40.0),
+            );
         col().w_full().h_full().children([
             text(format!("r0={r0_mounted}")).key("status").h(24.0),
             col()
@@ -144,7 +172,9 @@ fn virtual_remount_reruns_view_when_a_layout_read_of_a_culled_row_changes() {
                 .w_full()
                 .grow(1.0)
                 .min_h(0.0)
-                .scroll(ScrollSpec { stick_bottom: false })
+                .scroll(ScrollSpec {
+                    stick_bottom: false,
+                })
                 .child(list),
         ])
     }
@@ -153,7 +183,10 @@ fn virtual_remount_reruns_view_when_a_layout_read_of_a_culled_row_changes() {
     rt.frame(0.0);
     while rt.frame(1.0 / 120.0) {}
     let status = |rt: &Runtime<()>| {
-        rt.elements().into_iter().find(|e| e.key.as_deref() == Some("status")).and_then(|e| e.text)
+        rt.elements()
+            .into_iter()
+            .find(|e| e.key.as_deref() == Some("status"))
+            .and_then(|e| e.text)
     };
     assert_eq!(status(&rt).as_deref(), Some("r0=true"));
 
@@ -177,7 +210,12 @@ fn virtual_remount_preserves_text_selection_across_scrolled_out_rows() {
                 200,
                 32.0,
                 |_: &(), i| Cow::Owned(format!("r{i}")),
-                |_: &(), i| text(format!("Line {i}")).key("txt").selectable(true).h(32.0),
+                |_: &(), i| {
+                    text(format!("Line {i}"))
+                        .key("txt")
+                        .selectable(true)
+                        .h(32.0)
+                },
             );
         col().w_full().h_full().child(
             col()
@@ -185,7 +223,9 @@ fn virtual_remount_preserves_text_selection_across_scrolled_out_rows() {
                 .w_full()
                 .grow(1.0)
                 .min_h(0.0)
-                .scroll(ScrollSpec { stick_bottom: false })
+                .scroll(ScrollSpec {
+                    stick_bottom: false,
+                })
                 .child(list),
         )
     }
@@ -208,9 +248,15 @@ fn virtual_remount_preserves_text_selection_across_scrolled_out_rows() {
     }
     rt.pointer_up(120.0, 150.0);
     rt.frame(1.0 / 120.0);
-    assert!(rt.find("r0").is_none(), "r0 scrolled out of the mounted window");
+    assert!(
+        rt.find("r0").is_none(),
+        "r0 scrolled out of the mounted window"
+    );
     let copied = rt.selected_text().unwrap_or_default();
-    assert!(copied.starts_with("Line 0\n"), "pinned row 0 stays in selection: {copied:?}");
+    assert!(
+        copied.starts_with("Line 0\n"),
+        "pinned row 0 stays in selection: {copied:?}"
+    );
 }
 
 #[test]
@@ -230,24 +276,29 @@ fn virtual_remount_keeps_view_and_mounted_row_memos_and_evicts_culled_ones() {
             HEADER_BUILDS.set(HEADER_BUILDS.get() + 1);
             text("Header").h(24.0)
         });
-        let list = col().key("rows").w_full().growth(GrowthSpec::default()).virtual_rows(
-            300,
-            32.0,
-            |_: &S, i| Cow::Owned(format!("r{i}")),
-            |s: &S, i| {
-                memo(format!("m{i}"), 0u32, || {
-                    ROW_MEMO_BUILDS.with_borrow_mut(|b| b.push(i));
-                    row()
-                        .w_full()
-                        .h(32.0)
-                        .on_press(move |s: &mut S| s.clicked = Some(i))
-                        .children([
-                            text(format!("Row {i}")).grow(1.0),
-                            crate::text_input(&s.edit, crate::TextStyle::new(13.0, 400.0)).w(60.0),
-                        ])
-                })
-            },
-        );
+        let list = col()
+            .key("rows")
+            .w_full()
+            .growth(GrowthSpec::default())
+            .virtual_rows(
+                300,
+                32.0,
+                |_: &S, i| Cow::Owned(format!("r{i}")),
+                |s: &S, i| {
+                    memo(format!("m{i}"), 0u32, || {
+                        ROW_MEMO_BUILDS.with_borrow_mut(|b| b.push(i));
+                        row()
+                            .w_full()
+                            .h(32.0)
+                            .on_press(move |s: &mut S| s.clicked = Some(i))
+                            .children([
+                                text(format!("Row {i}")).grow(1.0),
+                                crate::text_input(&s.edit, crate::TextStyle::new(13.0, 400.0))
+                                    .w(60.0),
+                            ])
+                    })
+                },
+            );
         col().w_full().h_full().children([
             header,
             col()
@@ -255,13 +306,19 @@ fn virtual_remount_keeps_view_and_mounted_row_memos_and_evicts_culled_ones() {
                 .w_full()
                 .grow(1.0)
                 .min_h(0.0)
-                .scroll(ScrollSpec { stick_bottom: false })
+                .scroll(ScrollSpec {
+                    stick_bottom: false,
+                })
                 .child(list),
         ])
     }
 
     let mut rt = Runtime::new(
-        S { tick: 0, clicked: None, edit: crate::TextEdit::default() },
+        S {
+            tick: 0,
+            clicked: None,
+            edit: crate::TextEdit::default(),
+        },
         view,
         (320.0, 220.0),
         Env::new(true, 1.0),
@@ -285,13 +342,20 @@ fn virtual_remount_keeps_view_and_mounted_row_memos_and_evicts_culled_ones() {
     // A state mutation runs `view`: neither `hdr` nor any row already in `mounted` rebuilds.
     rt.update(|s, _| s.tick += 1);
     rt.frame(1.0 / 120.0);
-    assert_eq!(HEADER_BUILDS.get(), 1, "view-level memo survived partial commits");
+    assert_eq!(
+        HEADER_BUILDS.get(),
+        1,
+        "view-level memo survived partial commits"
+    );
     let rebuilt: Vec<usize> = ROW_MEMO_BUILDS
         .with_borrow_mut(std::mem::take)
         .into_iter()
         .filter(|i| mounted.contains(i))
         .collect();
-    assert!(rebuilt.is_empty(), "mounted row memos survived partial commits, got {rebuilt:?}");
+    assert!(
+        rebuilt.is_empty(),
+        "mounted row memos survived partial commits, got {rebuilt:?}"
+    );
     // And culled early rows (`0..mounted.start`) were evicted rather than accumulating in MemoCache.
     assert!(
         rt.memo.len() <= rt.virtuals["#0/scroll/rows"].range.len() + 2,

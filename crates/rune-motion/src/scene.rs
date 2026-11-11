@@ -27,7 +27,9 @@ pub enum Phase {
     Entering,
     Present,
     /// Removed by the app; still drawn until its exit settles. `generation` guards against stale exits.
-    Exiting { generation: u32 },
+    Exiting {
+        generation: u32,
+    },
 }
 
 /// Whether an insert is part of the first build (no animation, Kit rule 6) or a later change.
@@ -61,10 +63,20 @@ pub struct LayoutAnim {
 impl LayoutAnim {
     pub fn new(anim: impl Into<Anim>) -> LayoutAnim {
         let a = anim.into();
-        LayoutAnim { x: a, y: a, lead: None, travel: Travel::Parent }
+        LayoutAnim {
+            x: a,
+            y: a,
+            lead: None,
+            travel: Travel::Parent,
+        }
     }
     pub fn axes(x: impl Into<Anim>, y: impl Into<Anim>) -> LayoutAnim {
-        LayoutAnim { x: x.into(), y: y.into(), lead: None, travel: Travel::Parent }
+        LayoutAnim {
+            x: x.into(),
+            y: y.into(),
+            lead: None,
+            travel: Travel::Parent,
+        }
     }
     /// The X axis springs faster (duration × 0.78), so a widening surface fits its content first
     /// (Kit rule 9: "the width should animate much faster").
@@ -84,8 +96,12 @@ impl LayoutAnim {
         self.travel = Travel::Screen;
         self
     }
-    pub const INSTANT: LayoutAnim =
-        LayoutAnim { x: Anim::INSTANT, y: Anim::INSTANT, lead: None, travel: Travel::Parent };
+    pub const INSTANT: LayoutAnim = LayoutAnim {
+        x: Anim::INSTANT,
+        y: Anim::INSTANT,
+        lead: None,
+        travel: Travel::Parent,
+    };
 }
 
 impl From<Spring> for LayoutAnim {
@@ -232,7 +248,17 @@ const FX_ID: Fx = [1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0];
 
 fn fx_of(e: &Effect) -> Fx {
     let hidden = if e.reveal.is_some() { 1.0 } else { 0.0 };
-    [e.opacity, e.scale, e.offset.x, e.offset.y, e.offset_fraction.x, e.offset_fraction.y, e.blur, hidden, e.draw]
+    [
+        e.opacity,
+        e.scale,
+        e.offset.x,
+        e.offset.y,
+        e.offset_fraction.x,
+        e.offset_fraction.y,
+        e.blur,
+        hidden,
+        e.draw,
+    ]
 }
 
 #[derive(Clone)]
@@ -279,7 +305,11 @@ struct Rest {
     moving: bool,
 }
 
-const REST_ZERO: Rest = Rest { rect: Rect::ZERO, origin: Vec2::ZERO, moving: false };
+const REST_ZERO: Rest = Rest {
+    rect: Rect::ZERO,
+    origin: Vec2::ZERO,
+    moving: false,
+};
 
 /// A small dual number: value and time derivative, for exact velocity of composed geometry.
 #[derive(Clone, Copy, Default)]
@@ -292,13 +322,22 @@ impl D {
         D { x, v: 0.0 }
     }
     fn add(self, o: D) -> D {
-        D { x: self.x + o.x, v: self.v + o.v }
+        D {
+            x: self.x + o.x,
+            v: self.v + o.v,
+        }
     }
     fn sub(self, o: D) -> D {
-        D { x: self.x - o.x, v: self.v - o.v }
+        D {
+            x: self.x - o.x,
+            v: self.v - o.v,
+        }
     }
     fn mul(self, o: D) -> D {
-        D { x: self.x * o.x, v: self.v * o.x + self.x * o.v }
+        D {
+            x: self.x * o.x,
+            v: self.v * o.x + self.x * o.v,
+        }
     }
 }
 
@@ -369,7 +408,9 @@ impl Scene {
         if !self.keep || !self.store.is_animating(id, prop) {
             return false;
         }
-        let Some(to) = self.store.target(id, prop) else { return false };
+        let Some(to) = self.store.target(id, prop) else {
+            return false;
+        };
         let (mut a, mut b) = ([0.0; MAX_LANES], [0.0; MAX_LANES]);
         to.write_lanes(&mut a[..T::LANES]);
         value.write_lanes(&mut b[..T::LANES]);
@@ -399,7 +440,9 @@ impl Scene {
         let previous = self.store.pixel_scale();
         self.store.set_pixel_scale(s);
         if self.store.pixel_scale() != previous {
-            for node in self.nodes.iter_mut().filter(|n| n.alive) { node.dirty = true; }
+            for node in self.nodes.iter_mut().filter(|n| n.alive) {
+                node.dirty = true;
+            }
         }
     }
     pub fn set_reduced_motion(&mut self, on: bool) {
@@ -412,19 +455,37 @@ impl Scene {
     /// Records every frame as motion-lint JSONL.
     pub fn set_trace(&mut self, trace: Option<MotionTrace>) {
         self.trace = trace;
-        for node in self.nodes.iter_mut().filter(|n| n.alive) { node.dirty = true; }
+        for node in self.nodes.iter_mut().filter(|n| n.alive) {
+            node.dirty = true;
+        }
     }
-    pub fn tracing(&self) -> bool { self.trace.is_some() }
-    pub fn trace_mut(&mut self) -> Option<&mut MotionTrace> { self.trace.as_mut() }
+    pub fn tracing(&self) -> bool {
+        self.trace.is_some()
+    }
+    pub fn trace_mut(&mut self) -> Option<&mut MotionTrace> {
+        self.trace.as_mut()
+    }
     /// Updates metadata even if the node's geometry has not changed.
     pub fn trace_name(&mut self, id: NodeId, name: Option<&'static str>) {
-        if self.trace.as_mut().is_some_and(|trace| trace.name(id, name)) {
-            if let Some(i) = self.slot(id) { self.nodes[i].dirty = true; }
+        if self
+            .trace
+            .as_mut()
+            .is_some_and(|trace| trace.name(id, name))
+        {
+            if let Some(i) = self.slot(id) {
+                self.nodes[i].dirty = true;
+            }
         }
     }
     pub fn trace_namespace(&mut self, id: NodeId, namespace: Option<(&'static str, &'static str)>) {
-        if self.trace.as_mut().is_some_and(|trace| trace.namespace(id, namespace)) {
-            if let Some(i) = self.slot(id) { self.nodes[i].dirty = true; }
+        if self
+            .trace
+            .as_mut()
+            .is_some_and(|trace| trace.namespace(id, namespace))
+        {
+            if let Some(i) = self.slot(id) {
+                self.nodes[i].dirty = true;
+            }
         }
     }
     pub fn take_trace(&mut self) -> Option<MotionTrace> {
@@ -447,12 +508,14 @@ impl Scene {
     /// node whose [`Presented::flags`] has `ANIMATED` or `ANCESTOR_ANIMATED` can be moving.
     pub fn rest(&self, id: NodeId) -> Option<Rect> {
         let r = &self.rests[self.slot(id)?];
-        r.moving.then(|| snap_rect(r.rect, self.store.pixel_scale()))
+        r.moving
+            .then(|| snap_rect(r.rect, self.store.pixel_scale()))
     }
     /// Root-space layout rect this frame (without this node's own offset or presence offset),
     /// snapped to the same 1/64 device-px grid as [`Presented::rect`].
     pub fn world(&self, id: NodeId) -> Option<Rect> {
-        self.slot(id).map(|i| snap_rect(self.nodes[i].world, self.store.pixel_scale()))
+        self.slot(id)
+            .map(|i| snap_rect(self.nodes[i].world, self.store.pixel_scale()))
     }
     pub fn len(&self) -> usize {
         self.index.len()
@@ -484,10 +547,19 @@ impl Scene {
 
     /// [`set_frame`](Self::set_frame) for a node drawn `drawn[0]` away from its scene rect,
     /// moving `drawn[1]` faster: a screen path starts there, at that speed.
-    pub(super) fn set_frame_drawn(&mut self, id: NodeId, frame: Rect, anim: LayoutAnim, drawn: [Vec2; 2]) {
+    pub(super) fn set_frame_drawn(
+        &mut self,
+        id: NodeId,
+        frame: Rect,
+        anim: LayoutAnim,
+        drawn: [Vec2; 2],
+    ) {
         let Some(i) = self.slot(id) else { return };
         let old = self.nodes[i].frame;
-        if old == frame && self.nodes[i].path.is_none() && self.nodes[i].tracks[prop::FRAME.id.0 as usize].is_none() {
+        if old == frame
+            && self.nodes[i].path.is_none()
+            && self.nodes[i].tracks[prop::FRAME.id.0 as usize].is_none()
+        {
             return;
         }
         if frame.w != old.w {
@@ -547,18 +619,29 @@ impl Scene {
             let t = self.nodes[i].tracks[prop::FRAME.id.0 as usize].unwrap();
             // Give the lanes their velocity, then retarget per axis.
             let tid = t.index_usize();
-            self.store.animate_raw(tid, &local.edges(), Anim::new(Curve::Spring(Spring::SMOOTH)), Some(&lv));
+            self.store.animate_raw(
+                tid,
+                &local.edges(),
+                Anim::new(Curve::Spring(Spring::SMOOTH)),
+                Some(&lv),
+            );
         } else if self.nodes[i].tracks[prop::FRAME.id.0 as usize].is_none() {
             self.track_set(i, prop::FRAME, old);
         }
         self.nodes[i].frame = frame;
-        let t = self.nodes[i].tracks[prop::FRAME.id.0 as usize].unwrap().index_usize();
+        let t = self.nodes[i].tracks[prop::FRAME.id.0 as usize]
+            .unwrap()
+            .index_usize();
         let mut cur = self.store.lane_targets_4(t);
         let e = frame.edges();
         if let Some((lead, trail)) = anim.lead {
             for axis in 0..2 {
                 let (a, b) = (axis, axis + 2);
-                let (sa, sb) = if e[a] + e[b] > cur[a] + cur[b] { (trail, lead) } else { (lead, trail) };
+                let (sa, sb) = if e[a] + e[b] > cur[a] + cur[b] {
+                    (trail, lead)
+                } else {
+                    (lead, trail)
+                };
                 let mut tg = cur;
                 tg[a] = e[a];
                 self.store.animate_raw(t, &tg, sa, None);
@@ -570,7 +653,8 @@ impl Scene {
             }
         } else {
             // X edges on the X curve, Y edges on the Y curve; unchanged lanes are skipped.
-            self.store.animate_raw(t, &[e[0], cur[1], e[2], cur[3]], anim.x, None);
+            self.store
+                .animate_raw(t, &[e[0], cur[1], e[2], cur[3]], anim.x, None);
             self.store.animate_raw(t, &e, anim.y, None);
         }
         self.nodes[i].dirty = true;
@@ -602,11 +686,20 @@ impl Scene {
         let mut error = 0.0f32;
         for &slot in &self.order {
             let i = slot as usize;
-            let Some(p) = self.nodes[i].last else { continue };
-            if !self.nodes[i].alive { continue; }
+            let Some(p) = self.nodes[i].last else {
+                continue;
+            };
+            if !self.nodes[i].alive {
+                continue;
+            }
             let w = self.world_dual(i);
             let o = self.origin_dual(i);
-            let ideal = [o[0].x, o[1].x, o[0].x + w[2].x - w[0].x, o[1].x + w[3].x - w[1].x];
+            let ideal = [
+                o[0].x,
+                o[1].x,
+                o[0].x + w[2].x - w[0].x,
+                o[1].x + w[3].x - w[1].x,
+            ];
             for (shown, exact) in p.rect.edges().into_iter().zip(ideal) {
                 error = error.max((shown - exact).abs() * self.store.pixel_scale());
                 count += 1;
@@ -626,7 +719,9 @@ impl Scene {
 
     /// Overwrites `out` with the property's exact lanes, if its track has a sample.
     fn lanes_dual(&self, i: usize, p: PropId, out: &mut [D]) {
-        let Some((x, v)) = self.nodes[i].tracks[p.0 as usize].and_then(|t| self.sample(t)) else { return };
+        let Some((x, v)) = self.nodes[i].tracks[p.0 as usize].and_then(|t| self.sample(t)) else {
+            return;
+        };
         for (k, o) in out.iter_mut().enumerate() {
             *o = D { x: x[k], v: v[k] };
         }
@@ -657,7 +752,11 @@ impl Scene {
         let mut p = [D::c(1.0)];
         self.lanes_dual(i, prop::PRESENCE.id, &mut p);
         let n = &self.nodes[i];
-        let fx = |k: usize| D::c(n.fx_a[k]).mul(D::c(1.0).sub(p[0])).add(D::c(n.fx_b[k]).mul(p[0]));
+        let fx = |k: usize| {
+            D::c(n.fx_a[k])
+                .mul(D::c(1.0).sub(p[0]))
+                .add(D::c(n.fx_b[k]).mul(p[0]))
+        };
         let size = [w[2].sub(w[0]), w[3].sub(w[1])];
         let reduced = self.store.reduced_motion();
         core::array::from_fn(|a| {
@@ -693,11 +792,15 @@ impl Scene {
                 if p != prop::PRESENCE.id {
                     continue;
                 }
-                let Some(&i) = self.index.get(&node.0) else { continue };
+                let Some(&i) = self.index.get(&node.0) else {
+                    continue;
+                };
                 let n = &mut self.nodes[i as usize];
                 match n.phase {
                     Phase::Entering => n.phase = Phase::Present,
-                    Phase::Exiting { generation } if generation == n.generation => self.to_remove.push(i),
+                    Phase::Exiting { generation } if generation == n.generation => {
+                        self.to_remove.push(i)
+                    }
                     _ => {}
                 }
             }
@@ -710,13 +813,19 @@ impl Scene {
             if p != prop::PRESENCE.id {
                 continue;
             }
-            let Some(&i) = self.index.get(&node.0) else { continue };
+            let Some(&i) = self.index.get(&node.0) else {
+                continue;
+            };
             let n = &self.nodes[i as usize];
-            let Phase::Exiting { generation } = n.phase else { continue };
+            let Phase::Exiting { generation } = n.phase else {
+                continue;
+            };
             if generation != n.generation || retire.contains(&i) {
                 continue;
             }
-            let Some(&[presence, ..]) = self.store.values_of(t) else { continue };
+            let Some(&[presence, ..]) = self.store.values_of(t) else {
+                continue;
+            };
             if n.fx_a[0] + (n.fx_b[0] - n.fx_a[0]) * presence < 1.0 / 255.0 {
                 retire.push(i);
             }
@@ -739,7 +848,10 @@ impl Scene {
             let travel = self.nodes[i].tracks[prop::TRAVEL.id.0 as usize];
             let arrived = travel.is_none_or(|t| !self.store.is_active(t));
             if arrived && !self.ancestor_moving(i) {
-                let end_local = self.nodes[i].path.map(|p| p.end_local).unwrap_or(self.nodes[i].frame);
+                let end_local = self.nodes[i]
+                    .path
+                    .map(|p| p.end_local)
+                    .unwrap_or(self.nodes[i].frame);
                 self.end_path(i);
                 self.track_set(i, prop::FRAME, end_local);
                 continue;
@@ -768,10 +880,21 @@ impl Scene {
         // covers it, and a frozen one doesn't keep the frames coming.
         let animating = self.store.running();
         if let Some(trace) = self.trace.as_mut() {
-            trace.frame(self.store.now(), &self.out, &self.exited, self.store.events(), &self.intents);
+            trace.frame(
+                self.store.now(),
+                &self.out,
+                &self.exited,
+                self.store.events(),
+                &self.intents,
+            );
             self.intents.clear();
         }
-        FrameOutput { changed: &self.out, exited: &self.exited, events: self.store.events(), animating }
+        FrameOutput {
+            changed: &self.out,
+            exited: &self.exited,
+            events: self.store.events(),
+            animating,
+        }
     }
 
     /// Presents what was set or animated since [`frame`](Self::frame), without stepping time,
@@ -819,7 +942,15 @@ impl Scene {
         let mut p = self.nodes[i].parent;
         while p != NONE {
             let n = &self.nodes[p as usize];
-            for prop in [prop::FRAME.id, prop::TRAVEL.id, prop::OFFSET.id, prop::PRESENCE.id, prop::SCALE.id, prop::OPACITY.id, prop::BLUR.id] {
+            for prop in [
+                prop::FRAME.id,
+                prop::TRAVEL.id,
+                prop::OFFSET.id,
+                prop::PRESENCE.id,
+                prop::SCALE.id,
+                prop::OPACITY.id,
+                prop::BLUR.id,
+            ] {
                 if n.tracks[prop.0 as usize].is_some_and(|t| self.store.is_active(t)) {
                     return true;
                 }
@@ -848,37 +979,75 @@ impl Scene {
             Some(path) => {
                 let p = self.targets::<2>(i, prop::TRAVEL.id).unwrap_or([1.0, 1.0]);
                 let s = path.start.edges();
-                let e = path.end_local.translated(self.parent_target_origin(i)).edges();
+                let e = path
+                    .end_local
+                    .translated(self.parent_target_origin(i))
+                    .edges();
                 let ed: [f32; 4] = core::array::from_fn(|k| s[k] + (e[k] - s[k]) * p[k % 2]);
                 Rect::from_edges(ed[0], ed[1], ed[2], ed[3])
             }
             None => {
-                let origin = if parent == NONE { Vec2::ZERO } else { self.rests[parent as usize].origin };
-                let local = self.targets::<4>(i, prop::FRAME.id).map_or(n.frame, |v| Rect::read_lanes(&v));
+                let origin = if parent == NONE {
+                    Vec2::ZERO
+                } else {
+                    self.rests[parent as usize].origin
+                };
+                let local = self
+                    .targets::<4>(i, prop::FRAME.id)
+                    .map_or(n.frame, |v| Rect::read_lanes(&v));
                 local.translated(origin)
             }
         };
-        let p = self.targets::<1>(i, prop::PRESENCE.id).map_or(1.0, |v| v[0]);
+        let p = self
+            .targets::<1>(i, prop::PRESENCE.id)
+            .map_or(1.0, |v| v[0]);
         let s = lerp_fx(&n.fx_a, &n.fx_b, p);
-        let s = if reduced { [s[0], 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0] } else { s };
-        let own = self.targets::<2>(i, prop::OFFSET.id).map_or(Vec2::ZERO, |v| Vec2::read_lanes(&v));
-        world.translated(Vec2::new(own.x + s[2] + s[4] * world.w, own.y + s[3] + s[5] * world.h))
+        let s = if reduced {
+            [s[0], 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+        } else {
+            s
+        };
+        let own = self
+            .targets::<2>(i, prop::OFFSET.id)
+            .map_or(Vec2::ZERO, |v| Vec2::read_lanes(&v));
+        world.translated(Vec2::new(
+            own.x + s[2] + s[4] * world.w,
+            own.y + s[3] + s[5] * world.h,
+        ))
     }
 
-    fn compute(&mut self, i: usize, scale: f32, reduced: bool, own_dirty: bool, parent_dirty: bool) -> Presented {
+    fn compute(
+        &mut self,
+        i: usize,
+        scale: f32,
+        reduced: bool,
+        own_dirty: bool,
+        parent_dirty: bool,
+    ) -> Presented {
         let parent = self.nodes[i].parent;
-        let parent_origin = if parent == NONE { Vec2::ZERO } else { self.nodes[parent as usize].origin };
+        let parent_origin = if parent == NONE {
+            Vec2::ZERO
+        } else {
+            self.nodes[parent as usize].origin
+        };
         let n = &self.nodes[i];
         let world = match n.path {
             Some(path) => {
-                let p = self.values(i, prop::TRAVEL.id).map_or([1.0, 1.0], |v| [v[0], v[1]]);
+                let p = self
+                    .values(i, prop::TRAVEL.id)
+                    .map_or([1.0, 1.0], |v| [v[0], v[1]]);
                 let s = path.start.edges();
-                let e = path.end_local.translated(self.parent_target_origin(i)).edges();
+                let e = path
+                    .end_local
+                    .translated(self.parent_target_origin(i))
+                    .edges();
                 let ed: [f32; 4] = core::array::from_fn(|k| s[k] + (e[k] - s[k]) * p[k % 2]);
                 Rect::from_edges(ed[0], ed[1], ed[2], ed[3])
             }
             None => {
-                let local = self.values(i, prop::FRAME.id).map_or(n.frame, Rect::read_lanes);
+                let local = self
+                    .values(i, prop::FRAME.id)
+                    .map_or(n.frame, Rect::read_lanes);
                 let mut world = local.translated(parent_origin);
                 if n.ride_trailing && parent != NONE {
                     let p = &self.nodes[parent as usize];
@@ -889,15 +1058,27 @@ impl Scene {
         };
         let p = self.values(i, prop::PRESENCE.id).map_or(1.0, |v| v[0]);
         let s = lerp_fx(&n.fx_a, &n.fx_b, p);
-        let s = if reduced { [s[0], 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0] } else { s };
+        let s = if reduced {
+            [s[0], 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+        } else {
+            s
+        };
         let own_opacity = self.values(i, prop::OPACITY.id).map_or(n.opacity, |v| v[0]);
         let own_scale = self.values(i, prop::SCALE.id).map_or(1.0, |v| v[0]);
-        let own_offset = self.values(i, prop::OFFSET.id).map_or(Vec2::ZERO, Vec2::read_lanes);
+        let own_offset = self
+            .values(i, prop::OFFSET.id)
+            .map_or(Vec2::ZERO, Vec2::read_lanes);
         let rotation = self.values(i, prop::ROTATION.id).map_or(0.0, |v| v[0]);
         let own_blur = self.values(i, prop::BLUR.id).map_or(0.0, |v| v[0]);
-        let radius = self.values(i, prop::RADIUS.id).map_or(n.radius, Corners::read_lanes);
-        let fill = self.values(i, prop::FILL.id).map_or(n.fill, Color::read_lanes);
-        let own_mask = self.values(i, prop::MASK.id).map_or(Sides::ZERO, Sides::read_lanes);
+        let radius = self
+            .values(i, prop::RADIUS.id)
+            .map_or(n.radius, Corners::read_lanes);
+        let fill = self
+            .values(i, prop::FILL.id)
+            .map_or(n.fill, Color::read_lanes);
+        let own_mask = self
+            .values(i, prop::MASK.id)
+            .map_or(Sides::ZERO, Sides::read_lanes);
 
         let offset = Vec2::new(
             own_offset.x + s[2] + s[4] * world.w,
@@ -909,7 +1090,10 @@ impl Scene {
         if blur < 1.0 / 64.0 {
             blur = 0.0;
         }
-        let mut mask = Mask { inset: own_mask, feather: Sides::ZERO };
+        let mut mask = Mask {
+            inset: own_mask,
+            feather: Sides::ZERO,
+        };
         if let Some(rv) = n.reveal {
             let hidden = s[7].clamp(0.0, 1.0);
             if hidden > 0.0 {
@@ -923,10 +1107,14 @@ impl Scene {
                 let opposite = (side + 2) % 4;
                 mask.inset.0[opposite] += hidden * len;
                 // The ramp fades in with the wipe instead of popping (min(1, travel / feather)).
-                mask.feather.0[opposite] = rv.feather * (hidden * len / rv.feather.max(1e-3)).min(1.0);
+                mask.feather.0[opposite] =
+                    rv.feather * (hidden * len / rv.feather.max(1e-3)).min(1.0);
             }
         }
-        let anchor = Vec2::new(shown.x + n.anchor.x * shown.w, shown.y + n.anchor.y * shown.h);
+        let anchor = Vec2::new(
+            shown.x + n.anchor.x * shown.w,
+            shown.y + n.anchor.y * shown.h,
+        );
         let mut fl = 0u32;
         let mut own_bits = 0u32;
         for (k, t) in n.tracks.iter().enumerate() {
@@ -942,7 +1130,9 @@ impl Scene {
         }
         if parent_dirty {
             fl |= flags::ANCESTOR_ANIMATED;
-            let pb = self.nodes[parent as usize].last.map_or(0, |p| (p.flags >> 8) & 0xff | (p.flags >> 16) & 0xff);
+            let pb = self.nodes[parent as usize]
+                .last
+                .map_or(0, |p| (p.flags >> 8) & 0xff | (p.flags >> 16) & 0xff);
             fl |= pb << 16;
         }
         fl |= own_bits << 8;
@@ -958,7 +1148,11 @@ impl Scene {
             parent: (parent != NONE).then(|| self.nodes[parent as usize].id),
             rect: snap_rect(shown, scale),
             opacity: (own_opacity * s[0]).clamp(0.0, 1.0),
-            transform: Transform { translate: Vec2::ZERO, scale: Vec2::new(sc, sc), rotate: rotation },
+            transform: Transform {
+                translate: Vec2::ZERO,
+                scale: Vec2::new(sc, sc),
+                rotate: rotation,
+            },
             anchor,
             blur,
             radius,
@@ -972,14 +1166,29 @@ impl Scene {
         // Where it is is where it rests while nothing that places it is in flight. A node riding
         // its parent's trailing edge also moves with the parent's width.
         let still = !self.nodes[i].ride_trailing
-            && (parent == NONE || self.rests[parent as usize].origin == self.nodes[parent as usize].origin) && [prop::TRAVEL.id, prop::FRAME.id, prop::PRESENCE.id, prop::OFFSET.id]
+            && (parent == NONE
+                || self.rests[parent as usize].origin == self.nodes[parent as usize].origin)
+            && [
+                prop::TRAVEL.id,
+                prop::FRAME.id,
+                prop::PRESENCE.id,
+                prop::OFFSET.id,
+            ]
             .iter()
             .all(|p| self.nodes[i].tracks[p.0 as usize].is_none_or(|t| self.store.is_settled(t)));
-        let rest = if still { shown } else { self.rest_of(i, reduced) };
+        let rest = if still {
+            shown
+        } else {
+            self.rest_of(i, reduced)
+        };
         let n = &mut self.nodes[i];
         n.world = world;
         n.origin = Vec2::new(shown.x, shown.y);
-        self.rests[i] = Rest { rect: rest, origin: Vec2::new(rest.x, rest.y), moving: rest != shown };
+        self.rests[i] = Rest {
+            rect: rest,
+            origin: Vec2::new(rest.x, rest.y),
+            moving: rest != shown,
+        };
         out
     }
 
@@ -1007,7 +1216,11 @@ impl Scene {
             self.nodes[prev as usize].next_sibling = next;
         }
         if next == NONE {
-            if parent == NONE { self.root_tail = prev; } else { self.nodes[parent as usize].last_child = prev; }
+            if parent == NONE {
+                self.root_tail = prev;
+            } else {
+                self.nodes[parent as usize].last_child = prev;
+            }
         } else {
             self.nodes[next as usize].prev_sibling = prev;
         }

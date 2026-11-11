@@ -29,38 +29,78 @@ fn view(_: &(), _: &mut Cx<()>) -> El {
     let mut list = col().key("list").w_full();
     for i in 0..SECTIONS {
         let mut section = col().key(format!("sec-{i}")).w_full().pb(8.0).child(
-            row().w_full().h(32.0).px(12.0).center_y().fill(oklch(0.23, 0.018, 265.0))
-                .child(text(format!("Section {i:02} · {ROWS} rows")).font(TextStyle::new(13.0, 600.0))),
+            row()
+                .w_full()
+                .h(32.0)
+                .px(12.0)
+                .center_y()
+                .fill(oklch(0.23, 0.018, 265.0))
+                .child(
+                    text(format!("Section {i:02} · {ROWS} rows")).font(TextStyle::new(13.0, 600.0)),
+                ),
         );
         for r in 0..ROWS {
-            section = section.child(row().w_full().h(28.0).px(12.0).center_y()
-                .child(text(format!("row {r}: the quick brown fox jumps over the lazy dog {i}")).font(TextStyle::new(12.0, 400.0))));
+            section = section.child(
+                row().w_full().h(28.0).px(12.0).center_y().child(
+                    text(format!(
+                        "row {r}: the quick brown fox jumps over the lazy dog {i}"
+                    ))
+                    .font(TextStyle::new(12.0, 400.0)),
+                ),
+            );
         }
         list = list.child(section);
     }
-    col().w_full().h_full().fill(Color::BLACK).child(col().key("scroll").w_full().h_full().scroll(ScrollSpec { stick_bottom: false }).child(list))
+    col().w_full().h_full().fill(Color::BLACK).child(
+        col()
+            .key("scroll")
+            .w_full()
+            .h_full()
+            .scroll(ScrollSpec {
+                stick_bottom: false,
+            })
+            .child(list),
+    )
 }
 
 /// Scrolls down and back up the list, a little each frame.
 fn poll(_: &mut (), t: f64, tx: &mut Tx) -> bool {
     let range = (SECTIONS * (32 + 8 + ROWS * 28)) as f64 - 600.0;
     let at = (t * SPEED) % (2.0 * range);
-    tx.scroll_to_y("scroll", (if at > range { 2.0 * range - at } else { at }) as f32);
+    tx.scroll_to_y(
+        "scroll",
+        (if at > range { 2.0 * range - at } else { at }) as f32,
+    );
     tx.wake_after(Duration::ZERO);
     false
 }
 
 /// Process instructions, main-thread instructions, and Metal calls, so far.
 fn counts() -> ([u64; 3], [u64; 2], [u64; 5]) {
-    (probe::process_counts(), probe::thread_counts(), probe::metal_counts())
+    (
+        probe::process_counts(),
+        probe::thread_counts(),
+        probe::metal_counts(),
+    )
 }
 
-struct Start { main: f64, process: f64, wall: Instant, frames: u64, counts: ([u64; 3], [u64; 2], [u64; 5]) }
+struct Start {
+    main: f64,
+    process: f64,
+    wall: Instant,
+    frames: u64,
+    counts: ([u64; 3], [u64; 2], [u64; 5]),
+}
 
 fn main() {
-    if std::env::var_os("SCROLL_PRESUME_VISIBLE").is_some() { probe::presume_visible(); }
+    if std::env::var_os("SCROLL_PRESUME_VISIBLE").is_some() {
+        probe::presume_visible();
+    }
     probe::count_metal();
-    let seconds: f64 = std::env::var("SCROLL_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(12.0);
+    let seconds: f64 = std::env::var("SCROLL_SECONDS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(12.0);
     let began = Instant::now();
     let frames = Rc::new(RefCell::new((0u64, None::<Start>)));
     let app = App::new(AppSpec { poll: Some(poll), ..AppSpec::new("Window scroll cost", (800.0, 600.0), || (), view) })

@@ -10,7 +10,12 @@ use std::time::Instant;
 use wgpu::util::DeviceExt;
 
 fn buffer(device: &wgpu::Device, size: u64, usage: wgpu::BufferUsages) -> wgpu::Buffer {
-    device.create_buffer(&wgpu::BufferDescriptor { label: None, size, usage, mapped_at_creation: false })
+    device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size,
+        usage,
+        mapped_at_creation: false,
+    })
 }
 fn read(device: &wgpu::Device, b: &wgpu::Buffer) -> Vec<u8> {
     b.slice(..).map_async(wgpu::MapMode::Read, |r| r.unwrap());
@@ -51,18 +56,42 @@ fn differential(gpu: &Gpu) {
         let mut velocity = (rng(&mut seed) - 0.5) * scale * 4.0;
         let mut start = if i % 3 == 0 { 86400.123456 } else { 0.123456 };
         for _ in 0..4 {
-            let track = Track::new(s, start, from, target, velocity, if opacity { 0.00001 } else { 0.001 });
-            let duration = track.settle_at() - (split_time(start)[0] as f64 + split_time(start)[1] as f64);
-            for dt in [0.0, 0.0001, rng(&mut seed) as f64 * s.duration as f64, s.duration as f64 * 2.0, duration + 0.01]
-            {
+            let track = Track::new(
+                s,
+                start,
+                from,
+                target,
+                velocity,
+                if opacity { 0.00001 } else { 0.001 },
+            );
+            let duration =
+                track.settle_at() - (split_time(start)[0] as f64 + split_time(start)[1] as f64);
+            for dt in [
+                0.0,
+                0.0001,
+                rng(&mut seed) as f64 * s.duration as f64,
+                s.duration as f64 * 2.0,
+                duration + 0.01,
+            ] {
                 let now = start + dt;
-                let (x, v) = if dt >= duration { (target, 0.0) } else { s.sample(from, velocity, target, dt as f32) };
+                let (x, v) = if dt >= duration {
+                    (target, 0.0)
+                } else {
+                    s.sample(from, velocity, target, dt as f32)
+                };
                 let t = split_time(now);
-                queries.push(Query { track, time: [t[0], t[1], if opacity { 1.0 } else { 0.0 }, 0.0] });
+                queries.push(Query {
+                    track,
+                    time: [t[0], t[1], if opacity { 1.0 } else { 0.0 }, 0.0],
+                });
                 expected.push((x, v, opacity));
             }
             let dt = s.duration * (0.05 + rng(&mut seed) * 0.7);
-            (from, velocity) = if dt as f64 >= duration { (target, 0.0) } else { s.sample(from, velocity, target, dt) };
+            (from, velocity) = if dt as f64 >= duration {
+                (target, 0.0)
+            } else {
+                s.sample(from, velocity, target, dt)
+            };
             start += dt as f64;
             target = rng(&mut seed) * scale;
         }
@@ -70,7 +99,10 @@ fn differential(gpu: &Gpu) {
     let width = 256;
     let height = queries.len() as u32 / width;
     assert_eq!(queries.len() as u32, width * height);
-    let prefix = rune::gpu_springs::SHADER.split("struct SpringNode").next().unwrap();
+    let prefix = rune::gpu_springs::SHADER
+        .split("struct SpringNode")
+        .next()
+        .unwrap();
     let source = format!(
         "{prefix}\n{}",
         r#"
@@ -104,7 +136,10 @@ struct O { @builtin(position) p: vec4<f32>, @location(0) @interpolate(flat) resu
             compilation_options: Default::default(),
             buffers: &[],
         },
-        primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleStrip, ..Default::default() },
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleStrip,
+            ..Default::default()
+        },
         depth_stencil: None,
         multisample: Default::default(),
         fragment: Some(wgpu::FragmentState {
@@ -128,11 +163,18 @@ struct O { @builtin(position) p: vec4<f32>, @location(0) @interpolate(flat) resu
     let group = d.create_bind_group(&wgpu::BindGroupDescriptor {
         label: None,
         layout: &pipeline.get_bind_group_layout(0),
-        entries: &[wgpu::BindGroupEntry { binding: 0, resource: input.as_entire_binding() }],
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: input.as_entire_binding(),
+        }],
     });
     let texture = d.create_texture(&wgpu::TextureDescriptor {
         label: None,
-        size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -140,7 +182,11 @@ struct O { @builtin(position) p: vec4<f32>, @location(0) @interpolate(flat) resu
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
     });
-    let out = buffer(d, width as u64 * height as u64 * 16, wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ);
+    let out = buffer(
+        d,
+        width as u64 * height as u64 * 16,
+        wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+    );
     let mut enc = d.create_command_encoder(&Default::default());
     {
         let view = texture.create_view(&Default::default());
@@ -173,9 +219,17 @@ struct O { @builtin(position) p: vec4<f32>, @location(0) @interpolate(flat) resu
         },
         wgpu::TexelCopyBufferInfo {
             buffer: &out,
-            layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(width * 16), rows_per_image: None },
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width * 16),
+                rows_per_image: None,
+            },
         },
-        wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
     );
     gpu.queue.submit([enc.finish()]);
     let data = read(d, &out);
@@ -185,12 +239,17 @@ struct O { @builtin(position) p: vec4<f32>, @location(0) @interpolate(flat) resu
     let mut max_velocity_absolute = 0.0f32;
     let mut failures = 0;
     for (i, (&(x, v, opacity), bytes)) in expected.iter().zip(data.chunks_exact(16)).enumerate() {
-        let got: Vec<f32> = bytes.chunks_exact(4).map(|b| f32::from_le_bytes(b.try_into().unwrap())).collect();
+        let got: Vec<f32> = bytes
+            .chunks_exact(4)
+            .map(|b| f32::from_le_bytes(b.try_into().unwrap()))
+            .collect();
         let error = (x - got[0]).abs();
         let limit = if opacity { 0.0001 } else { 0.01 };
         assert!(got.iter().all(|v| v.is_finite()), "nonfinite {i}");
         if error > limit {
-            if failures < 8 { eprintln!("sample {i}: {x} vs {} error {error} limit {limit}", got[0]); }
+            if failures < 8 {
+                eprintln!("sample {i}: {x} vs {} error {error} limit {limit}", got[0]);
+            }
             failures += 1;
         }
         let velocity_error = (v - got[1]).abs() / v.abs().max(1.0);
@@ -219,10 +278,21 @@ fn bench(gpu: &Gpu, timing: bool) {
     let d = &gpu.device;
     let q = &gpu.queue;
     let target = Offscreen::new(d, 512, 512);
-    let queries =
-        d.create_query_set(&wgpu::QuerySetDescriptor { label: None, ty: wgpu::QueryType::Timestamp, count: 2 });
-    let resolved = buffer(d, 16, wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC);
-    let timestamps = buffer(d, 16, wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ);
+    let queries = d.create_query_set(&wgpu::QuerySetDescriptor {
+        label: None,
+        ty: wgpu::QueryType::Timestamp,
+        count: 2,
+    });
+    let resolved = buffer(
+        d,
+        16,
+        wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
+    );
+    let timestamps = buffer(
+        d,
+        16,
+        wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+    );
     for n in [1, 100, 1000, 10000] {
         let s = Spring::new(3.0, 0.16);
         let nodes: Vec<_> = (0..n)
@@ -251,7 +321,12 @@ fn bench(gpu: &Gpu, timing: bool) {
             .collect();
         let base: Vec<_> = (0..n)
             .map(|i| Instance {
-                rect: [12.0 + (i % 100) as f32 * 4.8, 12.0 + (i / 100) as f32 * 4.8, 2.0, 2.0],
+                rect: [
+                    12.0 + (i % 100) as f32 * 4.8,
+                    12.0 + (i / 100) as f32 * 4.8,
+                    2.0,
+                    2.0,
+                ],
                 fill: [0.3, 0.5, 0.7, 1.0],
                 clip: NO_CLIP,
                 ..Zeroable::zeroed()
@@ -323,7 +398,9 @@ fn bench(gpu: &Gpu, timing: bool) {
             }
         }
         for (path, runs) in results.iter().enumerate() {
-            if runs.is_empty() { continue; }
+            if runs.is_empty() {
+                continue;
+            }
             let mut c: Vec<_> = runs.iter().map(|x| x.0).collect();
             let mut g: Vec<_> = runs.iter().map(|x| x.1).collect();
             let cm = median(&mut c);
@@ -340,7 +417,10 @@ fn bench(gpu: &Gpu, timing: bool) {
                 *inst = base[i];
                 inst.rect[0] += s.sample(0.0, 0.0, 3.0 + (i % 7) as f32, now).0;
                 inst.rect[1] += s.sample(0.0, 0.0, 2.0, now).0;
-                let a = Spring::new(3.0, 0.0).sample(0.2, 0.0, 0.9, now).0.clamp(0.0, 1.0);
+                let a = Spring::new(3.0, 0.0)
+                    .sample(0.2, 0.0, 0.9, now)
+                    .0
+                    .clamp(0.0, 1.0);
                 inst.fill = inst.fill.map(|c| c * a);
             }
             cpu.prepare(d, q, &mut atlas, &instances, (512, 512));
@@ -355,8 +435,17 @@ fn bench(gpu: &Gpu, timing: bool) {
                 q.submit([enc.finish()]);
                 images.push(target.read(d));
             }
-            let max = images[0].iter().zip(&images[1]).map(|(a, b)| a.abs_diff(*b)).max().unwrap();
-            let changed = images[0].iter().zip(&images[1]).filter(|(a, b)| a != b).count();
+            let max = images[0]
+                .iter()
+                .zip(&images[1])
+                .map(|(a, b)| a.abs_diff(*b))
+                .max()
+                .unwrap();
+            let changed = images[0]
+                .iter()
+                .zip(&images[1])
+                .filter(|(a, b)| a != b)
+                .count();
             assert!(max <= 1, "pixel delta {max}");
             println!("PIXELS nodes={n} time={now} changed_channels={changed} max_delta={max}");
         }
@@ -364,9 +453,15 @@ fn bench(gpu: &Gpu, timing: bool) {
         assert!(!fast.springs_animating(120.0));
         if n == 1 {
             // Replacing the last moving node must cancel its old wake deadline.
-            fast.write_spring_node(q, 0, &Node {
-                x: Track::constant(0.0), y: Track::constant(0.0), opacity: Track::constant(1.0),
-            });
+            fast.write_spring_node(
+                q,
+                0,
+                &Node {
+                    x: Track::constant(0.0),
+                    y: Track::constant(0.0),
+                    opacity: Track::constant(1.0),
+                },
+            );
             assert!(!fast.springs_animating(0.5));
         }
     }
@@ -379,8 +474,18 @@ fn primitive_pixels(gpu: &Gpu) {
     let mut image_atlas = Default::default();
     cpu.upload_images(d, q, &mut image_atlas);
     let pixels = rune::Pixels::new();
-    pixels.set(2, 2, vec![255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 192, 255, 255, 255, 255]);
-    let uv = image_atlas.place(&pixels, [2.0, 2.0]).unwrap().rect.map(|v| v as f32);
+    pixels.set(
+        2,
+        2,
+        vec![
+            255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 192, 255, 255, 255, 255,
+        ],
+    );
+    let uv = image_atlas
+        .place(&pixels, [2.0, 2.0])
+        .unwrap()
+        .rect
+        .map(|v| v as f32);
     let s = Spring::new(0.4, 0.16);
     let fade = Spring::new(0.4, 0.0);
     let node = Node {
@@ -398,24 +503,41 @@ fn primitive_pixels(gpu: &Gpu) {
     atlas.data[1] = 192;
     atlas.data[rune::text::ATLAS_SIZE as usize] = 128;
     atlas.data[rune::text::ATLAS_SIZE as usize + 1] = 255;
-    let base: Vec<_> = (0..8).map(|kind| {
-        let x = 8.0 + kind as f32 * 60.0;
-        let mut i = Instance {
-            rect: [x, 24.0, 40.0, 30.0], radii: [4.0; 4], fill: [0.2, 0.4, 0.6, 0.8],
-            params: [0.0, kind as f32, 0.0, 1.0], clip: NO_CLIP, ..Zeroable::zeroed()
-        };
-        match kind {
-            1 => i.params[2] = 2.0,
-            2 => i.uv = [0.0, 0.0, 2.0, 2.0],
-            3 => { i.params[0] = 2.0; i.params[2] = 1.0; }
-            4 => i.uv = [0.7, 0.2, 0.1, 0.8],
-            5 => { i.radii = [x, 24.0, x + 40.0, 54.0]; i.params[0] = 2.0; i.params[2] = 1.0; }
-            6 => { i.radii = [x, 24.0, x + 40.0, 24.0]; i.uv = [x + 20.0, 54.0, 0.0, 0.0]; i.params[0] = 7.0; }
-            7 => i.uv = uv,
-            _ => {}
-        }
-        i
-    }).collect();
+    let base: Vec<_> = (0..8)
+        .map(|kind| {
+            let x = 8.0 + kind as f32 * 60.0;
+            let mut i = Instance {
+                rect: [x, 24.0, 40.0, 30.0],
+                radii: [4.0; 4],
+                fill: [0.2, 0.4, 0.6, 0.8],
+                params: [0.0, kind as f32, 0.0, 1.0],
+                clip: NO_CLIP,
+                ..Zeroable::zeroed()
+            };
+            match kind {
+                1 => i.params[2] = 2.0,
+                2 => i.uv = [0.0, 0.0, 2.0, 2.0],
+                3 => {
+                    i.params[0] = 2.0;
+                    i.params[2] = 1.0;
+                }
+                4 => i.uv = [0.7, 0.2, 0.1, 0.8],
+                5 => {
+                    i.radii = [x, 24.0, x + 40.0, 54.0];
+                    i.params[0] = 2.0;
+                    i.params[2] = 1.0;
+                }
+                6 => {
+                    i.radii = [x, 24.0, x + 40.0, 24.0];
+                    i.uv = [x + 20.0, 54.0, 0.0, 0.0];
+                    i.params[0] = 7.0;
+                }
+                7 => i.uv = uv,
+                _ => {}
+            }
+            i
+        })
+        .collect();
     for now in [0.0, 0.07, 0.31, 0.99] {
         let dx = s.sample(0.0, 0.0, 6.0, now).0;
         let dy = s.sample(0.0, 0.0, 3.0, now).0;
@@ -425,11 +547,18 @@ fn primitive_pixels(gpu: &Gpu) {
             i.rect[0] += dx;
             i.rect[1] += dy;
             i.fill = i.fill.map(|v| v * alpha);
-            if kind == 4 { i.uv = i.uv.map(|v| v * alpha); }
-            if kind == 5 || kind == 6 {
-                for (v, offset) in i.radii.iter_mut().zip([dx, dy, dx, dy]) { *v += offset; }
+            if kind == 4 {
+                i.uv = i.uv.map(|v| v * alpha);
             }
-            if kind == 6 { i.uv[0] += dx; i.uv[1] += dy; }
+            if kind == 5 || kind == 6 {
+                for (v, offset) in i.radii.iter_mut().zip([dx, dy, dx, dy]) {
+                    *v += offset;
+                }
+            }
+            if kind == 6 {
+                i.uv[0] += dx;
+                i.uv[1] += dy;
+            }
         }
         atlas.dirty = Some((0, 2));
         cpu.prepare(d, q, &mut atlas, &expected, (512, 96));
@@ -445,10 +574,24 @@ fn primitive_pixels(gpu: &Gpu) {
             images.push(target.read(d));
         }
         for kind in 0..8 {
-            assert!((0..96).any(|y| (kind * 60..kind * 60 + 60).any(|x| images[0][(y * 512 + x) * 4 + 3] != 0)), "blank primitive {kind}");
+            assert!(
+                (0..96)
+                    .any(|y| (kind * 60..kind * 60 + 60)
+                        .any(|x| images[0][(y * 512 + x) * 4 + 3] != 0)),
+                "blank primitive {kind}"
+            );
         }
-        let max = images[0].iter().zip(&images[1]).map(|(a, b)| a.abs_diff(*b)).max().unwrap();
-        let changed = images[0].iter().zip(&images[1]).filter(|(a, b)| a != b).count();
+        let max = images[0]
+            .iter()
+            .zip(&images[1])
+            .map(|(a, b)| a.abs_diff(*b))
+            .max()
+            .unwrap();
+        let changed = images[0]
+            .iter()
+            .zip(&images[1])
+            .filter(|(a, b)| a != b)
+            .count();
         assert!(max <= 1, "primitive pixel delta {max} at {now}");
         println!("PRIMITIVES kinds=8 time={now} changed_channels={changed} max_delta={max}");
     }
@@ -456,14 +599,21 @@ fn primitive_pixels(gpu: &Gpu) {
 
 fn main() {
     let instance = Gpu::instance();
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())).unwrap();
+    let adapter =
+        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+            .unwrap();
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         required_features: wgpu::Features::TIMESTAMP_QUERY,
         ..Default::default()
     }))
     .unwrap();
     println!("ADAPTER {:?}", adapter.get_info());
-    let gpu = Gpu { instance, adapter, device, queue };
+    let gpu = Gpu {
+        instance,
+        adapter,
+        device,
+        queue,
+    };
     differential(&gpu);
     bench(&gpu, !std::env::args().any(|arg| arg == "--verify-only"));
     primitive_pixels(&gpu);

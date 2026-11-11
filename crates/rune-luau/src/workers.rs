@@ -48,11 +48,18 @@ impl Shared {
     }
 
     pub(crate) fn take_completions(&self) -> Vec<(u64, Data)> {
-        self.completions.lock().map(|mut c| std::mem::take(&mut *c)).unwrap_or_default()
+        self.completions
+            .lock()
+            .map(|mut c| std::mem::take(&mut *c))
+            .unwrap_or_default()
     }
 
     pub(crate) fn job(self: &Arc<Self>) -> Completer {
-        Completer { id: self.next_job.fetch_add(1, Ordering::Relaxed) + 1, shared: self.clone(), done: false }
+        Completer {
+            id: self.next_job.fetch_add(1, Ordering::Relaxed) + 1,
+            shared: self.clone(),
+            done: false,
+        }
     }
 }
 
@@ -100,15 +107,17 @@ pub fn spawn_blocking(job: impl FnOnce() + Send + 'static) {
         let rx = Arc::new(Mutex::new(rx));
         for i in 0..4 {
             let rx = rx.clone();
-            let spawned = std::thread::Builder::new().name(format!("rune-luau-worker-{i}")).spawn(move || {
-                loop {
-                    let job = rx.lock().ok().and_then(|r| r.recv().ok());
-                    match job {
-                        Some(job) => job(),
-                        None => break,
+            let spawned = std::thread::Builder::new()
+                .name(format!("rune-luau-worker-{i}"))
+                .spawn(move || {
+                    loop {
+                        let job = rx.lock().ok().and_then(|r| r.recv().ok());
+                        match job {
+                            Some(job) => job(),
+                            None => break,
+                        }
                     }
-                }
-            });
+                });
             if spawned.is_err() {
                 break;
             }

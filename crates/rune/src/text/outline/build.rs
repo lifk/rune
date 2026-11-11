@@ -32,20 +32,40 @@ pub(crate) struct Built {
 
 /// Builds `commands` (y up, `unit` font units each) leaning `skew` (tan of the oblique angle),
 /// or None for an empty outline.
-pub(crate) fn build(commands: impl Iterator<Item = Command>, unit: f64, skew: f64) -> Option<Built> {
+pub(crate) fn build(
+    commands: impl Iterator<Item = Command>,
+    unit: f64,
+    skew: f64,
+) -> Option<Built> {
     let contours = contours(commands, unit, skew);
     if contours.iter().all(|c| c.is_empty()) {
         return None;
     }
-    let contours = if signed_area(&contours) < 0.0 { reverse(contours) } else { contours };
+    let contours = if signed_area(&contours) < 0.0 {
+        reverse(contours)
+    } else {
+        contours
+    };
     let mut elements = Vec::new();
     for contour in &contours {
         dilation_elements(contour, &mut elements);
     }
-    let bbox = contours.iter().flatten().fold([f64::MAX, f64::MAX, f64::MIN, f64::MIN], |b, q| {
-        [b[0].min(q[0]).min(q[2]).min(q[4]), b[1].min(q[1]).min(q[3]).min(q[5]), b[2].max(q[0]).max(q[2]).max(q[4]), b[3].max(q[1]).max(q[3]).max(q[5])]
-    });
-    (bbox[2] >= bbox[0] && bbox[3] >= bbox[1]).then(|| Built { texels: bands(&elements, bbox[1], bbox[3]), bbox: bbox.map(|v| v as f32), upem: 0.0 })
+    let bbox = contours
+        .iter()
+        .flatten()
+        .fold([f64::MAX, f64::MAX, f64::MIN, f64::MIN], |b, q| {
+            [
+                b[0].min(q[0]).min(q[2]).min(q[4]),
+                b[1].min(q[1]).min(q[3]).min(q[5]),
+                b[2].max(q[0]).max(q[2]).max(q[4]),
+                b[3].max(q[1]).max(q[3]).max(q[5]),
+            ]
+        });
+    (bbox[2] >= bbox[0] && bbox[3] >= bbox[1]).then(|| Built {
+        texels: bands(&elements, bbox[1], bbox[3]),
+        bbox: bbox.map(|v| v as f32),
+        upem: 0.0,
+    })
 }
 
 /// One drawn element: a moved monotone piece, or a connector at `q[0..2]`.
@@ -55,9 +75,15 @@ struct Element {
 }
 
 impl Element {
-    fn connector(&self) -> bool { self.code & CONNECTOR != 0 }
-    fn y_range(&self) -> (f64, f64) { (self.q[1].min(self.q[5]), self.q[1].max(self.q[5])) }
-    fn x_max(&self) -> f64 { self.q[0].max(self.q[2]).max(self.q[4]) }
+    fn connector(&self) -> bool {
+        self.code & CONNECTOR != 0
+    }
+    fn y_range(&self) -> (f64, f64) {
+        (self.q[1].min(self.q[5]), self.q[1].max(self.q[5]))
+    }
+    fn x_max(&self) -> f64 {
+        self.q[0].max(self.q[2]).max(self.q[4])
+    }
 }
 
 /// The contours of `commands` as quads, cubics split into quads within a tenth of a font unit,
@@ -68,39 +94,67 @@ fn contours(commands: impl Iterator<Item = Command>, unit: f64, skew: f64) -> Ve
     let mut out: Vec<Vec<Quad>> = Vec::new();
     let (mut cur, mut start, mut open) = ([0.0; 2], [0.0; 2], false);
     let close = |out: &mut Vec<Vec<Quad>>, cur: [f64; 2], start: [f64; 2]| {
-        if let Some(c) = out.last_mut() && !c.is_empty() {
-            c.push([cur[0], cur[1], (cur[0] + start[0]) / 2.0, (cur[1] + start[1]) / 2.0, start[0], start[1]]);
+        if let Some(c) = out.last_mut()
+            && !c.is_empty()
+        {
+            c.push([
+                cur[0],
+                cur[1],
+                (cur[0] + start[0]) / 2.0,
+                (cur[1] + start[1]) / 2.0,
+                start[0],
+                start[1],
+            ]);
         }
     };
     for command in commands {
         match command {
             Command::MoveTo(a) => {
-                if open { close(&mut out, cur, start); }
+                if open {
+                    close(&mut out, cur, start);
+                }
                 (cur, start, open) = (p(a), p(a), true);
                 out.push(Vec::new());
             }
             Command::LineTo(a) => {
                 let a = p(a);
-                if let Some(c) = out.last_mut() { c.push([cur[0], cur[1], (cur[0] + a[0]) / 2.0, (cur[1] + a[1]) / 2.0, a[0], a[1]]); }
+                if let Some(c) = out.last_mut() {
+                    c.push([
+                        cur[0],
+                        cur[1],
+                        (cur[0] + a[0]) / 2.0,
+                        (cur[1] + a[1]) / 2.0,
+                        a[0],
+                        a[1],
+                    ]);
+                }
                 cur = a;
             }
             Command::QuadTo(c1, a) => {
                 let (c1, a) = (p(c1), p(a));
-                if let Some(c) = out.last_mut() { c.push([cur[0], cur[1], c1[0], c1[1], a[0], a[1]]); }
+                if let Some(c) = out.last_mut() {
+                    c.push([cur[0], cur[1], c1[0], c1[1], a[0], a[1]]);
+                }
                 cur = a;
             }
             Command::CurveTo(c1, c2, a) => {
                 let (c1, c2, a) = (p(c1), p(c2), p(a));
-                if let Some(c) = out.last_mut() { cubic_quads([cur, c1, c2, a], c); }
+                if let Some(c) = out.last_mut() {
+                    cubic_quads([cur, c1, c2, a], c);
+                }
                 cur = a;
             }
             Command::Close => {
-                if open { close(&mut out, cur, start); }
+                if open {
+                    close(&mut out, cur, start);
+                }
                 (cur, open) = (start, false);
             }
         }
     }
-    if open { close(&mut out, cur, start); }
+    if open {
+        close(&mut out, cur, start);
+    }
     out
 }
 
@@ -108,7 +162,10 @@ fn contours(commands: impl Iterator<Item = Command>, unit: f64, skew: f64) -> Ve
 fn cubic_quads(p: [[f64; 2]; 4], out: &mut Vec<Quad>) {
     const TOLERANCE: f64 = 0.1;
     // The error of one quadratic is √3/36 of the third difference.
-    let d = [p[3][0] - 3.0 * p[2][0] + 3.0 * p[1][0] - p[0][0], p[3][1] - 3.0 * p[2][1] + 3.0 * p[1][1] - p[0][1]];
+    let d = [
+        p[3][0] - 3.0 * p[2][0] + 3.0 * p[1][0] - p[0][0],
+        p[3][1] - 3.0 * p[2][1] + 3.0 * p[1][1] - p[0][1],
+    ];
     let err = (d[0] * d[0] + d[1] * d[1]).sqrt() * 3f64.sqrt() / 36.0;
     let n = ((err / TOLERANCE).cbrt().ceil() as usize).clamp(1, 16);
     let at = |t: f64| {
@@ -118,7 +175,11 @@ fn cubic_quads(p: [[f64; 2]; 4], out: &mut Vec<Quad>) {
     };
     let tangent = |t: f64| {
         let u = 1.0 - t;
-        [0, 1].map(|k| 3.0 * (u * u * (p[1][k] - p[0][k]) + 2.0 * u * t * (p[2][k] - p[1][k]) + t * t * (p[3][k] - p[2][k])))
+        [0, 1].map(|k| {
+            3.0 * (u * u * (p[1][k] - p[0][k])
+                + 2.0 * u * t * (p[2][k] - p[1][k])
+                + t * t * (p[3][k] - p[2][k]))
+        })
     };
     for i in 0..n {
         let (t0, t1) = (i as f64 / n as f64, (i + 1) as f64 / n as f64);
@@ -132,14 +193,23 @@ fn cubic_quads(p: [[f64; 2]; 4], out: &mut Vec<Quad>) {
             [a[0] + ta[0] * s, a[1] + ta[1] * s]
         } else {
             let m = at((t0 + t1) / 2.0);
-            [2.0 * m[0] - (a[0] + b[0]) / 2.0, 2.0 * m[1] - (a[1] + b[1]) / 2.0]
+            [
+                2.0 * m[0] - (a[0] + b[0]) / 2.0,
+                2.0 * m[1] - (a[1] + b[1]) / 2.0,
+            ]
         };
         // A control point far off the chord means an inflection: the midpoint fit is safer.
         let chord = ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt();
-        let off = ((c[0] - (a[0] + b[0]) / 2.0).powi(2) + (c[1] - (a[1] + b[1]) / 2.0).powi(2)).sqrt();
-        let c = if den.abs() > 1e-12 && off <= chord * 2.0 { c } else {
+        let off =
+            ((c[0] - (a[0] + b[0]) / 2.0).powi(2) + (c[1] - (a[1] + b[1]) / 2.0).powi(2)).sqrt();
+        let c = if den.abs() > 1e-12 && off <= chord * 2.0 {
+            c
+        } else {
             let m = at((t0 + t1) / 2.0);
-            [2.0 * m[0] - (a[0] + b[0]) / 2.0, 2.0 * m[1] - (a[1] + b[1]) / 2.0]
+            [
+                2.0 * m[0] - (a[0] + b[0]) / 2.0,
+                2.0 * m[1] - (a[1] + b[1]) / 2.0,
+            ]
         };
         out.push([a[0], a[1], c[0], c[1], b[0], b[1]]);
     }
@@ -149,14 +219,29 @@ fn cubic_quads(p: [[f64; 2]; 4], out: &mut Vec<Quad>) {
 fn signed_area(contours: &[Vec<Quad>]) -> f64 {
     // Green's theorem on each quadratic, exactly: ∫ p × p' dt = (2 p0×p1 + p0×p2 + 2 p1×p2) / 3.
     let cross = |ax: f64, ay: f64, bx: f64, by: f64| ax * by - ay * bx;
-    contours.iter().flatten().map(|q| {
-        2.0 * cross(q[0], q[1], q[2], q[3]) + cross(q[0], q[1], q[4], q[5]) + 2.0 * cross(q[2], q[3], q[4], q[5])
-    }).sum::<f64>() / 6.0
+    contours
+        .iter()
+        .flatten()
+        .map(|q| {
+            2.0 * cross(q[0], q[1], q[2], q[3])
+                + cross(q[0], q[1], q[4], q[5])
+                + 2.0 * cross(q[2], q[3], q[4], q[5])
+        })
+        .sum::<f64>()
+        / 6.0
 }
 
 /// Every contour run backwards, so holes keep winding against the outer contours.
 fn reverse(contours: Vec<Vec<Quad>>) -> Vec<Vec<Quad>> {
-    contours.into_iter().map(|c| c.into_iter().rev().map(|q| [q[4], q[5], q[2], q[3], q[0], q[1]]).collect()).collect()
+    contours
+        .into_iter()
+        .map(|c| {
+            c.into_iter()
+                .rev()
+                .map(|q| [q[4], q[5], q[2], q[3], q[0], q[1]])
+                .collect()
+        })
+        .collect()
 }
 
 /// A contour's moved pieces and the bevels between them. The last piece is the closing line, or
@@ -183,11 +268,17 @@ fn dilation_elements(contour: &[Quad], out: &mut Vec<Element>) {
     for i in 0..n {
         let (q, c) = pieces[i];
         if q[1] != q[3] || q[1] != q[5] {
-            out.push(Element { q, code: c | c << 4 });
+            out.push(Element {
+                q,
+                code: c | c << 4,
+            });
         }
         let next = pieces[(i + 1) % n].1;
         if next != c {
-            out.push(Element { q: [q[4], q[5], q[4], q[5], q[4], q[5]], code: c | next << 4 | CONNECTOR });
+            out.push(Element {
+                q: [q[4], q[5], q[4], q[5], q[4], q[5]],
+                code: c | next << 4 | CONNECTOR,
+            });
         }
     }
 }
@@ -201,7 +292,15 @@ fn code(x: i32, y: i32) -> u32 {
 /// CoreGraphics' move for a piece: its x by the sign of its y travel, its y up by r less r times
 /// the sign of its x travel, signs taken in f32 as it takes them.
 fn direction_code(q: &Quad) -> u32 {
-    let sign = |v: f32| if v > 0.0 { 1 } else if v < 0.0 { -1 } else { 0 };
+    let sign = |v: f32| {
+        if v > 0.0 {
+            1
+        } else if v < 0.0 {
+            -1
+        } else {
+            0
+        }
+    };
     let (dx, dy) = ((q[4] as f32 - q[0] as f32), (q[5] as f32 - q[1] as f32));
     code(sign(dy), 1 - sign(dx))
 }
@@ -217,9 +316,17 @@ fn extremum_t(p0: f64, p1: f64, p2: f64) -> Option<f64> {
 
 fn subdivide(q: &Quad, t: f64) -> (Quad, Quad) {
     let lerp = |a: f64, b: f64| a + (b - a) * t;
-    let (x01, y01, x12, y12) = (lerp(q[0], q[2]), lerp(q[1], q[3]), lerp(q[2], q[4]), lerp(q[3], q[5]));
+    let (x01, y01, x12, y12) = (
+        lerp(q[0], q[2]),
+        lerp(q[1], q[3]),
+        lerp(q[2], q[4]),
+        lerp(q[3], q[5]),
+    );
     let (xm, ym) = (lerp(x01, x12), lerp(y01, y12));
-    ([q[0], q[1], x01, y01, xm, ym], [xm, ym, x12, y12, q[4], q[5]])
+    (
+        [q[0], q[1], x01, y01, xm, ym],
+        [xm, ym, x12, y12, q[4], q[5]],
+    )
 }
 
 /// `geometry.js` `pushMonotonePieces`: `q` split at its x and y extrema.
@@ -249,10 +356,24 @@ fn monotone(q: &Quad, out: &mut Vec<Quad>) {
 /// `[p0, p1]`, `[p2, code, right edge]`. Element and band offsets are relative to the header.
 fn bands(elements: &[Element], y0: f64, y1: f64) -> Vec<[u32; 4]> {
     let n = elements.len();
-    let r = if n <= TARGET_PER_BAND { 1 } else { n.div_ceil(TARGET_PER_BAND).min(MAX_BANDS) };
-    let inv_h = if r > 1 && y1 > y0 { r as f64 / (y1 - y0) } else { 0.0 };
+    let r = if n <= TARGET_PER_BAND {
+        1
+    } else {
+        n.div_ceil(TARGET_PER_BAND).min(MAX_BANDS)
+    };
+    let inv_h = if r > 1 && y1 > y0 {
+        r as f64 / (y1 - y0)
+    } else {
+        0.0
+    };
     let r = if inv_h == 0.0 { 1 } else { r };
-    let band = |y: f64| if inv_h == 0.0 { 0 } else { (((y - y0) * inv_h).floor().max(0.0) as usize).min(r - 1) };
+    let band = |y: f64| {
+        if inv_h == 0.0 {
+            0
+        } else {
+            (((y - y0) * inv_h).floor().max(0.0) as usize).min(r - 1)
+        }
+    };
     let mut buckets: Vec<Vec<usize>> = vec![Vec::new(); r];
     for (k, e) in elements.iter().enumerate() {
         let (lo, hi) = e.y_range();

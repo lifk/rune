@@ -97,15 +97,25 @@ fn push_folded(out: &mut String, c: char) {
     }
 }
 
-fn find_in_blocks(src: &str, blocks: &[Block], maps: &[BlockMap], needle: &Needle<'_>, out: &mut Vec<Vec<Range<usize>>>) {
+fn find_in_blocks(
+    src: &str,
+    blocks: &[Block],
+    maps: &[BlockMap],
+    needle: &Needle<'_>,
+    out: &mut Vec<Vec<Range<usize>>>,
+) {
     let empty = BlockMap::None;
     for (b, map) in blocks.iter().zip(maps.iter().chain(std::iter::repeat(&empty))) {
         match (b, map) {
-            (Block::Para(inl) | Block::Heading(_, inl), BlockMap::Inline(m)) => find_in_text(src, &inl.text, m, needle, out),
+            (Block::Para(inl) | Block::Heading(_, inl), BlockMap::Inline(m)) => {
+                find_in_text(src, &inl.text, m, needle, out)
+            }
             (Block::Code(code) | Block::Diff(code), BlockMap::Code(m)) => find_in_text(src, code, m, needle, out),
             (Block::Mermaid(code), BlockMap::Code(m)) => {
                 #[cfg(feature = "mermaid")]
-                if crate::mermaid::supported(code) { continue; }
+                if crate::mermaid::supported(code) {
+                    continue;
+                }
                 find_in_text(src, code, m, needle, out);
             }
             (Block::Table(t), BlockMap::Table { head, rows }) => find_in_table(src, t, head, rows, needle, out),
@@ -120,7 +130,14 @@ fn find_in_blocks(src: &str, blocks: &[Block], maps: &[BlockMap], needle: &Needl
     }
 }
 
-fn find_in_table(src: &str, t: &Table, head_maps: &[SpanMap], row_maps: &[Vec<SpanMap>], needle: &Needle<'_>, out: &mut Vec<Vec<Range<usize>>>) {
+fn find_in_table(
+    src: &str,
+    t: &Table,
+    head_maps: &[SpanMap],
+    row_maps: &[Vec<SpanMap>],
+    needle: &Needle<'_>,
+    out: &mut Vec<Vec<Range<usize>>>,
+) {
     for (cell, map) in t.head.iter().zip(head_maps) {
         find_in_text(src, &cell.text, map, needle, out);
     }
@@ -162,7 +179,9 @@ fn find_in_text(src: &str, text: &str, map: &SpanMap, needle: &Needle<'_>, out: 
     } else {
         owned_vis.reserve(text.len());
         for (src_r, out_r) in &map.0 {
-            if let Some(slice) = text.get(out_r.clone()) && !slice.is_empty() {
+            if let Some(slice) = text.get(out_r.clone())
+                && !slice.is_empty()
+            {
                 let start = owned_vis.len();
                 owned_vis.push_str(slice);
                 let new_out = start..owned_vis.len();
@@ -181,14 +200,18 @@ fn find_in_text(src: &str, text: &str, map: &SpanMap, needle: &Needle<'_>, out: 
         Needle::Sensitive(q) => {
             for (v0, _) in vis.match_indices(q) {
                 let ranges = map_vis_range(src, &segments, &mut seg_idx, v0..v0 + q.len());
-                if !ranges.is_empty() { out.push(ranges); }
+                if !ranges.is_empty() {
+                    out.push(ranges);
+                }
             }
         }
         Needle::Insensitive { folded: q, ascii: true } if vis.is_ascii() => {
             let lower = vis.to_ascii_lowercase();
             for (v0, _) in lower.match_indices(q.as_str()) {
                 let ranges = map_vis_range(src, &segments, &mut seg_idx, v0..v0 + q.len());
-                if !ranges.is_empty() { out.push(ranges); }
+                if !ranges.is_empty() {
+                    out.push(ranges);
+                }
             }
         }
         Needle::Insensitive { folded: q, .. } => find_folded(src, vis, &segments, q, &mut seg_idx, out),
@@ -209,7 +232,9 @@ fn find_folded(src: &str, vis: &str, segments: &[Seg], q: &str, seg_idx: &mut us
                 folded.push(fc);
                 count += 1;
             }
-            if count > 1 { multi_char = true; }
+            if count > 1 {
+                multi_char = true;
+            }
         }
         f_to_v.resize(folded.len(), usize::MAX);
     }
@@ -220,7 +245,9 @@ fn find_folded(src: &str, vis: &str, segments: &[Seg], q: &str, seg_idx: &mut us
             let (v0, v1) = (f_to_v[f0], f_to_v[f0 + q.len()]);
             if v0 < v1 && v1 != usize::MAX {
                 let ranges = map_vis_range(src, segments, seg_idx, v0..v1);
-                if !ranges.is_empty() { out.push(ranges); }
+                if !ranges.is_empty() {
+                    out.push(ranges);
+                }
             }
         }
         return;
@@ -231,21 +258,31 @@ fn find_folded(src: &str, vis: &str, segments: &[Seg], q: &str, seg_idx: &mut us
     let mut pi = vec![0usize; m];
     let mut len = 0usize;
     for i in 1..m {
-        while len > 0 && pat[len] != pat[i] { len = pi[len - 1]; }
-        if pat[len] == pat[i] { len += 1; }
+        while len > 0 && pat[len] != pat[i] {
+            len = pi[len - 1];
+        }
+        if pat[len] == pat[i] {
+            len += 1;
+        }
         pi[i] = len;
     }
 
     let mut matched = 0usize;
     for (i, &b) in folded.as_bytes().iter().enumerate() {
-        while matched > 0 && pat[matched] != b { matched = pi[matched - 1]; }
-        if pat[matched] == b { matched += 1; }
+        while matched > 0 && pat[matched] != b {
+            matched = pi[matched - 1];
+        }
+        if pat[matched] == b {
+            matched += 1;
+        }
         if matched == m {
             let (f0, f1) = (i + 1 - m, i + 1);
             let (v0, v1) = (f_to_v[f0], f_to_v[f1]);
             if v0 != usize::MAX && v1 != usize::MAX && v0 < v1 {
                 let ranges = map_vis_range(src, segments, seg_idx, v0..v1);
-                if !ranges.is_empty() { out.push(ranges); }
+                if !ranges.is_empty() {
+                    out.push(ranges);
+                }
                 matched = 0;
             } else {
                 matched = pi[matched - 1];
@@ -268,14 +305,12 @@ fn map_vis_range(src: &str, segments: &[Seg], seg_idx: &mut usize, v_range: Rang
         if o0 < o1 {
             let rel0 = o0 - o_seg.start;
             let rel1 = o1 - o_seg.start;
-            let (mut s0, mut s1) = if seg.linear
-                && src.is_char_boundary(s_seg.start + rel0)
-                && src.is_char_boundary(s_seg.start + rel1)
-            {
-                (s_seg.start + rel0, s_seg.start + rel1)
-            } else {
-                (s_seg.start, s_seg.end)
-            };
+            let (mut s0, mut s1) =
+                if seg.linear && src.is_char_boundary(s_seg.start + rel0) && src.is_char_boundary(s_seg.start + rel1) {
+                    (s_seg.start + rel0, s_seg.start + rel1)
+                } else {
+                    (s_seg.start, s_seg.end)
+                };
             s0 = src.floor_char_boundary(s0.clamp(s_seg.start, s_seg.end).min(src.len()));
             s1 = src.ceil_char_boundary(s1.clamp(s_seg.start, s_seg.end).min(src.len()));
             if s0 < s1 {
@@ -323,20 +358,17 @@ impl SpanMap {
             return Vec::new();
         }
         let owned;
-        let qs: &[Range<usize>] = if queries.iter().all(|r| r.start < r.end)
-            && queries.windows(2).all(|w| w[0].end < w[1].start)
-        {
-            queries
-        } else {
-            owned = normalize_ranges(queries.to_vec());
-            if owned.is_empty() {
-                return Vec::new();
-            }
-            &owned
-        };
-        if qs[qs.len() - 1].end <= self.0[0].0.start
-            || self.0[self.0.len() - 1].0.end <= qs[0].start
-        {
+        let qs: &[Range<usize>] =
+            if queries.iter().all(|r| r.start < r.end) && queries.windows(2).all(|w| w[0].end < w[1].start) {
+                queries
+            } else {
+                owned = normalize_ranges(queries.to_vec());
+                if owned.is_empty() {
+                    return Vec::new();
+                }
+                &owned
+            };
+        if qs[qs.len() - 1].end <= self.0[0].0.start || self.0[self.0.len() - 1].0.end <= qs[0].start {
             return Vec::new();
         }
         let mut mapped: Vec<Range<usize>> = Vec::new();
@@ -372,12 +404,7 @@ impl SpanMap {
     }
 }
 
-fn map_segment(
-    query: &Range<usize>,
-    src: &Range<usize>,
-    out: &Range<usize>,
-    out_text: &str,
-) -> Option<Range<usize>> {
+fn map_segment(query: &Range<usize>, src: &Range<usize>, out: &Range<usize>, out_text: &str) -> Option<Range<usize>> {
     let s0 = query.start.max(src.start);
     let s1 = query.end.min(src.end);
     if s0 >= s1 {
@@ -386,11 +413,7 @@ fn map_segment(
     let (mut o0, mut o1) = if src.len() == out.len() {
         (out.start + (s0 - src.start), out.start + (s1 - src.start))
     } else {
-        let a = if s0 <= src.start {
-            out.start
-        } else {
-            out.start + ((s0 - src.start) * out.len()) / src.len()
-        };
+        let a = if s0 <= src.start { out.start } else { out.start + ((s0 - src.start) * out.len()) / src.len() };
         let b = if s1 >= src.end {
             out.end
         } else {
@@ -414,45 +437,83 @@ fn span_bounds(ranges: &[Range<usize>]) -> Range<usize> {
 }
 
 impl HighlightItem for (Range<usize>, Highlight) {
-    fn into_highlight(self) -> (Range<usize>, Highlight) { self }
+    fn into_highlight(self) -> (Range<usize>, Highlight) {
+        self
+    }
 }
 impl HighlightItem for &(Range<usize>, Highlight) {
-    fn into_highlight(self) -> (Range<usize>, Highlight) { self.clone() }
+    fn into_highlight(self) -> (Range<usize>, Highlight) {
+        self.clone()
+    }
 }
 impl HighlightItem for (&Range<usize>, Highlight) {
-    fn into_highlight(self) -> (Range<usize>, Highlight) { (self.0.clone(), self.1) }
+    fn into_highlight(self) -> (Range<usize>, Highlight) {
+        (self.0.clone(), self.1)
+    }
 }
 impl HighlightItem for Range<usize> {
-    fn into_highlight(self) -> (Range<usize>, Highlight) { (self, Highlight::new()) }
+    fn into_highlight(self) -> (Range<usize>, Highlight) {
+        (self, Highlight::new())
+    }
 }
 impl HighlightItem for &Range<usize> {
-    fn into_highlight(self) -> (Range<usize>, Highlight) { (self.clone(), Highlight::new()) }
+    fn into_highlight(self) -> (Range<usize>, Highlight) {
+        (self.clone(), Highlight::new())
+    }
 }
 impl HighlightItem for Vec<Range<usize>> {
-    fn into_highlight(self) -> (Range<usize>, Highlight) { (span_bounds(&self), Highlight::new()) }
-    fn into_ranges(self) -> (Vec<Range<usize>>, Highlight) { (normalize_ranges(self), Highlight::new()) }
+    fn into_highlight(self) -> (Range<usize>, Highlight) {
+        (span_bounds(&self), Highlight::new())
+    }
+    fn into_ranges(self) -> (Vec<Range<usize>>, Highlight) {
+        (normalize_ranges(self), Highlight::new())
+    }
 }
 impl HighlightItem for &Vec<Range<usize>> {
-    fn into_highlight(self) -> (Range<usize>, Highlight) { (span_bounds(self), Highlight::new()) }
-    fn into_ranges(self) -> (Vec<Range<usize>>, Highlight) { (normalize_ranges(self.clone()), Highlight::new()) }
+    fn into_highlight(self) -> (Range<usize>, Highlight) {
+        (span_bounds(self), Highlight::new())
+    }
+    fn into_ranges(self) -> (Vec<Range<usize>>, Highlight) {
+        (normalize_ranges(self.clone()), Highlight::new())
+    }
 }
 impl HighlightItem for &[Range<usize>] {
-    fn into_highlight(self) -> (Range<usize>, Highlight) { (span_bounds(self), Highlight::new()) }
-    fn into_ranges(self) -> (Vec<Range<usize>>, Highlight) { (normalize_ranges(self.to_vec()), Highlight::new()) }
+    fn into_highlight(self) -> (Range<usize>, Highlight) {
+        (span_bounds(self), Highlight::new())
+    }
+    fn into_ranges(self) -> (Vec<Range<usize>>, Highlight) {
+        (normalize_ranges(self.to_vec()), Highlight::new())
+    }
 }
 impl HighlightItem for (Vec<Range<usize>>, Highlight) {
-    fn into_highlight(self) -> (Range<usize>, Highlight) { (span_bounds(&self.0), self.1) }
-    fn into_ranges(self) -> (Vec<Range<usize>>, Highlight) { (normalize_ranges(self.0), self.1) }
+    fn into_highlight(self) -> (Range<usize>, Highlight) {
+        (span_bounds(&self.0), self.1)
+    }
+    fn into_ranges(self) -> (Vec<Range<usize>>, Highlight) {
+        (normalize_ranges(self.0), self.1)
+    }
 }
 impl HighlightItem for &(Vec<Range<usize>>, Highlight) {
-    fn into_highlight(self) -> (Range<usize>, Highlight) { (span_bounds(&self.0), self.1.clone()) }
-    fn into_ranges(self) -> (Vec<Range<usize>>, Highlight) { (normalize_ranges(self.0.clone()), self.1.clone()) }
+    fn into_highlight(self) -> (Range<usize>, Highlight) {
+        (span_bounds(&self.0), self.1.clone())
+    }
+    fn into_ranges(self) -> (Vec<Range<usize>>, Highlight) {
+        (normalize_ranges(self.0.clone()), self.1.clone())
+    }
 }
 impl HighlightItem for (&Vec<Range<usize>>, Highlight) {
-    fn into_highlight(self) -> (Range<usize>, Highlight) { (span_bounds(self.0), self.1) }
-    fn into_ranges(self) -> (Vec<Range<usize>>, Highlight) { (normalize_ranges(self.0.clone()), self.1) }
+    fn into_highlight(self) -> (Range<usize>, Highlight) {
+        (span_bounds(self.0), self.1)
+    }
+    fn into_ranges(self) -> (Vec<Range<usize>>, Highlight) {
+        (normalize_ranges(self.0.clone()), self.1)
+    }
 }
 impl HighlightItem for (&[Range<usize>], Highlight) {
-    fn into_highlight(self) -> (Range<usize>, Highlight) { (span_bounds(self.0), self.1) }
-    fn into_ranges(self) -> (Vec<Range<usize>>, Highlight) { (normalize_ranges(self.0.to_vec()), self.1) }
+    fn into_highlight(self) -> (Range<usize>, Highlight) {
+        (span_bounds(self.0), self.1)
+    }
+    fn into_ranges(self) -> (Vec<Range<usize>>, Highlight) {
+        (normalize_ranges(self.0.to_vec()), self.1)
+    }
 }

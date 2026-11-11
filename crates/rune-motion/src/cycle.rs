@@ -17,7 +17,9 @@ impl Cycle {
     pub fn sample(&self, t: f64) -> f32 {
         let x = (t / f64::from(self.period) - f64::from(self.phase)).rem_euclid(1.0) as f32;
         let s = self.stops;
-        let Some(k) = s.iter().position(|&(at, _)| at >= x) else { return s.last().map_or(1.0, |p| p.1) };
+        let Some(k) = s.iter().position(|&(at, _)| at >= x) else {
+            return s.last().map_or(1.0, |p| p.1);
+        };
         if k == 0 {
             return s[0].1;
         }

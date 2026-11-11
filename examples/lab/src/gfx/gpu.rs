@@ -16,7 +16,11 @@ pub(super) struct Tex {
 fn tex(device: &wgpu::Device, label: &str, size: (u32, u32), usage: wgpu::TextureUsages) -> Tex {
     let tex = device.create_texture(&wgpu::TextureDescriptor {
         label: Some(label),
-        size: wgpu::Extent3d { width: size.0, height: size.1, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width: size.0,
+            height: size.1,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -84,7 +88,13 @@ pub(super) struct Fullscreen {
     bgl: wgpu::BindGroupLayout,
 }
 
-fn fullscreen(device: &wgpu::Device, module: &wgpu::ShaderModule, entry: &str, format: wgpu::TextureFormat, blend: Option<wgpu::BlendState>) -> Fullscreen {
+fn fullscreen(
+    device: &wgpu::Device,
+    module: &wgpu::ShaderModule,
+    entry: &str,
+    format: wgpu::TextureFormat,
+    blend: Option<wgpu::BlendState>,
+) -> Fullscreen {
     let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some(entry),
         entries: &[
@@ -101,16 +111,29 @@ fn fullscreen(device: &wgpu::Device, module: &wgpu::ShaderModule, entry: &str, f
             wgpu::BindGroupLayoutEntry {
                 binding: 1,
                 visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
                 count: None,
             },
         ],
     });
-    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some(entry), bind_group_layouts: &[Some(&bgl)], immediate_size: 0 });
+    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some(entry),
+        bind_group_layouts: &[Some(&bgl)],
+        immediate_size: 0,
+    });
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some(entry),
         layout: Some(&layout),
-        vertex: wgpu::VertexState { module, entry_point: Some("vs"), compilation_options: Default::default(), buffers: &[] },
+        vertex: wgpu::VertexState {
+            module,
+            entry_point: Some("vs"),
+            compilation_options: Default::default(),
+            buffers: &[],
+        },
         primitive: Default::default(),
         depth_stencil: None,
         multisample: Default::default(),
@@ -118,7 +141,11 @@ fn fullscreen(device: &wgpu::Device, module: &wgpu::ShaderModule, entry: &str, f
             module,
             entry_point: Some(entry),
             compilation_options: Default::default(),
-            targets: &[Some(wgpu::ColorTargetState { format, blend, write_mask: wgpu::ColorWrites::ALL })],
+            targets: &[Some(wgpu::ColorTargetState {
+                format,
+                blend,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
         }),
         multiview_mask: None,
         cache: None,
@@ -143,11 +170,35 @@ impl Timer {
         if !device.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
             return None;
         }
-        let qs = device.create_query_set(&wgpu::QuerySetDescriptor { label: Some("lab ts"), ty: wgpu::QueryType::Timestamp, count: 2 });
-        let buf = |label, usage| device.create_buffer(&wgpu::BufferDescriptor { label: Some(label), size: 16, usage, mapped_at_creation: false });
-        let resolve = buf("lab ts resolve", wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC);
-        let read = buf("lab ts read", wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ);
-        Some(Timer { qs, resolve, read, state: Arc::new(AtomicU8::new(0)), period: queue.get_timestamp_period(), recording: false })
+        let qs = device.create_query_set(&wgpu::QuerySetDescriptor {
+            label: Some("lab ts"),
+            ty: wgpu::QueryType::Timestamp,
+            count: 2,
+        });
+        let buf = |label, usage| {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size: 16,
+                usage,
+                mapped_at_creation: false,
+            })
+        };
+        let resolve = buf(
+            "lab ts resolve",
+            wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
+        );
+        let read = buf(
+            "lab ts read",
+            wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        );
+        Some(Timer {
+            qs,
+            resolve,
+            read,
+            state: Arc::new(AtomicU8::new(0)),
+            period: queue.get_timestamp_period(),
+            recording: false,
+        })
     }
 
     /// Collects a finished reading (ms) and decides whether this frame records one. Last frame's queries are
@@ -164,7 +215,11 @@ impl Timer {
             1 => {
                 self.state.store(2, Ordering::Release);
                 let st = self.state.clone();
-                self.read.slice(..).map_async(wgpu::MapMode::Read, move |r| st.store(if r.is_ok() { 3 } else { 0 }, Ordering::Release));
+                self.read
+                    .slice(..)
+                    .map_async(wgpu::MapMode::Read, move |r| {
+                        st.store(if r.is_ok() { 3 } else { 0 }, Ordering::Release)
+                    });
             }
             3 => {
                 if let Ok(data) = self.read.slice(..).get_mapped_range() {
@@ -214,19 +269,49 @@ pub(super) struct Res {
 }
 
 impl Res {
-    pub(super) fn new(device: &wgpu::Device, queue: &wgpu::Queue, size: (u32, u32), format: wgpu::TextureFormat, ui: &mut rune::render::Renderer) -> Res {
+    pub(super) fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        size: (u32, u32),
+        format: wgpu::TextureFormat,
+        ui: &mut rune::render::Renderer,
+    ) -> Res {
         use wgpu::TextureUsages as U;
         ui.add_format(device, HDR);
         let rt = U::RENDER_ATTACHMENT | U::TEXTURE_BINDING;
         let scene = tex(device, "lab scene", size, rt | U::COPY_SRC);
-        let backdrop = tex(device, "lab backdrop", size, U::TEXTURE_BINDING | U::COPY_DST);
+        let backdrop = tex(
+            device,
+            "lab backdrop",
+            size,
+            U::TEXTURE_BINDING | U::COPY_DST,
+        );
         let node = tex(device, "lab node layer", size, rt);
         let base = tex(device, "lab base", size, rt);
         let text = tex(device, "lab text", size, rt);
         let lit = tex(device, "lab lit", size, rt);
-        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("lab"), source: wgpu::ShaderSource::Wgsl(SHADERS.into()) });
-        let resolve = fullscreen(device, &module, if format.is_srgb() { "fs_resolve_srgb" } else { "fs_resolve_unorm" }, format, None);
-        let blit = fullscreen(device, &module, "fs_blit", HDR, Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING));
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("lab"),
+            source: wgpu::ShaderSource::Wgsl(SHADERS.into()),
+        });
+        let resolve = fullscreen(
+            device,
+            &module,
+            if format.is_srgb() {
+                "fs_resolve_srgb"
+            } else {
+                "fs_resolve_unorm"
+            },
+            format,
+            None,
+        );
+        let blit = fullscreen(
+            device,
+            &module,
+            "fs_blit",
+            HDR,
+            Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+        );
         let blit_alpha = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("lab blit alpha"),
             size: 16,
@@ -238,8 +323,14 @@ impl Res {
                 label: None,
                 layout: &f.bgl,
                 entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(v) },
-                    wgpu::BindGroupEntry { binding: 1, resource: blit_alpha.as_entire_binding() },
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(v),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: blit_alpha.as_entire_binding(),
+                    },
                 ],
             })
         };
@@ -271,7 +362,11 @@ impl Res {
     }
 }
 
-pub(super) fn pass<'e>(enc: &'e mut wgpu::CommandEncoder, view: &'e wgpu::TextureView, clear: Option<[f32; 4]>) -> wgpu::RenderPass<'e> {
+pub(super) fn pass<'e>(
+    enc: &'e mut wgpu::CommandEncoder,
+    view: &'e wgpu::TextureView,
+    clear: Option<[f32; 4]>,
+) -> wgpu::RenderPass<'e> {
     pass_ts(enc, view, clear, None)
 }
 
@@ -281,14 +376,24 @@ pub(super) fn pass_ts<'e>(
     clear: Option<[f32; 4]>,
     timestamp_writes: Option<wgpu::RenderPassTimestampWrites<'e>>,
 ) -> wgpu::RenderPass<'e> {
-    let load = clear.map_or(wgpu::LoadOp::Load, |c| wgpu::LoadOp::Clear(wgpu::Color { r: c[0] as f64, g: c[1] as f64, b: c[2] as f64, a: c[3] as f64 }));
+    let load = clear.map_or(wgpu::LoadOp::Load, |c| {
+        wgpu::LoadOp::Clear(wgpu::Color {
+            r: c[0] as f64,
+            g: c[1] as f64,
+            b: c[2] as f64,
+            a: c[3] as f64,
+        })
+    });
     enc.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("lab"),
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
             view,
             depth_slice: None,
             resolve_target: None,
-            ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
+            ops: wgpu::Operations {
+                load,
+                store: wgpu::StoreOp::Store,
+            },
         })],
         depth_stencil_attachment: None,
         timestamp_writes,

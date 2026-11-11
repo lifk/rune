@@ -101,8 +101,6 @@ pub use list::List;
 pub use list::ListItem;
 #[cfg(feature = "markdown")]
 pub use markdown::Case;
-#[cfg(feature = "markdown")]
-pub use markdown::{CodeFrame, QuoteFrame};
 #[cfg(feature = "mermaid")]
 pub use markdown::DiagramFrame;
 #[cfg(feature = "markdown")]
@@ -113,6 +111,8 @@ pub use markdown::ImageFrame;
 pub use markdown::Markdown;
 #[cfg(feature = "markdown")]
 pub use markdown::MarkdownStyle;
+#[cfg(feature = "markdown")]
+pub use markdown::{CodeFrame, QuoteFrame};
 pub use menu::Menu;
 pub use menu::MenuEntry;
 pub use menu::MenuItem;

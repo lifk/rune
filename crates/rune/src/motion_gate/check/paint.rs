@@ -52,7 +52,18 @@ pub struct Paint {
 
 impl Default for Paint {
     fn default() -> Self {
-        Paint { colors: [Color::TRANSPARENT; COLORS], sizes: [0.0; SIZES], gradient_end: Color::TRANSPARENT, effect: None, image: None, rank: 0, intent: 0, instant: false, at_once: 0, pointer: [0.0; 2] }
+        Paint {
+            colors: [Color::TRANSPARENT; COLORS],
+            sizes: [0.0; SIZES],
+            gradient_end: Color::TRANSPARENT,
+            effect: None,
+            image: None,
+            rank: 0,
+            intent: 0,
+            instant: false,
+            at_once: 0,
+            pointer: [0.0; 2],
+        }
     }
 }
 
@@ -68,7 +79,10 @@ impl Paint {
 
     /// Whether it paints a box whose corners show.
     pub fn shows_corners(&self) -> bool {
-        self.colors[C_FILL].a > 0.02 || self.colors[C_BORDER].a > 0.02 && self.sizes[S_BORDER] > 0.0 || self.colors[C_GRADIENT].a > 0.02 || self.sizes[S_BACKDROP] > 0.0
+        self.colors[C_FILL].a > 0.02
+            || self.colors[C_BORDER].a > 0.02 && self.sizes[S_BORDER] > 0.0
+            || self.colors[C_GRADIENT].a > 0.02
+            || self.sizes[S_BACKDROP] > 0.0
     }
 
     /// Whether its own fill hides what it covers.
@@ -102,16 +116,23 @@ pub fn oklab_de(a: Color, b: Color) -> f32 {
         let [r, g, b, al] = over(c.premul(1.0), bg.premul(1.0));
         seen(Color { r, g, b, a: al })
     };
-    [Color::BLACK, Color::WHITE].into_iter().map(|bg| {
-        let (x, y) = (on(a, bg), on(b, bg));
-        ((x[0] - y[0]).powi(2) + (x[1] - y[1]).powi(2) + (x[2] - y[2]).powi(2)).sqrt()
-    }).fold(0.0, f32::max)
+    [Color::BLACK, Color::WHITE]
+        .into_iter()
+        .map(|bg| {
+            let (x, y) = (on(a, bg), on(b, bg));
+            ((x[0] - y[0]).powi(2) + (x[1] - y[1]).powi(2) + (x[2] - y[2]).powi(2)).sqrt()
+        })
+        .fold(0.0, f32::max)
 }
 
 /// How much a change over `area` pt² counts against a 40×40 control: a large surface's
 /// change shows more, a speck's less, and one under 16 pt² not at all.
 pub fn area_weight(area: f32) -> f32 {
-    if area < 16.0 { 0.0 } else { (area / 1600.0).powf(0.25).clamp(0.5, 2.5) }
+    if area < 16.0 {
+        0.0
+    } else {
+        (area / 1600.0).powf(0.25).clamp(0.5, 2.5)
+    }
 }
 
 /// One painted property the checks follow: where a frame's value sits, so that how far apart
@@ -154,7 +175,8 @@ fn token(h: u64) -> V {
         x = x.wrapping_mul(0xff51_afd7_ed55_8ccd);
         x ^= x >> 29;
         (x >> 40) as f32 / (1u64 << 24) as f32 * 2.0 - 1.0
-    }).map(|v: f32| v / 1.41)
+    })
+    .map(|v: f32| v / 1.41)
 }
 
 fn area(r: &[f32; 4]) -> f32 {
@@ -163,25 +185,93 @@ fn area(r: &[f32; 4]) -> f32 {
 
 /// Every channel the element checks follow.
 pub const CHANNELS: &[Channel] = &[
-    Channel { name: "fill", embed: |p| lab(p.colors[C_FILL]), weight: |_, r| area_weight(area(r)) },
-    Channel { name: "border", embed: |p| lab(p.colors[C_BORDER]), weight: |p, r| area_weight(ring(r, p.sizes[S_BORDER].max(1.0)) * 6.0) },
-    Channel { name: "text-color", embed: |p| lab(p.colors[C_TEXT]), weight: |_, r| area_weight(0.4 * area(r)) },
-    Channel { name: "shadow", embed: |p| lab(p.colors[C_SHADOW]), weight: |_, r| area_weight(0.5 * area(r)) },
-    Channel { name: "gradient", embed: |p| {
-        let (a, b) = (lab(p.colors[C_GRADIENT]), lab(p.gradient_end));
-        std::array::from_fn(|i| (a[i] + b[i]) / 2.0)
-    }, weight: |_, r| area_weight(area(r)) },
-    Channel { name: "outline", embed: |p| lab(p.colors[C_OUTLINE]), weight: |_, r| area_weight(ring(r, 2.0) * 6.0) },
-    Channel { name: "radius", embed: |p| size(p.sizes[S_RADIUS], 3.0), weight: |p, _| if p.shows_corners() { 1.0 } else { 0.0 } },
-    Channel { name: "border-width", embed: |p| size(p.sizes[S_BORDER], 1.0), weight: |p, _| if p.colors[C_BORDER].a > 0.05 { 1.0 } else { 0.0 } },
-    Channel { name: "blur", embed: |p| size(p.sizes[S_BLUR], 2.0), weight: |_, _| 1.0 },
-    Channel { name: "backdrop-blur", embed: |p| size(p.sizes[S_BACKDROP], 4.0), weight: |_, _| 1.0 },
-    Channel { name: "shadow-blur", embed: |p| size(p.sizes[S_SHADOW], 4.0), weight: |p, _| if p.colors[C_SHADOW].a > 0.05 { 1.0 } else { 0.0 } },
-    Channel { name: "effect", embed: |p| match p.effect {
-        Some(d) => [d[0], d[1], d[2], d[3], 0.0, 1.0].map(|v| v / 0.5),
-        None => [0.0; 6],
-    }, weight: |_, r| if area(r) >= 16.0 { 1.0 } else { 0.0 } },
-    Channel { name: "image", embed: |p| p.image.map_or([0.0; 6], |(id, g)| token(id.wrapping_mul(31).wrapping_add(g))), weight: |_, r| if area(r) >= 16.0 { 1.0 } else { 0.0 } },
+    Channel {
+        name: "fill",
+        embed: |p| lab(p.colors[C_FILL]),
+        weight: |_, r| area_weight(area(r)),
+    },
+    Channel {
+        name: "border",
+        embed: |p| lab(p.colors[C_BORDER]),
+        weight: |p, r| area_weight(ring(r, p.sizes[S_BORDER].max(1.0)) * 6.0),
+    },
+    Channel {
+        name: "text-color",
+        embed: |p| lab(p.colors[C_TEXT]),
+        weight: |_, r| area_weight(0.4 * area(r)),
+    },
+    Channel {
+        name: "shadow",
+        embed: |p| lab(p.colors[C_SHADOW]),
+        weight: |_, r| area_weight(0.5 * area(r)),
+    },
+    Channel {
+        name: "gradient",
+        embed: |p| {
+            let (a, b) = (lab(p.colors[C_GRADIENT]), lab(p.gradient_end));
+            std::array::from_fn(|i| (a[i] + b[i]) / 2.0)
+        },
+        weight: |_, r| area_weight(area(r)),
+    },
+    Channel {
+        name: "outline",
+        embed: |p| lab(p.colors[C_OUTLINE]),
+        weight: |_, r| area_weight(ring(r, 2.0) * 6.0),
+    },
+    Channel {
+        name: "radius",
+        embed: |p| size(p.sizes[S_RADIUS], 3.0),
+        weight: |p, _| if p.shows_corners() { 1.0 } else { 0.0 },
+    },
+    Channel {
+        name: "border-width",
+        embed: |p| size(p.sizes[S_BORDER], 1.0),
+        weight: |p, _| {
+            if p.colors[C_BORDER].a > 0.05 {
+                1.0
+            } else {
+                0.0
+            }
+        },
+    },
+    Channel {
+        name: "blur",
+        embed: |p| size(p.sizes[S_BLUR], 2.0),
+        weight: |_, _| 1.0,
+    },
+    Channel {
+        name: "backdrop-blur",
+        embed: |p| size(p.sizes[S_BACKDROP], 4.0),
+        weight: |_, _| 1.0,
+    },
+    Channel {
+        name: "shadow-blur",
+        embed: |p| size(p.sizes[S_SHADOW], 4.0),
+        weight: |p, _| {
+            if p.colors[C_SHADOW].a > 0.05 {
+                1.0
+            } else {
+                0.0
+            }
+        },
+    },
+    Channel {
+        name: "effect",
+        embed: |p| match p.effect {
+            Some(d) => [d[0], d[1], d[2], d[3], 0.0, 1.0].map(|v| v / 0.5),
+            None => [0.0; 6],
+        },
+        weight: |_, r| if area(r) >= 16.0 { 1.0 } else { 0.0 },
+    },
+    Channel {
+        name: "image",
+        embed: |p| {
+            p.image.map_or([0.0; 6], |(id, g)| {
+                token(id.wrapping_mul(31).wrapping_add(g))
+            })
+        },
+        weight: |_, r| if area(r) >= 16.0 { 1.0 } else { 0.0 },
+    },
 ];
 
 /// The [`Paint::at_once`] bits for an element whose own `El::motion` is `Spring::NONE`
@@ -190,9 +280,19 @@ pub const CHANNELS: &[Channel] = &[
 /// unless it has its own curve; text colour keeps a short fade, and border width, backdrop
 /// blur, effect and image don't spring at all.
 pub fn at_once(motion: bool, blur: Option<bool>) -> u16 {
-    let sprung: &[&str] = &["fill", "border", "shadow", "gradient", "outline", "radius", "shadow-blur"];
+    let sprung: &[&str] = &[
+        "fill",
+        "border",
+        "shadow",
+        "gradient",
+        "outline",
+        "radius",
+        "shadow-blur",
+    ];
     let blurs = blur.unwrap_or(motion);
-    CHANNELS.iter().enumerate()
+    CHANNELS
+        .iter()
+        .enumerate()
         .filter(|(_, c)| motion && sprung.contains(&c.name) || blurs && c.name == "blur")
         .fold(0, |bits, (i, _)| bits | 1 << i)
 }
@@ -212,15 +312,21 @@ pub fn swatch(p: &Paint, channel: &str) -> Option<Color> {
 
 /// A channel's value as text, for evidence.
 pub fn value(p: &Paint, channel: &str) -> String {
-    if let Some(c) = swatch(p, channel) { return c.hex(); }
+    if let Some(c) = swatch(p, channel) {
+        return c.hex();
+    }
     match channel {
         "radius" => format!("{:.1}", p.sizes[S_RADIUS]),
         "border-width" => format!("{:.1}", p.sizes[S_BORDER]),
         "blur" => format!("{:.1}", p.sizes[S_BLUR]),
         "backdrop-blur" => format!("{:.1}", p.sizes[S_BACKDROP]),
         "shadow-blur" => format!("{:.1}", p.sizes[S_SHADOW]),
-        "effect" => p.effect.map_or("none".into(), |d| format!("[{:.2} {:.2} {:.2} {:.2}]", d[0], d[1], d[2], d[3])),
-        "image" => p.image.map_or("none".into(), |(id, g)| format!("#{id}.{g}")),
+        "effect" => p.effect.map_or("none".into(), |d| {
+            format!("[{:.2} {:.2} {:.2} {:.2}]", d[0], d[1], d[2], d[3])
+        }),
+        "image" => p
+            .image
+            .map_or("none".into(), |(id, g)| format!("#{id}.{g}")),
         "z-order" => p.rank.to_string(),
         _ => String::new(),
     }

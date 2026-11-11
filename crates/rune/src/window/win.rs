@@ -11,7 +11,13 @@ pub(super) const READY_FALLBACK: Duration = Duration::from_secs(1);
 pub(super) struct Win {
     /// The OS accessibility adapter, which goes before the window it answers for.
     pub(super) a11y: Option<crate::a11y::Adapter>,
-    #[cfg_attr(not(any(target_os = "macos", all(unix, not(target_os = "ios"), not(target_os = "android")))), allow(dead_code))]
+    #[cfg_attr(
+        not(any(
+            target_os = "macos",
+            all(unix, not(target_os = "ios"), not(target_os = "android"))
+        )),
+        allow(dead_code)
+    )]
     pub(super) native: Native,
     pub(super) first_frame: FirstFrame,
     pub(super) surface: wgpu::Surface<'static>,
@@ -46,24 +52,38 @@ pub(super) struct Win {
 
 impl Win {
     /// Asks for a frame: now, or at the turn's end while the window paints (`Redraw`).
-    pub(super) fn request_redraw(&self) { self.redraw_step(RedrawEvent::Ask(Instant::now())); }
+    pub(super) fn request_redraw(&self) {
+        self.redraw_step(RedrawEvent::Ask(Instant::now()));
+    }
 
     pub(super) fn redraw_step(&self, event: RedrawEvent) {
         let (next, effect) = self.redraw.get().step(event);
         self.redraw.set(next);
-        if effect == RedrawEffect::Request { self.window.request_redraw(); }
+        if effect == RedrawEffect::Request {
+            self.window.request_redraw();
+        }
     }
 
     /// Matches the drawable to the window's size; false when it already did.
-    pub(super) fn resize_surface(&mut self, device: &wgpu::Device, size: winit::dpi::PhysicalSize<u32>) -> bool {
+    pub(super) fn resize_surface(
+        &mut self,
+        device: &wgpu::Device,
+        size: winit::dpi::PhysicalSize<u32>,
+    ) -> bool {
         let (width, height) = (size.width.max(1), size.height.max(1));
-        if (self.config.width, self.config.height) == (width, height) { return false; }
+        if (self.config.width, self.config.height) == (width, height) {
+            return false;
+        }
         self.config.width = width;
         self.config.height = height;
         self.surface.configure(device, &self.config);
-        if let Some(alpha) = &mut self.alpha { alpha.resize(device, (width, height)); }
+        if let Some(alpha) = &mut self.alpha {
+            alpha.resize(device, (width, height));
+        }
         #[cfg(target_os = "macos")]
-        if let Some(shadow) = &self.native.shadow { shadow.redraw(); }
+        if let Some(shadow) = &self.native.shadow {
+            shadow.redraw();
+        }
         true
     }
 }
@@ -76,14 +96,23 @@ fn launcher_first_frame_holds_reveal_and_hide_cancels_late_completion() {
     assert!(!frame.ready());
     assert!(frame.complete());
     assert!(frame.ready() && frame.deadline().is_none());
-    assert!(!frame.complete(), "a second callback must not reopen a hidden panel");
+    assert!(
+        !frame.complete(),
+        "a second callback must not reopen a hidden panel"
+    );
     let mut canceled = FirstFrame::default();
     canceled.prepare();
     assert!(!canceled.request_reveal(false, false));
     canceled.hide();
-    assert!(!canceled.complete(), "hide before readiness cancels the pending show");
+    assert!(
+        !canceled.complete(),
+        "hide before readiness cancels the pending show"
+    );
     assert!(canceled.ready());
-    assert!(canceled.request_reveal(false, false), "the prepared frame can be revealed without another preparation");
+    assert!(
+        canceled.request_reveal(false, false),
+        "the prepared frame can be revealed without another preparation"
+    );
     assert!(canceled.deadline().is_none());
 }
 
@@ -91,28 +120,55 @@ fn launcher_first_frame_holds_reveal_and_hide_cancels_late_completion() {
 fn launcher_stale_reveal_waits_for_an_unsettled_hidden_frame() {
     let mut frame = FirstFrame::drawn_notified();
     assert!(!frame.complete());
-    assert!(frame.request_reveal(false, false), "unchanged state reveals the cached frame at once");
+    assert!(
+        frame.request_reveal(false, false),
+        "unchanged state reveals the cached frame at once"
+    );
     assert!(!frame.pending() && frame.settles());
-    assert!(!frame.request_reveal(true, false), "changed state renders hidden first");
-    assert!(frame.deadline().is_some() && !frame.settles(), "the refresh keeps its new motion");
+    assert!(
+        !frame.request_reveal(true, false),
+        "changed state renders hidden first"
+    );
+    assert!(
+        frame.deadline().is_some() && !frame.settles(),
+        "the refresh keeps its new motion"
+    );
     frame.gpu_done(); // The hidden frame's fence completed.
     assert!(frame.pending() && frame.complete());
     assert!(!frame.pending() && frame.settles());
     assert!(!frame.request_reveal(true, false));
     frame.hide();
-    assert!(frame.settles(), "a canceled refresh is an ordinary hidden frame");
-    assert!(frame.ready() && frame.deadline().is_none(), "hide stops the refresh retries");
-    assert!(!frame.pending() && !frame.complete(), "a late frame does not reveal");
+    assert!(
+        frame.settles(),
+        "a canceled refresh is an ordinary hidden frame"
+    );
+    assert!(
+        frame.ready() && frame.deadline().is_none(),
+        "hide stops the refresh retries"
+    );
+    assert!(
+        !frame.pending() && !frame.complete(),
+        "a late frame does not reveal"
+    );
 
     assert!(!frame.request_reveal(true, false));
-    assert!(frame.expire(), "a refresh with no drawable reveals the cached frame");
+    assert!(
+        frame.expire(),
+        "a refresh with no drawable reveals the cached frame"
+    );
     assert!(frame.ready() && !frame.pending() && frame.deadline().is_none());
     let mut first = FirstFrame::default();
     first.prepare();
     assert!(!first.request_reveal(true, false));
-    assert!(!first.expire() && !first.ready(), "the first frame stays hidden and reports instead");
+    assert!(
+        !first.expire() && !first.ready(),
+        "the first frame stays hidden and reports instead"
+    );
     first.gpu_done();
-    assert!(first.pending() && first.complete(), "a late first frame still reveals");
+    assert!(
+        first.pending() && first.complete(),
+        "a late first frame still reveals"
+    );
 }
 
 #[test]
@@ -120,14 +176,31 @@ fn launcher_refresh_with_no_drawable_retries_and_never_reveals_stale_pixels() {
     let now = Instant::now();
     let mut frame = FirstFrame::drawn_notified();
     let mut wait = TIMEOUT_RETRY;
-    assert_eq!(frame.missed(now, &mut wait), Some(now + TIMEOUT_RETRY), "a hidden refresh that got no drawable tries again");
+    assert_eq!(
+        frame.missed(now, &mut wait),
+        Some(now + TIMEOUT_RETRY),
+        "a hidden refresh that got no drawable tries again"
+    );
     assert!(!frame.ready(), "its cached frame no longer counts as ready");
-    assert_eq!(frame.missed(now, &mut wait), Some(now + TIMEOUT_RETRY * 2), "and backs off");
-    for _ in 0..10 { frame.missed(now, &mut wait); }
+    assert_eq!(
+        frame.missed(now, &mut wait),
+        Some(now + TIMEOUT_RETRY * 2),
+        "and backs off"
+    );
+    for _ in 0..10 {
+        frame.missed(now, &mut wait);
+    }
     assert_eq!(wait, OCCLUDED_MAX);
-    assert!(!frame.request_reveal(false, false), "a reveal waits for the refresh even with nothing new to commit");
+    assert!(
+        !frame.request_reveal(false, false),
+        "a reveal waits for the refresh even with nothing new to commit"
+    );
     assert!(frame.deadline().is_some());
-    assert_eq!(frame.missed(now, &mut wait), None, "the first-frame deadline owns its retries");
+    assert_eq!(
+        frame.missed(now, &mut wait),
+        None,
+        "the first-frame deadline owns its retries"
+    );
 
     // One already on screen shows at once and redraws, rather than retrying a first frame.
     let mut shown = FirstFrame::drawn_notified();
@@ -139,22 +212,33 @@ impl Win {
     pub(super) fn show(&self, focus: bool) {
         #[cfg(target_os = "macos")]
         {
-            if let Some(shadow) = &self.native.shadow { shadow.shown(); }
+            if let Some(shadow) = &self.native.shadow {
+                shadow.shown();
+            }
             if let Some(panel) = &self.native.panel {
                 panel.show(std::time::Duration::ZERO);
-                if focus { panel.request_keys(); }
+                if focus {
+                    panel.request_keys();
+                }
                 return;
             }
-            if !focus { crate::platform::macos::show_without_focus(&self.window); return; }
+            if !focus {
+                crate::platform::macos::show_without_focus(&self.window);
+                return;
+            }
         }
         // What it presented before it was hidden is gone, or never was: cloaked until it draws.
         #[cfg(target_os = "windows")]
         {
-            self.native.cloak.hold(&self.window, Instant::now() + READY_FALLBACK);
+            self.native
+                .cloak
+                .hold(&self.window, Instant::now() + READY_FALLBACK);
             self.request_redraw();
         }
         self.window.set_visible(true);
-        if focus { self.window.focus_window(); }
+        if focus {
+            self.window.focus_window();
+        }
     }
 
     /// When a cloaked window shows without its frame.
@@ -169,9 +253,14 @@ impl Win {
         #[cfg(all(feature = "native-file-dialog", target_os = "linux"))]
         crate::file_dialog::window_focus(&self.window, false);
         #[cfg(target_os = "macos")]
-        if let Some(shadow) = &self.native.shadow { shadow.hidden(); }
+        if let Some(shadow) = &self.native.shadow {
+            shadow.hidden();
+        }
         #[cfg(target_os = "macos")]
-        if let Some(panel) = &self.native.panel { panel.hide(std::time::Duration::ZERO); return; }
+        if let Some(panel) = &self.native.panel {
+            panel.hide(std::time::Duration::ZERO);
+            return;
+        }
         self.window.set_visible(false);
         // Hidden before its frame: the next show cloaks it again.
         #[cfg(target_os = "windows")]
@@ -181,16 +270,26 @@ impl Win {
     /// Its last frame is on screen and nothing has asked for another since.
     pub(super) fn rests(&self) -> bool {
         #[cfg(target_os = "macos")]
-        if self.native.prime > 0 { return false; }
+        if self.native.prime > 0 {
+            return false;
+        }
         self.presented.is_some()
     }
 
     /// The display link's next tick after `now`, while it runs.
     pub(super) fn next_tick(&self, now: Instant) -> Option<Instant> {
         #[cfg(target_os = "macos")]
-        return self.native.pacing.as_ref().filter(|p| p.running()).map(|p| now + Duration::from_secs_f64(1.0 / p.refresh_hz()));
+        return self
+            .native
+            .pacing
+            .as_ref()
+            .filter(|p| p.running())
+            .map(|p| now + Duration::from_secs_f64(1.0 / p.refresh_hz()));
         #[cfg(not(target_os = "macos"))]
-        { let _ = now; None }
+        {
+            let _ = now;
+            None
+        }
     }
 
     /// Whether the display link drives redraws. Other platforms redraw on request.
@@ -203,7 +302,9 @@ impl Win {
 
     /// Whether something other than events paces the window's redraws: the display link on
     /// macOS, the present queue's vsync elsewhere.
-    pub(super) fn paced_for_stats(&self) -> bool { !cfg!(target_os = "macos") || self.paced() }
+    pub(super) fn paced_for_stats(&self) -> bool {
+        !cfg!(target_os = "macos") || self.paced()
+    }
 
     /// Waiting for a missed frame's retry, or for the timer pacing unpaced motion. A hidden
     /// launcher's first-frame deadline owns its own retries.
@@ -238,7 +339,9 @@ impl Win {
 
     pub(super) fn stop_pacing(&mut self) {
         #[cfg(target_os = "macos")]
-        if let Some(pacing) = &mut self.native.pacing { pacing.stop(); }
+        if let Some(pacing) = &mut self.native.pacing {
+            pacing.stop();
+        }
         #[cfg(target_os = "macos")]
         self.present_with_transaction(false);
     }
@@ -253,12 +356,17 @@ impl Win {
     /// edge. Before the drawable is acquired: wgpu reads `presentsWithTransaction` then.
     #[cfg(target_os = "macos")]
     pub(super) fn set_live_resize(&mut self, on: bool) {
-        self.native.materials.set_live(&self.window, &self.surface, on);
+        self.native
+            .materials
+            .set_live(&self.window, &self.surface, on);
     }
 
     pub(super) fn focus(&self) {
         #[cfg(target_os = "macos")]
-        if let Some(panel) = &self.native.panel { panel.request_keys(); return; }
+        if let Some(panel) = &self.native.panel {
+            panel.request_keys();
+            return;
+        }
         self.window.focus_window();
     }
 }
@@ -272,23 +380,49 @@ fn on_ready_runs_for_a_window_launched_occluded_or_hidden() {
     let now = Instant::now();
     let ms = Duration::from_millis;
     let mut shown = FirstFrame::opened(now);
-    assert!(!shown.ready_due(now + ms(16)), "a window on screen waits for its first frame");
+    assert!(
+        !shown.ready_due(now + ms(16)),
+        "a window on screen waits for its first frame"
+    );
     shown.gpu_done();
     assert!(shown.pending() && !shown.complete());
     assert!(shown.take_ready(), "its first frame runs on_ready");
-    assert!(!shown.take_ready() && shown.ready_deadline().is_none(), "once");
+    assert!(
+        !shown.take_ready() && shown.ready_deadline().is_none(),
+        "once"
+    );
 
     let mut covered = FirstFrame::opened(now);
     covered.skipped(now + ms(30));
-    assert!(covered.ready_due(now + ms(30)) && covered.take_ready(), "the first covered frame runs on_ready");
-    assert!(!covered.ready() && !covered.pending(), "the window isn't ready until it draws");
+    assert!(
+        covered.ready_due(now + ms(30)) && covered.take_ready(),
+        "the first covered frame runs on_ready"
+    );
+    assert!(
+        !covered.ready() && !covered.pending(),
+        "the window isn't ready until it draws"
+    );
     covered.skipped(now + ms(60));
-    assert_eq!(covered.ready_deadline(), None, "and skipping again doesn't run it again");
+    assert_eq!(
+        covered.ready_deadline(),
+        None,
+        "and skipping again doesn't run it again"
+    );
     covered.gpu_done(); // Uncovered.
-    assert!(covered.pending() && !covered.complete() && !covered.take_ready(), "drawing at last doesn't either");
+    assert!(
+        covered.pending() && !covered.complete() && !covered.take_ready(),
+        "drawing at last doesn't either"
+    );
 
     let mut hidden = FirstFrame::opened(now);
-    assert_eq!(hidden.ready_deadline(), Some(now + READY_FALLBACK), "the event loop wakes for it");
+    assert_eq!(
+        hidden.ready_deadline(),
+        Some(now + READY_FALLBACK),
+        "the event loop wakes for it"
+    );
     assert!(!hidden.ready_due(now + READY_FALLBACK - ms(1)));
-    assert!(hidden.ready_due(now + READY_FALLBACK) && hidden.take_ready(), "a window that never draws runs it after the fallback");
+    assert!(
+        hidden.ready_due(now + READY_FALLBACK) && hidden.take_ready(),
+        "a window that never draws runs it after the fallback"
+    );
 }

@@ -208,14 +208,26 @@ impl ScrollBarStyle {
     /// The kit's thumb: `border_base` and 6 points wide at rest, `border_strong` and 10 points
     /// under the pointer.
     pub fn from_kit(k: &Kit) -> Self {
-        Self { thumb: k.c.border_base, thumb_hover: k.c.border_strong, width: THUMB, hover_width: THUMB_HOVER, track: KIT_TRACK }
+        Self {
+            thumb: k.c.border_base,
+            thumb_hover: k.c.border_strong,
+            width: THUMB,
+            hover_width: THUMB_HOVER,
+            track: KIT_TRACK,
+        }
     }
 
     /// `@opencode/ui`'s ScrollView thumb: always an overlay, hidden at rest and shown while the
     /// pointer is over the area or it scrolls; a 4 point `border_muted` pill that turns
     /// `border_strong` under the pointer or while dragged.
     pub fn scroll_view(k: &Kit) -> Self {
-        Self { thumb: k.c.border_muted, thumb_hover: k.c.border_strong, width: 4.0, hover_width: 4.0, track: SCROLL_VIEW_TRACK }
+        Self {
+            thumb: k.c.border_muted,
+            thumb_hover: k.c.border_strong,
+            width: 4.0,
+            hover_width: 4.0,
+            track: SCROLL_VIEW_TRACK,
+        }
     }
 
     /// `@opencode/ui`'s `scrollbar.css`, the scroll bar of every plain `overflow: auto` box in
@@ -550,17 +562,24 @@ impl Bar {
         let lo = t.top + t.inset;
         let p = p.map(|p| if t.x { (p.y, p.x) } else { (p.x, p.y) });
         let (top, h) = thumb_along(at, len.max(0.0), t.min_thumb, a);
-        let in_strip = |across: f32, along: f32| (bar_end - track..=bar_end).contains(&across) && (lo..=lo + len).contains(&along);
-        let on_thumb = |(across, along): (f32, f32)| in_strip(across, along) && (!t.area_reveals || (lo + top..=lo + top + h).contains(&along));
+        let in_strip =
+            |across: f32, along: f32| (bar_end - track..=bar_end).contains(&across) && (lo..=lo + len).contains(&along);
+        let on_thumb = |(across, along): (f32, f32)| {
+            in_strip(across, along) && (!t.area_reveals || (lo + top..=lo + top + h).contains(&along))
+        };
         // A bar its hover target reveals shows here only under the pointer on its thumb, which
         // belongs to the target as a ScrollView's thumb mounted in the target's track does.
         let near = shows
             && p.is_some_and(|(across, along)| match (t.targeted || t.scroll_only, t.area_reveals) {
                 // A scroll-only thumb holds while the pointer is on it as it shows.
-                _ if t.scroll_only => on_thumb((across, along)) && (self.near.get() || self.last_now.get() < self.pulse_until.get()),
+                _ if t.scroll_only => {
+                    on_thumb((across, along)) && (self.near.get() || self.last_now.get() < self.pulse_until.get())
+                }
                 (true, _) => on_thumb((across, along)),
                 (false, true) => (0.0..=w + gutter).contains(&across) && (0.0..=h_all).contains(&along),
-                (false, false) => across >= bar_end - REVEAL.max(track) && across <= bar_end && (lo..=lo + len).contains(&along),
+                (false, false) => {
+                    across >= bar_end - REVEAL.max(track) && across <= bar_end && (lo..=lo + len).contains(&along)
+                }
             });
         let over = near && p.is_some_and(on_thumb);
         if self.over.replace(over) != over {

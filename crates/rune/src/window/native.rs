@@ -27,7 +27,12 @@ pub(super) struct Native {
     pub(super) _spot: crate::platform::macos::traffic_lights::Spot,
 }
 
-#[cfg(all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android")))]
+#[cfg(all(
+    unix,
+    not(target_os = "macos"),
+    not(target_os = "ios"),
+    not(target_os = "android")
+))]
 #[derive(Default)]
 pub(super) struct Native {
     pub(super) activator: Option<crate::platform::activation::Activator>,
@@ -42,6 +47,10 @@ pub(super) struct Native {
     pub(super) frame: Option<crate::platform::win32::CustomFrame>,
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows", all(unix, not(target_os = "ios"), not(target_os = "android")))))]
+#[cfg(not(any(
+    target_os = "macos",
+    target_os = "windows",
+    all(unix, not(target_os = "ios"), not(target_os = "android"))
+)))]
 #[derive(Default)]
 pub(super) struct Native;

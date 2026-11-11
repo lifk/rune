@@ -4,7 +4,10 @@ use rune::runtime::ElementInfo;
 use rune::{Key, KeyEvent, Mods, Runtime};
 
 pub fn find<S: 'static>(rt: &Runtime<S>, key: &str) -> ElementInfo {
-    rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key)).unwrap_or_else(|| panic!("{key}"))
+    rt.elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some(key))
+        .unwrap_or_else(|| panic!("{key}"))
 }
 
 pub fn centre(e: &ElementInfo) -> (f32, f32) {
@@ -40,7 +43,13 @@ pub fn drag<S: 'static>(rt: &mut Runtime<S>, (x0, y0): (f32, f32), (x1, y1): (f3
 }
 
 pub fn command<S: 'static>(rt: &mut Runtime<S>, c: char) {
-    rt.key(KeyEvent { key: Key::Command(c), mods: Mods { cmd: true, ..Mods::default() } });
+    rt.key(KeyEvent {
+        key: Key::Command(c),
+        mods: Mods {
+            cmd: true,
+            ..Mods::default()
+        },
+    });
     tick(rt);
 }
 
@@ -51,13 +60,27 @@ pub fn glyphs<S: 'static>(rt: &Runtime<S>, key: &str) -> Vec<(f32, f32)> {
 
 /// [`glyphs`] for the element at `path`.
 pub fn glyphs_at<S: 'static>(rt: &Runtime<S>, path: &str) -> Vec<(f32, f32)> {
-    let e = rt.elements().into_iter().find(|e| e.path == path).unwrap_or_else(|| panic!("{path}"));
+    let e = rt
+        .elements()
+        .into_iter()
+        .find(|e| e.path == path)
+        .unwrap_or_else(|| panic!("{path}"));
     let mut out: Vec<(f32, f32)> = rt
         .instances
         .iter()
         .filter(|i| i.params[1] == rune::render::KIND_GLYPH)
-        .map(|i| ((i.rect[0] + i.rect[2] / 2.0) / 2.0, (i.rect[1] + i.rect[3] / 2.0) / 2.0))
-        .filter(|&(x, y)| x >= e.rect[0] && x <= e.rect[0] + e.rect[2] && y >= e.rect[1] && y <= e.rect[1] + e.rect[3])
+        .map(|i| {
+            (
+                (i.rect[0] + i.rect[2] / 2.0) / 2.0,
+                (i.rect[1] + i.rect[3] / 2.0) / 2.0,
+            )
+        })
+        .filter(|&(x, y)| {
+            x >= e.rect[0]
+                && x <= e.rect[0] + e.rect[2]
+                && y >= e.rect[1]
+                && y <= e.rect[1] + e.rect[3]
+        })
         .collect();
     // Rows by ink centre, a new row when the centre jumps by more than a third of a line: a
     // tall glyph's centre sits a little higher than a short one's in every rasterizer.

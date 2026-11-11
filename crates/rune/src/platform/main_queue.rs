@@ -3,7 +3,11 @@
 #[link(name = "System", kind = "dylib")]
 unsafe extern "C" {
     static _dispatch_main_q: u8;
-    fn dispatch_async_f(queue: *const u8, context: *mut std::ffi::c_void, work: extern "C" fn(*mut std::ffi::c_void));
+    fn dispatch_async_f(
+        queue: *const u8,
+        context: *mut std::ffi::c_void,
+        work: extern "C" fn(*mut std::ffi::c_void),
+    );
 }
 
 /// Run `f` on the main queue, which the window event loop drains.

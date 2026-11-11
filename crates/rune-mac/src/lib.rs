@@ -41,7 +41,11 @@ unsafe fn key_window() -> *mut objc2::runtime::AnyObject {
     unsafe {
         let app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
         let w: *mut AnyObject = msg_send![app, keyWindow];
-        if w.is_null() { msg_send![app, mainWindow] } else { w }
+        if w.is_null() {
+            msg_send![app, mainWindow]
+        } else {
+            w
+        }
     }
 }
 
@@ -114,7 +118,9 @@ pub fn busy(on: bool) {
     if !cfg!(target_os = "macos") {
         return;
     }
-    let Some(home) = std::env::var_os("HOME") else { return };
+    let Some(home) = std::env::var_os("HOME") else {
+        return;
+    };
     let dir = std::path::PathBuf::from(home).join("Library/Caches/mac-app/busy");
     let path = dir.join(std::process::id().to_string());
     if on {

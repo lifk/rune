@@ -8,8 +8,19 @@ const VIEW: usize = 300;
 
 /// Four hundred 60-point rows in a 300-point viewport.
 fn view(_: &(), _: &mut Cx<()>) -> El {
-    let rows = col().key("rows").w_full().children((0..400).map(|k| el().key(format!("r{k}")).w_full().h(ROW as f32)));
-    col().size(200.0, VIEW as f32).child(col().key("scroll").size(200.0, VIEW as f32).scroll(crate::ScrollSpec { stick_bottom: false }).child(rows))
+    let rows = col()
+        .key("rows")
+        .w_full()
+        .children((0..400).map(|k| el().key(format!("r{k}")).w_full().h(ROW as f32)));
+    col().size(200.0, VIEW as f32).child(
+        col()
+            .key("scroll")
+            .size(200.0, VIEW as f32)
+            .scroll(crate::ScrollSpec {
+                stick_bottom: false,
+            })
+            .child(rows),
+    )
 }
 
 fn offset(rt: &Runtime<()>) -> f64 {
@@ -56,7 +67,10 @@ fn cv(moves: &[f64]) -> f64 {
 fn steady(moves: &[f64]) -> (f64, f64) {
     let steady = &moves[moves.len() / 2..];
     let mean = steady.iter().sum::<f64>() / steady.len() as f64;
-    (cv(steady), steady.iter().copied().fold(f64::MAX, f64::min) / mean)
+    (
+        cv(steady),
+        steady.iter().copied().fold(f64::MAX, f64::min) / mean,
+    )
 }
 
 #[test]
@@ -71,14 +85,24 @@ fn key_repeat_retargets_glide_as_one_motion() {
     });
     for (name, moves) in [("glide", &glide), ("quick", &with), ("from rest", &stairs)] {
         let (steady_cv, slowest) = steady(moves);
-        eprintln!("{name}: hold cv {:.3}, steady cv {steady_cv:.3}, slowest {slowest:.2} of the mean, frame 1 {:.2} pt", cv(moves), moves[0]);
+        eprintln!(
+            "{name}: hold cv {:.3}, steady cv {steady_cv:.3}, slowest {slowest:.2} of the mean, frame 1 {:.2} pt",
+            cv(moves),
+            moves[0]
+        );
     }
     for (name, moves) in [("glide", &glide), ("quick", &with)] {
         let (steady_cv, slowest) = steady(moves);
-        assert!(steady_cv < 0.05 && slowest > 0.9, "{name}: the glide keeps its speed between presses: cv {steady_cv:.3}, slowest {slowest:.2}: {moves:.1?}");
+        assert!(
+            steady_cv < 0.05 && slowest > 0.9,
+            "{name}: the glide keeps its speed between presses: cv {steady_cv:.3}, slowest {slowest:.2}: {moves:.1?}"
+        );
     }
     let (steady_cv, slowest) = steady(&stairs);
-    assert!(steady_cv > 0.25 && slowest < 0.5, "restarting from rest steps: cv {steady_cv:.3}, slowest {slowest:.2}");
+    assert!(
+        steady_cv > 0.25 && slowest < 0.5,
+        "restarting from rest steps: cv {steady_cv:.3}, slowest {slowest:.2}"
+    );
 }
 
 #[test]
@@ -108,12 +132,19 @@ fn without_a_spring_a_glide_runs_on_glide() {
         path
     };
     let glide = path(&|tx| tx.scroll_to("scroll", 0.0, 500.0));
-    assert_eq!(glide, path(&|tx| tx.scroll_to_with("scroll", 0.0, 500.0, motion::GLIDE)));
+    assert_eq!(
+        glide,
+        path(&|tx| tx.scroll_to_with("scroll", 0.0, 500.0, motion::GLIDE))
+    );
     // The same path a spring on `GLIDE` steps from rest.
     let (mut d, mut v) = (-500.0f32, 0.0);
     for (f, y) in glide.iter().enumerate().take(30) {
         (d, v) = motion::GLIDE.sample(d, v, 0.0, DT as f32);
-        assert!((y - (500.0 + f64::from(d))).abs() < 1e-3, "frame {f}: {y} against {}", 500.0 + d);
+        assert!(
+            (y - (500.0 + f64::from(d))).abs() < 1e-3,
+            "frame {f}: {y} against {}",
+            500.0 + d
+        );
     }
     assert_eq!(*glide.last().unwrap(), 500.0);
 }
@@ -122,9 +153,14 @@ fn without_a_spring_a_glide_runs_on_glide() {
 fn another_glide_after_a_springed_one_runs_on_glide_again() {
     let mut rt = runtime();
     rt.update(|_, tx| tx.scroll_to_with("scroll", 0.0, 500.0, Spring::new(0.18, 0.0)));
-    for _ in 0..120 { rt.frame(DT); }
+    for _ in 0..120 {
+        rt.frame(DT);
+    }
     assert_eq!(offset(&rt), 500.0);
     rt.update(|_, tx| tx.scroll_to_bottom("scroll"));
     rt.frame(DT);
-    assert!(rt.scrolls.values().next().unwrap().spring.is_none(), "a glide to the bottom takes the default spring");
+    assert!(
+        rt.scrolls.values().next().unwrap().spring.is_none(),
+        "a glide to the bottom takes the default spring"
+    );
 }

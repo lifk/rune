@@ -15,7 +15,11 @@ pub fn posix_languages(var: impl Fn(&str) -> Option<String>) -> Vec<String> {
     let names = var("LANGUAGE").unwrap_or_default();
     let singles = ["LC_ALL", "LC_MESSAGES", "LANG"].map(|name| var(name).unwrap_or_default());
     for value in names.split(':').chain(singles.iter().map(String::as_str)) {
-        let tag = value.split(['.', '@']).next().unwrap_or("").replace('_', "-");
+        let tag = value
+            .split(['.', '@'])
+            .next()
+            .unwrap_or("")
+            .replace('_', "-");
         if tag.is_empty() || tag == "C" || tag == "POSIX" || out.contains(&tag) {
             continue;
         }
@@ -31,31 +35,60 @@ fn platform() -> Vec<String> {
 
     let (mut count, mut len) = (0u32, 0u32);
     // SAFETY: the first call only writes the count and the buffer length it needs.
-    if unsafe { GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &mut count, None, &mut len) }.is_err() || len == 0 {
+    if unsafe { GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &mut count, None, &mut len) }
+        .is_err()
+        || len == 0
+    {
         return Vec::new();
     }
     let mut buffer = vec![0u16; len as usize];
     // SAFETY: `buffer` holds the `len` UTF-16 units the first call asked for.
-    if unsafe { GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &mut count, Some(PWSTR(buffer.as_mut_ptr())), &mut len) }
-        .is_err()
+    if unsafe {
+        GetUserPreferredUILanguages(
+            MUI_LANGUAGE_NAME,
+            &mut count,
+            Some(PWSTR(buffer.as_mut_ptr())),
+            &mut len,
+        )
+    }
+    .is_err()
     {
         return Vec::new();
     }
-    buffer.split(|&unit| unit == 0).filter(|name| !name.is_empty()).map(String::from_utf16_lossy).collect()
+    buffer
+        .split(|&unit| unit == 0)
+        .filter(|name| !name.is_empty())
+        .map(String::from_utf16_lossy)
+        .collect()
 }
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn platform() -> Vec<String> {
-    objc2_foundation::NSLocale::preferredLanguages().iter().map(|tag| tag.to_string()).collect()
+    objc2_foundation::NSLocale::preferredLanguages()
+        .iter()
+        .map(|tag| tag.to_string())
+        .collect()
 }
 
 #[cfg(target_arch = "wasm32")]
 fn platform() -> Vec<String> {
-    let Some(window) = web_sys::window() else { return Vec::new() };
-    window.navigator().languages().iter().filter_map(|tag| tag.as_string()).collect()
+    let Some(window) = web_sys::window() else {
+        return Vec::new();
+    };
+    window
+        .navigator()
+        .languages()
+        .iter()
+        .filter_map(|tag| tag.as_string())
+        .collect()
 }
 
-#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "ios", target_arch = "wasm32")))]
+#[cfg(not(any(
+    target_os = "windows",
+    target_os = "macos",
+    target_os = "ios",
+    target_arch = "wasm32"
+)))]
 fn platform() -> Vec<String> {
     posix_languages(|name| std::env::var_os(name).and_then(|value| value.into_string().ok()))
 }

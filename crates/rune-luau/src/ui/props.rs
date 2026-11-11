@@ -115,11 +115,18 @@ pub fn prop_names() -> impl Iterator<Item = &'static str> {
 }
 
 fn by_id(id: c_int) -> Option<Atom> {
-    usize::try_from(id).ok().and_then(|i| NAMES.get(i)).map(|(_, a)| *a)
+    usize::try_from(id)
+        .ok()
+        .and_then(|i| NAMES.get(i))
+        .map(|(_, a)| *a)
 }
 
 /// Luau's `useratom` callback: gives each prop name its atom when the string is first interned.
-pub(crate) unsafe extern "C-unwind" fn useratom(_: *mut ffi::lua_State, s: *const c_char, len: usize) -> i16 {
+pub(crate) unsafe extern "C-unwind" fn useratom(
+    _: *mut ffi::lua_State,
+    s: *const c_char,
+    len: usize,
+) -> i16 {
     if len > 18 {
         return -1;
     }
@@ -150,10 +157,17 @@ pub(crate) unsafe fn read<'a>(state: *mut ffi::lua_State, idx: c_int) -> Value<'
             ffi::LUA_TSTRING => {
                 let mut len = 0;
                 let p = ffi::lua_tolstring(state, idx, &mut len);
-                Value::Str(std::str::from_utf8(std::slice::from_raw_parts(p.cast::<u8>(), len)).unwrap_or(""))
+                Value::Str(
+                    std::str::from_utf8(std::slice::from_raw_parts(p.cast::<u8>(), len))
+                        .unwrap_or(""),
+                )
             }
             ffi::LUA_TFUNCTION => Value::Func,
-            t => Value::Other(CStr::from_ptr(ffi::lua_typename(state, t)).to_str().unwrap_or("value")),
+            t => Value::Other(
+                CStr::from_ptr(ffi::lua_typename(state, t))
+                    .to_str()
+                    .unwrap_or("value"),
+            ),
         }
     }
 }
@@ -245,9 +259,18 @@ impl Props {
 
     /// Applies what waited for the whole table: the press and hover handlers (`press` is the
     /// node's `onPress`), then the props that depend on others, the text style and the key.
-    pub(crate) fn finish(self, e: &mut El, env: &Env, is_text: bool, press: Option<Rc<Callback>>, attach: &'static Attach) {
+    pub(crate) fn finish(
+        self,
+        e: &mut El,
+        env: &Env,
+        is_text: bool,
+        press: Option<Rc<Callback>>,
+        attach: &'static Attach,
+    ) {
         let press = press.filter(|_| !self.disabled);
-        let key: Option<Rc<str>> = (press.is_some() || self.on_hover.is_some()).then(|| self.key.as_deref().map(Into::into)).flatten();
+        let key: Option<Rc<str>> = (press.is_some() || self.on_hover.is_some())
+            .then(|| self.key.as_deref().map(Into::into))
+            .flatten();
         if let Some(cb) = press {
             (attach.press)(e, cb, key.clone(), Rc::new([]));
         }
@@ -291,7 +314,8 @@ impl Props {
             with(e, |e| e.disabled(true));
         }
         if is_text {
-            e.set_font(self.text).set_color(self.color.unwrap_or_else(|| env.text_color()));
+            e.set_font(self.text)
+                .set_color(self.color.unwrap_or_else(|| env.text_color()));
             if self.truncate {
                 e.set_truncate();
             }
@@ -314,13 +338,18 @@ impl Props {
             e.set_color(c);
         }
         if self.border != (None, None) {
-            let c = self.border.1.unwrap_or_else(|| env.color("separator").unwrap_or(Color::TRANSPARENT));
+            let c = self
+                .border
+                .1
+                .unwrap_or_else(|| env.color("separator").unwrap_or(Color::TRANSPARENT));
             e.set_border(self.border.0.unwrap_or(1.0), c);
         }
         match self.scroll {
             Some((true, true)) => e.set_scroll_xy(),
             Some((true, false)) => e.set_scroll_x(),
-            Some((false, _)) => e.set_scroll(ScrollSpec { stick_bottom: self.stick_bottom }),
+            Some((false, _)) => e.set_scroll(ScrollSpec {
+                stick_bottom: self.stick_bottom,
+            }),
             None => e,
         };
         if let Some(k) = self.key {
@@ -330,26 +359,45 @@ impl Props {
 
     /// Decodes one prop onto `e`, or keeps it for `finish`, or says what was wrong with its
     /// value.
-    pub(crate) fn decode(&mut self, e: &mut El, atom: Atom, v: Value<'_>, env: &Env, is_text: bool) -> Result<(), String> {
+    pub(crate) fn decode(
+        &mut self,
+        e: &mut El,
+        atom: Atom,
+        v: Value<'_>,
+        env: &Env,
+        is_text: bool,
+    ) -> Result<(), String> {
         let name = NAMES[atom as usize].0;
         let num = |v: Value<'_>| match v {
             Value::Num(n) => Ok(n as f32),
-            other => Err(format!("{name} must be a number, got {}", self::name(other))),
+            other => Err(format!(
+                "{name} must be a number, got {}",
+                self::name(other)
+            )),
         };
         let flag = |v: Value<'_>| match v {
             Value::Bool(b) => Ok(b),
             Value::Nil => Ok(false),
-            other => Err(format!("{name} must be a boolean, got {}", self::name(other))),
+            other => Err(format!(
+                "{name} must be a boolean, got {}",
+                self::name(other)
+            )),
         };
         let color = |v: Value<'_>| match v {
             Value::Str(s) => env.resolve(s),
-            other => Err(format!("{name} must be a color token or ui.hex(...), got {}", self::name(other))),
+            other => Err(format!(
+                "{name} must be a color token or ui.hex(...), got {}",
+                self::name(other)
+            )),
         };
         let string = |v| as_str(atom, v);
         let size = |v: Value<'_>| match v {
             Value::Num(n) => Ok(Size::Points(n as f32)),
             Value::Str("full") => Ok(Size::Full),
-            other => Err(format!("{name} must be a number or \"full\", got {}", self::name(other))),
+            other => Err(format!(
+                "{name} must be a number or \"full\", got {}",
+                self::name(other)
+            )),
         };
         match atom {
             Atom::Key => {
@@ -437,7 +485,12 @@ impl Props {
                     Value::Str("center") => e.set_items_center(),
                     Value::Str("end") => e.set_items_end(),
                     Value::Str("stretch") => e.set_items_stretch(),
-                    other => return Err(format!("align must be start, center, end or stretch, got {}", self::name(other))),
+                    other => {
+                        return Err(format!(
+                            "align must be start, center, end or stretch, got {}",
+                            self::name(other)
+                        ));
+                    }
                 };
             }
             Atom::Justify => {
@@ -446,7 +499,12 @@ impl Props {
                     Value::Str("center") => e.set_justify_center(),
                     Value::Str("end") => e.set_justify_end(),
                     Value::Str("between") => e.set_justify_between(),
-                    other => return Err(format!("justify must be start, center, end or between, got {}", self::name(other))),
+                    other => {
+                        return Err(format!(
+                            "justify must be start, center, end or between, got {}",
+                            self::name(other)
+                        ));
+                    }
                 };
             }
             Atom::Center => self.center = flag(v)?,
@@ -470,7 +528,11 @@ impl Props {
             Atom::ScrollY | Atom::ScrollX => {
                 if flag(v)? {
                     let (x, y) = self.scroll.unwrap_or((false, false));
-                    self.scroll = Some(if atom == Atom::ScrollX { (true, y) } else { (x, true) });
+                    self.scroll = Some(if atom == Atom::ScrollX {
+                        (true, y)
+                    } else {
+                        (x, true)
+                    });
                 }
             }
             Atom::StickBottom => self.stick_bottom = flag(v)?,
@@ -483,13 +545,25 @@ impl Props {
                     Value::Str("semibold") => env.weights[2],
                     Value::Str("bold") => env.weights[3],
                     Value::Num(n) => n as f32,
-                    other => return Err(format!("weight must be regular, medium, semibold or bold, got {}", self::name(other))),
+                    other => {
+                        return Err(format!(
+                            "weight must be regular, medium, semibold or bold, got {}",
+                            self::name(other)
+                        ));
+                    }
                 }
             }
             Atom::HoverTransition => match v {
-                Value::Str("instant") => with(e, |e| e.hover_motion(rune::Anim::INSTANT, rune::Anim::INSTANT)),
+                Value::Str("instant") => with(e, |e| {
+                    e.hover_motion(rune::Anim::INSTANT, rune::Anim::INSTANT)
+                }),
                 Value::Str("default") | Value::Nil => {}
-                other => return Err(format!("hoverTransition must be default or instant, got {}", self::name(other))),
+                other => {
+                    return Err(format!(
+                        "hoverTransition must be default or instant, got {}",
+                        self::name(other)
+                    ));
+                }
             },
             Atom::HoverGroup => {
                 if flag(v)? {
@@ -513,7 +587,12 @@ impl Props {
                     }
                 }
                 Value::Nil => {}
-                other => return Err(format!("shadow must be an elevation name, got {}", self::name(other))),
+                other => {
+                    return Err(format!(
+                        "shadow must be an elevation name, got {}",
+                        self::name(other)
+                    ));
+                }
             },
             Atom::Selected => self.selected = flag(v)?,
             Atom::Focusable => {
@@ -529,7 +608,9 @@ impl Props {
             }
             Atom::FadeOut => self.fade_out = flag(v)?,
             // Tables, read off the stack by `decode_at`.
-            Atom::Corners | Atom::Pin => return Err(format!("{name} must be a table, got {}", self::name(v))),
+            Atom::Corners | Atom::Pin => {
+                return Err(format!("{name} must be a table, got {}", self::name(v)));
+            }
             Atom::LineHeight => self.text = self.text.lh(num(v)?),
             Atom::Tracking => self.text = self.text.tracking(num(v)?),
             Atom::Mono => {
@@ -555,11 +636,23 @@ impl Props {
                     Value::Str("start") => Align::Start,
                     Value::Str("center") => Align::Center,
                     Value::Str("end") => Align::End,
-                    other => return Err(format!("textAlign must be start, center or end, got {}", self::name(other))),
+                    other => {
+                        return Err(format!(
+                            "textAlign must be start, center or end, got {}",
+                            self::name(other)
+                        ));
+                    }
                 })
             }
             // Read by the node that takes them; elsewhere they mean nothing.
-            Atom::OnPress | Atom::OnHover | Atom::Count | Atom::EstimatedRowHeight | Atom::Version | Atom::RenderRow | Atom::RowKey | Atom::OnVisibleRows => {
+            Atom::OnPress
+            | Atom::OnHover
+            | Atom::Count
+            | Atom::EstimatedRowHeight
+            | Atom::Version
+            | Atom::RenderRow
+            | Atom::RowKey
+            | Atom::OnVisibleRows => {
                 env.warn_once(format!("{name} has no effect on this node"));
             }
         }
@@ -568,7 +661,15 @@ impl Props {
 
     /// Decodes the prop whose value is at stack slot `idx` onto `e`, reading the table-valued
     /// ones (`corners`, `pin`) off the stack.
-    pub(crate) unsafe fn decode_at(&mut self, e: &mut El, state: *mut ffi::lua_State, atom: Atom, idx: c_int, env: &Env, is_text: bool) -> Result<(), String> {
+    pub(crate) unsafe fn decode_at(
+        &mut self,
+        e: &mut El,
+        state: *mut ffi::lua_State,
+        atom: Atom,
+        idx: c_int,
+        env: &Env,
+        is_text: bool,
+    ) -> Result<(), String> {
         // SAFETY: the caller passes a valid slot.
         let v = unsafe { read(state, idx) };
         match (atom, v) {
@@ -581,14 +682,14 @@ impl Props {
             }
             (Atom::Pin, Value::Other("table")) => {
                 // SAFETY: slot `idx` holds a table.
-                let [l, t, r, b] = unsafe { numbers::<4>(state, idx, &["left", "top", "right", "bottom"]) };
+                let [l, t, r, b] =
+                    unsafe { numbers::<4>(state, idx, &["left", "top", "right", "bottom"]) };
                 e.set_pin(l, t, r, b);
                 Ok(())
             }
             _ => self.decode(e, atom, v, env, is_text),
         }
     }
-
 }
 
 /// Runs a by-value builder on `e` in place, for the props Rune has no in-place setter for.
@@ -598,7 +699,11 @@ fn with(e: &mut El, f: impl FnOnce(El) -> El) {
 }
 
 /// `N` numbers from the table at `idx`: by name when `names` are given, else items `1..=N`.
-unsafe fn numbers<const N: usize>(state: *mut ffi::lua_State, idx: c_int, names: &[&str]) -> [Option<f32>; N] {
+unsafe fn numbers<const N: usize>(
+    state: *mut ffi::lua_State,
+    idx: c_int,
+    names: &[&str],
+) -> [Option<f32>; N] {
     let mut out = [None; N];
     // SAFETY: `idx` is a table; each lookup pushes one value, popped right after.
     unsafe {
@@ -623,7 +728,11 @@ unsafe fn numbers<const N: usize>(state: *mut ffi::lua_State, idx: c_int, names:
 fn as_str(atom: Atom, v: Value<'_>) -> Result<&str, String> {
     match v {
         Value::Str(s) => Ok(s),
-        other => Err(format!("{} must be a string, got {}", NAMES[atom as usize].0, name(other))),
+        other => Err(format!(
+            "{} must be a string, got {}",
+            NAMES[atom as usize].0,
+            name(other)
+        )),
     }
 }
 
@@ -660,5 +769,9 @@ pub(crate) fn name(v: Value<'_>) -> &'static str {
 
 /// A number as Luau prints it: `3`, not `3.0`.
 pub(crate) fn format_num(n: f64) -> String {
-    if n.fract() == 0.0 && n.abs() < 1e15 { format!("{}", n as i64) } else { n.to_string() }
+    if n.fract() == 0.0 && n.abs() < 1e15 {
+        format!("{}", n as i64)
+    } else {
+        n.to_string()
+    }
 }

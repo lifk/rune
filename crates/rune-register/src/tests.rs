@@ -27,7 +27,15 @@ fn merge_joins_by_name_and_keeps_footer_last() {
     let own = [Item("one", 1), Item("two", 2), Item("footer", 9)];
     let more = [Item("two", 20), Item("new", 5)];
     let out = merge(&own, &more, |i| i.0, |o, m| o.1 += m.1);
-    assert_eq!(out, [Item("one", 1), Item("two", 22), Item("new", 5), Item("footer", 9)]);
+    assert_eq!(
+        out,
+        [
+            Item("one", 1),
+            Item("two", 22),
+            Item("new", 5),
+            Item("footer", 9)
+        ]
+    );
 }
 
 #[test]

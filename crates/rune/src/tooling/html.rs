@@ -9,21 +9,34 @@ const SETTLE_FRAMES: usize = 240;
 
 pub(crate) fn export<S: 'static>(app: crate::app::App<S>, args: &Args) -> Result<(), String> {
     let out = args.html.clone().expect("--html");
-    let mut widths = if args.html_widths.is_empty() { vec![args.size.unwrap_or(app.spec.size).0] } else { args.html_widths.clone() };
+    let mut widths = if args.html_widths.is_empty() {
+        vec![args.size.unwrap_or(app.spec.size).0]
+    } else {
+        args.html_widths.clone()
+    };
     widths.sort_by(f32::total_cmp);
     widths.dedup();
     let height = args.size.unwrap_or(app.spec.size).1;
     let scale = args.scale.unwrap_or(2.0);
     let (fit_height, document) = (app.fit_content_height, app.web_document);
     let template = match &args.html_template {
-        Some(path) => std::fs::read_to_string(path).map_err(|e| format!("--html-template {}: {e}", path.display()))?,
+        Some(path) => std::fs::read_to_string(path)
+            .map_err(|e| format!("--html-template {}: {e}", path.display()))?,
         None => DEFAULT_TEMPLATE.to_owned(),
     };
     let (spec, state, _shared) = app.into_parts(args.scene.as_deref());
     let dark = args.theme.as_deref() != Some("light");
-    let mut rt = runtime_for(&spec, state, (widths[0], height), Env::new(dark, scale), std::sync::Arc::new(|| {}));
+    let mut rt = runtime_for(
+        &spec,
+        state,
+        (widths[0], height),
+        Env::new(dark, scale),
+        std::sync::Arc::new(|| {}),
+    );
     rt.fit_height = fit_height;
-    if document { rt.page_mode(); }
+    if document {
+        rt.page_mode();
+    }
     let mut taken: Vec<(f32, Vec<ExportNode>)> = Vec::with_capacity(widths.len());
     for &w in &widths {
         rt.set_viewport((w, height), scale);
@@ -31,8 +44,14 @@ pub(crate) fn export<S: 'static>(app: crate::app::App<S>, args: &Args) -> Result
         taken.push((w, rt.export_nodes()));
     }
     let (body, css) = page(&taken);
-    std::fs::write(&out, fill(&template, &css, &body)).map_err(|e| format!("--html {}: {e}", out.display()))?;
-    eprintln!("rune: wrote {} ({} elements, widths {:?})", out.display(), taken[0].1.len(), widths);
+    std::fs::write(&out, fill(&template, &css, &body))
+        .map_err(|e| format!("--html {}: {e}", out.display()))?;
+    eprintln!(
+        "rune: wrote {} ({} elements, widths {:?})",
+        out.display(),
+        taken[0].1.len(),
+        widths
+    );
     Ok(())
 }
 
@@ -42,7 +61,9 @@ fn settle<S: 'static>(rt: &mut Runtime<S>) {
     rt.settle_all();
     rt.frame(0.0);
     for _ in 0..SETTLE_FRAMES {
-        if !rt.animating && !rt.stale() { break; }
+        if !rt.animating && !rt.stale() {
+            break;
+        }
         rt.frame(1.0 / 60.0);
     }
 }
@@ -58,8 +79,12 @@ pub(crate) fn fill(template: &str, css: &str, body: &str) -> String {
     } else {
         format!("{style}{template}")
     };
-    if with_css.contains(BODY_MARK) { return with_css.replacen(BODY_MARK, body, 1); }
-    let at = with_css.find("<body").and_then(|b| with_css[b..].find('>').map(|e| b + e + 1));
+    if with_css.contains(BODY_MARK) {
+        return with_css.replacen(BODY_MARK, body, 1);
+    }
+    let at = with_css
+        .find("<body")
+        .and_then(|b| with_css[b..].find('>').map(|e| b + e + 1));
     match at {
         Some(at) => format!("{}{body}{}", &with_css[..at], &with_css[at..]),
         None => format!("{with_css}{body}"),

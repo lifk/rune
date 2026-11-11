@@ -28,7 +28,12 @@ use crate::PluralCategory;
 pub fn generate(dir: &Path, out_dir: &Path) -> io::Result<()> {
     println!("cargo:rerun-if-changed={}", dir.display());
     let manifest = read_json(&dir.join("locales.json"))?;
-    let layers: Vec<&str> = manifest["layers"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+    let layers: Vec<&str> = manifest["layers"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
     let locales = locales(&manifest)?;
 
     let messages: Vec<BTreeMap<String, String>> = locales
@@ -43,7 +48,10 @@ pub fn generate(dir: &Path, out_dir: &Path) -> io::Result<()> {
                 let Value::Object(map) = read_json(&path)? else {
                     return Err(invalid(format!("{} is not a JSON object", path.display())));
                 };
-                merged.extend(map.into_iter().filter_map(|(key, value)| Some((key, value.as_str()?.to_owned()))));
+                merged.extend(
+                    map.into_iter()
+                        .filter_map(|(key, value)| Some((key, value.as_str()?.to_owned()))),
+                );
             }
             Ok(merged)
         })
@@ -60,7 +68,8 @@ pub fn generate(dir: &Path, out_dir: &Path) -> io::Result<()> {
     for locale in &messages {
         keys.extend(locale.keys().map(String::as_str).filter(|key| {
             key.rsplit_once('.').is_some_and(|(base, category)| {
-                plurals.binary_search(&base).is_ok() && PluralCategory::ALL.iter().any(|c| c.suffix() == category)
+                plurals.binary_search(&base).is_ok()
+                    && PluralCategory::ALL.iter().any(|c| c.suffix() == category)
             })
         }));
     }
@@ -73,7 +82,10 @@ pub fn generate(dir: &Path, out_dir: &Path) -> io::Result<()> {
         fs::write(blobs.join(format!("{}.txt", locale.id)), text)?;
         fs::write(blobs.join(format!("{}.spans", locale.id)), spans)?;
     }
-    fs::write(out_dir.join("i18n.rs"), source_file(&keys, &plurals, &locales))
+    fs::write(
+        out_dir.join("i18n.rs"),
+        source_file(&keys, &plurals, &locales),
+    )
 }
 
 struct Locale {
@@ -84,13 +96,22 @@ struct Locale {
 }
 
 fn locales(manifest: &Value) -> io::Result<Vec<Locale>> {
-    let list = manifest["locales"].as_array().filter(|list| !list.is_empty());
+    let list = manifest["locales"]
+        .as_array()
+        .filter(|list| !list.is_empty());
     let list = list.ok_or_else(|| invalid("locales.json lists no locales".into()))?;
     list.iter()
         .map(|entry| {
             let field = |name: &str| entry[name].as_str().map(str::to_owned);
-            let id = field("id").filter(|id| id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
-            let id = id.ok_or_else(|| invalid(format!("locale entry {entry} needs an id of letters, digits, - or _")))?;
+            let id = field("id").filter(|id| {
+                id.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            });
+            let id = id.ok_or_else(|| {
+                invalid(format!(
+                    "locale entry {entry} needs an id of letters, digits, - or _"
+                ))
+            })?;
             Ok(Locale {
                 tag: field("tag").unwrap_or_else(|| id.clone()),
                 label: field("label").unwrap_or_else(|| id.clone()),
@@ -137,35 +158,50 @@ fn source_file(keys: &[&str], plurals: &[&str], locales: &[Locale]) -> String {
     for base in plurals {
         out += &ln!("    {base:?},");
     }
-    out += &ln!("];\n\nstatic PLURAL_FORMS: [[u32; 6]; {}] = [", plurals.len());
+    out += &ln!(
+        "];\n\nstatic PLURAL_FORMS: [[u32; 6]; {}] = [",
+        plurals.len()
+    );
     for base in plurals {
         let forms = PluralCategory::ALL.map(|category| {
             let key = format!("{base}.{}", category.suffix());
-            keys.binary_search(&key.as_str()).map_or(u32::MAX, |index| index as u32)
+            keys.binary_search(&key.as_str())
+                .map_or(u32::MAX, |index| index as u32)
         });
         out += &ln!("    {forms:?},");
     }
-    out += &ln!("];\n\nstatic LOCALES: [::rune_i18n::LocaleInfo; {}] = [", locales.len());
+    out += &ln!(
+        "];\n\nstatic LOCALES: [::rune_i18n::LocaleInfo; {}] = [",
+        locales.len()
+    );
     for locale in locales {
-        out += &ln!("    ::rune_i18n::LocaleInfo::new({:?}, {:?}, {:?}, {}),",
-            locale.id, locale.tag, locale.label, locale.rtl
+        out += &ln!(
+            "    ::rune_i18n::LocaleInfo::new({:?}, {:?}, {:?}, {}),",
+            locale.id,
+            locale.tag,
+            locale.label,
+            locale.rtl
         );
     }
-    out += &ln!("];\n\nstatic MESSAGES: [::rune_i18n::Messages; {}] = [", locales.len());
+    out += &ln!(
+        "];\n\nstatic MESSAGES: [::rune_i18n::Messages; {}] = [",
+        locales.len()
+    );
     for locale in locales {
-        out += &ln!("    ::rune_i18n::Messages::new(include_str!(concat!(env!(\"OUT_DIR\"), \"/i18n/{0}.txt\")), \
+        out += &ln!(
+            "    ::rune_i18n::Messages::new(include_str!(concat!(env!(\"OUT_DIR\"), \"/i18n/{0}.txt\")), \
              include_bytes!(concat!(env!(\"OUT_DIR\"), \"/i18n/{0}.spans\"))),",
             locale.id
         );
     }
     out += &ln!("];\n\npub static CATALOG: ::rune_i18n::Catalog = \
-         ::rune_i18n::Catalog::new(KEYS, PLURALS, &PLURAL_FORMS, &LOCALES, &MESSAGES);"
-    );
+         ::rune_i18n::Catalog::new(KEYS, PLURALS, &PLURAL_FORMS, &LOCALES, &MESSAGES);");
     out
 }
 
 fn read_json(path: &Path) -> io::Result<Value> {
-    let text = fs::read_to_string(path).map_err(|e| io::Error::new(e.kind(), format!("{}: {e}", path.display())))?;
+    let text = fs::read_to_string(path)
+        .map_err(|e| io::Error::new(e.kind(), format!("{}: {e}", path.display())))?;
     serde_json::from_str(&text).map_err(|e| invalid(format!("{}: {e}", path.display())))
 }
 

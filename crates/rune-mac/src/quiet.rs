@@ -42,12 +42,24 @@ extern "C" fn check(tries: *mut std::ffi::c_void) {
 
 #[cfg(target_os = "macos")]
 fn after(tries: usize) {
-    unsafe { dispatch_after_f(dispatch_time(0, 250_000_000), &raw const _dispatch_main_q, tries as *mut std::ffi::c_void, check) };
+    unsafe {
+        dispatch_after_f(
+            dispatch_time(0, 250_000_000),
+            &raw const _dispatch_main_q,
+            tries as *mut std::ffi::c_void,
+            check,
+        )
+    };
 }
 
 #[cfg(target_os = "macos")]
 unsafe extern "C" {
     static _dispatch_main_q: std::ffi::c_void;
     fn dispatch_time(when: u64, delta: i64) -> u64;
-    fn dispatch_after_f(when: u64, queue: *const std::ffi::c_void, context: *mut std::ffi::c_void, work: extern "C" fn(*mut std::ffi::c_void));
+    fn dispatch_after_f(
+        when: u64,
+        queue: *const std::ffi::c_void,
+        context: *mut std::ffi::c_void,
+        work: extern "C" fn(*mut std::ffi::c_void),
+    );
 }

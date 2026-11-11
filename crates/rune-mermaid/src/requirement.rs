@@ -9,7 +9,10 @@ use rune::Color;
 use super::canvas::Scene;
 use super::layered::Spacing;
 use super::layered_draw::{Dir, DrawNode, Edge, Head, Line, class_box, draw_layered};
-use super::{DiagramStyle, EdgeStyle, Hover, MAX_ITEMS, NodeStyle, StyleSheet, clean_quoted, parse_style_props, word};
+use super::{
+    DiagramStyle, EdgeStyle, Hover, MAX_ITEMS, NodeStyle, StyleSheet, clean_quoted,
+    parse_style_props, word,
+};
 
 #[derive(Debug)]
 pub(crate) struct Req {
@@ -38,10 +41,22 @@ const KINDS: [(&str, &str); 7] = [
     ("element", "Element"),
 ];
 
-const RELATIONS: [&str; 7] = ["contains", "copies", "derives", "satisfies", "verifies", "refines", "traces"];
+const RELATIONS: [&str; 7] = [
+    "contains",
+    "copies",
+    "derives",
+    "satisfies",
+    "verifies",
+    "refines",
+    "traces",
+];
 
 pub(crate) fn parse(body: &[&str]) -> Option<Requirements> {
-    let mut d = Requirements { dir: Dir::Down, nodes: Vec::new(), edges: Vec::new() };
+    let mut d = Requirements {
+        dir: Dir::Down,
+        nodes: Vec::new(),
+        edges: Vec::new(),
+    };
     let mut ids: HashMap<String, usize> = HashMap::new();
     let mut styles = StyleSheet::default();
     let mut open: Option<usize> = None;
@@ -83,13 +98,24 @@ pub(crate) fn parse(body: &[&str]) -> Option<Requirements> {
                     styles.add_style(&clean_quoted(n), st);
                 }
             }
-        } else if let Some((kind, rest)) = KINDS.iter().find_map(|(w, k)| word(l, w).map(|r| (*k, r))) {
-            let Some(name) = rest.strip_suffix('{').map(str::trim).filter(|n| !n.is_empty()) else { continue };
+        } else if let Some((kind, rest)) =
+            KINDS.iter().find_map(|(w, k)| word(l, w).map(|r| (*k, r)))
+        {
+            let Some(name) = rest
+                .strip_suffix('{')
+                .map(str::trim)
+                .filter(|n| !n.is_empty())
+            else {
+                continue;
+            };
             let i = node(&mut d, &mut ids, &mut styles, name);
             d.nodes[i].kind = kind.to_owned();
             open = Some(i);
         } else if let Some((from, rel, to)) = relation(l) {
-            let (a, b) = (node(&mut d, &mut ids, &mut styles, from), node(&mut d, &mut ids, &mut styles, to));
+            let (a, b) = (
+                node(&mut d, &mut ids, &mut styles, from),
+                node(&mut d, &mut ids, &mut styles, to),
+            );
             let contains = rel == "contains";
             d.edges.push(Edge {
                 from: a,
@@ -114,11 +140,23 @@ pub(crate) fn parse(body: &[&str]) -> Option<Requirements> {
 }
 
 /// The node `name` (`"quoted"`, maybe with a `:::class`) names, added if it's new.
-fn node(d: &mut Requirements, ids: &mut HashMap<String, usize>, styles: &mut StyleSheet, name: &str) -> usize {
-    let (name, class) = name.split_once(":::").map_or((name, None), |(n, c)| (n, Some(c.trim())));
+fn node(
+    d: &mut Requirements,
+    ids: &mut HashMap<String, usize>,
+    styles: &mut StyleSheet,
+    name: &str,
+) -> usize {
+    let (name, class) = name
+        .split_once(":::")
+        .map_or((name, None), |(n, c)| (n, Some(c.trim())));
     let name = clean_quoted(name);
     let i = *ids.entry(name.clone()).or_insert_with(|| {
-        d.nodes.push(Req { name, kind: String::new(), fields: Vec::new(), style: NodeStyle::default() });
+        d.nodes.push(Req {
+            name,
+            kind: String::new(),
+            fields: Vec::new(),
+            style: NodeStyle::default(),
+        });
         d.nodes.len() - 1
     });
     if let Some(c) = class {
@@ -137,21 +175,48 @@ fn relation(l: &str) -> Option<(&str, &'static str, &str)> {
         let (mid, from) = right.split_once('-')?;
         (from, mid, to)
     };
-    let rel = RELATIONS.iter().find(|r| r.eq_ignore_ascii_case(mid.trim()))?;
+    let rel = RELATIONS
+        .iter()
+        .find(|r| r.eq_ignore_ascii_case(mid.trim()))?;
     let (from, to) = (from.trim(), to.trim());
     (!from.is_empty() && !to.is_empty()).then_some((from, rel, to))
 }
 
 fn title_case(s: &str) -> String {
     let mut c = s.chars();
-    c.next().map_or_else(String::new, |f| f.to_uppercase().chain(c.flat_map(char::to_lowercase)).collect())
+    c.next().map_or_else(String::new, |f| {
+        f.to_uppercase()
+            .chain(c.flat_map(char::to_lowercase))
+            .collect()
+    })
 }
 
-const SPACING: Spacing = Spacing { node: 40.0, rank: 56.0, cluster: 16.0 };
+const SPACING: Spacing = Spacing {
+    node: 40.0,
+    rank: 56.0,
+    cluster: 16.0,
+};
 
-pub(crate) fn draw(d: &Requirements, paint: &DiagramStyle, hover: Option<(Hover, Color)>) -> Option<Scene> {
-    let nodes: Vec<DrawNode> =
-        d.nodes.iter().map(|r| class_box((!r.kind.is_empty()).then_some(r.kind.as_str()), &r.name, &r.fields, &[], None, r.style, paint)).collect();
+pub(crate) fn draw(
+    d: &Requirements,
+    paint: &DiagramStyle,
+    hover: Option<(Hover, Color)>,
+) -> Option<Scene> {
+    let nodes: Vec<DrawNode> = d
+        .nodes
+        .iter()
+        .map(|r| {
+            class_box(
+                (!r.kind.is_empty()).then_some(r.kind.as_str()),
+                &r.name,
+                &r.fields,
+                &[],
+                None,
+                r.style,
+                paint,
+            )
+        })
+        .collect();
     draw_layered(d.dir, &nodes, &d.edges, &[], &SPACING, paint, hover)
 }
 

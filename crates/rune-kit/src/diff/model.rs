@@ -97,7 +97,8 @@ impl Hunk {
     /// The header line as a patch writes it, `@@ -1,4 +1,5 @@ section`.
     pub fn header(&self) -> String {
         let range = |start: u32, count: u32| if count == 1 { format!("{start}") } else { format!("{start},{count}") };
-        let mut h = format!("@@ -{} +{} @@", range(self.old_start, self.old_count), range(self.new_start, self.new_count));
+        let mut h =
+            format!("@@ -{} +{} @@", range(self.old_start, self.old_count), range(self.new_start, self.new_count));
         if !self.section.is_empty() {
             h.push(' ');
             h.push_str(&self.section);
@@ -216,7 +217,13 @@ impl FileDiff {
     }
 
     /// [`FileDiff::between`] with `context` unchanged lines around each change.
-    pub fn between_with_context(old_path: Option<String>, new_path: Option<String>, old: &str, new: &str, context: u32) -> FileDiff {
+    pub fn between_with_context(
+        old_path: Option<String>,
+        new_path: Option<String>,
+        old: &str,
+        new: &str,
+        context: u32,
+    ) -> FileDiff {
         let mut f = FileDiff::empty(old_path, new_path);
         f.status = match (&f.old_path, &f.new_path) {
             (None, _) => FileStatus::Added,
@@ -302,7 +309,10 @@ impl FileDiff {
             return self;
         }
         let text = |side: Side| {
-            let kept = |l: &&Line| l.kind == LineKind::Context || l.kind == if side == Side::Old { LineKind::Removed } else { LineKind::Added };
+            let kept = |l: &&Line| {
+                l.kind == LineKind::Context
+                    || l.kind == if side == Side::Old { LineKind::Removed } else { LineKind::Added }
+            };
             h.lines.iter().filter(kept).fold(String::new(), |mut s, l| {
                 s.push_str(&l.text);
                 if !l.no_newline {
@@ -313,21 +323,25 @@ impl FileDiff {
         };
         let (old, new) = (Rc::new(Source::new(&text(Side::Old))), Rc::new(Source::new(&text(Side::New))));
         let lines = std::mem::take(&mut self.hunks).pop().map(|h| h.lines).unwrap_or_default();
-        let ranges = lines.iter().enumerate().filter(|(_, l)| l.kind != LineKind::Context).fold(Vec::<(usize, usize)>::new(), |mut out, (i, _)| {
-            let (start, end) = (i.saturating_sub(context as usize), (i + context as usize).min(lines.len() - 1));
-            match out.last_mut() {
-                Some(r) if start <= r.1 + 1 => r.1 = end,
-                _ => out.push((start, end)),
-            }
-            out
-        });
+        let ranges = lines.iter().enumerate().filter(|(_, l)| l.kind != LineKind::Context).fold(
+            Vec::<(usize, usize)>::new(),
+            |mut out, (i, _)| {
+                let (start, end) = (i.saturating_sub(context as usize), (i + context as usize).min(lines.len() - 1));
+                match out.last_mut() {
+                    Some(r) if start <= r.1 + 1 => r.1 = end,
+                    _ => out.push((start, end)),
+                }
+                out
+            },
+        );
         let before = |side: Side, i: usize| lines[..i].iter().filter(|l| l.number(side).is_some()).count() as u32;
         self.hunks = ranges
             .into_iter()
             .map(|(start, end)| {
                 let lines = lines[start..=end].to_vec();
                 let count = |side: Side| lines.iter().filter(|l| l.number(side).is_some()).count() as u32;
-                let (ob, nb, oc, nc) = (before(Side::Old, start), before(Side::New, start), count(Side::Old), count(Side::New));
+                let (ob, nb, oc, nc) =
+                    (before(Side::Old, start), before(Side::New, start), count(Side::Old), count(Side::New));
                 Hunk {
                     old_start: if oc == 0 { ob } else { ob + 1 },
                     old_count: oc,
@@ -366,7 +380,11 @@ impl FileDiff {
     /// The widest line it can show, in columns with tabs stopping every four.
     pub(crate) fn columns(&self) -> u32 {
         let hunks = self.hunks.iter().flat_map(|h| &h.lines).map(|l| columns(&l.text));
-        let texts = [&self.old_text, &self.new_text].into_iter().flatten().flat_map(|t| (1..=t.len()).filter_map(|n| t.line(n))).map(columns);
+        let texts = [&self.old_text, &self.new_text]
+            .into_iter()
+            .flatten()
+            .flat_map(|t| (1..=t.len()).filter_map(|n| t.line(n)))
+            .map(columns);
         hunks.chain(texts).max().unwrap_or(0)
     }
 
@@ -376,7 +394,6 @@ impl FileDiff {
         let texts = [&self.old_text, &self.new_text].into_iter().flatten().map(|t| t.len()).max().unwrap_or(0);
         hunks.max(texts)
     }
-
 }
 
 /// Columns `line` takes with tabs stopping every four.
@@ -439,7 +456,10 @@ fn hunks(old: &Source, new: &Source, context: u32) -> Vec<Hunk> {
             let (mut i, mut j) = (os, ns);
             for c in &g {
                 while i < c.0.start {
-                    lines.push(Line { text: line(old, i), ..Line::new(LineKind::Context, Some(i + 1), Some(j + 1), "") });
+                    lines.push(Line {
+                        text: line(old, i),
+                        ..Line::new(LineKind::Context, Some(i + 1), Some(j + 1), "")
+                    });
                     i += 1;
                     j += 1;
                 }
@@ -521,7 +541,10 @@ pub fn parse(patch: &str) -> Vec<FileDiff> {
             i += 1;
             continue;
         }
-        if l.starts_with("--- ") && lines.get(i + 1).is_some_and(|n| n.starts_with("+++ ")) && lines.get(i + 2).is_some_and(|n| n.starts_with("@@ ")) {
+        if l.starts_with("--- ")
+            && lines.get(i + 1).is_some_and(|n| n.starts_with("+++ "))
+            && lines.get(i + 2).is_some_and(|n| n.starts_with("@@ "))
+        {
             let (a, b) = (path_of(&l[4..]), path_of(&lines[i + 1][4..]));
             match cur.as_mut() {
                 Some(f) if in_header => {
@@ -713,7 +736,14 @@ fn hunk_header(l: &str) -> Option<Hunk> {
         }
     };
     let ((os, oc), (ns, nc)) = (range(old)?, range(new)?);
-    Some(Hunk { old_start: os, old_count: oc, new_start: ns, new_count: nc, section: section.trim().to_owned(), lines: Vec::new() })
+    Some(Hunk {
+        old_start: os,
+        old_count: oc,
+        new_start: ns,
+        new_count: nc,
+        section: section.trim().to_owned(),
+        lines: Vec::new(),
+    })
 }
 
 /// The lines of hunk `h` from `lines[i..]`, read until its counts are used up: the index of
@@ -779,11 +809,13 @@ mod tests {
     #[test]
     fn texts_make_hunks_with_three_lines_of_context() {
         let old: String = (1..=20).map(|n| format!("line {n}\n")).collect();
-        let new = old.replace("line 5\n", "line five\n").replace("line 17\n", "").replace("line 20\n", "line 20\nline 21\n");
+        let new =
+            old.replace("line 5\n", "line five\n").replace("line 17\n", "").replace("line 20\n", "line 20\nline 21\n");
         let f = FileDiff::from_texts("a.txt", &old, &new);
         let headers: Vec<String> = f.hunks.iter().map(Hunk::header).collect();
         assert_eq!(headers, vec!["@@ -2,7 +2,7 @@ line 1", "@@ -14,7 +14,7 @@ line 13"]);
-        let second: Vec<(LineKind, Option<u32>, Option<u32>)> = f.hunks[1].lines.iter().map(|l| (l.kind, l.old, l.new)).collect();
+        let second: Vec<(LineKind, Option<u32>, Option<u32>)> =
+            f.hunks[1].lines.iter().map(|l| (l.kind, l.old, l.new)).collect();
         assert_eq!(second[3], (LineKind::Removed, Some(17), None));
         assert_eq!(second.last(), Some(&(LineKind::Added, None, Some(20))));
         assert_eq!((f.additions(), f.deletions()), (2, 2));
@@ -795,11 +827,19 @@ mod tests {
     #[test]
     fn a_missing_final_newline_is_a_change() {
         let f = FileDiff::from_texts("a", "one\ntwo", "one\ntwo\n");
-        let l: Vec<(LineKind, &str, bool)> = f.hunks[0].lines.iter().map(|l| (l.kind, l.text.as_str(), l.no_newline)).collect();
-        assert_eq!(l, vec![(LineKind::Context, "one", false), (LineKind::Removed, "two", true), (LineKind::Added, "two", false)]);
+        let l: Vec<(LineKind, &str, bool)> =
+            f.hunks[0].lines.iter().map(|l| (l.kind, l.text.as_str(), l.no_newline)).collect();
+        assert_eq!(
+            l,
+            vec![(LineKind::Context, "one", false), (LineKind::Removed, "two", true), (LineKind::Added, "two", false)]
+        );
         let both_missing = FileDiff::from_texts("a", "one\ntwo", "one\nthree");
-        let l2: Vec<(LineKind, &str, bool)> = both_missing.hunks[0].lines.iter().map(|l| (l.kind, l.text.as_str(), l.no_newline)).collect();
-        assert_eq!(l2, vec![(LineKind::Context, "one", false), (LineKind::Removed, "two", true), (LineKind::Added, "three", true)]);
+        let l2: Vec<(LineKind, &str, bool)> =
+            both_missing.hunks[0].lines.iter().map(|l| (l.kind, l.text.as_str(), l.no_newline)).collect();
+        assert_eq!(
+            l2,
+            vec![(LineKind::Context, "one", false), (LineKind::Removed, "two", true), (LineKind::Added, "three", true)]
+        );
         assert!(FileDiff::from_texts("a", "same\n", "same\n").hunks.is_empty());
         assert!(FileDiff::from_texts("a", "same", "same").hunks.is_empty());
         // CRLF normalizes line endings while preserving changes.

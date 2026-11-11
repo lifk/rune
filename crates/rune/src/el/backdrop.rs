@@ -12,7 +12,10 @@ impl El {
     /// `Glass` also turns on `continuous_corners`, the only curve `NSGlassEffectView` draws, so
     /// the fill, clip and shadow hole match the glass; `Popover` follows `continuous_corners`.
     pub fn system_material(mut self, material: crate::SystemMaterial) -> Self {
-        if material == crate::SystemMaterial::Glass { self.vis_flags.set(crate::el::VisualFlags::CONTINUOUS_CORNERS, true); }
+        if material == crate::SystemMaterial::Glass {
+            self.vis_flags
+                .set(crate::el::VisualFlags::CONTINUOUS_CORNERS, true);
+        }
         self.cold_mut().material = Some(material);
         self
     }
@@ -32,7 +35,11 @@ impl El {
     /// (`El::group_opacity`, `El::blur`, `El::cache`) the backdrop is what that layer has drawn
     /// so far, as in CSS.
     pub fn backdrop_blur(mut self, sigma: f32) -> Self {
-        let s = if sigma.is_finite() { sigma.max(0.0) } else { 0.0 };
+        let s = if sigma.is_finite() {
+            sigma.max(0.0)
+        } else {
+            0.0
+        };
         if s != 0.0 || !self.vis.cold.is_empty() {
             self.vis.cold_mut().backdrop_blur = s;
         }

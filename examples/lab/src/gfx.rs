@@ -119,7 +119,10 @@ impl Compositor<Lab> for LabGfx {
     fn summary(&mut self, _device: &wgpu::Device) -> Option<String> {
         let (sum, n) = self.total_gpu;
         Some(if n > 0 {
-            format!("lab: gpu frame mean {:.3} ms over {n} timed frames (timestamp markers around the whole compositor)", sum / n as f64)
+            format!(
+                "lab: gpu frame mean {:.3} ms over {n} timed frames (timestamp markers around the whole compositor)",
+                sum / n as f64
+            )
         } else {
             "lab: no GPU timestamps (adapter lacks TIMESTAMP_QUERY or too few frames)".to_owned()
         })
@@ -127,7 +130,10 @@ impl Compositor<Lab> for LabGfx {
 
     fn render(&mut self, f: &mut Frame<'_, Lab>) {
         let started = Instant::now();
-        let rebuilt = self.res.as_ref().is_none_or(|r| r.size != f.size || r.format != f.format);
+        let rebuilt = self
+            .res
+            .as_ref()
+            .is_none_or(|r| r.size != f.size || r.format != f.format);
         if rebuilt {
             self.res = Some(Res::new(f.device, f.queue, f.size, f.format, f.ui));
         }
@@ -141,12 +147,22 @@ impl Compositor<Lab> for LabGfx {
         let t = now as f32;
         let (w, h) = f.size;
         let vp = Rect::new(0.0, 0.0, w as f32 / scale, h as f32 / scale);
-        let stage_r = rt.presented("stage").map_or([vp.x, vp.y, vp.w, vp.h], |(r, _)| r);
-        let in_stage = |p: (f32, f32)| p.0 >= stage_r[0] && p.0 <= stage_r[0] + stage_r[2] && p.1 >= stage_r[1] && p.1 <= stage_r[1] + stage_r[3];
+        let stage_r = rt
+            .presented("stage")
+            .map_or([vp.x, vp.y, vp.w, vp.h], |(r, _)| r);
+        let in_stage = |p: (f32, f32)| {
+            p.0 >= stage_r[0]
+                && p.0 <= stage_r[0] + stage_r[2]
+                && p.1 >= stage_r[1]
+                && p.1 <= stage_r[1] + stage_r[3]
+        };
         let pointer = rt.pointer().filter(|p| in_stage(*p));
         let canvases: Vec<(Scene, [f32; 2], f32)> = ALL
             .iter()
-            .filter_map(|sc| rt.presented(&format!("canvas-{}", sc.id())).map(|(r, a)| (*sc, [r[0], r[1]], a)))
+            .filter_map(|sc| {
+                rt.presented(&format!("canvas-{}", sc.id()))
+                    .map(|(r, a)| (*sc, [r[0], r[1]], a))
+            })
             .filter(|c| c.2 > 0.001)
             .collect();
         let s = &rt.state;
@@ -189,7 +205,9 @@ impl Compositor<Lab> for LabGfx {
         let card_drawn = rt.presented("card").map(|(r, _)| r);
         let mut card_blur: Option<(MotionBlurParams, MotionSamples, Rect)> = None;
         let mut card_off = [0.0f32; 2];
-        if let (Some(r), Some(&(_, origin, _))) = (card_drawn, canvases.iter().find(|c| c.0 == Scene::Motion)) {
+        if let (Some(r), Some(&(_, origin, _))) =
+            (card_drawn, canvases.iter().find(|c| c.0 == Scene::Motion))
+        {
             let rest = Rect::new(r[0], r[1], r[2], r[3]);
             let dragging = matches!(s.grab, Some(Grab::Card(_)));
             let pose_at = |tt: f32| -> Pose {
@@ -197,15 +215,30 @@ impl Compositor<Lab> for LabGfx {
                     let c = s.card.target();
                     let v = s.card_vt.velocity();
                     let dt = (tt as f64 - now) as f32;
-                    Vec2 { x: c.x + v.x * dt, y: c.y + v.y * dt }
+                    Vec2 {
+                        x: c.x + v.x * dt,
+                        y: c.y + v.y * dt,
+                    }
                 } else {
                     s.card.sample(tt as f64)
                 };
-                Pose { x: origin[0] + c.x - rest.x, y: origin[1] + c.y - rest.y, ..Default::default() }
+                Pose {
+                    x: origin[0] + c.x - rest.x,
+                    y: origin[1] + c.y - rest.y,
+                    ..Default::default()
+                }
             };
             let p = MotionBlurParams {
-                mode: if s.on(Scene::Motion, "directional") { BlurMode::Directional } else { BlurMode::Shutter },
-                shutter_angle: if s.reduced { 0.0 } else { s.k(Scene::Motion, "shutter_angle") },
+                mode: if s.on(Scene::Motion, "directional") {
+                    BlurMode::Directional
+                } else {
+                    BlurMode::Shutter
+                },
+                shutter_angle: if s.reduced {
+                    0.0
+                } else {
+                    s.k(Scene::Motion, "shutter_angle")
+                },
                 smooth_shutter: s.on(Scene::Motion, "smooth"),
                 ..Default::default()
             };
@@ -218,22 +251,32 @@ impl Compositor<Lab> for LabGfx {
             }
         }
         if let Some((p, samples, rest)) = card_blur {
-            let layer = Fx::motion_blur(p, samples).on(Shape::rounded(rest.x, rest.y, rest.w, rest.h, 14.0)).source(SRC_NODE, vp).at(t);
-            lays.push(Lay { layer, scene: Scene::Motion, anchor: Anchor::Over(node::CARD) });
+            let layer = Fx::motion_blur(p, samples)
+                .on(Shape::rounded(rest.x, rest.y, rest.w, rest.h, 14.0))
+                .source(SRC_NODE, vp)
+                .at(t);
+            lays.push(Lay {
+                layer,
+                scene: Scene::Motion,
+                anchor: Anchor::Over(node::CARD),
+            });
         }
 
         // ---- partition Rune's instances
         let inst = &rt.instances;
         let marks = &rt.marks;
         let mut main: Vec<Instance> = Vec::with_capacity(inst.len());
-        let (mut base, mut text, mut nodel, mut mask) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        let (mut base, mut text, mut nodel, mut mask) =
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new());
         let mut prims: Vec<Prim> = Vec::new();
         let mut first_lit: Option<usize> = None;
         let mut first: HashMap<(usize, u8), usize> = HashMap::new();
         let mut last: HashMap<(usize, u8), usize> = HashMap::new();
         let mut top: HashMap<usize, usize> = HashMap::new();
         let mut stage_fill = [0.0, 0.0, 0.0, 1.0];
-        let needs_mask = lays.iter().any(|l| l.layer.source.is_some_and(|s| s.slot == SRC_MASK));
+        let needs_mask = lays
+            .iter()
+            .any(|l| l.layer.source.is_some_and(|s| s.slot == SRC_MASK));
         // This demo owns a different effect graph: it splits glyphs from their backgrounds
         // and inserts effects between individual nodes. Preserve its existing flattened
         // opacity semantics until that graph can composite an entire scope after lighting.
@@ -253,7 +296,9 @@ impl Compositor<Lab> for LabGfx {
             let mut flattened = *ins;
             flattened.fill = flattened.fill.map(|v| v * opacity);
             flattened.border = flattened.border.map(|v| v * opacity);
-            if flattened.params[1] == KIND_GRADIENT { flattened.uv = flattened.uv.map(|v| v * opacity); }
+            if flattened.params[1] == KIND_GRADIENT {
+                flattened.uv = flattened.uv.map(|v| v * opacity);
+            }
             let ins = &flattened;
             let m = marks.get(i).copied().unwrap_or(0);
             if m == stage::STAGE_MARK && ins.params[1] == KIND_RECT {
@@ -290,7 +335,10 @@ impl Compositor<Lab> for LabGfx {
                 }
                 _ => main.push(*ins),
             }
-            if needs_mask && matches!(nd, node::GLOW_TEXT | node::SKELETON | node::THINKING) && sc.is_some_and(|s| !s.lit()) {
+            if needs_mask
+                && matches!(nd, node::GLOW_TEXT | node::SKELETON | node::THINKING)
+                && sc.is_some_and(|s| !s.lit())
+            {
                 mask.push(*ins);
             }
             if let Some(sc) = sc {
@@ -333,12 +381,24 @@ impl Compositor<Lab> for LabGfx {
 
         // ---- upload and draw
         let clear = rt.clear_color();
-        let ranges = f.ui.prepare_lists(f.device, f.queue, &mut rt.text.atlas, &[&main, &base, &text, &nodel, &mask], f.size);
+        let ranges = f.ui.prepare_lists(
+            f.device,
+            f.queue,
+            &mut rt.text.atlas,
+            &[&main, &base, &text, &nodel, &mask],
+            f.size,
+        );
         let sources = [&res.pyramid.view, &res.node.view];
         let stats = res.fx.prepare(
             f.device,
             f.queue,
-            &FxFrame { viewport: [w, h], scale, layers: &layers, backdrop: Some(&res.backdrop.view), sources: &sources },
+            &FxFrame {
+                viewport: [w, h],
+                scale,
+                layers: &layers,
+                backdrop: Some(&res.backdrop.view),
+                sources: &sources,
+            },
         );
         let enc = &mut *f.encoder;
         // GPU time spans the first pass the compositor records through the end of the resolve pass.
@@ -346,11 +406,13 @@ impl Compositor<Lab> for LabGfx {
         let mut began = false;
         let mut stamp = |end: bool| {
             let first = !std::mem::replace(&mut began, true);
-            tq.as_ref().filter(|_| first || end).map(|q| wgpu::RenderPassTimestampWrites {
-                query_set: q,
-                beginning_of_pass_write_index: first.then_some(0),
-                end_of_pass_write_index: end.then_some(1),
-            })
+            tq.as_ref()
+                .filter(|_| first || end)
+                .map(|q| wgpu::RenderPassTimestampWrites {
+                    query_set: q,
+                    beginning_of_pass_write_index: first.then_some(0),
+                    end_of_pass_write_index: end.then_some(1),
+                })
         };
         if needs_mask && !mask.is_empty() {
             {
@@ -369,28 +431,47 @@ impl Compositor<Lab> for LabGfx {
             st.time = t;
             let a = stage_fill[3].max(1e-4);
             {
-                let mut p = pass_ts(enc, &res.base.view, Some([stage_fill[0] / a, stage_fill[1] / a, stage_fill[2] / a, 1.0]), stamp(false));
+                let mut p = pass_ts(
+                    enc,
+                    &res.base.view,
+                    Some([stage_fill[0] / a, stage_fill[1] / a, stage_fill[2] / a, 1.0]),
+                    stamp(false),
+                );
                 f.ui.draw_range(&mut p, HDR, ranges[1].clone());
             }
             {
                 let mut p = pass(enc, &res.text.view, Some([0.0; 4]));
                 f.ui.draw_range(&mut p, HDR, ranges[2].clone());
             }
-            let light = res.light.get_or_insert_with(|| LightRenderer::new(f.device, f.queue, w, h, HDR));
+            let light = res
+                .light
+                .get_or_insert_with(|| LightRenderer::new(f.device, f.queue, w, h, HDR));
             lit_drawn = light.render(
                 f.device,
                 f.queue,
                 enc,
-                &LightScene { prims: &prims, lights: &lights, settings: st, emission: None },
+                &LightScene {
+                    prims: &prims,
+                    lights: &lights,
+                    settings: st,
+                    emission: None,
+                },
                 &res.base.view,
                 &res.text.view,
                 &res.lit.view,
             );
-            f.queue.write_buffer(&res.blit_alpha, 0, bytemuck::cast_slice(&[lit_alpha, 0.0, 0.0, 0.0]));
+            f.queue.write_buffer(
+                &res.blit_alpha,
+                0,
+                bytemuck::cast_slice(&[lit_alpha, 0.0, 0.0, 0.0]),
+            );
         }
         let px = |v: f32| (v * scale).round().max(0.0) as u32;
         let (sx, sy) = (px(stage_r[0]).min(w), px(stage_r[1]).min(h));
-        let (sw, sh) = (px(stage_r[0] + stage_r[2]).min(w) - sx, px(stage_r[1] + stage_r[3]).min(h) - sy);
+        let (sw, sh) = (
+            px(stage_r[0] + stage_r[2]).min(w) - sx,
+            px(stage_r[1] + stage_r[3]).min(h) - sy,
+        );
         if res.fx.simulate_pending() {
             let ts = stamp(false).map(|w| wgpu::ComputePassTimestampWrites {
                 query_set: w.query_set,
@@ -404,7 +485,11 @@ impl Compositor<Lab> for LabGfx {
         for (pos, op) in ops {
             if pos > cursor {
                 rp.set_scissor_rect(0, 0, w, h);
-                f.ui.draw_range(&mut rp, HDR, ranges[0].start + cursor as u32..ranges[0].start + pos as u32);
+                f.ui.draw_range(
+                    &mut rp,
+                    HDR,
+                    ranges[0].start + cursor as u32..ranges[0].start + pos as u32,
+                );
                 cursor = pos;
             }
             match op {
@@ -424,11 +509,26 @@ impl Compositor<Lab> for LabGfx {
                         drop(rp);
                         let o = wgpu::Origin3d { x: sx, y: sy, z: 0 };
                         enc.copy_texture_to_texture(
-                            wgpu::TexelCopyTextureInfo { texture: &res.scene.tex, mip_level: 0, origin: o, aspect: wgpu::TextureAspect::All },
-                            wgpu::TexelCopyTextureInfo { texture: &res.backdrop.tex, mip_level: 0, origin: o, aspect: wgpu::TextureAspect::All },
-                            wgpu::Extent3d { width: sw, height: sh, depth_or_array_layers: 1 },
+                            wgpu::TexelCopyTextureInfo {
+                                texture: &res.scene.tex,
+                                mip_level: 0,
+                                origin: o,
+                                aspect: wgpu::TextureAspect::All,
+                            },
+                            wgpu::TexelCopyTextureInfo {
+                                texture: &res.backdrop.tex,
+                                mip_level: 0,
+                                origin: o,
+                                aspect: wgpu::TextureAspect::All,
+                            },
+                            wgpu::Extent3d {
+                                width: sw,
+                                height: sh,
+                                depth_or_array_layers: 1,
+                            },
                         );
-                        res.fx.blur_backdrop(f.device, f.queue, enc, &res.backdrop.view, i);
+                        res.fx
+                            .blur_backdrop(f.device, f.queue, enc, &res.backdrop.view, i);
                         rp = pass(enc, &res.scene.view, None).forget_lifetime();
                     }
                     rp.set_scissor_rect(sx, sy, sw, sh);
@@ -466,11 +566,26 @@ impl Compositor<Lab> for LabGfx {
         let due = self.last_push.is_none_or(|p| now - p >= 0.25);
         let live_flip = self.shown.is_some_and(|(_, _, l)| l != anim);
         if due && (anim || moved) || live_flip {
-            let c = if self.cpu.1 > 0 { (self.cpu.0 / self.cpu.1 as f64) as f32 } else { rt.state.perf.cpu_ms };
-            let g = (self.gpu.1 > 0).then(|| (self.gpu.0 / self.gpu.1 as f64) as f32).or(rt.state.perf.gpu_ms);
-            let key = ((c * 100.0).round() as i32, g.map(|g| (g * 100.0).round() as i32), anim);
+            let c = if self.cpu.1 > 0 {
+                (self.cpu.0 / self.cpu.1 as f64) as f32
+            } else {
+                rt.state.perf.cpu_ms
+            };
+            let g = (self.gpu.1 > 0)
+                .then(|| (self.gpu.0 / self.gpu.1 as f64) as f32)
+                .or(rt.state.perf.gpu_ms);
+            let key = (
+                (c * 100.0).round() as i32,
+                g.map(|g| (g * 100.0).round() as i32),
+                anim,
+            );
             if self.shown != Some(key) {
-                rt.state.perf = crate::Perf { cpu_ms: c, gpu_ms: g, draws: stats.drawn, live: anim };
+                rt.state.perf = crate::Perf {
+                    cpu_ms: c,
+                    gpu_ms: g,
+                    draws: stats.drawn,
+                    live: anim,
+                };
                 rt.invalidate();
                 self.view_pending = true;
                 self.shown = Some(key);

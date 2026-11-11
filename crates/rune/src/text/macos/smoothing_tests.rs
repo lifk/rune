@@ -17,17 +17,21 @@ const INTER: &[u8] = include_bytes!("../../../assets/Inter-Regular.ttf");
 const TILE: (usize, usize) = (96, 112);
 
 fn parse_path(v: &Value) -> Path {
-    v.as_array().unwrap().iter().map(|r| {
-        let r = r.as_array().unwrap();
-        let p = |i: usize| [r[i].as_f64().unwrap(), r[i + 1].as_f64().unwrap()];
-        match r[0].as_u64().unwrap() {
-            0 => Cmd::Move(p(1)),
-            1 => Cmd::Line(p(1)),
-            2 => Cmd::Quad(p(1), p(3)),
-            3 => Cmd::Cubic(p(1), p(3), p(5)),
-            _ => Cmd::Close,
-        }
-    }).collect()
+    v.as_array()
+        .unwrap()
+        .iter()
+        .map(|r| {
+            let r = r.as_array().unwrap();
+            let p = |i: usize| [r[i].as_f64().unwrap(), r[i + 1].as_f64().unwrap()];
+            match r[0].as_u64().unwrap() {
+                0 => Cmd::Move(p(1)),
+                1 => Cmd::Line(p(1)),
+                2 => Cmd::Quad(p(1), p(3)),
+                3 => Cmd::Cubic(p(1), p(3), p(5)),
+                _ => Cmd::Close,
+            }
+        })
+        .collect()
 }
 
 fn points(c: &Cmd) -> Vec<Point> {
@@ -46,10 +50,18 @@ fn rgb(v: &Value) -> [f64; 3] {
 /// Largest coordinate difference, or None when the command structure differs.
 fn path_error(model: &Path, oracle: &Path) -> Option<f64> {
     let same = model.len() == oracle.len()
-        && model.iter().zip(oracle).all(|(a, b)| std::mem::discriminant(a) == std::mem::discriminant(b));
+        && model
+            .iter()
+            .zip(oracle)
+            .all(|(a, b)| std::mem::discriminant(a) == std::mem::discriminant(b));
     same.then(|| {
-        model.iter().zip(oracle).flat_map(|(a, b)| points(a).into_iter().zip(points(b)))
-            .fold(0.0f64, |m, (a, b)| m.max((a[0] - b[0]).abs()).max((a[1] - b[1]).abs()))
+        model
+            .iter()
+            .zip(oracle)
+            .flat_map(|(a, b)| points(a).into_iter().zip(points(b)))
+            .fold(0.0f64, |m, (a, b)| {
+                m.max((a[0] - b[0]).abs()).max((a[1] - b[1]).abs())
+            })
     })
 }
 
@@ -64,7 +76,10 @@ fn tile(path: &Path) -> Vec<u8> {
     for row in 0..at.height as i32 {
         for col in 0..at.width as i32 {
             let (x, y) = (8 + at.left + col, h as i32 - 24 - at.top + row);
-            assert!(x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h, "glyph outside the tile");
+            assert!(
+                x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h,
+                "glyph outside the tile"
+            );
             out[y as usize * w + x as usize] = data[(row * at.width as i32 + col) as usize];
         }
     }
@@ -111,8 +126,18 @@ impl Stats {
 
     fn line(&self) -> String {
         let pct = |n: u64| 100.0 * n as f64 / self.pixels.max(1) as f64;
-        format!("cases {} pixels {} mae {:.5} max {} | 0: {:.3}% 1: {:.3}% 2: {:.3}% 3: {:.3}% >3: {:.3}%",
-            self.cases, self.pixels, self.mae(), self.max, pct(self.hist[0]), pct(self.hist[1]), pct(self.hist[2]), pct(self.hist[3]), pct(self.hist[4]))
+        format!(
+            "cases {} pixels {} mae {:.5} max {} | 0: {:.3}% 1: {:.3}% 2: {:.3}% 3: {:.3}% >3: {:.3}%",
+            self.cases,
+            self.pixels,
+            self.mae(),
+            self.max,
+            pct(self.hist[0]),
+            pct(self.hist[1]),
+            pct(self.hist[2]),
+            pct(self.hist[3]),
+            pct(self.hist[4])
+        )
     }
 }
 
@@ -121,25 +146,45 @@ fn radius_matches_the_native_luminance_sweep() {
     let sweep: Value = serde_json::from_str(include_str!("smoothing_data/sweep.json")).unwrap();
     let steps = sweep["steps"].as_u64().unwrap();
     let ppem = sweep["ppem"].as_f64().unwrap();
-    let transitions: Vec<(u64, f64)> = sweep["transitions"].as_array().unwrap().iter()
-        .map(|t| (t[0].as_u64().unwrap(), t[1].as_f64().unwrap())).collect();
+    let transitions: Vec<(u64, f64)> = sweep["transitions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| (t[0].as_u64().unwrap(), t[1].as_f64().unwrap()))
+        .collect();
     for i in 0..=steps {
         let v = i as f64 / steps as f64;
         let want = transitions.iter().rev().find(|t| t.0 <= i).unwrap().1;
         let lin = srgb_to_linear(v);
-        assert_eq!(radius_for_bucket(ppem, luminance_bucket([lin; 3])), want, "grey {v}");
+        assert_eq!(
+            radius_for_bucket(ppem, luminance_bucket([lin; 3])),
+            want,
+            "grey {v}"
+        );
     }
     for c in sweep["chromatic"].as_array().unwrap() {
-        assert_eq!(radius_for_bucket(ppem, luminance_bucket(rgb(&c[0]))), c[1].as_f64().unwrap(), "{c}");
+        assert_eq!(
+            radius_for_bucket(ppem, luminance_bucket(rgb(&c[0]))),
+            c[1].as_f64().unwrap(),
+            "{c}"
+        );
     }
 }
 
 #[test]
 fn radius_grows_with_ppem_to_the_f32_cap() {
     // Native radii for #1d1e22 (bucket 0).
-    for (ppem, want) in [(8.0, 0.0464), (32.0, 0.1856), (51.0, 0.29579999999999995),
-        (52.0, 0.30000001192092896), (200.0, 0.30000001192092896)] {
-        assert_eq!(radius_for_bucket(ppem, color_bucket(crate::color::hex("#1d1e22").unwrap())), want);
+    for (ppem, want) in [
+        (8.0, 0.0464),
+        (32.0, 0.1856),
+        (51.0, 0.29579999999999995),
+        (52.0, 0.30000001192092896),
+        (200.0, 0.30000001192092896),
+    ] {
+        assert_eq!(
+            radius_for_bucket(ppem, color_bucket(crate::color::hex("#1d1e22").unwrap())),
+            want
+        );
     }
     assert_eq!(color_bucket(crate::color::hex("#e6e6e6").unwrap()), 3);
     assert_eq!(color_bucket(crate::color::hex("#f1f1f1").unwrap()), 4);
@@ -148,12 +193,17 @@ fn radius_grows_with_ppem_to_the_f32_cap() {
 
 #[test]
 fn dilation_matches_coregraphics_paths() {
-    let cases: Vec<Value> = serde_json::from_str(include_str!("smoothing_data/dilation.json")).unwrap();
+    let cases: Vec<Value> =
+        serde_json::from_str(include_str!("smoothing_data/dilation.json")).unwrap();
     let mut worst = 0.0f64;
     for c in &cases {
-        let d = radius_for_bucket(c["ppem"].as_f64().unwrap(), luminance_bucket(rgb(&c["color"])));
+        let d = radius_for_bucket(
+            c["ppem"].as_f64().unwrap(),
+            luminance_bucket(rgb(&c["color"])),
+        );
         let model = dilate(&parse_path(&c["path"]), d, d);
-        let err = path_error(&model, &parse_path(&c["oracle"])).unwrap_or_else(|| panic!("structure differs in path {}", c["id"]));
+        let err = path_error(&model, &parse_path(&c["oracle"]))
+            .unwrap_or_else(|| panic!("structure differs in path {}", c["id"]));
         worst = worst.max(err);
     }
     println!("{} paths, max coordinate error {worst:e} px", cases.len());
@@ -163,14 +213,29 @@ fn dilation_matches_coregraphics_paths() {
 /// The fonts' metrics as the native hint capture reported them, keyed by font name.
 fn native_metrics(rows: &[Value]) -> std::collections::BTreeMap<String, HintMetrics> {
     let f = |r: &Value, k: &str| r[k].as_f64().unwrap();
-    rows.iter().filter(|r| r["valid"] == 1).map(|r| (r["font"].as_str().unwrap().to_owned(), HintMetrics {
-        upem: f(r, "upem"), x_height: f(r, "otop"), cap_height: f(r, "Xtop"), max_y: f(r, "fonttop"), stem_height: f(r, "stem"),
-    })).collect()
+    rows.iter()
+        .filter(|r| r["valid"] == 1)
+        .map(|r| {
+            (
+                r["font"].as_str().unwrap().to_owned(),
+                HintMetrics {
+                    upem: f(r, "upem"),
+                    x_height: f(r, "otop"),
+                    cap_height: f(r, "Xtop"),
+                    max_y: f(r, "fonttop"),
+                    stem_height: f(r, "stem"),
+                },
+            )
+        })
+        .collect()
 }
 
 #[test]
 fn autohint_matches_native_transforms() {
-    let rows: Vec<Value> = include_str!("smoothing_data/hints.jsonl").lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    let rows: Vec<Value> = include_str!("smoothing_data/hints.jsonl")
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
     let metrics = native_metrics(&rows);
     let (mut count, mut worst, mut mismatches) = (0, 0.0f64, 0);
     for r in &rows {
@@ -193,15 +258,34 @@ fn autohint_matches_native_transforms() {
 fn swash_metrics_match_the_native_hint_inputs() {
     let font = FontRef::from_index(INTER, 0).unwrap();
     let m = truetype_metrics(font, &[], &mut ScaleContext::new()).unwrap();
-    assert_eq!(m, HintMetrics { upem: 2048.0, x_height: 1132.0, cap_height: 1490.0, max_y: 2269.0, stem_height: 0.0 });
+    assert_eq!(
+        m,
+        HintMetrics {
+            upem: 2048.0,
+            x_height: 1132.0,
+            cap_height: 1490.0,
+            max_y: 2269.0,
+            stem_height: 0.0
+        }
+    );
 }
 
 #[test]
 fn flattening_emits_lines_within_coregraphics_tolerance() {
-    let path = vec![Cmd::Move([0.0, 0.0]), Cmd::Cubic([0.0, 10.0], [10.0, 10.0], [10.0, 0.0]), Cmd::Quad([5.0, -6.0], [0.0, 0.0]), Cmd::Close];
+    let path = vec![
+        Cmd::Move([0.0, 0.0]),
+        Cmd::Cubic([0.0, 10.0], [10.0, 10.0], [10.0, 0.0]),
+        Cmd::Quad([5.0, -6.0], [0.0, 0.0]),
+        Cmd::Close,
+    ];
     let flat = flatten(&path);
-    assert!(flat.iter().all(|c| matches!(c, Cmd::Move(_) | Cmd::Line(_) | Cmd::Close)));
-    assert!(flat.contains(&Cmd::Line([10.0, 0.0])) && flat[flat.len() - 2] == Cmd::Line([0.0, 0.0]));
+    assert!(
+        flat.iter()
+            .all(|c| matches!(c, Cmd::Move(_) | Cmd::Line(_) | Cmd::Close))
+    );
+    assert!(
+        flat.contains(&Cmd::Line([10.0, 0.0])) && flat[flat.len() - 2] == Cmd::Line([0.0, 0.0])
+    );
     let lines = flat.iter().filter(|c| matches!(c, Cmd::Line(_))).count();
     assert!(lines > 8 && lines < 64, "{lines}");
 }
@@ -212,7 +296,8 @@ fn reference_tile(blob: &[u8], crop: &Value) -> Vec<u8> {
     let w = TILE.0;
     let mut out = vec![0u8; TILE.0 * TILE.1];
     for y in 0..ch {
-        out[(y0 + y) * w + x0..(y0 + y) * w + x0 + cw].copy_from_slice(&blob[at + y * cw..at + (y + 1) * cw]);
+        out[(y0 + y) * w + x0..(y0 + y) * w + x0 + cw]
+            .copy_from_slice(&blob[at + y * cw..at + (y + 1) * cw]);
     }
     out
 }
@@ -221,22 +306,44 @@ fn reference_tile(blob: &[u8], crop: &Value) -> Vec<u8> {
 /// ink) and off, at hinted and unhinted sizes and two phases.
 #[test]
 fn masks_match_coregraphics_within_three_levels() {
-    let index: Vec<Value> = serde_json::from_str(include_str!("smoothing_data/masks.json")).unwrap();
+    let index: Vec<Value> =
+        serde_json::from_str(include_str!("smoothing_data/masks.json")).unwrap();
     let blob = include_bytes!("smoothing_data/masks.bin");
     let font = FontRef::from_index(INTER, 0).unwrap();
     let mut cx = ScaleContext::new();
     let metrics = truetype_metrics(font, &[], &mut cx);
-    for (pipeline, tag) in [(ApplePipeline::SMOOTHED, "on"), (ApplePipeline::UNSMOOTHED, "off")] {
+    for (pipeline, tag) in [
+        (ApplePipeline::SMOOTHED, "on"),
+        (ApplePipeline::UNSMOOTHED, "off"),
+    ] {
         let mut stats = Stats::default();
         for c in &index {
             let ppem = c["ppem"].as_f64().unwrap();
-            let phase = [c["phase"][0].as_f64().unwrap(), c["phase"][1].as_f64().unwrap()];
-            let outline = design_outline(&mut cx, font, &[], c["glyph"].as_u64().unwrap() as u16, ppem).unwrap();
+            let phase = [
+                c["phase"][0].as_f64().unwrap(),
+                c["phase"][1].as_f64().unwrap(),
+            ];
+            let outline = design_outline(
+                &mut cx,
+                font,
+                &[],
+                c["glyph"].as_u64().unwrap() as u16,
+                ppem,
+            )
+            .unwrap();
             let d = radius_for_bucket(ppem, luminance_bucket(rgb(&c["color"])));
-            let ours = tile(&prepare_outline(&outline, pipeline, ppem, d, phase, metrics));
+            let ours = tile(&prepare_outline(
+                &outline, pipeline, ppem, d, phase, metrics,
+            ));
             let before = stats.max;
             stats.add(&ours, &reference_tile(blob, &c[tag]));
-            assert!(stats.max <= 3 || before > 3, "smoothing {tag}: case {} ({} at {ppem} px) differs by {}", c["case"], c["char"], stats.max);
+            assert!(
+                stats.max <= 3 || before > 3,
+                "smoothing {tag}: case {} ({} at {ppem} px) differs by {}",
+                c["case"],
+                c["char"],
+                stats.max
+            );
         }
         println!("smoothing {tag}: {}", stats.line());
         assert!(stats.max <= 3 && stats.mae() < 0.2, "{}", stats.line());
@@ -269,12 +376,22 @@ fn pipelines_never_share_masks() {
     let mut ts = crate::text::TextSystem::default();
     let style = crate::tok::TextStyle::new(16.0, 400.0);
     let mut seen = Vec::new();
-    for pipeline in [ApplePipeline::SMOOTHED, ApplePipeline::UNSMOOTHED, ApplePipeline { flatten: false, ..ApplePipeline::UNSMOOTHED }] {
+    for pipeline in [
+        ApplePipeline::SMOOTHED,
+        ApplePipeline::UNSMOOTHED,
+        ApplePipeline {
+            flatten: false,
+            ..ApplePipeline::UNSMOOTHED
+        },
+    ] {
         ts.set_apple_pipeline(pipeline);
         let before = ts.atlas.rasterized();
         let mut q = Vec::new();
         ts.glyphs("Hamburg", style, 1.0, [0.0, 0.0], &mut q);
-        assert!(ts.atlas.rasterized() > before, "{pipeline:?} reused another pipeline's masks");
+        assert!(
+            ts.atlas.rasterized() > before,
+            "{pipeline:?} reused another pipeline's masks"
+        );
         seen.push(q);
     }
     ts.set_apple_pipeline(ApplePipeline::UNSMOOTHED);
@@ -301,8 +418,15 @@ fn corpus_fonts() -> Vec<(&'static str, Vec<u8>, usize)> {
         fonts.push(("Inter-Bold", bold, 0));
     }
     if let Ok(helvetica) = std::fs::read("/System/Library/Fonts/Helvetica.ttc") {
-        let full = |f: FontRef<'_>| f.localized_strings().find_by_id(swash::StringId::Full, None).map(|s| s.chars().collect::<String>());
-        let index = swash::FontDataRef::new(&helvetica).and_then(|d| d.fonts().position(|f| full(f).as_deref() == Some("Helvetica")));
+        let full = |f: FontRef<'_>| {
+            f.localized_strings()
+                .find_by_id(swash::StringId::Full, None)
+                .map(|s| s.chars().collect::<String>())
+        };
+        let index = swash::FontDataRef::new(&helvetica).and_then(|d| {
+            d.fonts()
+                .position(|f| full(f).as_deref() == Some("Helvetica"))
+        });
         if let Some(index) = index {
             fonts.push(("Helvetica", helvetica, index));
         }
@@ -316,50 +440,88 @@ fn full_corpus() {
     use std::io::{BufRead, Read};
     let dir = corpus_dir().expect("RUNE_MACOS_SMOOTHING_CORPUS");
     let lines = |name: &str| -> Vec<Value> {
-        std::io::BufReader::new(std::fs::File::open(dir.join(name)).unwrap()).lines().map(|l| serde_json::from_str(&l.unwrap()).unwrap()).collect()
+        std::io::BufReader::new(std::fs::File::open(dir.join(name)).unwrap())
+            .lines()
+            .map(|l| serde_json::from_str(&l.unwrap()).unwrap())
+            .collect()
     };
     let paths = lines("paths.jsonl");
     let (mut worst, mut structure) = (0.0f64, 0);
     for p in &paths {
-        let d = radius_for_bucket(p["ppem"].as_f64().unwrap(), luminance_bucket(rgb(&p["color"])));
-        if let Some(e) = path_error(&dilate(&parse_path(&p["path"]), d, d), &parse_path(&p["oracle"])) {
+        let d = radius_for_bucket(
+            p["ppem"].as_f64().unwrap(),
+            luminance_bucket(rgb(&p["color"])),
+        );
+        if let Some(e) = path_error(
+            &dilate(&parse_path(&p["path"]), d, d),
+            &parse_path(&p["oracle"]),
+        ) {
             structure += 1;
             worst = worst.max(e);
         }
     }
-    println!("dilation: {structure}/{} paths with matching structure, max coordinate error {worst:e} px", paths.len());
+    println!(
+        "dilation: {structure}/{} paths with matching structure, max coordinate error {worst:e} px",
+        paths.len()
+    );
 
     let fonts = corpus_fonts();
     let mut cx = ScaleContext::new();
-    let refs: Vec<_> = fonts.iter().map(|(name, data, index)| {
-        let font = FontRef::from_index(data, *index).unwrap();
-        let mut metrics = truetype_metrics(font, &[], &mut cx);
-        if std::env::var_os("NO_STEM").is_some() {
-            metrics = metrics.map(|m| HintMetrics { stem_height: 0.0, ..m });
-        }
-        println!("{name}: {metrics:?}");
-        (*name, font, metrics)
-    }).collect();
+    let refs: Vec<_> = fonts
+        .iter()
+        .map(|(name, data, index)| {
+            let font = FontRef::from_index(data, *index).unwrap();
+            let mut metrics = truetype_metrics(font, &[], &mut cx);
+            if std::env::var_os("NO_STEM").is_some() {
+                metrics = metrics.map(|m| HintMetrics {
+                    stem_height: 0.0,
+                    ..m
+                });
+            }
+            println!("{name}: {metrics:?}");
+            (*name, font, metrics)
+        })
+        .collect();
     for (name, font, _) in &refs {
         let (mut same, mut total, mut worst) = (0, 0, 0.0f64);
         for p in paths.iter().filter(|p| p["font"] == *name) {
             total += 1;
-            let ours = design_outline(&mut cx, *font, &[], p["glyph"].as_u64().unwrap() as u16, p["ppem"].as_f64().unwrap()).unwrap();
+            let ours = design_outline(
+                &mut cx,
+                *font,
+                &[],
+                p["glyph"].as_u64().unwrap() as u16,
+                p["ppem"].as_f64().unwrap(),
+            )
+            .unwrap();
             if let Some(e) = path_error(&ours, &parse_path(&p["path"])) {
                 same += 1;
                 worst = worst.max(e);
             } else if std::env::var_os("DBG").is_some() && p["bucket"] == 0 && p["ppem"] == 8.0 {
-                println!("{name} {} ours {:?}\nct {:?}", p["char"], ours, parse_path(&p["path"]));
+                println!(
+                    "{name} {} ours {:?}\nct {:?}",
+                    p["char"],
+                    ours,
+                    parse_path(&p["path"])
+                );
             }
         }
-        println!("{name}: swash outlines match CoreText's structure in {same}/{total}, max coordinate error {worst:e} px");
+        println!(
+            "{name}: swash outlines match CoreText's structure in {same}/{total}, max coordinate error {worst:e} px"
+        );
     }
     let mut groups: std::collections::BTreeMap<String, Stats> = Default::default();
     let mut masks = std::io::BufReader::new(std::fs::File::open(dir.join("masks.bin")).unwrap());
     let mut cg = vec![0u8; TILE.0 * TILE.1];
     let mut off = cg.clone();
-    let undilated_no_hint = ApplePipeline { hint: false, ..ApplePipeline::UNSMOOTHED };
-    let undilated_zeno = ApplePipeline { flatten: false, ..ApplePipeline::UNSMOOTHED };
+    let undilated_no_hint = ApplePipeline {
+        hint: false,
+        ..ApplePipeline::UNSMOOTHED
+    };
+    let undilated_zeno = ApplePipeline {
+        flatten: false,
+        ..ApplePipeline::UNSMOOTHED
+    };
     let runs = [
         ("on", ApplePipeline::SMOOTHED, true),
         ("off", ApplePipeline::UNSMOOTHED, false),
@@ -370,28 +532,64 @@ fn full_corpus() {
         masks.read_exact(&mut cg).unwrap();
         masks.read_exact(&mut off).unwrap();
         let p = &paths[c["path"].as_u64().unwrap() as usize];
-        let Some((name, font, metrics)) = refs.iter().find(|r| r.0 == p["font"]) else { continue };
+        let Some((name, font, metrics)) = refs.iter().find(|r| r.0 == p["font"]) else {
+            continue;
+        };
         let ppem = p["ppem"].as_f64().unwrap();
-        let phase = [c["phase"][0].as_f64().unwrap(), c["phase"][1].as_f64().unwrap()];
+        let phase = [
+            c["phase"][0].as_f64().unwrap(),
+            c["phase"][1].as_f64().unwrap(),
+        ];
         let bucket = luminance_bucket(rgb(&p["color"]));
-        let outline = design_outline(&mut cx, *font, &[], p["glyph"].as_u64().unwrap() as u16, ppem).unwrap();
+        let outline = design_outline(
+            &mut cx,
+            *font,
+            &[],
+            p["glyph"].as_u64().unwrap() as u16,
+            ppem,
+        )
+        .unwrap();
         let scale = c["scale"].as_u64().unwrap();
         let hinted = phase[1] == 0.0 && ppem <= 18.0;
-        let ink = match bucket { 0 => " dark", 4 => " light", _ => "" };
+        let ink = match bucket {
+            0 => " dark",
+            4 => " light",
+            _ => "",
+        };
         for (run, pipeline, smoothed) in runs {
-            let ours = tile(&prepare_outline(&outline, pipeline, ppem, radius_for_bucket(ppem, bucket), phase, *metrics));
+            let ours = tile(&prepare_outline(
+                &outline,
+                pipeline,
+                ppem,
+                radius_for_bucket(ppem, bucket),
+                phase,
+                *metrics,
+            ));
             let reference = if smoothed { &cg } else { &off };
             let mut one = Stats::default();
             one.add(&ours, reference);
             if one.max > 3 && (run == "on" || run == "off") && std::env::var_os("LIST").is_some() {
-                println!("over 3 [{run}]: {name} {} {ppem} px bucket {bucket} phase {phase:?} {scale}x: max {}", p["char"], one.max);
+                println!(
+                    "over 3 [{run}]: {name} {} {ppem} px bucket {bucket} phase {phase:?} {scale}x: max {}",
+                    p["char"], one.max
+                );
             }
-            for g in [format!("{run}: all"), format!("{run}: {scale}x{ink}"), format!("{run}: font {name}"),
-                format!("{run}: {}", if hinted { "hinted sizes" } else { "unhinted" })] {
+            for g in [
+                format!("{run}: all"),
+                format!("{run}: {scale}x{ink}"),
+                format!("{run}: font {name}"),
+                format!(
+                    "{run}: {}",
+                    if hinted { "hinted sizes" } else { "unhinted" }
+                ),
+            ] {
                 groups.entry(g).or_default().add(&ours, reference);
             }
             if run == "on" || run == "off" {
-                groups.entry(format!("{run}: ppem {ppem:>2}")).or_default().add(&ours, reference);
+                groups
+                    .entry(format!("{run}: ppem {ppem:>2}"))
+                    .or_default()
+                    .add(&ours, reference);
             }
         }
     }
@@ -410,38 +608,66 @@ fn full_corpus() {
 #[ignore = "needs RUNE_MACOS_SMOOTHING_SF and macOS's SFNS.ttf"]
 fn sf_corpus() {
     use std::io::{BufRead, Read};
-    let dir: std::path::PathBuf = std::env::var_os("RUNE_MACOS_SMOOTHING_SF").expect("RUNE_MACOS_SMOOTHING_SF").into();
+    let dir: std::path::PathBuf = std::env::var_os("RUNE_MACOS_SMOOTHING_SF")
+        .expect("RUNE_MACOS_SMOOTHING_SF")
+        .into();
     let lines = |name: &str| -> Vec<Value> {
-        std::io::BufReader::new(std::fs::File::open(dir.join(name)).unwrap()).lines().map(|l| serde_json::from_str(&l.unwrap()).unwrap()).collect()
+        std::io::BufReader::new(std::fs::File::open(dir.join(name)).unwrap())
+            .lines()
+            .map(|l| serde_json::from_str(&l.unwrap()).unwrap())
+            .collect()
     };
     let data = std::fs::read("/System/Library/Fonts/SFNS.ttf").unwrap();
     let font = FontRef::from_index(&data, 0).unwrap();
     let stem: Option<f64> = std::env::var("SF_STEM").ok().and_then(|v| v.parse().ok());
     let mut cx = ScaleContext::new();
     let coords = |p: &Value| -> Vec<i16> {
-        font.variations().normalized_coords([("opsz", p["opsz"].as_f64().unwrap() as f32), ("wght", p["wght"].as_f64().unwrap() as f32)]).collect()
+        font.variations()
+            .normalized_coords([
+                ("opsz", p["opsz"].as_f64().unwrap() as f32),
+                ("wght", p["wght"].as_f64().unwrap() as f32),
+            ])
+            .collect()
     };
     let paths = lines("paths.jsonl");
     // Native dilation and autohint transforms.
     let (mut worst, mut structure) = (0.0f64, 0);
     for p in &paths {
-        let d = radius_for_bucket(p["ppem"].as_f64().unwrap(), luminance_bucket(rgb(&p["color"])));
+        let d = radius_for_bucket(
+            p["ppem"].as_f64().unwrap(),
+            luminance_bucket(rgb(&p["color"])),
+        );
         // serde_json parses decimals to within an ulp; the radius itself is exact.
-        assert!((d - p["dy"].as_f64().unwrap()).abs() < 1e-15, "{d} vs {}", p["dy"]);
-        if let Some(e) = path_error(&dilate(&parse_path(&p["path"]), d, d), &parse_path(&p["oracle"])) {
+        assert!(
+            (d - p["dy"].as_f64().unwrap()).abs() < 1e-15,
+            "{d} vs {}",
+            p["dy"]
+        );
+        if let Some(e) = path_error(
+            &dilate(&parse_path(&p["path"]), d, d),
+            &parse_path(&p["oracle"]),
+        ) {
             structure += 1;
             worst = worst.max(e);
         }
     }
-    println!("SF dilation: {structure}/{} paths with matching structure, max coordinate error {worst:e} px", paths.len());
+    println!(
+        "SF dilation: {structure}/{} paths with matching structure, max coordinate error {worst:e} px",
+        paths.len()
+    );
     let (mut hints, mut hint_err, mut validity) = (0, 0.0f64, 0);
     let mut metric_err = 0.0f64;
     for r in lines("hints.jsonl") {
         let c = coords(&r);
         let m = truetype_metrics(font, &c, &mut cx).unwrap();
-        metric_err = metric_err.max((m.x_height - r["otop"].as_f64().unwrap()).abs()).max((m.cap_height - r["Xtop"].as_f64().unwrap()).abs())
+        metric_err = metric_err
+            .max((m.x_height - r["otop"].as_f64().unwrap()).abs())
+            .max((m.cap_height - r["Xtop"].as_f64().unwrap()).abs())
             .max((m.max_y - r["fonttop"].as_f64().unwrap()).abs());
-        let m = HintMetrics { stem_height: r["stem"].as_f64().unwrap(), ..m };
+        let m = HintMetrics {
+            stem_height: r["stem"].as_f64().unwrap(),
+            ..m
+        };
         let t = autohint(m, r["ppem"].as_f64().unwrap(), r["d"].as_f64().unwrap());
         validity += (t.is_some() != (r["valid"] == 1)) as u32;
         if let Some(t) = t {
@@ -451,8 +677,13 @@ fn sf_corpus() {
             }
         }
     }
-    println!("SF descriptor stemH: {}", truetype_metrics(font, &[], &mut cx).unwrap().stem_height);
-    println!("SF autohint: swash metrics vs CoreGraphics max error {metric_err} units; {hints} transforms with the native stemH, max parameter error {hint_err:e}, {validity} validity mismatches");
+    println!(
+        "SF descriptor stemH: {}",
+        truetype_metrics(font, &[], &mut cx).unwrap().stem_height
+    );
+    println!(
+        "SF autohint: swash metrics vs CoreGraphics max error {metric_err} units; {hints} transforms with the native stemH, max parameter error {hint_err:e}, {validity} validity mismatches"
+    );
 
     let mut groups: std::collections::BTreeMap<String, Stats> = Default::default();
     let mut masks = std::io::BufReader::new(std::fs::File::open(dir.join("masks.bin")).unwrap());
@@ -464,23 +695,66 @@ fn sf_corpus() {
         masks.read_exact(&mut off).unwrap();
         let p = &paths[c["path"].as_u64().unwrap() as usize];
         let co = coords(p);
-        let m = *metrics.entry(co.clone()).or_insert_with(|| truetype_metrics(font, &co, &mut cx).map(|m| HintMetrics { stem_height: stem.unwrap_or(m.stem_height), ..m }));
+        let m = *metrics.entry(co.clone()).or_insert_with(|| {
+            truetype_metrics(font, &co, &mut cx).map(|m| HintMetrics {
+                stem_height: stem.unwrap_or(m.stem_height),
+                ..m
+            })
+        });
         let ppem = p["ppem"].as_f64().unwrap();
-        let phase = [c["phase"][0].as_f64().unwrap(), c["phase"][1].as_f64().unwrap()];
+        let phase = [
+            c["phase"][0].as_f64().unwrap(),
+            c["phase"][1].as_f64().unwrap(),
+        ];
         let bucket = luminance_bucket(rgb(&p["color"]));
-        let outline = design_outline(&mut cx, font, &co, p["glyph"].as_u64().unwrap() as u16, ppem).unwrap();
+        let outline = design_outline(
+            &mut cx,
+            font,
+            &co,
+            p["glyph"].as_u64().unwrap() as u16,
+            ppem,
+        )
+        .unwrap();
         let scale = c["scale"].as_u64().unwrap();
-        let ink = match bucket { 0 => " dark", 4 => " light", _ => "" };
+        let ink = match bucket {
+            0 => " dark",
+            4 => " light",
+            _ => "",
+        };
         let size = format!("{ppem} px wght {}", p["wght"]);
-        for (run, pipeline, reference) in [("on", ApplePipeline::SMOOTHED, &on), ("off", ApplePipeline::UNSMOOTHED, &off)] {
-            let ours = tile(&prepare_outline(&outline, pipeline, ppem, radius_for_bucket(ppem, bucket), phase, m));
+        for (run, pipeline, reference) in [
+            ("on", ApplePipeline::SMOOTHED, &on),
+            ("off", ApplePipeline::UNSMOOTHED, &off),
+        ] {
+            let ours = tile(&prepare_outline(
+                &outline,
+                pipeline,
+                ppem,
+                radius_for_bucket(ppem, bucket),
+                phase,
+                m,
+            ));
             let mut one = Stats::default();
             one.add(&ours, reference);
             if one.max > 3 && std::env::var_os("LIST").is_some() {
-                println!("over 3 [{run}]: {} {size} bucket {bucket} phase {phase:?} {scale}x: max {}", p["char"], one.max);
+                println!(
+                    "over 3 [{run}]: {} {size} bucket {bucket} phase {phase:?} {scale}x: max {}",
+                    p["char"], one.max
+                );
             }
-            for g in [format!("{run}: all"), format!("{run}: {scale}x{ink}"), format!("{run}: {size}"),
-                format!("{run}: {}", if phase[1] == 0.0 && ppem <= 18.0 { "hinted (16 px, phase y 0)" } else { "unhinted" })] {
+            for g in [
+                format!("{run}: all"),
+                format!("{run}: {scale}x{ink}"),
+                format!("{run}: {size}"),
+                format!(
+                    "{run}: {}",
+                    if phase[1] == 0.0 && ppem <= 18.0 {
+                        "hinted (16 px, phase y 0)"
+                    } else {
+                        "unhinted"
+                    }
+                ),
+            ] {
                 groups.entry(g).or_default().add(&ours, reference);
             }
         }
@@ -516,7 +790,17 @@ fn rasterize_cost() {
             for &g in &glyphs {
                 for subpx in 0..4 {
                     let radius = radius_for_bucket(ppem as f64, 0);
-                    let job = Job { font, key: (0, 0, 0), coords: &[], glyph: g, ppem, phase_x: subpx as f32 / 4.0, shift_y: 0.0, radius, skew: 0 };
+                    let job = Job {
+                        font,
+                        key: (0, 0, 0),
+                        coords: &[],
+                        glyph: g,
+                        ppem,
+                        phase_x: subpx as f32 / 4.0,
+                        shift_y: 0.0,
+                        radius,
+                        skew: 0,
+                    };
                     per_bucket[0] += smoothing.mask(&mut cx, &job).map_or(0, |m| m.0.len());
                 }
             }
@@ -527,7 +811,17 @@ fn rasterize_cost() {
         for _ in 0..rounds {
             for &g in &glyphs {
                 for subpx in 0..4 {
-                    let job = Job { font, key: (0, 0, 0), coords: &[], glyph: g, ppem, phase_x: subpx as f32 / 4.0, shift_y: 0.0, radius: 0.0, skew: 0 };
+                    let job = Job {
+                        font,
+                        key: (0, 0, 0),
+                        coords: &[],
+                        glyph: g,
+                        ppem,
+                        phase_x: subpx as f32 / 4.0,
+                        shift_y: 0.0,
+                        radius: 0.0,
+                        skew: 0,
+                    };
                     std::hint::black_box(smoothing.mask(&mut cx, &job));
                 }
             }
@@ -543,14 +837,29 @@ fn rasterize_cost() {
             radii.push(radius);
             for &g in &glyphs {
                 for subpx in 0..4 {
-                    let job = Job { font, key: (0, 0, 0), coords: &[], glyph: g, ppem, phase_x: subpx as f32 / 4.0, shift_y: 0.0, radius, skew: 0 };
+                    let job = Job {
+                        font,
+                        key: (0, 0, 0),
+                        coords: &[],
+                        glyph: g,
+                        ppem,
+                        phase_x: subpx as f32 / 4.0,
+                        shift_y: 0.0,
+                        radius,
+                        skew: 0,
+                    };
                     *slot += smoothing.mask(&mut cx, &job).map_or(0, |m| m.0.len()) * rounds;
                 }
             }
         }
         let one = per_bucket[0] as f64;
-        println!("{ppem} px ({scale}x): {:.2} us/glyph smoothed, {:.2} us/glyph unsmoothed; texels {}, all five buckets {} distinct radii, x{:.2} of one",
-            new, unsmoothed, per_bucket[0] / rounds, radii.len(), per_bucket.iter().sum::<usize>() as f64 / one);
+        println!(
+            "{ppem} px ({scale}x): {:.2} us/glyph smoothed, {:.2} us/glyph unsmoothed; texels {}, all five buckets {} distinct radii, x{:.2} of one",
+            new,
+            unsmoothed,
+            per_bucket[0] / rounds,
+            radii.len(),
+            per_bucket.iter().sum::<usize>() as f64 / one
+        );
     }
 }
-

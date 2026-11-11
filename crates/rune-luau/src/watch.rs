@@ -38,50 +38,68 @@ impl Script {
         let root = dir.clone();
         let entry = self.inner().sources.borrow().entry_path().to_owned();
         let mut last: Option<(Sources, Compiled)> = None;
-        let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-            let Ok(event) = event else { return };
-            if !event.kind.is_modify() && !event.kind.is_create() && !event.kind.is_remove() {
-                return;
-            }
-            if !event.paths.iter().any(|p| p.extension().is_some_and(|e| e == "luau")) {
-                return;
-            }
-            let sources = Sources::from_dir(&root).map(|s| s.entry(&entry)).map_err(|e| ScriptError::new(crate::ErrorKind::Missing, e.to_string()));
-            // One save is often several events (truncate, write): the same files compile once.
-            if let (Ok(sources), Some((seen, _))) = (&sources, &last)
-                && sources == seen
-            {
-                return;
-            }
-            if let Ok(mut slot) = slot.lock() {
-                slot.saving = true;
-            }
-            shared.mark();
-            shared.wake();
-            let start = Instant::now();
-            let result = sources.and_then(|sources| {
-                let compiled = match &last {
-                    Some((_, previous)) => sources.compile_from(previous),
-                    None => sources.compile(),
-                }?;
-                last = Some((sources.clone(), compiled.clone()));
-                Ok((sources, compiled, start.elapsed()))
-            });
-            if let Ok(mut slot) = slot.lock() {
-                *slot = Slot { saving: false, ready: Some(result) };
-            }
-            shared.mark();
-            shared.wake();
-        })?;
+        let mut watcher =
+            notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+                let Ok(event) = event else { return };
+                if !event.kind.is_modify() && !event.kind.is_create() && !event.kind.is_remove() {
+                    return;
+                }
+                if !event
+                    .paths
+                    .iter()
+                    .any(|p| p.extension().is_some_and(|e| e == "luau"))
+                {
+                    return;
+                }
+                let sources = Sources::from_dir(&root)
+                    .map(|s| s.entry(&entry))
+                    .map_err(|e| ScriptError::new(crate::ErrorKind::Missing, e.to_string()));
+                // One save is often several events (truncate, write): the same files compile once.
+                if let (Ok(sources), Some((seen, _))) = (&sources, &last)
+                    && sources == seen
+                {
+                    return;
+                }
+                if let Ok(mut slot) = slot.lock() {
+                    slot.saving = true;
+                }
+                shared.mark();
+                shared.wake();
+                let start = Instant::now();
+                let result = sources.and_then(|sources| {
+                    let compiled = match &last {
+                        Some((_, previous)) => sources.compile_from(previous),
+                        None => sources.compile(),
+                    }?;
+                    last = Some((sources.clone(), compiled.clone()));
+                    Ok((sources, compiled, start.elapsed()))
+                });
+                if let Ok(mut slot) = slot.lock() {
+                    *slot = Slot {
+                        saving: false,
+                        ready: Some(result),
+                    };
+                }
+                shared.mark();
+                shared.wake();
+            })?;
         watcher.watch(&dir, RecursiveMode::Recursive)?;
-        *self.inner().watch.borrow_mut() = Some(Watch { _watcher: watcher, ready });
+        *self.inner().watch.borrow_mut() = Some(Watch {
+            _watcher: watcher,
+            ready,
+        });
         Ok(())
     }
 }
 
 /// Swaps in what the watcher compiled, if anything. True when the VM changed.
 pub(crate) fn apply(inner: &Inner) -> bool {
-    let (saving, next) = inner.watch.borrow().as_ref().and_then(|w| w.ready.lock().ok().map(|mut s| (s.saving, s.ready.take()))).unwrap_or_default();
+    let (saving, next) = inner
+        .watch
+        .borrow()
+        .as_ref()
+        .and_then(|w| w.ready.lock().ok().map(|mut s| (s.saving, s.ready.take())))
+        .unwrap_or_default();
     match next {
         None => {
             if saving {

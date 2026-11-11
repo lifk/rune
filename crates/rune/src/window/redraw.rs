@@ -68,7 +68,9 @@ impl Redraw {
             (PaintingAgain, Painted) => (Wants, E::None),
             (state, Painted) => (state, E::None),
             (Wants, TurnEnds { now, .. }) => (Asked { at: now }, E::Request),
-            (Asked { at }, TurnEnds { now, paints: true }) if now >= at + STARVE => (Painting, E::PaintNow),
+            (Asked { at }, TurnEnds { now, paints: true }) if now >= at + STARVE => {
+                (Painting, E::PaintNow)
+            }
             (state, TurnEnds { .. }) => (state, E::None),
         }
     }
@@ -99,7 +101,11 @@ pub(super) enum Steady {
 #[derive(Clone, Copy, Debug)]
 pub(super) enum SteadyEvent {
     /// A frame drew: `changed` when it showed something new, `focused` when the window has focus.
-    Drew { changed: bool, focused: bool, now: Instant },
+    Drew {
+        changed: bool,
+        focused: bool,
+        now: Instant,
+    },
     /// The window rests after the frame: the run asks for the next one if it lasts.
     Rests { now: Instant },
     /// The window lost focus or hid.
@@ -113,14 +119,28 @@ impl Steady {
         use {Steady::*, SteadyEvent::*};
         match (self, event) {
             (_, Ends) | (_, Drew { focused: false, .. }) => (Rest, false),
-            (_, Drew { changed: true, now, .. }) => (Hold { until: now + STEADY }, false),
+            (
+                _,
+                Drew {
+                    changed: true, now, ..
+                },
+            ) => (
+                Hold {
+                    until: now + STEADY,
+                },
+                false,
+            ),
             (HeldFrame { until }, Drew { changed: false, .. }) => (Hold { until }, false),
             (state, Drew { .. }) => (state, false),
-            (Hold { until } | HeldFrame { until }, Rests { now }) if now < until => (HeldFrame { until }, true),
+            (Hold { until } | HeldFrame { until }, Rests { now }) if now < until => {
+                (HeldFrame { until }, true)
+            }
             (_, Rests { .. }) => (Rest, false),
         }
     }
 
     /// The frame now drawing was asked for by the run alone.
-    pub(super) fn held_frame(self) -> bool { matches!(self, Steady::HeldFrame { .. }) }
+    pub(super) fn held_frame(self) -> bool {
+        matches!(self, Steady::HeldFrame { .. })
+    }
 }

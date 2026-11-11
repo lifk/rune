@@ -6,7 +6,10 @@
 //!
 //! Apple Silicon Macs only (their ABI keeps frame pointers in every frame); elsewhere a
 //! [`Target`] is never made and the watchdog doesn't start.
-#![cfg_attr(not(all(target_os = "macos", target_arch = "aarch64")), allow(dead_code))]
+#![cfg_attr(
+    not(all(target_os = "macos", target_arch = "aarch64")),
+    allow(dead_code)
+)]
 
 use std::sync::Arc;
 
@@ -105,7 +108,11 @@ mod mac {
                 let me = libc::pthread_self();
                 let high = pthread_get_stackaddr_np(me) as usize;
                 let size = pthread_get_stacksize_np(me);
-                (high > size && size > 0).then(|| Self { port: mach_thread_self(), low: high - size, high })
+                (high > size && size > 0).then(|| Self {
+                    port: mach_thread_self(),
+                    low: high - size,
+                    high,
+                })
             }
         }
 
@@ -115,12 +122,32 @@ mod mac {
             let mut info = BasicInfo::default();
             let mut count = THREAD_BASIC_INFO_COUNT;
             // SAFETY: `info` is a live buffer of `count` 32-bit words, as the flavor needs.
-            if unsafe { thread_info(self.port, THREAD_BASIC_INFO, (&raw mut info).cast(), &mut count) } != 0 { return None; }
-            let cpu_us = [info.user, info.system].iter().map(|t| t[0] as u64 * 1_000_000 + t[1] as u64).sum();
-            let mut raw = Raw { pcs: [0; DEPTH], len: 0, waiting: info.run_state != TH_STATE_RUNNING, cpu_us };
+            if unsafe {
+                thread_info(
+                    self.port,
+                    THREAD_BASIC_INFO,
+                    (&raw mut info).cast(),
+                    &mut count,
+                )
+            } != 0
+            {
+                return None;
+            }
+            let cpu_us = [info.user, info.system]
+                .iter()
+                .map(|t| t[0] as u64 * 1_000_000 + t[1] as u64)
+                .sum();
+            let mut raw = Raw {
+                pcs: [0; DEPTH],
+                len: 0,
+                waiting: info.run_state != TH_STATE_RUNNING,
+                cpu_us,
+            };
             // SAFETY: suspending a thread of this process that isn't the caller (`watchdog`
             // samples only the UI thread from its own thread). It's resumed below on every path.
-            if unsafe { thread_suspend(self.port) } != 0 { return None; }
+            if unsafe { thread_suspend(self.port) } != 0 {
+                return None;
+            }
             let walked = still() && self.walk(&mut raw);
             // SAFETY: resumes the suspension above.
             unsafe { thread_resume(self.port) };
@@ -132,7 +159,17 @@ mod mac {
             let mut state = ThreadState::default();
             let mut count = ARM_THREAD_STATE64_COUNT;
             // SAFETY: `state` is a live buffer of `count` 32-bit words, as the flavor needs.
-            if unsafe { thread_get_state(self.port, ARM_THREAD_STATE64, (&raw mut state).cast(), &mut count) } != 0 { return false; }
+            if unsafe {
+                thread_get_state(
+                    self.port,
+                    ARM_THREAD_STATE64,
+                    (&raw mut state).cast(),
+                    &mut count,
+                )
+            } != 0
+            {
+                return false;
+            }
             fn push(raw: &mut Raw, pc: usize) {
                 let pc = pc & ADDRESS_MASK;
                 if pc != 0 && raw.len < DEPTH && (raw.len == 0 || raw.pcs[raw.len - 1] != pc) {
@@ -144,15 +181,25 @@ mod mac {
             // A leaf that saved no frame record (a syscall stub) returns through `lr`; one that
             // did has also saved it at `fp + 8`, where the walk below finds it.
             let mut fp = state.fp as usize;
-            let saved = |fp: usize| (fp >= self.low && fp.is_multiple_of(8) && fp + 16 <= self.high).then(|| {
-                // SAFETY: `fp` and `fp + 8` lie inside the stopped thread's own stack.
-                unsafe { (*(fp as *const usize), *((fp + 8) as *const usize)) }
-            });
-            if saved(fp).is_some_and(|(_, ret)| ret & ADDRESS_MASK != state.lr as usize & ADDRESS_MASK) { push(raw, state.lr as usize); }
+            let saved = |fp: usize| {
+                (fp >= self.low && fp.is_multiple_of(8) && fp + 16 <= self.high).then(|| {
+                    // SAFETY: `fp` and `fp + 8` lie inside the stopped thread's own stack.
+                    unsafe { (*(fp as *const usize), *((fp + 8) as *const usize)) }
+                })
+            };
+            if saved(fp)
+                .is_some_and(|(_, ret)| ret & ADDRESS_MASK != state.lr as usize & ADDRESS_MASK)
+            {
+                push(raw, state.lr as usize);
+            }
             while let Some((next, ret)) = saved(fp) {
-                if ret & ADDRESS_MASK == 0 || raw.len == DEPTH { break; }
+                if ret & ADDRESS_MASK == 0 || raw.len == DEPTH {
+                    break;
+                }
                 push(raw, ret);
-                if next <= fp { break; }
+                if next <= fp {
+                    break;
+                }
                 fp = next;
             }
             true
@@ -179,8 +226,12 @@ mod mac {
         // SAFETY: `Dl_info` is plain pointers, for which all zeroes is valid (null).
         let mut info: libc::Dl_info = unsafe { std::mem::zeroed() };
         // SAFETY: `info` is a live, writable `Dl_info`; dladdr only reads loaded images.
-        if unsafe { libc::dladdr(at as *const c_void, &mut info) } == 0 || info.dli_sname.is_null() {
-            return Frame { name: format!("{at:#x}").into(), app: false };
+        if unsafe { libc::dladdr(at as *const c_void, &mut info) } == 0 || info.dli_sname.is_null()
+        {
+            return Frame {
+                name: format!("{at:#x}").into(),
+                app: false,
+            };
         }
         // SAFETY: dladdr returned a NUL-terminated symbol name that lives as long as its image.
         let symbol = unsafe { CStr::from_ptr(info.dli_sname) }.to_string_lossy();
@@ -191,20 +242,39 @@ mod mac {
         if !std::ptr::eq(info.dli_fbase.cast_const(), main) && !info.dli_fname.is_null() {
             // SAFETY: as above, the image's NUL-terminated path.
             let path = unsafe { CStr::from_ptr(info.dli_fname) }.to_string_lossy();
-            let image = path.rsplit('/').next().unwrap_or("").trim_end_matches(".dylib");
-            if !image.is_empty() { name = format!("{name} ({image})"); }
+            let image = path
+                .rsplit('/')
+                .next()
+                .unwrap_or("")
+                .trim_end_matches(".dylib");
+            if !image.is_empty() {
+                name = format!("{name} ({image})");
+            }
         }
-        Frame { name: name.into(), app }
+        Frame {
+            name: name.into(),
+            app,
+        }
     }
 }
 
 /// `symbol` demangled, without its hash, cut to 160 characters.
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 pub(crate) fn demangled(symbol: &str) -> String {
-    let mut name = format!("{:#}", rustc_demangle::demangle(symbol.strip_prefix('_').filter(|s| s.starts_with("_ZN") || s.starts_with("_R")).unwrap_or(symbol)));
+    let mut name = format!(
+        "{:#}",
+        rustc_demangle::demangle(
+            symbol
+                .strip_prefix('_')
+                .filter(|s| s.starts_with("_ZN") || s.starts_with("_R"))
+                .unwrap_or(symbol)
+        )
+    );
     if name.len() > 160 {
         let mut cut = 157;
-        while !name.is_char_boundary(cut) { cut -= 1; }
+        while !name.is_char_boundary(cut) {
+            cut -= 1;
+        }
         name.truncate(cut);
         name.push_str("...");
     }
@@ -215,5 +285,7 @@ pub(crate) fn demangled(symbol: &str) -> String {
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 pub(crate) fn library(name: &str) -> bool {
     let name = name.trim_start_matches('<');
-    ["std::", "core::", "alloc::", "__rust", "rust_"].iter().any(|p| name.starts_with(p))
+    ["std::", "core::", "alloc::", "__rust", "rust_"]
+        .iter()
+        .any(|p| name.starts_with(p))
 }

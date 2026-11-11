@@ -8,7 +8,11 @@ use rune::{Cursor, Cx, El, Env, Key, KeyEvent, Mods, Runtime, col, memo};
 use rune_kit::{Kit, Markdown};
 
 #[derive(Default)]
-struct S { msgs: Vec<String>, selectable: bool, opened: Vec<String> }
+struct S {
+    msgs: Vec<String>,
+    selectable: bool,
+    opened: Vec<String>,
+}
 
 const FIRST: &str = "Hello **world** and [link](https://x.dev/a).\n\n- alpha\n- beta\n\n```\nfn main() {}\n```\n";
 
@@ -16,7 +20,10 @@ fn view(s: &S, _: &mut Cx<S>) -> El {
     let k = Kit::neutral(true);
     col().w_full().gap(24.0).padding(10.0).children(s.msgs.iter().enumerate().map(|(i, m)| {
         memo(format!("m{i}"), (m, s.selectable), || {
-            Markdown::new(m.clone()).selectable(s.selectable).on_link(|s: &mut S, url| s.opened.push(url.to_owned())).build(&k)
+            Markdown::new(m.clone())
+                .selectable(s.selectable)
+                .on_link(|s: &mut S, url| s.opened.push(url.to_owned()))
+                .build(&k)
         })
     }))
 }
@@ -39,7 +46,9 @@ fn find(rt: &Runtime<S>, path_end: &str) -> ElementInfo {
 /// Centres (points) of the glyphs drawn inside the element whose path ends `path_end`.
 fn glyphs(rt: &Runtime<S>, path_end: &str) -> Vec<(f32, f32)> {
     let e = find(rt, path_end);
-    let mut out: Vec<(f32, f32)> = rt.instances.iter()
+    let mut out: Vec<(f32, f32)> = rt
+        .instances
+        .iter()
         .filter(|i| i.params[1] == rune::render::KIND_GLYPH)
         .map(|i| ((i.rect[0] + i.rect[2] / 2.0) / 2.0, (i.rect[1] + i.rect[3] / 2.0) / 2.0))
         .filter(|&(x, y)| x >= e.rect[0] && x <= e.rect[0] + e.rect[2] && y >= e.rect[1] && y <= e.rect[1] + e.rect[3])
@@ -48,7 +57,9 @@ fn glyphs(rt: &Runtime<S>, path_end: &str) -> Vec<(f32, f32)> {
     out
 }
 
-fn tick(rt: &mut Runtime<S>) { rt.frame(1.0 / 60.0); }
+fn tick(rt: &mut Runtime<S>) {
+    rt.frame(1.0 / 60.0);
+}
 
 fn drag(rt: &mut Runtime<S>, (x0, y0): (f32, f32), (x1, y1): (f32, f32)) {
     rt.pointer_move(x0, y0);
@@ -63,7 +74,9 @@ fn drag(rt: &mut Runtime<S>, (x0, y0): (f32, f32), (x1, y1): (f32, f32)) {
     tick(rt);
 }
 
-fn before(g: (f32, f32)) -> (f32, f32) { (g.0 - 3.0, g.1) }
+fn before(g: (f32, f32)) -> (f32, f32) {
+    (g.0 - 3.0, g.1)
+}
 
 fn command(rt: &mut Runtime<S>, c: char) {
     rt.key(KeyEvent { key: Key::Command(c), mods: Mods { cmd: true, ..Mods::default() } });
@@ -85,7 +98,11 @@ fn a_drag_selects_from_a_paragraph_into_a_code_block_and_copies_the_drawn_text()
     command(&mut rt, 'c');
     assert_eq!(clipboard.text().as_deref().map(String::as_str), Some("ello world and link.\n\n- alpha\n- beta\n\nfn "));
     command(&mut rt, 'a');
-    assert_eq!(rt.selected_text().as_deref(), Some("Hello world and link.\n\n- alpha\n- beta\n\nfn main() {}"), "the message, not the next one");
+    assert_eq!(
+        rt.selected_text().as_deref(),
+        Some("Hello world and link.\n\n- alpha\n- beta\n\nfn main() {}"),
+        "the message, not the next one"
+    );
 }
 
 #[test]
@@ -218,7 +235,9 @@ fn a_quote_with_paragraphs_a_list_and_code_copies_as_plain_text() {
     command(&mut rt, 'c');
     assert_eq!(
         clipboard.text().as_deref().map(String::as_str),
-        Some("Before.\n\nFirst para here.\n\nSecond para.\n\n- one\n- two\n  - nested\n\n1. first\n2. second\n\nlet a = 1;\nlet b = 2;\n\nAfter."),
+        Some(
+            "Before.\n\nFirst para here.\n\nSecond para.\n\n- one\n- two\n  - nested\n\n1. first\n2. second\n\nlet a = 1;\nlet b = 2;\n\nAfter."
+        ),
     );
 
     // One item alone copies without its marker, and a drag from inside an item leaves it off.

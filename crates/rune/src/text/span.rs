@@ -25,7 +25,11 @@ pub struct Span {
 
 impl Span {
     pub fn new(start: usize, end: usize) -> Span {
-        Span { start: start as u32, end: end as u32, ..Default::default() }
+        Span {
+            start: start as u32,
+            end: end as u32,
+            ..Default::default()
+        }
     }
 
     pub fn weight(mut self, weight: f32) -> Span {
@@ -105,7 +109,12 @@ pub(crate) struct PillMetrics {
 
 impl PillMetrics {
     pub fn new(size: f32) -> Self {
-        Self { margin: (size * 0.12).max(1.5), pad: (size * 0.36).max(3.0), icon: (size * 0.95).round(), icon_gap: (size * 0.22).max(2.0) }
+        Self {
+            margin: (size * 0.12).max(1.5),
+            pad: (size * 0.36).max(3.0),
+            icon: (size * 0.95).round(),
+            icon_gap: (size * 0.22).max(2.0),
+        }
     }
 
     /// Room before the label, inside the chip and out.

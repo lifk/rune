@@ -53,12 +53,19 @@ pub use view::layer;
 pub const SLIDE: rune::Spring = rune::Spring::new(0.3, 0.0);
 /// [`SLIDE`] as knobs, for a story that tunes it.
 pub const SLIDE_TIME: Knob = Knob::new("Knobs slide", 0.1, 0.8, 0.3).label("Panel slide time");
-pub const SLIDE_BOUNCE: Knob = Knob::new("Knobs slide bounce", 0.0, 0.4, 0.0).label("Panel slide bounce");
+pub const SLIDE_BOUNCE: Knob =
+    Knob::new("Knobs slide bounce", 0.0, 0.4, 0.0).label("Panel slide bounce");
 /// How the side panel lays its groups out, for comparing: a tree of pages and their parts,
 /// what's on screen first, or a tab per page.
-pub const LAYOUT: Knob = Knob::choice("Knobs layout", &["Tree", "On screen", "Tabs"], 0).label("Panel layout").about("How this panel lists its parts: a folding tree, what's on screen first, or a tab per page");
+pub const LAYOUT: Knob = Knob::choice("Knobs layout", &["Tree", "On screen", "Tabs"], 0)
+    .label("Panel layout")
+    .about(
+        "How this panel lists its parts: a folding tree, what's on screen first, or a tab per page",
+    );
 /// How long a section takes to fold or open.
-pub const FOLD_TIME: Knob = Knob::new("Knobs fold", 0.05, 0.6, 0.2).label("Section fold time").about("How long a section of this panel takes to fold or open");
+pub const FOLD_TIME: Knob = Knob::new("Knobs fold", 0.05, 0.6, 0.2)
+    .label("Section fold time")
+    .about("How long a section of this panel takes to fold or open");
 /// The side panel's width until its edge is dragged, and the range it can be dragged in.
 pub const SIDE_W: f32 = 340.0;
 pub const SIDE_MIN: f32 = 280.0;
@@ -104,7 +111,12 @@ pub struct Note {
 
 impl Note {
     pub const fn new(name: &'static str, about: &'static str) -> Self {
-        Self { name, label: "", about, hints: &[] }
+        Self {
+            name,
+            label: "",
+            about,
+            hints: &[],
+        }
     }
     pub const fn label(mut self, label: &'static str) -> Self {
         self.label = label;
@@ -129,7 +141,17 @@ fn note(name: &str) -> Option<&'static Note> {
 
 impl Knob {
     pub const fn new(name: &'static str, min: f32, max: f32, default: f32) -> Self {
-        Self { name, label: "", min, max, default, step: 0.0, labels: &[], about: "", hints: &[] }
+        Self {
+            name,
+            label: "",
+            min,
+            max,
+            default,
+            step: 0.0,
+            labels: &[],
+            about: "",
+            hints: &[],
+        }
     }
     /// Shows the knob as `label` and keeps storing it under its name.
     pub const fn label(mut self, label: &'static str) -> Self {
@@ -156,25 +178,50 @@ impl Knob {
     }
     /// The line on what it changes: its note's, or its own.
     pub fn describe(&self) -> &'static str {
-        note(self.name).map(|n| n.about).filter(|a| !a.is_empty()).unwrap_or(self.about)
+        note(self.name)
+            .map(|n| n.about)
+            .filter(|a| !a.is_empty())
+            .unwrap_or(self.about)
     }
     /// The line on option `i` of a choice, or "" when there isn't one.
     pub fn hint(&self, i: usize) -> &'static str {
         let own = self.hints.get(i).copied().unwrap_or("");
         let label = self.labels.get(i).copied().unwrap_or("");
-        note(self.name).and_then(|n| n.hints.iter().find(|(l, _)| *l == label)).map(|(_, h)| *h).filter(|h| !h.is_empty()).unwrap_or(own)
+        note(self.name)
+            .and_then(|n| n.hints.iter().find(|(l, _)| *l == label))
+            .map(|(_, h)| *h)
+            .filter(|h| !h.is_empty())
+            .unwrap_or(own)
     }
     pub const fn step(mut self, step: f32) -> Self {
         self.step = step;
         self
     }
     /// One of `labels`, stored as its index.
-    pub const fn choice(name: &'static str, labels: &'static [&'static str], default: usize) -> Self {
-        Self { name, label: "", min: 0.0, max: (labels.len().saturating_sub(1)) as f32, default: default as f32, step: 1.0, labels, about: "", hints: &[] }
+    pub const fn choice(
+        name: &'static str,
+        labels: &'static [&'static str],
+        default: usize,
+    ) -> Self {
+        Self {
+            name,
+            label: "",
+            min: 0.0,
+            max: (labels.len().saturating_sub(1)) as f32,
+            default: default as f32,
+            step: 1.0,
+            labels,
+            about: "",
+            hints: &[],
+        }
     }
     fn clamp(&self, v: f32) -> f32 {
         let v = v.clamp(self.min, self.max);
-        if self.step > 0.0 { (self.min + ((v - self.min) / self.step).round() * self.step).min(self.max) } else { v }
+        if self.step > 0.0 {
+            (self.min + ((v - self.min) / self.step).round() * self.step).min(self.max)
+        } else {
+            v
+        }
     }
 }
 
@@ -201,7 +248,14 @@ pub struct Group {
 
 impl Group {
     pub const fn new(name: &'static str, region: &'static str, knobs: &'static [Knob]) -> Self {
-        Self { name, region, knobs, presets: &[], default_label: DEFAULT, under: "" }
+        Self {
+            name,
+            region,
+            knobs,
+            presets: &[],
+            default_label: DEFAULT,
+            under: "",
+        }
     }
     /// Files the group under a page: names must still be unique across all groups.
     pub const fn under(mut self, page: &'static str) -> Self {
@@ -210,7 +264,11 @@ impl Group {
     }
     /// The page it's on: its own name when it stands alone.
     pub fn page(&self) -> &'static str {
-        if self.under.is_empty() { self.name } else { self.under }
+        if self.under.is_empty() {
+            self.name
+        } else {
+            self.under
+        }
     }
     pub const fn presets(mut self, presets: &'static [Preset]) -> Self {
         self.presets = presets;
@@ -304,11 +362,19 @@ impl Knobs {
     /// Opens on the last group used, or the first.
     /// The side panel's width, open or not.
     pub fn side_w(&self) -> f32 {
-        if self.width > 0.0 { self.width.clamp(SIDE_MIN, SIDE_MAX) } else { SIDE_W }
+        if self.width > 0.0 {
+            self.width.clamp(SIDE_MIN, SIDE_MAX)
+        } else {
+            SIDE_W
+        }
     }
     /// How much room the side panel takes from the page: its width while open, else 0.
     pub fn side_room(&self) -> f32 {
-        if cfg!(feature = "panel") && self.open { self.side_w() } else { 0.0 }
+        if cfg!(feature = "panel") && self.open {
+            self.side_w()
+        } else {
+            0.0
+        }
     }
     /// The side panel's fold spring, from [`FOLD_TIME`].
     pub fn fold_spring(&self) -> rune::Spring {
@@ -359,7 +425,11 @@ impl Knobs {
         if self.picking {
             return None;
         }
-        self.group.as_deref().and_then(|n| groups.iter().find(|g| g.name == n)).or(groups.first()).copied()
+        self.group
+            .as_deref()
+            .and_then(|n| groups.iter().find(|g| g.name == n))
+            .or(groups.first())
+            .copied()
     }
     /// Puts the pointer over knob `name` (and option `option` of a choice), for a still or a test.
     pub fn hover(&mut self, name: &str, option: Option<usize>) {
@@ -448,14 +518,20 @@ impl Knobs {
             self.close();
             return true;
         }
-        let Some(g) = self.current(groups).or(groups.first().copied()) else { return false };
+        let Some(g) = self.current(groups).or(groups.first().copied()) else {
+            return false;
+        };
         let n = g.knobs.len();
         match &ev.key {
             Key::Up | Key::Down if n > 0 => {
                 let at = self.cursor.min(n - 1) as i32 + if ev.key == Key::Down { 1 } else { -1 };
                 self.cursor = at.rem_euclid(n as i32) as usize;
             }
-            Key::Left | Key::Right if n > 0 => self.step(&g.knobs[self.cursor.min(n - 1)], ev.key == Key::Right, ev.mods.shift),
+            Key::Left | Key::Right if n > 0 => self.step(
+                &g.knobs[self.cursor.min(n - 1)],
+                ev.key == Key::Right,
+                ev.mods.shift,
+            ),
             Key::Tab | Key::Text(_) => {
                 let back = match &ev.key {
                     Key::Tab => ev.mods.shift,
@@ -475,8 +551,18 @@ impl Knobs {
 
     /// One step of `d` up or down (⇧ for 10×; a choice moves one option), undoable.
     pub(crate) fn step(&mut self, d: &Knob, up: bool, big: bool) {
-        let unit = if !d.labels.is_empty() { 1.0 } else if d.step > 0.0 { d.step } else { (d.max - d.min) / 100.0 };
-        let unit = if big && d.labels.is_empty() { unit * 10.0 } else { unit };
+        let unit = if !d.labels.is_empty() {
+            1.0
+        } else if d.step > 0.0 {
+            d.step
+        } else {
+            (d.max - d.min) / 100.0
+        };
+        let unit = if big && d.labels.is_empty() {
+            unit * 10.0
+        } else {
+            unit
+        };
         let before = self.get(d);
         self.checkpoint();
         self.set(d, before + if up { unit } else { -unit });
@@ -487,7 +573,10 @@ impl Knobs {
 
     /// Anything Reset would change in `g`.
     pub fn can_reset(&self, g: &Group) -> bool {
-        g.knobs.iter().any(|k| (self.get(k) - k.default).abs() > 1e-4) || self.active.get(g.name).is_some_and(|a| self.drifted(g, a))
+        g.knobs
+            .iter()
+            .any(|k| (self.get(k) - k.default).abs() > 1e-4)
+            || self.active.get(g.name).is_some_and(|a| self.drifted(g, a))
     }
 
     /// Remembers the values for Undo, once per change: call it before a change the panel makes
@@ -510,13 +599,17 @@ impl Knobs {
     }
     /// Takes back the last change. True if there was one.
     pub fn undo(&mut self) -> bool {
-        let Some(v) = self.undo.pop() else { return false };
+        let Some(v) = self.undo.pop() else {
+            return false;
+        };
         self.redo.push(std::mem::replace(&mut self.values, v));
         true
     }
     /// Puts back the change Undo took. True if there was one.
     pub fn redo(&mut self) -> bool {
-        let Some(v) = self.redo.pop() else { return false };
+        let Some(v) = self.redo.pop() else {
+            return false;
+        };
         self.undo.push(std::mem::replace(&mut self.values, v));
         true
     }
@@ -566,7 +659,10 @@ impl Knobs {
     pub fn random(&mut self, g: &Group) {
         self.checkpoint();
         if self.seed == 0 {
-            self.seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64) | 1;
+            self.seed = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(1, |d| d.as_nanos() as u64)
+                | 1;
         }
         for k in g.knobs {
             // xorshift64
@@ -603,18 +699,32 @@ impl Knobs {
 
     /// A preset's values for every knob in `g`, defaults filled in; "Default" is the defaults.
     pub fn preset(&self, g: &Group, name: &str) -> Option<BTreeMap<String, f32>> {
-        let mut out: BTreeMap<String, f32> = g.knobs.iter().map(|k| (k.name.to_owned(), k.default)).collect();
+        let mut out: BTreeMap<String, f32> = g
+            .knobs
+            .iter()
+            .map(|k| (k.name.to_owned(), k.default))
+            .collect();
         if let Some(p) = g.presets.iter().find(|p| p.name == name) {
             out.extend(p.values.iter().map(|(n, v)| ((*n).to_owned(), *v)));
-        } else if let Some((_, v)) = self.saved.get(g.name).and_then(|s| s.iter().find(|(n, _)| n == name)) {
-            out.extend(v.iter().filter(|(n, _)| g.knobs.iter().any(|k| k.name == *n)).map(|(n, v)| (n.clone(), *v)));
+        } else if let Some((_, v)) = self
+            .saved
+            .get(g.name)
+            .and_then(|s| s.iter().find(|(n, _)| n == name))
+        {
+            out.extend(
+                v.iter()
+                    .filter(|(n, _)| g.knobs.iter().any(|k| k.name == *n))
+                    .map(|(n, v)| (n.clone(), *v)),
+            );
         } else if name != DEFAULT {
             return None;
         }
         Some(out)
     }
     pub fn apply(&mut self, g: &Group, name: &str) {
-        let Some(vals) = self.preset(g, name) else { return };
+        let Some(vals) = self.preset(g, name) else {
+            return;
+        };
         self.checkpoint();
         for k in g.knobs {
             let v = vals.get(k.name).copied().unwrap_or(k.default);
@@ -636,16 +746,29 @@ impl Knobs {
     }
     /// The values have moved off preset `name`.
     pub fn drifted(&self, g: &Group, name: &str) -> bool {
-        let Some(vals) = self.preset(g, name) else { return false };
-        g.knobs.iter().any(|k| (self.get(k) - k.clamp(vals[k.name])).abs() > 1e-4)
+        let Some(vals) = self.preset(g, name) else {
+            return false;
+        };
+        g.knobs
+            .iter()
+            .any(|k| (self.get(k) - k.clamp(vals[k.name])).abs() > 1e-4)
     }
     /// Saves `g`'s values as a new preset and makes it active.
     pub fn save(&mut self, g: &Group) -> String {
         let list = self.saved.entry(g.name.to_owned()).or_default();
-        let n = (1..).find(|n| !list.iter().any(|(s, _)| *s == format!("Saved {n}"))).unwrap_or(1);
+        let n = (1..)
+            .find(|n| !list.iter().any(|(s, _)| *s == format!("Saved {n}")))
+            .unwrap_or(1);
         let name = format!("Saved {n}");
-        let vals = g.knobs.iter().map(|k| (k.name.to_owned(), self.get(k))).collect();
-        self.saved.entry(g.name.to_owned()).or_default().push((name.clone(), vals));
+        let vals = g
+            .knobs
+            .iter()
+            .map(|k| (k.name.to_owned(), self.get(k)))
+            .collect();
+        self.saved
+            .entry(g.name.to_owned())
+            .or_default()
+            .push((name.clone(), vals));
         self.active.insert(g.name.to_owned(), name.clone());
         name
     }
@@ -695,7 +818,10 @@ pub fn key(k: &mut Knobs, ev: &KeyEvent) -> bool {
 /// [`Knobs::panel_key`] as the keys of a playground story's side column, for
 /// `rune::Story::side_keys` beside [`inline`]: ↑ ↓ pick a knob, ← → step it (⇧ for 10×), `[`
 /// and `]` switch groups. It leaves Esc and Tab to the playground, which leaves the column.
-pub fn side_key<S: 'static>(groups: &'static [Group], lens: fn(&mut S) -> &mut Knobs) -> impl Fn(&mut S, &KeyEvent, &mut rune::Tx) -> bool + 'static {
+pub fn side_key<S: 'static>(
+    groups: &'static [Group],
+    lens: fn(&mut S) -> &mut Knobs,
+) -> impl Fn(&mut S, &KeyEvent, &mut rune::Tx) -> bool + 'static {
     move |s, ev, tx| {
         if matches!(ev.key, rune::Key::Escape | rune::Key::Tab) {
             return false;
@@ -710,18 +836,35 @@ pub fn side_key<S: 'static>(groups: &'static [Group], lens: fn(&mut S) -> &mut K
 
 /// Without the `panel` feature the layer is an empty element.
 #[cfg(not(feature = "panel"))]
-pub fn layer<S: 'static>(_: &Knobs, _: &'static [Group], _: Style, _: fn(&mut S) -> &mut Knobs) -> rune::El {
+pub fn layer<S: 'static>(
+    _: &Knobs,
+    _: &'static [Group],
+    _: Style,
+    _: fn(&mut S) -> &mut Knobs,
+) -> rune::El {
     rune::el().key("knobs-layer")
 }
 
 #[cfg(not(feature = "panel"))]
-pub fn inline<S: 'static>(_: &Knobs, _: &'static [Group], _: Style, _: fn(&mut S) -> &mut Knobs, _: bool) -> rune::El {
+pub fn inline<S: 'static>(
+    _: &Knobs,
+    _: &'static [Group],
+    _: Style,
+    _: fn(&mut S) -> &mut Knobs,
+    _: bool,
+) -> rune::El {
     rune::el().key("knobs-panel")
 }
 
 /// Without the `panel` feature the page shows alone.
 #[cfg(not(feature = "panel"))]
-pub fn side<S: 'static>(page: rune::El, _: &Knobs, _: &'static [Group], _: Style, _: fn(&mut S) -> &mut Knobs) -> rune::El {
+pub fn side<S: 'static>(
+    page: rune::El,
+    _: &Knobs,
+    _: &'static [Group],
+    _: Style,
+    _: fn(&mut S) -> &mut Knobs,
+) -> rune::El {
     page
 }
 

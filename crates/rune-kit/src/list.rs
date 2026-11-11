@@ -161,12 +161,18 @@ impl List {
                 let mut g = col().key(format!("group{i}")).w_full();
                 if let Some(name) = &item.group {
                     g = g.role("group").label(name.clone());
-                    g =
-                        g.child(
-                            row().key("header").w_full().pt(8.0).pb(8.0).pl(8.0).pr(12.0).fill(c.surface_raised).child(
-                                text(name.clone()).font(TextStyle::new(14.0, 500.0).lh(21.0)).color(c.text_weak),
-                            ).a11y_hidden(),
-                        );
+                    g = g.child(
+                        row()
+                            .key("header")
+                            .w_full()
+                            .pt(8.0)
+                            .pb(8.0)
+                            .pl(8.0)
+                            .pr(12.0)
+                            .fill(c.surface_raised)
+                            .child(text(name.clone()).font(TextStyle::new(14.0, 500.0).lh(21.0)).color(c.text_weak))
+                            .a11y_hidden(),
+                    );
                 }
                 group_el = Some((item.group.clone(), g));
             }
@@ -201,8 +207,13 @@ impl List {
                 r = r.focusable(true).focus_selected(item.selected);
             }
             if self.divider && i + 1 < n {
-                r = r
-                    .child(el().key("divider").h(1.0).pin(Some(16.0), None, Some(16.0), Some(0.0)).fill(c.border_weak).a11y_hidden());
+                r = r.child(
+                    el().key("divider")
+                        .h(1.0)
+                        .pin(Some(16.0), None, Some(16.0), Some(0.0))
+                        .fill(c.border_weak)
+                        .a11y_hidden(),
+                );
             }
             for a in item.actions {
                 r = a(r);

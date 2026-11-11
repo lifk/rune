@@ -60,7 +60,14 @@ impl PaneState {
 
     /// An open pane `width` points wide, which double-clicking its edge also returns to.
     pub fn new(width: f32) -> PaneState {
-        let mut p = PaneState { width, dock: Dock::Open { from_peek: false }, min: Self::MIN, max: Self::MAX, resizing: false, asked: [width; 2] };
+        let mut p = PaneState {
+            width,
+            dock: Dock::Open { from_peek: false },
+            min: Self::MIN,
+            max: Self::MAX,
+            resizing: false,
+            asked: [width; 2],
+        };
         p.clamp();
         p
     }
@@ -235,7 +242,9 @@ impl PaneMotion {
     pub fn spring_for(&self, k: &Kit, width: f32) -> Spring {
         let base = self.spring.unwrap_or(k.motion.disclosure);
         match self.scale {
-            Some([reference, min, max]) => base.with_duration((base.duration * (width.max(0.0) / reference).sqrt()).clamp(min, max)),
+            Some([reference, min, max]) => {
+                base.with_duration((base.duration * (width.max(0.0) / reference).sqrt()).clamp(min, max))
+            }
             None => base,
         }
     }
@@ -243,7 +252,11 @@ impl PaneMotion {
     /// The curve a pane's contents fade on as it opens (`open`) or closes on `spring`.
     pub(super) fn fade(&self, spring: Spring, open: bool, reduced: bool) -> Anim {
         if reduced {
-            return if self.reduced_fade > 0.0 { Curve::tween(self.reduced_fade, Easing::EASE_IN_OUT).into() } else { Anim::INSTANT };
+            return if self.reduced_fade > 0.0 {
+                Curve::tween(self.reduced_fade, Easing::EASE_IN_OUT).into()
+            } else {
+                Anim::INSTANT
+            };
         }
         match self.fade_tail {
             Some(f) => tail_fade(spring, f, open),

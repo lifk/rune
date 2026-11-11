@@ -94,11 +94,15 @@ fn dashed_rings_translate_and_stay_inside_their_ring() {
         let scene = generate::dashed(seed, 8);
         let original = render(&scene);
         let mut shifted = scene.clone();
-        shifted.width += 4; shifted.height += 6;
+        shifted.width += 4;
+        shifted.height += 6;
         generate::translate(&mut shifted, 4.0, 6.0);
         let actual = render(&shifted);
         for y in 0..64 {
-            assert_eq!(&original.rgba[y * 256..(y + 1) * 256], &actual.rgba[((y + 6) * 68 + 4) * 4..((y + 6) * 68 + 68) * 4]);
+            assert_eq!(
+                &original.rgba[y * 256..(y + 1) * 256],
+                &actual.rgba[((y + 6) * 68 + 4) * 4..((y + 6) * 68 + 68) * 4]
+            );
         }
         // Dashes only ever take coverage away from the solid ring.
         for p in &scene.primitives {
@@ -110,8 +114,18 @@ fn dashed_rings_translate_and_stay_inside_their_ring() {
             one.primitives[0].border = one.primitives[0].fill;
             one.primitives[0].fill = [0.0; 4];
             let solid = render(&one);
-            for (n, (d, s)) in dashed.owners.as_ref().unwrap().iter().zip(solid.owners.as_ref().unwrap()).enumerate() {
-                assert!(d.is_none() || s.is_some(), "seed {seed}: pixel {n} dashed outside the ring");
+            for (n, (d, s)) in dashed
+                .owners
+                .as_ref()
+                .unwrap()
+                .iter()
+                .zip(solid.owners.as_ref().unwrap())
+                .enumerate()
+            {
+                assert!(
+                    d.is_none() || s.is_some(),
+                    "seed {seed}: pixel {n} dashed outside the ring"
+                );
             }
         }
     }
@@ -129,12 +143,20 @@ fn effect_slots_are_accepted_and_draw_nothing() {
             slot.border = [0.0; 4];
             slot.params = [0.0, 12.0, 6.0, 1.0];
             slot.uv = [0.0; 4];
-            if n % 3 == 0 { slot.rect[2] = 0.0; }
+            if n % 3 == 0 {
+                slot.rect[2] = 0.0;
+            }
             slotted.primitives.insert(n, slot);
         }
         let (a, b) = (render(&scene), render(&slotted));
         assert_eq!(a.rgba, b.rgba, "seed {seed}");
-        assert!(b.owners.unwrap().iter().flatten().all(|&i| slotted.primitives[i].params[1] != 12.0));
+        assert!(
+            b.owners
+                .unwrap()
+                .iter()
+                .flatten()
+                .all(|&i| slotted.primitives[i].params[1] != 12.0)
+        );
     }
 }
 
@@ -174,7 +196,11 @@ fn layer(kind: f32, blur: f32) -> rune_ref::Primitive {
     rune_ref::Primitive {
         node: 1,
         source: "layer".into(),
-        rect: if kind == 9.0 { [0.0; 4] } else { [0.0, 0.0, 8.0, 8.0] },
+        rect: if kind == 9.0 {
+            [0.0; 4]
+        } else {
+            [0.0, 0.0, 8.0, 8.0]
+        },
         radii: [0.0; 4],
         fill: [0.0, 0.0, 0.0, if kind == 9.0 { 0.0 } else { 1.0 }],
         border: [0.0; 4],
@@ -190,22 +216,49 @@ fn layer(kind: f32, blur: f32) -> rune_ref::Primitive {
 #[test]
 fn validate_rejects_layers_it_cannot_render() {
     let base = generate::scene(&[]);
-    let with = |primitives: Vec<rune_ref::Primitive>| Scene { primitives, ..base.clone() };
-    with(vec![layer(8.0, 0.0), layer(9.0, 0.0)]).validate().unwrap();
-    assert!(with(vec![layer(9.0, 0.0)]).validate().is_err(), "unbalanced end");
-    assert!(with(vec![layer(8.0, 0.0)]).validate().is_err(), "unclosed scope");
+    let with = |primitives: Vec<rune_ref::Primitive>| Scene {
+        primitives,
+        ..base.clone()
+    };
+    with(vec![layer(8.0, 0.0), layer(9.0, 0.0)])
+        .validate()
+        .unwrap();
+    assert!(
+        with(vec![layer(9.0, 0.0)]).validate().is_err(),
+        "unbalanced end"
+    );
+    assert!(
+        with(vec![layer(8.0, 0.0)]).validate().is_err(),
+        "unclosed scope"
+    );
     let mut malformed = layer(8.0, 0.0);
     malformed.params[3] = 2.0;
-    assert!(with(vec![malformed, layer(9.0, 0.0)]).validate().is_err(), "invalid cache flag");
+    assert!(
+        with(vec![malformed, layer(9.0, 0.0)]).validate().is_err(),
+        "invalid cache flag"
+    );
     let mut turned = layer(8.0, 0.0);
     turned.turn = Some([0.4, 4.0, 4.0]);
-    with(vec![turned.clone(), layer(9.0, 0.0)]).validate().unwrap();
+    with(vec![turned.clone(), layer(9.0, 0.0)])
+        .validate()
+        .unwrap();
     // A turned subtree never opens a cache, so a turned cache record is malformed.
     turned.params[3] = 1.0;
-    assert!(with(vec![turned, layer(9.0, 0.0)]).validate().is_err(), "turned cache");
+    assert!(
+        with(vec![turned, layer(9.0, 0.0)]).validate().is_err(),
+        "turned cache"
+    );
     // The CPU compositor has no layer blur, so a blurred layer would render unblurred.
-    assert!(with(vec![layer(8.0, 2.0), layer(9.0, 0.0)]).validate().is_err(), "blurred layer");
+    assert!(
+        with(vec![layer(8.0, 2.0), layer(9.0, 0.0)])
+            .validate()
+            .is_err(),
+        "blurred layer"
+    );
     // Each nested scope holds a full-frame buffer while it renders, so nesting is bounded.
-    let deep: Vec<_> = (0..1000).map(|_| layer(8.0, 0.0)).chain((0..1000).map(|_| layer(9.0, 0.0))).collect();
+    let deep: Vec<_> = (0..1000)
+        .map(|_| layer(8.0, 0.0))
+        .chain((0..1000).map(|_| layer(9.0, 0.0)))
+        .collect();
     assert!(with(deep).validate().is_err(), "unbounded nesting");
 }

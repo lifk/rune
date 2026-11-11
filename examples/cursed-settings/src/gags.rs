@@ -5,8 +5,9 @@
 use std::f32::consts::{PI, TAU};
 
 use rune_fx::{
-    BlurMode, DistortParams, ElectricParams, ElectricStyle, FireParams, FireStyle, Fx, FxLayer, GlowParams,
-    LensParams, MotionBlurParams, MotionSamples, OneShots, Pose, PulseParams, PulseStyle, Rect, Rgb, Shape, rgb,
+    BlurMode, DistortParams, ElectricParams, ElectricStyle, FireParams, FireStyle, Fx, FxLayer,
+    GlowParams, LensParams, MotionBlurParams, MotionSamples, OneShots, Pose, PulseParams,
+    PulseStyle, Rect, Rgb, Shape, rgb,
 };
 use rune_light::{Light, Settings, TextPolicy};
 use rune_motion::{Animated, Spring, Vec2};
@@ -62,7 +63,15 @@ pub struct Env {
 
 impl Env {
     fn new(up: f32, bounce: f32, down: f32) -> Env {
-        Env { on: None, t0: -1e3, from: 0.0, up: (up, bounce), down, delay: 0.0, reduced: false }
+        Env {
+            on: None,
+            t0: -1e3,
+            from: 0.0,
+            up: (up, bounce),
+            down,
+            delay: 0.0,
+            reduced: false,
+        }
     }
     fn delay(mut self, d: f32) -> Env {
         self.delay = d;
@@ -96,7 +105,11 @@ impl Env {
         if self.reduced {
             return (0.18, 0.0, 0.0);
         }
-        if self.is_on() { (self.up.0, self.up.1, self.delay) } else { (self.down, 0.0, 0.0) }
+        if self.is_on() {
+            (self.up.0, self.up.1, self.delay)
+        } else {
+            (self.down, 0.0, 0.0)
+        }
     }
     fn at(&self, t: f32) -> f32 {
         let target = if self.is_on() { 1.0 } else { 0.0 };
@@ -225,7 +238,11 @@ fn glow_of(h: f32) -> Rgb {
     let b = lin3(rgb(0xff4a12));
     let c = lin3(rgb(0xffb347));
     let k = h.clamp(0.0, 1.0);
-    let (p, q, u) = if k < 0.6 { (a, b, k / 0.6) } else { (b, c, (k - 0.6) / 0.4) };
+    let (p, q, u) = if k < 0.6 {
+        (a, b, k / 0.6)
+    } else {
+        (b, c, (k - 0.6) / 0.4)
+    };
     Rgb([mix(p[0], q[0], u), mix(p[1], q[1], u), mix(p[2], q[2], u)])
 }
 
@@ -239,7 +256,10 @@ fn border_point(r: Rect, radius: f32, p: [f32; 2]) -> (f32, [f32; 2]) {
     let len = d[0].hypot(d[1]);
     if len > 1e-3 {
         let n = [d[0] / len, d[1] / len];
-        (len - radius, [c[0] + cl[0] + n[0] * radius, c[1] + cl[1] + n[1] * radius])
+        (
+            len - radius,
+            [c[0] + cl[0] + n[0] * radius, c[1] + cl[1] + n[1] * radius],
+        )
     } else {
         // Inside the core: push out to the nearest side.
         let dx = half[0] + radius - q[0].abs();
@@ -255,7 +275,13 @@ fn border_point(r: Rect, radius: f32, p: [f32; 2]) -> (f32, [f32; 2]) {
 fn arc_shape(a: [f32; 2], b: [f32; 2]) -> Shape {
     let x = a[0].min(b[0]);
     let y = a[1].min(b[1]);
-    Shape::rounded(x, y, (a[0] - b[0]).abs().max(2.0), (a[1] - b[1]).abs().max(2.0), 0.0)
+    Shape::rounded(
+        x,
+        y,
+        (a[0] - b[0]).abs().max(2.0),
+        (a[1] - b[1]).abs().max(2.0),
+        0.0,
+    )
 }
 
 impl Gags {
@@ -267,12 +293,20 @@ impl Gags {
         let tg = &i.targets;
         let light_ui = !i.dark_theme;
         // Emissive light vanishes on a white window: there it reads as ink, deep and opaque.
-        let (volt, volt_core, volt_occ, volt_k) =
-            if light_ui { (rgb(0x1f5cff), rgb(0x7fa6ff), 0.95, 1.5) } else { (rgb(0x5a9bff), rgb(0xeaf3ff), 0.12, 1.0) };
+        let (volt, volt_core, volt_occ, volt_k) = if light_ui {
+            (rgb(0x1f5cff), rgb(0x7fa6ff), 0.95, 1.5)
+        } else {
+            (rgb(0x5a9bff), rgb(0xeaf3ff), 0.12, 1.0)
+        };
         let mut lays: Vec<Lay> = Vec::new();
         let mut lights: Vec<Light> = Vec::new();
         let mut anim = false;
-        let mut push = |layer: FxLayer, anchor: Anchor| lays.push(Lay { layer: layer.at(t).reduced(rm), anchor });
+        let mut push = |layer: FxLayer, anchor: Anchor| {
+            lays.push(Lay {
+                layer: layer.at(t).reduced(rm),
+                anchor,
+            })
+        };
         let light_theme = !i.dark_theme;
         let px = |q: [f32; 2]| [q[0] * i.scale, q[1] * i.scale];
 
@@ -284,7 +318,9 @@ impl Gags {
         if let Some((a, alpha)) = tg.allowed {
             let g = self.fire.at(t).max(0.0);
             let since = self.fire.since(t);
-            if self.fire.is_on() && since < 0.8 && !rm
+            if self.fire.is_on()
+                && since < 0.8
+                && !rm
                 && let Some((sw, _)) = tg.firewall
             {
                 // The spark: winds up, shoots from the switch to the card's edge, blooms there.
@@ -294,7 +330,11 @@ impl Gags {
                 let len = d[0].hypot(d[1]).max(1.0);
                 push(
                     Fx::pulse(PulseParams {
-                        style: PulseStyle::Ping { from, dir: [d[0] / len, d[1] / len], travel: len },
+                        style: PulseStyle::Ping {
+                            from,
+                            dir: [d[0] / len, d[1] / len],
+                            travel: len,
+                        },
                         color: rgb(0xff7a1a),
                         core: rgb(0xfff1d6),
                         t0: self.fire.t0,
@@ -310,7 +350,11 @@ impl Gags {
             }
             if g > 0.003 {
                 let ix = self.fire_x.clamp(a.x, a.x + a.w);
-                let span = if self.fire.is_on() && !rm { step(since - 0.24, 0.85, 0.0) } else { 1.0 };
+                let span = if self.fire.is_on() && !rm {
+                    step(since - 0.24, 0.85, 0.0)
+                } else {
+                    1.0
+                };
                 let x0 = mix(ix, a.x, span);
                 let x1 = mix(ix, a.x + a.w, span);
                 let shape = Shape::rounded(x0, a.y, (x1 - x0).max(14.0), a.h, 8.0);
@@ -331,8 +375,20 @@ impl Gags {
                     Anchor::Under(node::ALLOWED),
                 );
                 push(
-                    Fx::distort(DistortParams::HeatHaze { height: 70.0 * g, scale: 10.0, speed: 2.0, amount: 1.3 * g * alpha, whole_shape: false })
-                        .on(Shape::rounded(x0, a.y - 30.0 * g, (x1 - x0).max(14.0), a.h, 8.0)),
+                    Fx::distort(DistortParams::HeatHaze {
+                        height: 70.0 * g,
+                        scale: 10.0,
+                        speed: 2.0,
+                        amount: 1.3 * g * alpha,
+                        whole_shape: false,
+                    })
+                    .on(Shape::rounded(
+                        x0,
+                        a.y - 30.0 * g,
+                        (x1 - x0).max(14.0),
+                        a.h,
+                        8.0,
+                    )),
                     Anchor::Over(node::ALLOWED),
                 );
             }
@@ -362,7 +418,11 @@ impl Gags {
         if let Some((f, alpha)) = tg.ip {
             let c = self.charge.at(t);
             if c > 0.003 {
-                let burst = if self.charge.is_on() { (-self.charge.since(t) / 0.4).exp() } else { 0.0 };
+                let burst = if self.charge.is_on() {
+                    (-self.charge.since(t) / 0.4).exp()
+                } else {
+                    0.0
+                };
                 let base = ElectricParams::charged();
                 push(
                     Fx::electric(ElectricParams {
@@ -390,12 +450,17 @@ impl Gags {
             let v = self.fence.at(t);
             let since = self.fence.since(t);
             let blue = volt;
-            if self.fence.is_on() && since < 0.45
+            if self.fence.is_on()
+                && since < 0.45
                 && let Some((sw, _)) = tg.fence
             {
                 let a = center(sw);
                 let b = [pr.x + pr.w - 24.0, pr.y + 2.0];
-                let e = if since < 0.2 { 1.0 } else { (-(since - 0.2) / 0.08).exp() };
+                let e = if since < 0.2 {
+                    1.0
+                } else {
+                    (-(since - 0.2) / 0.08).exp()
+                };
                 push(
                     Fx::electric(ElectricParams {
                         style: ElectricStyle::Arc { a, b },
@@ -463,9 +528,17 @@ impl Gags {
                             Anchor::Top,
                         );
                         push(
-                            Fx::glow(GlowParams { color: blue, core: volt_core, radius: 6.0, intensity: k, hot: 0.8, occlusion: if light_ui { 0.6 } else { 0.0 }, ..Default::default() })
-                                .on(Shape::circle(q[0], q[1], 2.5))
-                                .over(),
+                            Fx::glow(GlowParams {
+                                color: blue,
+                                core: volt_core,
+                                radius: 6.0,
+                                intensity: k,
+                                hot: 0.8,
+                                occlusion: if light_ui { 0.6 } else { 0.0 },
+                                ..Default::default()
+                            })
+                            .on(Shape::circle(q[0], q[1], 2.5))
+                            .over(),
                             Anchor::Top,
                         );
                         anim = true;
@@ -490,7 +563,11 @@ impl Gags {
             // Anticipation: the sky darkens first, then the bolt lands and the room recovers.
             let windup = if rm { 0.0 } else { STRIKE_WINDUP };
             let w = t - t0;
-            storm = if rm { 0.0 } else { smooth(0.0, windup, w) * (1.0 - smooth(windup + 0.15, windup + 0.9, w)) };
+            storm = if rm {
+                0.0
+            } else {
+                smooth(0.0, windup, w) * (1.0 - smooth(windup + 0.15, windup + 0.9, w))
+            };
             let u = w - windup;
             if u < 0.0 {
                 anim = true;
@@ -513,8 +590,16 @@ impl Gags {
                     push(
                         Fx::electric(ElectricParams {
                             style: ElectricStyle::Arc { a, b },
-                            color: if light_ui { rgb(0x2a5cff) } else { rgb(0x9cc4ff) },
-                            core: if light_ui { rgb(0x9bb8ff) } else { rgb(0xffffff) },
+                            color: if light_ui {
+                                rgb(0x2a5cff)
+                            } else {
+                                rgb(0x9cc4ff)
+                            },
+                            core: if light_ui {
+                                rgb(0x9bb8ff)
+                            } else {
+                                rgb(0xffffff)
+                            },
                             amplitude: 15.0,
                             frequency: 1.5,
                             speed: 6.0,
@@ -538,15 +623,32 @@ impl Gags {
                     let full = Shape::rounded(i.vp.x, i.vp.y, i.vp.w, i.vp.h, 0.0);
                     let t1 = t0 + windup;
                     push(
-                        Fx::distort(DistortParams::Shockwave { at: b, reach: 420.0, width: 26.0, amount: 12.0, chroma: 0.2, t0: t1, duration: 1.1 }).on(full),
+                        Fx::distort(DistortParams::Shockwave {
+                            at: b,
+                            reach: 420.0,
+                            width: 26.0,
+                            amount: 12.0,
+                            chroma: 0.2,
+                            t0: t1,
+                            duration: 1.1,
+                        })
+                        .on(full),
                         Anchor::Top,
                     );
                 }
                 // The switch stays hot for a moment.
                 let ember = (-u / 0.5).exp() * alpha;
                 push(
-                    Fx::glow(GlowParams { color: rgb(0x8fb8ff), core: rgb(0xffffff), radius: 4.0, intensity: 0.6 * ember, hot: 0.7, occlusion: if light_ui { 0.6 } else { 0.15 }, ..Default::default() })
-                        .on(Shape::rounded(sw.x, sw.y, sw.w, sw.h, 4.0)),
+                    Fx::glow(GlowParams {
+                        color: rgb(0x8fb8ff),
+                        core: rgb(0xffffff),
+                        radius: 4.0,
+                        intensity: 0.6 * ember,
+                        hot: 0.7,
+                        occlusion: if light_ui { 0.6 } else { 0.15 },
+                        ..Default::default()
+                    })
+                    .on(Shape::rounded(sw.x, sw.y, sw.w, sw.h, 4.0)),
                     Anchor::Top,
                 );
                 flash = e;
@@ -560,7 +662,10 @@ impl Gags {
         self.frost.set(p.reduce_transparency, t, rm);
         anim |= self.frost.moving(t);
         if let Some((r, alpha)) = tg.sel {
-            let c = Vec2 { x: r.x + r.w * 0.5, y: r.y + r.h * 0.5 };
+            let c = Vec2 {
+                x: r.x + r.w * 0.5,
+                y: r.y + r.h * 0.5,
+            };
             let d = self.drop.get_or_insert_with(|| Animated::new(c));
             if rm {
                 d.set(c);
@@ -582,7 +687,13 @@ impl Gags {
                     rim: 1.3,
                     tint: Rgb(i.glass_tint),
                     tint_amount: 0.92 * f,
-                    second: Some(Shape::rounded(dc.x - r.w * 0.5, dc.y - r.h * 0.5, r.w, r.h, 6.0)),
+                    second: Some(Shape::rounded(
+                        dc.x - r.w * 0.5,
+                        dc.y - r.h * 0.5,
+                        r.w,
+                        r.h,
+                        6.0,
+                    )),
                     union_k: 18.0,
                     ..Default::default()
                 })
@@ -615,13 +726,25 @@ impl Gags {
                 );
                 let ht = FireParams::heat();
                 push(
-                    Fx::fire(FireParams { intensity: ht.intensity * 1.5 * h * alpha, height: 13.0 * h, occlusion: if light_theme { 1.0 } else { 0.1 }, ..ht })
-                        .on(rounded(b, 6.0))
-                        .seed(2),
+                    Fx::fire(FireParams {
+                        intensity: ht.intensity * 1.5 * h * alpha,
+                        height: 13.0 * h,
+                        occlusion: if light_theme { 1.0 } else { 0.1 },
+                        ..ht
+                    })
+                    .on(rounded(b, 6.0))
+                    .seed(2),
                     Anchor::Under(node::RELOAD),
                 );
                 push(
-                    Fx::distort(DistortParams::HeatHaze { height: 52.0, scale: 9.0, speed: 2.2, amount: 1.1 * h * alpha, whole_shape: false }).on(rounded(b, 6.0)),
+                    Fx::distort(DistortParams::HeatHaze {
+                        height: 52.0,
+                        scale: 9.0,
+                        speed: 2.2,
+                        amount: 1.1 * h * alpha,
+                        whole_shape: false,
+                    })
+                    .on(rounded(b, 6.0)),
                     Anchor::Over(node::RELOAD),
                 );
             }
@@ -642,16 +765,32 @@ impl Gags {
             let at = sh.data;
             let full = Shape::rounded(i.vp.x, i.vp.y, i.vp.w, i.vp.h, 0.0);
             push(
-                Fx::distort(DistortParams::Shockwave { at, reach: 320.0, width: 22.0, amount: 13.0, chroma: 0.5, t0: sh.t0, duration: 1.15 })
-                    .on(full)
-                    .opacity(k),
+                Fx::distort(DistortParams::Shockwave {
+                    at,
+                    reach: 320.0,
+                    width: 22.0,
+                    amount: 13.0,
+                    chroma: 0.5,
+                    t0: sh.t0,
+                    duration: 1.15,
+                })
+                .on(full)
+                .opacity(k),
                 Anchor::Top,
             );
             push(
                 Fx::pulse(PulseParams {
                     style: PulseStyle::Ripple { at },
-                    color: if light_ui { rgb(0x4a6cff) } else { rgb(0x8fb0ff) },
-                    core: if light_ui { rgb(0x8ea4ff) } else { rgb(0xffffff) },
+                    color: if light_ui {
+                        rgb(0x4a6cff)
+                    } else {
+                        rgb(0x8fb0ff)
+                    },
+                    core: if light_ui {
+                        rgb(0x8ea4ff)
+                    } else {
+                        rgb(0xffffff)
+                    },
                     reach: 300.0,
                     width: 2.0,
                     t0: sh.t0,
@@ -726,25 +865,34 @@ impl Gags {
             let lp = [q[0] + 80.0, q[1] + 130.0];
             let (a, b) = (px(q), px(lp));
             let h = 260.0;
-            out_light(&mut lights, Light::point(b[0], b[1], h * i.scale)
-                .color([1.0, 0.95, 0.87])
-                .intensity(7.0)
-                .radius(9.0 * i.scale)
-                .range(1800.0 * i.scale)
-                .spot([a[0] - b[0], a[1] - b[1], -h * i.scale], 0.56)
-                .specular(1.3)
-                .scaled(torch));
+            out_light(
+                &mut lights,
+                Light::point(b[0], b[1], h * i.scale)
+                    .color([1.0, 0.95, 0.87])
+                    .intensity(7.0)
+                    .radius(9.0 * i.scale)
+                    .range(1800.0 * i.scale)
+                    .spot([a[0] - b[0], a[1] - b[1], -h * i.scale], 0.56)
+                    .specular(1.3)
+                    .scaled(torch),
+            );
         }
 
         let spot_switched = self.spot.set(p.spotlight, t, rm);
         let sv = self.spot.at(t);
         anim |= self.spot.moving(t);
         if let Some((r, _)) = tg.search {
-            let target = Vec2 { x: r.x + r.w * 0.5, y: r.y + r.h * 0.5 };
+            let target = Vec2 {
+                x: r.x + r.w * 0.5,
+                y: r.y + r.h * 0.5,
+            };
             let sp = self.spot_pos.get_or_insert_with(|| Animated::new(target));
             if spot_switched && p.spotlight && !rm {
                 // Swing in from off-stage, upper right.
-                sp.set(Vec2 { x: i.vp.x + i.vp.w + 60.0, y: i.vp.y + 40.0 });
+                sp.set(Vec2 {
+                    x: i.vp.x + i.vp.w + 60.0,
+                    y: i.vp.y + 40.0,
+                });
             }
             if rm {
                 sp.set(target);
@@ -758,14 +906,17 @@ impl Gags {
                 let lp = [q[0] + 150.0, q[1] - 90.0];
                 let h = 420.0;
                 let (a, b) = (px(q), px(lp));
-                out_light(&mut lights, Light::point(b[0], b[1], h * i.scale)
-                    .color([1.0, 0.93, 0.8])
-                    .intensity(4.5)
-                    .radius(5.0 * i.scale)
-                    .range(2400.0 * i.scale)
-                    .spot([a[0] - b[0], a[1] - b[1], -h * i.scale], 0.27)
-                    .specular(1.5)
-                    .scaled(sv));
+                out_light(
+                    &mut lights,
+                    Light::point(b[0], b[1], h * i.scale)
+                        .color([1.0, 0.93, 0.8])
+                        .intensity(4.5)
+                        .radius(5.0 * i.scale)
+                        .range(2400.0 * i.scale)
+                        .spot([a[0] - b[0], a[1] - b[1], -h * i.scale], 0.27)
+                        .specular(1.5)
+                        .scaled(sv),
+                );
             }
         }
         amb *= mix(1.0, 0.025, sv);
@@ -775,30 +926,41 @@ impl Gags {
         anim |= self.contrast.moving(t);
         if cv > 0.003 {
             let lp = px([i.vp.x - 90.0, i.vp.y + i.vp.h * 0.32]);
-            out_light(&mut lights, Light::point(lp[0], lp[1], 26.0 * i.scale)
-                .color([1.0, 0.88, 0.72])
-                .intensity(6.0)
-                .radius(12.0 * i.scale)
-                .range(4000.0 * i.scale)
-                .specular(1.6)
-                .scaled(cv));
+            out_light(
+                &mut lights,
+                Light::point(lp[0], lp[1], 26.0 * i.scale)
+                    .color([1.0, 0.88, 0.72])
+                    .intensity(6.0)
+                    .radius(12.0 * i.scale)
+                    .range(4000.0 * i.scale)
+                    .specular(1.6)
+                    .scaled(cv),
+            );
         }
         amb *= mix(1.0, 0.28, cv);
 
         if flash > 0.003 {
             let q = px([flash_at[0] + 30.0, flash_at[1] - 120.0]);
-            out_light(&mut lights, Light::point(q[0], q[1], 300.0 * i.scale)
-                .color([0.85, 0.9, 1.0])
-                .intensity(6.0)
-                .radius(30.0 * i.scale)
-                .range(5000.0 * i.scale)
-                .scaled(flash));
+            out_light(
+                &mut lights,
+                Light::point(q[0], q[1], 300.0 * i.scale)
+                    .color([0.85, 0.9, 1.0])
+                    .intensity(6.0)
+                    .radius(30.0 * i.scale)
+                    .range(5000.0 * i.scale)
+                    .scaled(flash),
+            );
         }
 
         let gloom = darkness.max(sv * 0.85).max(cv * 0.6);
         let settings = Settings {
             ambient: [amb, amb, amb * 1.05],
-            text: TextPolicy { floor: mix(0.82, 0.08, gloom), ceiling: 1.3, lit: 1.0, specular: 0.12 },
+            text: TextPolicy {
+                floor: mix(0.82, 0.08, gloom),
+                ceiling: 1.3,
+                lit: 1.0,
+                specular: 0.12,
+            },
             rim: 0.8 + 0.8 * cv,
             contact_ao: 0.35 + 0.2 * cv,
             albedo_floor: 0.05,
@@ -806,7 +968,14 @@ impl Gags {
             ..Default::default()
         };
         let lit = ((1.0 - amb) * 8.0 + (flash + torch + sv + cv) * 8.0).clamp(0.0, 1.0);
-        Out { lays, lights, settings, lit, flush, anim }
+        Out {
+            lays,
+            lights,
+            settings,
+            lit,
+            flush,
+            anim,
+        }
     }
 }
 
@@ -823,15 +992,26 @@ fn flush_pose(u: f32, rest: Rect, cc: [f32; 2], drain: [f32; 2], rm: bool) -> Po
     }
     if u >= FLUSH_SECONDS {
         let k = smooth(0.0, FLUSH_REVEAL, u - FLUSH_SECONDS);
-        return Pose { opacity: k, ..Default::default() };
+        return Pose {
+            opacity: k,
+            ..Default::default()
+        };
     }
     if rm {
-        return Pose { opacity: 1.0 - smooth(0.0, FLUSH_SECONDS * 0.6, u), ..Default::default() };
+        return Pose {
+            opacity: 1.0 - smooth(0.0, FLUSH_SECONDS * 0.6, u),
+            ..Default::default()
+        };
     }
     let wind = 0.2;
     if u < wind {
         let w = (PI * u / wind).sin();
-        return Pose { rotation: -0.035 * w, scale: 1.0 + 0.02 * w, y: -3.0 * w, ..Default::default() };
+        return Pose {
+            rotation: -0.035 * w,
+            scale: 1.0 + 0.02 * w,
+            y: -3.0 * w,
+            ..Default::default()
+        };
     }
     let v = ((u - wind) / (FLUSH_SECONDS - wind)).clamp(0.0, 1.0);
     let k = v.powf(2.2);

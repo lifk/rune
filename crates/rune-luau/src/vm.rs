@@ -77,7 +77,9 @@ impl Host<'_> {
     /// [`Script::fire`](crate::Script::fire) as `name`. Expose it to the script in a module.
     pub fn signal(&self, name: &str) -> mlua::Result<Value> {
         let signal: Value = self.prelude.get::<Function>("signal")?.call(())?;
-        self.signals.borrow_mut().insert(name.to_owned(), signal.clone());
+        self.signals
+            .borrow_mut()
+            .insert(name.to_owned(), signal.clone());
         Ok(signal)
     }
 
@@ -130,7 +132,11 @@ impl Base {
         crate::web::init();
         let lua = Lua::new();
         // SAFETY: the callback table lives as long as the VM; `useratom` is a plain function.
-        unsafe { lua.exec_raw::<()>((), |state| (*ffi::lua_callbacks(state)).useratom = Some(useratom))? };
+        unsafe {
+            lua.exec_raw::<()>((), |state| {
+                (*ffi::lua_callbacks(state)).useratom = Some(useratom)
+            })?
+        };
         lua.set_memory_limit(setup.memory_limit)?;
         lua.set_compiler(compiler());
         crate::watchdog::install(&lua)?;
@@ -153,7 +159,10 @@ impl Base {
         for (name, level) in [("print", LogLevel::Info), ("warn", LogLevel::Warn)] {
             let log = setup.log.clone();
             let f = lua.create_function(move |_, args: MultiValue| {
-                let parts: Vec<String> = args.iter().map(|v| v.to_string().unwrap_or_else(|_| v.type_name().to_owned())).collect();
+                let parts: Vec<String> = args
+                    .iter()
+                    .map(|v| v.to_string().unwrap_or_else(|_| v.type_name().to_owned()))
+                    .collect();
                 log(level, parts.join("\t"));
                 Ok(())
             })?;
@@ -186,22 +195,44 @@ impl Base {
 
         let signals = Rc::new(RefCell::new(FxHashMap::default()));
         if let Some(host) = setup.host {
-            host(&Host { lua: &lua, shared: setup.shared, signals: &signals, prelude: &prelude })?;
+            host(&Host {
+                lua: &lua,
+                shared: setup.shared,
+                signals: &signals,
+                prelude: &prelude,
+            })?;
         }
-        Ok(Base { lua, prelude, view, signals })
+        Ok(Base {
+            lua,
+            prelude,
+            view,
+            signals,
+        })
     }
 }
 
 impl Vm {
     /// A new VM from `base` running `compiled`, sandboxed, before its entry module runs; its
     /// task clock starts at `clock`.
-    pub(crate) fn new(base: Base, compiled: &Rc<Compiled>, clock: f64) -> Result<(Vm, Function), ScriptError> {
-        let Base { lua, prelude, view, signals } = base;
+    pub(crate) fn new(
+        base: Base,
+        compiled: &Rc<Compiled>,
+        clock: f64,
+    ) -> Result<(Vm, Function), ScriptError> {
+        let Base {
+            lua,
+            prelude,
+            view,
+            signals,
+        } = base;
         if let Some(mut sched) = lua.app_data_mut::<Sched>() {
             sched.set_clock(clock);
         }
         let loading: Loading = Rc::default();
-        lua.globals().raw_set("require", lua.create_require_function(Requirer::new(compiled.clone(), loading.clone()))?)?;
+        lua.globals().raw_set(
+            "require",
+            lua.create_require_function(Requirer::new(compiled.clone(), loading.clone()))?,
+        )?;
         lua.sandbox(true)?;
         let entry = module_loader(&lua, compiled, &loading, &compiled.entry)?;
         let fire = prelude.get::<Function>("fire")?;
@@ -229,7 +260,10 @@ impl Vm {
             other => {
                 return Err(ScriptError::new(
                     crate::ErrorKind::Missing,
-                    format!("the entry module must return a table of functions or a render function, not a {}", other.type_name()),
+                    format!(
+                        "the entry module must return a table of functions or a render function, not a {}",
+                        other.type_name()
+                    ),
                 ));
             }
         };
@@ -244,7 +278,11 @@ impl Vm {
     /// The function behind registry reference `r`.
     pub(crate) fn function(&self, r: c_int) -> mlua::Result<Function> {
         // SAFETY: pushes the registry slot `r`, which this VM's `lua_ref` filled.
-        unsafe { self.lua.exec_raw((), |state| { ffi::lua_rawgeti(state, ffi::LUA_REGISTRYINDEX, r as ffi::lua_Integer); }) }
+        unsafe {
+            self.lua.exec_raw((), |state| {
+                ffi::lua_rawgeti(state, ffi::LUA_REGISTRYINDEX, r as ffi::lua_Integer);
+            })
+        }
     }
 
     /// Releases registry slots of elements dropped since the last entry.
@@ -267,7 +305,9 @@ impl Vm {
 
     /// Fires the host signal `name` with `args`; false when there is no such signal.
     pub(crate) fn fire(&self, name: &str, args: Vec<crate::Data>) -> mlua::Result<bool> {
-        let Some(signal) = self.signals.borrow().get(name).cloned() else { return Ok(false) };
+        let Some(signal) = self.signals.borrow().get(name).cloned() else {
+            return Ok(false);
+        };
         let mut values = MultiValue::new();
         values.push_back(signal);
         for a in args {

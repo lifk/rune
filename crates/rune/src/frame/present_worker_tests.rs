@@ -30,7 +30,11 @@ fn run_returns_before_its_job_finishes() {
         gate.recv().unwrap();
         flag.store(1, Ordering::SeqCst);
     });
-    assert_eq!(done.load(Ordering::SeqCst), 0, "the caller went on while the job waited");
+    assert_eq!(
+        done.load(Ordering::SeqCst),
+        0,
+        "the caller went on while the job waited"
+    );
     release.send(()).unwrap();
     worker.wait();
     assert_eq!(done.load(Ordering::SeqCst), 1);
@@ -54,11 +58,20 @@ fn a_panicking_job_panics_on_the_owners_thread() {
     let mut worker = PresentWorker::spawn().expect("a thread");
     worker.run(|| panic!("device lost"));
     let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| worker.wait()));
-    let message = caught.expect_err("the panic came back").downcast::<&str>().map(|m| *m);
+    let message = caught
+        .expect_err("the panic came back")
+        .downcast::<&str>()
+        .map(|m| *m);
     assert_eq!(message.ok(), Some("device lost"));
     let ran = Arc::new(AtomicUsize::new(0));
     let flag = ran.clone();
-    worker.run(move || { flag.store(1, Ordering::SeqCst); });
+    worker.run(move || {
+        flag.store(1, Ordering::SeqCst);
+    });
     worker.wait();
-    assert_eq!(ran.load(Ordering::SeqCst), 1, "later jobs run on the caller's thread");
+    assert_eq!(
+        ran.load(Ordering::SeqCst),
+        1,
+        "later jobs run on the caller's thread"
+    );
 }

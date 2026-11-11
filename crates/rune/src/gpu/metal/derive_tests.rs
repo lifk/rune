@@ -38,47 +38,108 @@ const SUM: &str = r#"
 const SIZE: u32 = 64;
 
 fn draw(device: &wgpu::Device, queue: &wgpu::Queue) -> Vec<u8> {
-    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("derived"), source: wgpu::ShaderSource::Wgsl(DRAW.into()) });
+    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("derived"),
+        source: wgpu::ShaderSource::Wgsl(DRAW.into()),
+    });
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("derived"),
         layout: None,
-        vertex: wgpu::VertexState { module: &module, entry_point: Some("vs"), compilation_options: Default::default(), buffers: &[] },
+        vertex: wgpu::VertexState {
+            module: &module,
+            entry_point: Some("vs"),
+            compilation_options: Default::default(),
+            buffers: &[],
+        },
         primitive: Default::default(),
         depth_stencil: None,
         multisample: Default::default(),
         fragment: Some(wgpu::FragmentState {
-            module: &module, entry_point: Some("fs"), compilation_options: Default::default(),
-            targets: &[Some(wgpu::ColorTargetState { format, blend: None, write_mask: wgpu::ColorWrites::ALL })],
+            module: &module,
+            entry_point: Some("fs"),
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format,
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
         }),
         multiview_mask: None,
         cache: None,
     });
     let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: None, contents: bytemuck::cast_slice(&[1.0f32, 0.5, 0.25, 1.0, 0.25, -0.25, 0.0, 0.0]), usage: wgpu::BufferUsages::UNIFORM,
+        label: None,
+        contents: bytemuck::cast_slice(&[1.0f32, 0.5, 0.25, 1.0, 0.25, -0.25, 0.0, 0.0]),
+        usage: wgpu::BufferUsages::UNIFORM,
     });
-    let texels: Vec<u8> = (0..16u8).flat_map(|i| [i * 16, 255 - i * 16, 128, 255]).collect();
-    let source = device.create_texture_with_data(queue, &wgpu::TextureDescriptor {
-        label: None, size: wgpu::Extent3d { width: 4, height: 4, depth_or_array_layers: 1 }, mip_level_count: 1, sample_count: 1,
-        dimension: wgpu::TextureDimension::D2, format, usage: wgpu::TextureUsages::TEXTURE_BINDING, view_formats: &[],
-    }, Default::default(), &texels);
+    let texels: Vec<u8> = (0..16u8)
+        .flat_map(|i| [i * 16, 255 - i * 16, 128, 255])
+        .collect();
+    let source = device.create_texture_with_data(
+        queue,
+        &wgpu::TextureDescriptor {
+            label: None,
+            size: wgpu::Extent3d {
+                width: 4,
+                height: 4,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        },
+        Default::default(),
+        &texels,
+    );
     let sampler = device.create_sampler(&Default::default());
     let view = source.create_view(&Default::default());
     let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: None,
         layout: &pipeline.get_bind_group_layout(1),
         entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: uniform.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&view) },
-            wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&sampler) },
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::TextureView(&view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: wgpu::BindingResource::Sampler(&sampler),
+            },
         ],
     });
-    let empty = device.create_bind_group(&wgpu::BindGroupDescriptor { label: None, layout: &pipeline.get_bind_group_layout(0), entries: &[] });
-    let target = device.create_texture(&wgpu::TextureDescriptor {
-        label: None, size: wgpu::Extent3d { width: SIZE, height: SIZE, depth_or_array_layers: 1 }, mip_level_count: 1, sample_count: 1,
-        dimension: wgpu::TextureDimension::D2, format, usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC, view_formats: &[],
+    let empty = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: None,
+        layout: &pipeline.get_bind_group_layout(0),
+        entries: &[],
     });
-    let out = device.create_buffer(&wgpu::BufferDescriptor { label: None, size: (SIZE * SIZE * 4) as u64, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
+    let target = device.create_texture(&wgpu::TextureDescriptor {
+        label: None,
+        size: wgpu::Extent3d {
+            width: SIZE,
+            height: SIZE,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let out = device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size: (SIZE * SIZE * 4) as u64,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
     let mut encoder = device.create_command_encoder(&Default::default());
     {
         let target_view = target.create_view(&Default::default());
@@ -88,29 +149,64 @@ fn draw(device: &wgpu::Device, queue: &wgpu::Queue) -> Vec<u8> {
         pass.set_bind_group(1, &group, &[]);
         pass.draw(0..3, 0..1);
     }
-    encoder.copy_texture_to_buffer(target.as_image_copy(), wgpu::TexelCopyBufferInfo {
-        buffer: &out, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(SIZE * 4), rows_per_image: Some(SIZE) },
-    }, target.size());
+    encoder.copy_texture_to_buffer(
+        target.as_image_copy(),
+        wgpu::TexelCopyBufferInfo {
+            buffer: &out,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(SIZE * 4),
+                rows_per_image: Some(SIZE),
+            },
+        },
+        target.size(),
+    );
     queue.submit([encoder.finish()]);
     read(device, &out)
 }
 
 fn sum(device: &wgpu::Device, queue: &wgpu::Queue) -> Vec<u8> {
-    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("sum"), source: wgpu::ShaderSource::Wgsl(SUM.into()) });
+    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("sum"),
+        source: wgpu::ShaderSource::Wgsl(SUM.into()),
+    });
     let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-        label: Some("sum"), layout: None, module: &module, entry_point: None, compilation_options: Default::default(), cache: None,
+        label: Some("sum"),
+        layout: None,
+        module: &module,
+        entry_point: None,
+        compilation_options: Default::default(),
+        cache: None,
     });
     let input = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: None, contents: bytemuck::cast_slice(&[1u32, 2, 3, 4, 5, 6, 7, 8]), usage: wgpu::BufferUsages::STORAGE,
+        label: None,
+        contents: bytemuck::cast_slice(&[1u32, 2, 3, 4, 5, 6, 7, 8]),
+        usage: wgpu::BufferUsages::STORAGE,
     });
-    let output = device.create_buffer(&wgpu::BufferDescriptor { label: None, size: 32, usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC, mapped_at_creation: false });
-    let readback = device.create_buffer(&wgpu::BufferDescriptor { label: None, size: 32, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
+    let output = device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size: 32,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        mapped_at_creation: false,
+    });
+    let readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size: 32,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
     let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: None,
         layout: &pipeline.get_bind_group_layout(0),
         entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: input.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 1, resource: output.as_entire_binding() },
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: input.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: output.as_entire_binding(),
+            },
         ],
     });
     let mut encoder = device.create_command_encoder(&Default::default());
@@ -141,9 +237,15 @@ fn a_pipeline_without_a_layout_derives_one_as_wgpu_does() {
     let (device, queue) = gpu();
     let (wgpu_device, wgpu_queue) = wgpu_metal();
     let ours = draw(&device, &queue);
-    assert!(ours.chunks(4).any(|p| p != [0, 0, 51, 102]), "the triangle drew");
+    assert!(
+        ours.chunks(4).any(|p| p != [0, 0, 51, 102]),
+        "the triangle drew"
+    );
     assert_eq!(ours, draw(&wgpu_device, &wgpu_queue));
     let sums = sum(&device, &queue);
-    assert_eq!(bytemuck::cast_slice::<u8, u32>(&sums), [4, 7, 10, 13, 16, 19, 22, 25]);
+    assert_eq!(
+        bytemuck::cast_slice::<u8, u32>(&sums),
+        [4, 7, 10, 13, 16, 19, 22, 25]
+    );
     assert_eq!(sums, sum(&wgpu_device, &wgpu_queue));
 }

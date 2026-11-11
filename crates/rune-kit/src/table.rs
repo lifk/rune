@@ -28,7 +28,10 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use rune::{Align, Color, Cursor, Drag, El, GrowthSpec, Key, KeyEvent, Phase, ScrollSpec, TextStyle, Tx, col, el, icon, row, text};
+use rune::{
+    Align, Color, Cursor, Drag, El, GrowthSpec, Key, KeyEvent, Phase, ScrollSpec, TextStyle, Tx, col, el, icon, row,
+    text,
+};
 
 use crate::Kit;
 
@@ -404,11 +407,7 @@ impl TableState {
             self.select(id_at(target).into_owned());
         }
         tx.scroll_into_view_in(self.key.clone(), id_at(target).into_owned());
-        if self.cursor != before {
-            KeyOutcome::Moved
-        } else {
-            KeyOutcome::Handled
-        }
+        if self.cursor != before { KeyOutcome::Moved } else { KeyOutcome::Handled }
     }
 }
 
@@ -484,8 +483,26 @@ pub struct Table<S> {
 impl<S: 'static> Table<S> {
     /// `get` and `get_mut` find the [`TableState`]; `len` counts the rows and `row_id` names
     /// row `i` (in the app's current order) with an id unique among them.
-    pub fn new(get: fn(&S) -> &TableState, get_mut: fn(&mut S) -> &mut TableState, len: fn(&S) -> usize, row_id: RowIdFn<S>) -> Self {
-        Table { get, get_mut, len, row_id, columns: Vec::new(), cell: None, on_sort: None, on_select: None, on_open: None, zebra: false, style: None, name: None }
+    pub fn new(
+        get: fn(&S) -> &TableState,
+        get_mut: fn(&mut S) -> &mut TableState,
+        len: fn(&S) -> usize,
+        row_id: RowIdFn<S>,
+    ) -> Self {
+        Table {
+            get,
+            get_mut,
+            len,
+            row_id,
+            columns: Vec::new(),
+            cell: None,
+            on_sort: None,
+            on_select: None,
+            on_open: None,
+            zebra: false,
+            style: None,
+            name: None,
+        }
     }
     pub fn column(mut self, c: TableColumn) -> Self {
         self.columns.push(c);
@@ -534,7 +551,9 @@ impl<S: 'static> Table<S> {
         let state = get(s);
         let count = len(s);
         let columns = Rc::new(columns);
-        let sizes: Rc<Vec<Width>> = Rc::new(columns.iter().map(|c| state.column_width(&c.id).map_or(c.width, |w| Width::Fixed(c.clamp(w)))).collect());
+        let sizes: Rc<Vec<Width>> = Rc::new(
+            columns.iter().map(|c| state.column_width(&c.id).map_or(c.width, |w| Width::Fixed(c.clamp(w)))).collect(),
+        );
 
         let header = header_row(k, state, &columns, &sizes, &style, on_sort.clone(), get, get_mut);
 
@@ -547,13 +566,8 @@ impl<S: 'static> Table<S> {
             let st = get(s);
             let id = row_id(s, i);
             let selected = st.is_selected(&id);
-            let mut r = row()
-                .key(id.to_string())
-                .role("row")
-                .focus_selected(selected)
-                .w_full()
-                .h(style.row_height)
-                .center_y();
+            let mut r =
+                row().key(id.to_string()).role("row").focus_selected(selected).w_full().h(style.row_height).center_y();
             r = if selected {
                 r.fill(style.selected)
             } else if zebra && i % 2 == 1 {
@@ -594,11 +608,12 @@ impl<S: 'static> Table<S> {
             }
             r
         };
-        let rows = col()
-            .key("rows")
-            .w_full()
-            .growth(GrowthSpec::default())
-            .virtual_rows(count, style.row_height, move |s: &S, i| row_id(s, i), build_row);
+        let rows = col().key("rows").w_full().growth(GrowthSpec::default()).virtual_rows(
+            count,
+            style.row_height,
+            move |s: &S, i| row_id(s, i),
+            build_row,
+        );
         let viewport = col()
             .key("viewport")
             .w_full()
@@ -609,17 +624,14 @@ impl<S: 'static> Table<S> {
             // changes what the view reads.
             .on_layout_tx(move |s: &mut S, r: [f32; 4], tx: &mut Tx| {
                 let st = get_mut(s);
-                if st.viewport == r[3] && st.row_height == style.row_height { tx.live_only(); }
+                if st.viewport == r[3] && st.row_height == style.row_height {
+                    tx.live_only();
+                }
                 st.viewport = r[3];
                 st.row_height = style.row_height;
             })
             .child(rows);
-        let mut root = col()
-            .key(state.key.clone())
-            .role("grid")
-            .focusable(true)
-            .w_full()
-            .clip_soft(0.0);
+        let mut root = col().key(state.key.clone()).role("grid").focusable(true).w_full().clip_soft(0.0);
         if let Some(n) = name {
             root = root.label(n);
         }
@@ -627,33 +639,32 @@ impl<S: 'static> Table<S> {
         if let Some(id) = &state.cursor {
             root = root.active_descendant(id.clone());
         }
-        root
-            .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
-                let n = len(s);
-                let mut st = std::mem::take(get_mut(s));
-                let out = st.handle_key(ev, n, &|j| row_id(s, j), tx);
-                let cursor = st.cursor.clone();
-                *get_mut(s) = st;
-                match out {
-                    KeyOutcome::Ignored => false,
-                    KeyOutcome::Handled => true,
-                    KeyOutcome::Moved => {
-                        if let (Some(f), Some(id)) = (&on_select, cursor) {
-                            f(s, &id, tx);
-                        }
-                        true
+        root.on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
+            let n = len(s);
+            let mut st = std::mem::take(get_mut(s));
+            let out = st.handle_key(ev, n, &|j| row_id(s, j), tx);
+            let cursor = st.cursor.clone();
+            *get_mut(s) = st;
+            match out {
+                KeyOutcome::Ignored => false,
+                KeyOutcome::Handled => true,
+                KeyOutcome::Moved => {
+                    if let (Some(f), Some(id)) = (&on_select, cursor) {
+                        f(s, &id, tx);
                     }
-                    KeyOutcome::Open(r) => {
-                        if let Some(f) = &on_open {
-                            let id = row_id(s, r).into_owned();
-                            f(s, &id, tx);
-                        }
-                        true
-                    }
+                    true
                 }
-            })
-            .child(header)
-            .child(viewport)
+                KeyOutcome::Open(r) => {
+                    if let Some(f) = &on_open {
+                        let id = row_id(s, r).into_owned();
+                        f(s, &id, tx);
+                    }
+                    true
+                }
+            }
+        })
+        .child(header)
+        .child(viewport)
     }
 }
 
@@ -690,7 +701,8 @@ fn cell_el(c: &TableColumn, w: Width, cell: Cell, style: &TableStyle) -> El {
         }
         CellContent::El(e) => e,
     };
-    justify(sized(row().role("gridcell").h_full().px(style.cell_pad).center_y().clip_soft(0.0), c, w), c.align).child(inner)
+    justify(sized(row().role("gridcell").h_full().px(style.cell_pad).center_y().clip_soft(0.0), c, w), c.align)
+        .child(inner)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -727,12 +739,27 @@ fn header_row<S: 'static>(
             let glyph = if d == SortDir::Ascending { k.glyph.chevron_up } else { k.glyph.chevron_down };
             inner = inner.child(icon(glyph, 14.0).key("sort").color(style.text));
         }
-        let mut cell = justify(sized(row().role("columnheader").label(c.title.clone()).sorted(sorted.map(|d| d == SortDir::Ascending)).h_full().px(style.cell_pad).center_y(), c, sizes[j]), c.align)
-            .key(c.id.clone())
-            .child(inner);
+        let mut cell = justify(
+            sized(
+                row()
+                    .role("columnheader")
+                    .label(c.title.clone())
+                    .sorted(sorted.map(|d| d == SortDir::Ascending))
+                    .h_full()
+                    .px(style.cell_pad)
+                    .center_y(),
+                c,
+                sizes[j],
+            ),
+            c.align,
+        )
+        .key(c.id.clone())
+        .child(inner);
         let id = c.id.clone();
         cell = cell.on_layout_tx(move |s: &mut S, r: [f32; 4], tx: &mut Tx| {
-            if get_mut(s).laid_out.insert(id.clone(), r[2]) == Some(r[2]) { tx.live_only(); }
+            if get_mut(s).laid_out.insert(id.clone(), r[2]) == Some(r[2]) {
+                tx.live_only();
+            }
         });
         if c.sortable {
             let id = c.id.clone();
@@ -749,7 +776,9 @@ fn header_row<S: 'static>(
         if c.resizable {
             cell = cell.child(resize_handle(c.clone(), get_mut, style.rule, j == last));
         } else if j != last {
-            cell = cell.child(el().key("rule").pin(None, Some(8.0), Some(0.0), Some(8.0)).w(1.0).fill(style.rule).a11y_hidden());
+            cell = cell.child(
+                el().key("rule").pin(None, Some(8.0), Some(0.0), Some(8.0)).w(1.0).fill(style.rule).a11y_hidden(),
+            );
         }
         h = h.child(cell);
     }
@@ -763,7 +792,8 @@ fn resize_handle<S: 'static>(c: TableColumn, get_mut: fn(&mut S) -> &mut TableSt
     let reset = c.id.clone();
     let line = el().key("line").w(1.0).h_full().fill(if last { Color::TRANSPARENT } else { rule }).a11y_hidden();
     row()
-        .key("resize").role("separator")
+        .key("resize")
+        .role("separator")
         .label(format!("Resize {}", c.title))
         .pin(None, Some(6.0), Some(-4.0), Some(6.0))
         .w(9.0)
@@ -784,7 +814,9 @@ fn resize_handle<S: 'static>(c: TableColumn, get_mut: fn(&mut S) -> &mut TableSt
                         }
                     } else {
                         st.set_column_width(id.clone(), c.clamp(d.data + d.dx));
-                        if d.phase == Phase::Up { st.resize_start = None; }
+                        if d.phase == Phase::Up {
+                            st.resize_start = None;
+                        }
                     }
                 }
             }

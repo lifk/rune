@@ -38,9 +38,17 @@ pub(crate) enum Effect {
 
 pub(crate) fn step(state: Pause, event: Event) -> (Pause, Option<Effect>) {
     match (state, event) {
-        (_, Event::Typed { caret, now }) => (Pause::Typing { caret, until: now + PAUSE }, Some(Effect::WakeAt(now + PAUSE))),
+        (_, Event::Typed { caret, now }) => (
+            Pause::Typing {
+                caret,
+                until: now + PAUSE,
+            },
+            Some(Effect::WakeAt(now + PAUSE)),
+        ),
         (Pause::Typing { .. }, Event::CaretMoved) => (Pause::Settled, Some(Effect::Redraw)),
-        (Pause::Typing { until, .. }, Event::Tick { now }) if now >= until => (Pause::Settled, Some(Effect::Redraw)),
+        (Pause::Typing { until, .. }, Event::Tick { now }) if now >= until => {
+            (Pause::Settled, Some(Effect::Redraw))
+        }
         (state, _) => (state, None),
     }
 }
@@ -67,7 +75,13 @@ pub(crate) struct Watch {
 /// Steps the focused field `path`'s machine by what changed since the last paint, and returns
 /// the byte whose word waits unmarked. A field just focused starts settled, as the selection
 /// change that focuses it checks it.
-pub(crate) fn observe(watch: &mut Option<Watch>, path: &str, text: &str, range: (usize, usize), now: f64) -> Option<usize> {
+pub(crate) fn observe(
+    watch: &mut Option<Watch>,
+    path: &str,
+    text: &str,
+    range: (usize, usize),
+    now: f64,
+) -> Option<usize> {
     let hash = {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -76,10 +90,19 @@ pub(crate) fn observe(watch: &mut Option<Watch>, path: &str, text: &str, range: 
     };
     let w = match watch {
         Some(w) if w.path == path => w,
-        _ => watch.insert(Watch { path: path.to_owned(), text: hash, range, pause: Pause::Settled, wake: None }),
+        _ => watch.insert(Watch {
+            path: path.to_owned(),
+            text: hash,
+            range,
+            pause: Pause::Settled,
+            wake: None,
+        }),
     };
     let event = if w.text != hash {
-        Some(Event::Typed { caret: range.1, now })
+        Some(Event::Typed {
+            caret: range.1,
+            now,
+        })
     } else if w.range != range {
         Some(Event::CaretMoved)
     } else {

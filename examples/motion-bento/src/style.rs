@@ -25,7 +25,9 @@ pub fn title(s: &str) -> El {
 }
 
 pub fn caption(s: impl Into<String>) -> El {
-    text(s.into()).font(font(12.0, 460.0)).color(c(color::TEXT_3))
+    text(s.into())
+        .font(font(12.0, 460.0))
+        .color(c(color::TEXT_3))
 }
 
 /// A tile: a rounded card with a title row (title on the left, `aside` on the right) over `body`.
@@ -37,7 +39,16 @@ pub fn tile(key: &str, name: &str, aside: El, body: El) -> El {
         .border(1.0, c(color::EDGE))
         .padding(grid::TILE_PAD)
         .gap(14.0)
-        .child(row().key("head").h(20.0).center_y().gap(8.0).child(title(name)).child(spacer()).child(aside))
+        .child(
+            row()
+                .key("head")
+                .h(20.0)
+                .center_y()
+                .gap(8.0)
+                .child(title(name))
+                .child(spacer())
+                .child(aside),
+        )
         .child(body)
 }
 
@@ -68,5 +79,9 @@ pub fn well_button(key: &str, label: &str, w: f32, h: f32) -> El {
         .hover(c(color::WELL_HI))
         .press(c(color::WELL_HI))
         .press_scale(0.94)
-        .child(text(label.to_owned()).font(font(15.0, 560.0)).color(c(color::TEXT)))
+        .child(
+            text(label.to_owned())
+                .font(font(15.0, 560.0))
+                .color(c(color::TEXT)),
+        )
 }

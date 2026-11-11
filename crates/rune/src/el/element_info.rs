@@ -55,7 +55,11 @@ impl ElementInfo {
     /// `Runtime::elements`.
     pub fn stub(key: impl Into<String>) -> Self {
         let key = key.into();
-        ElementInfo { path: key.clone(), key: Some(key), ..ElementInfo::default() }
+        ElementInfo {
+            path: key.clone(),
+            key: Some(key),
+            ..ElementInfo::default()
+        }
     }
 }
 
@@ -65,12 +69,38 @@ mod tests {
 
     #[test]
     fn a_stub_matches_what_a_plain_keyed_element_reports() {
-        let mut rt = Runtime::new((), |_: &(), _: &mut Cx<()>| -> El { el().key("send") }, (100.0, 100.0), Env::new(true, 1.0));
+        let mut rt = Runtime::new(
+            (),
+            |_: &(), _: &mut Cx<()>| -> El { el().key("send") },
+            (100.0, 100.0),
+            Env::new(true, 1.0),
+        );
         rt.frame(0.0);
-        let real = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("send")).unwrap();
-        let stub = ElementInfo { rect: real.rect, target: real.target, visible: real.visible, path: real.path.clone(), ..ElementInfo::stub("send") };
+        let real = rt
+            .elements()
+            .into_iter()
+            .find(|e| e.key.as_deref() == Some("send"))
+            .unwrap();
+        let stub = ElementInfo {
+            rect: real.rect,
+            target: real.target,
+            visible: real.visible,
+            path: real.path.clone(),
+            ..ElementInfo::stub("send")
+        };
         assert_eq!(format!("{stub:?}"), format!("{real:?}"));
-        let focused = ElementInfo { focused: true, ..ElementInfo::stub("send") };
-        assert_eq!((focused.key.as_deref(), focused.path.as_str(), focused.focused, focused.opacity), (Some("send"), "send", true, 1.0));
+        let focused = ElementInfo {
+            focused: true,
+            ..ElementInfo::stub("send")
+        };
+        assert_eq!(
+            (
+                focused.key.as_deref(),
+                focused.path.as_str(),
+                focused.focused,
+                focused.opacity
+            ),
+            (Some("send"), "send", true, 1.0)
+        );
     }
 }

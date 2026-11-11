@@ -47,9 +47,15 @@ pub const SLOW: Spring = DRIFT;
 /// The fade that replaces travel under Reduce Motion.
 pub const REDUCED_FADE: Curve = crate::props::REDUCED_FADE;
 /// Kit's CSS enter: 150 ms `cubic-bezier(.2,.8,.2,1)`.
-pub const CSS_ENTER: Curve = Curve::Tween { duration: 0.15, easing: Easing::ENTER };
+pub const CSS_ENTER: Curve = Curve::Tween {
+    duration: 0.15,
+    easing: Easing::ENTER,
+};
 /// Kit's CSS exit: 110 ms `cubic-bezier(.4,0,1,1)`.
-pub const CSS_EXIT: Curve = Curve::Tween { duration: 0.11, easing: Easing::EXIT };
+pub const CSS_EXIT: Curve = Curve::Tween {
+    duration: 0.11,
+    easing: Easing::EXIT,
+};
 
 /// Drag-follow lead (ω 34, ζ .86): only for opt-in follow, never the user's own hand.
 pub fn follow_lead() -> Spring {

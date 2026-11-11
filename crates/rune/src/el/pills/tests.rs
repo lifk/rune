@@ -1,11 +1,21 @@
 use crate::color::Color;
 use crate::el::{PillStyle, rich, text, text_input};
 use crate::text::{Span, TextSystem};
-use parley::Alignment;
 use crate::{TextEdit, TextStyle};
+use parley::Alignment;
 
-const INK: Color = Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 };
-const CHIP: Color = Color { r: 0.0, g: 0.0, b: 1.0, a: 0.2 };
+const INK: Color = Color {
+    r: 1.0,
+    g: 0.0,
+    b: 0.0,
+    a: 1.0,
+};
+const CHIP: Color = Color {
+    r: 0.0,
+    g: 0.0,
+    b: 1.0,
+    a: 0.2,
+};
 
 #[test]
 fn pills_record_sorted_chips_and_skip_bad_ranges() {
@@ -22,23 +32,45 @@ fn pills_record_sorted_chips_and_skip_bad_ranges() {
         (0..body.len() + 1, PillStyle::new()),
     ]);
     let t = e.text.as_ref().unwrap();
-    let got: Vec<(u32, u32, Option<Color>, Option<Color>)> = t.pills.iter().map(|p| (p.start, p.end, p.bg, p.fg)).collect();
-    assert_eq!(got, [(agent.start as u32, agent.end as u32, None, Some(INK)), (file.start as u32, file.end as u32, Some(CHIP), None)]);
+    let got: Vec<(u32, u32, Option<Color>, Option<Color>)> = t
+        .pills
+        .iter()
+        .map(|p| (p.start, p.end, p.bg, p.fg))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            (agent.start as u32, agent.end as u32, None, Some(INK)),
+            (file.start as u32, file.end as u32, Some(CHIP), None)
+        ]
+    );
 }
 
 #[test]
 fn a_pill_colours_its_label_and_keeps_it_through_later_spans() {
     let body = "ask @reviewer to look";
-    let e = rich(body, vec![Span::new(0, 3).bold()]).pill(4..13, PillStyle::new().fg(INK)).spans(vec![Span::new(14, 16).italic()]);
+    let e = rich(body, vec![Span::new(0, 3).bold()])
+        .pill(4..13, PillStyle::new().fg(INK))
+        .spans(vec![Span::new(14, 16).italic()]);
     let t = e.text.as_ref().unwrap();
-    let ink: Vec<(u32, u32)> = t.spans.iter().filter(|s| s.color == Some(INK)).map(|s| (s.start, s.end)).collect();
+    let ink: Vec<(u32, u32)> = t
+        .spans
+        .iter()
+        .filter(|s| s.color == Some(INK))
+        .map(|s| (s.start, s.end))
+        .collect();
     assert_eq!(ink, [(4, 13)]);
-    assert!(t.spans.iter().any(|s| s.italic && (s.start, s.end) == (14, 16)));
+    assert!(
+        t.spans
+            .iter()
+            .any(|s| s.italic && (s.start, s.end) == (14, 16))
+    );
 }
 
 #[test]
 fn a_field_ignores_static_pills() {
-    let e = text_input(&TextEdit::new("ask @reviewer"), TextStyle::new(14.0, 400.0)).pill(4..13, PillStyle::new().fg(INK));
+    let e = text_input(&TextEdit::new("ask @reviewer"), TextStyle::new(14.0, 400.0))
+        .pill(4..13, PillStyle::new().fg(INK));
     assert!(e.text.as_ref().unwrap().pills.is_empty());
 }
 
@@ -50,18 +82,38 @@ fn a_pill_label_stays_on_one_line_and_takes_room() {
     let mut ts = TextSystem::default();
     let plain = text(body).wrap();
     let pilled = text(body).wrap().pill(at..end, PillStyle::new());
-    let mut width = |e: &crate::El, w| ts.layout_for_spec(e.text.as_ref().unwrap(), 1.0, w, Alignment::Start).full_width();
+    let mut width = |e: &crate::El, w| {
+        ts.layout_for_spec(e.text.as_ref().unwrap(), 1.0, w, Alignment::Start)
+            .full_width()
+    };
     let (wide_plain, wide_pill) = (width(&plain, None), width(&pilled, None));
-    assert!(wide_pill > wide_plain + 4.0, "the chip's padding takes room: {wide_plain} vs {wide_pill}");
+    assert!(
+        wide_pill > wide_plain + 4.0,
+        "the chip's padding takes room: {wide_plain} vs {wide_pill}"
+    );
     // Narrow enough that plain text breaks at the label's hyphens, wide enough for the pill.
-    let layout = ts.layout_for_spec(pilled.text.as_ref().unwrap(), 1.0, Some(210.0), Alignment::Start);
+    let layout = ts.layout_for_spec(
+        pilled.text.as_ref().unwrap(),
+        1.0,
+        Some(210.0),
+        Alignment::Start,
+    );
     let split = layout.lines().any(|l| {
         let r = l.text_range();
         r.start > at && r.start < end
     });
     assert!(!split, "a label that fits a line never splits across lines");
-    let narrow = ts.layout_for_spec(pilled.text.as_ref().unwrap(), 1.0, Some(110.0), Alignment::Start);
-    assert!(narrow.width() <= 110.5, "one wider than the line wraps inside it: {}", narrow.width());
+    let narrow = ts.layout_for_spec(
+        pilled.text.as_ref().unwrap(),
+        1.0,
+        Some(110.0),
+        Alignment::Start,
+    );
+    assert!(
+        narrow.width() <= 110.5,
+        "one wider than the line wraps inside it: {}",
+        narrow.width()
+    );
 }
 
 // In a running app: selection, copy, wrapping and streaming over pilled text.
@@ -79,25 +131,50 @@ mod live {
     }
 
     fn view(s: &S, _: &mut Cx<S>) -> El {
-        let t = text(s.body.clone()).key("t").font(TextStyle::new(14.0, 400.0).lh(20.0)).w(s.width).wrap().selectable(true);
-        col().key("root").padding(10.0).child(t.pills(s.pills.iter().map(|r| (r.clone(), PillStyle::new()))))
+        let t = text(s.body.clone())
+            .key("t")
+            .font(TextStyle::new(14.0, 400.0).lh(20.0))
+            .w(s.width)
+            .wrap()
+            .selectable(true);
+        col()
+            .key("root")
+            .padding(10.0)
+            .child(t.pills(s.pills.iter().map(|r| (r.clone(), PillStyle::new()))))
     }
 
     fn runtime(body: &str, pills: &[Range<usize>], width: f32) -> Runtime<S> {
-        let s = S { body: body.into(), pills: pills.to_vec(), width };
+        let s = S {
+            body: body.into(),
+            pills: pills.to_vec(),
+            width,
+        };
         let mut rt = Runtime::new(s, view, (600.0, 400.0), Env::new(true, 1.0));
         rt.frame(0.0);
         rt
     }
 
     fn rect(rt: &Runtime<S>) -> [f32; 4] {
-        rt.elements().into_iter().find(|e| e.key.as_deref() == Some("t")).unwrap().rect
+        rt.elements()
+            .into_iter()
+            .find(|e| e.key.as_deref() == Some("t"))
+            .unwrap()
+            .rect
     }
 
     /// Each line's byte range in the text's layout.
     fn lines(rt: &Runtime<S>) -> Vec<Range<usize>> {
-        let n = rt.nodes.iter().find(|n| n.key.as_deref() == Some("t")).unwrap();
-        n.text_layout.as_ref().unwrap().lines().map(|l| l.text_range()).collect()
+        let n = rt
+            .nodes
+            .iter()
+            .find(|n| n.key.as_deref() == Some("t"))
+            .unwrap();
+        n.text_layout
+            .as_ref()
+            .unwrap()
+            .lines()
+            .map(|l| l.text_range())
+            .collect()
     }
 
     fn drag(rt: &mut Runtime<S>, from: (f32, f32), to: (f32, f32)) {
@@ -118,9 +195,18 @@ mod live {
         // The highlight follows the selected range, which covers the whole label.
         let (_, range) = rt.text_selection().unwrap();
         assert!(range.start <= 4 && range.end >= 13, "{range:?}");
-        rt.key(KeyEvent { key: Key::Command('c'), mods: Mods { cmd: true, ..Mods::default() } });
+        rt.key(KeyEvent {
+            key: Key::Command('c'),
+            mods: Mods {
+                cmd: true,
+                ..Mods::default()
+            },
+        });
         rt.frame(0.0);
-        let copied = rt.copy_request.as_ref().map(|w| w.content().text().to_owned());
+        let copied = rt
+            .copy_request
+            .as_ref()
+            .map(|w| w.content().text().to_owned());
         assert_eq!(copied.as_deref(), Some(body));
     }
 
@@ -128,12 +214,18 @@ mod live {
     fn every_pill_label_stays_on_one_line() {
         let body = "ping @recursive-self-improvement and @code-review-standards-and-spec today";
         let at = |s: &str| body.find(s).unwrap()..body.find(s).unwrap() + s.len();
-        let pills = [at("@recursive-self-improvement"), at("@code-review-standards-and-spec")];
+        let pills = [
+            at("@recursive-self-improvement"),
+            at("@code-review-standards-and-spec"),
+        ];
         let rt = runtime(body, &pills, 260.0);
         let ls = lines(&rt);
         assert!(ls.len() >= 2, "narrow enough to wrap: {ls:?}");
         for p in &pills {
-            assert!(!ls.iter().any(|l| l.start > p.start && l.start < p.end), "{p:?} splits across {ls:?}");
+            assert!(
+                !ls.iter().any(|l| l.start > p.start && l.start < p.end),
+                "{p:?} splits across {ls:?}"
+            );
         }
     }
 
@@ -141,8 +233,18 @@ mod live {
     fn pills_survive_streaming_appends_and_bad_ranges_are_ignored() {
         let mut rt = runtime("ask @reviewer", &[4..13], 400.0);
         let pilled = |rt: &Runtime<S>| {
-            let n = rt.nodes.iter().find(|n| n.key.as_deref() == Some("t")).unwrap();
-            n.text.as_ref().unwrap().pills.iter().map(|p| p.start..p.end).collect::<Vec<_>>()
+            let n = rt
+                .nodes
+                .iter()
+                .find(|n| n.key.as_deref() == Some("t"))
+                .unwrap();
+            n.text
+                .as_ref()
+                .unwrap()
+                .pills
+                .iter()
+                .map(|p| p.start..p.end)
+                .collect::<Vec<_>>()
         };
         let mut w = rect(&rt)[2];
         for more in [" to", " look at", " the é diff"] {
@@ -159,6 +261,9 @@ mod live {
         assert_eq!(pilled(&rt), [4..13 as u32]);
         rt.update(|s, _| s.body.truncate(8));
         rt.frame(3.0 / 60.0);
-        assert!(pilled(&rt).is_empty(), "a range the text no longer reaches is dropped");
+        assert!(
+            pilled(&rt).is_empty(),
+            "a range the text no longer reaches is dropped"
+        );
     }
 }

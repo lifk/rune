@@ -307,7 +307,15 @@ fn main() {
                 s.diff = DiffState::new(vec![FileDiff::from_texts("src/net/backoff.rs", LONG_OLD, LONG_NEW)])
             }),
             ("folded", |s: &mut Review| {
-                let full: String = (1..=40).map(|n| if n == 8 { "-    attempts: 3,\n+    attempts: 5,\n".to_owned() } else { format!("     line {n}\n") }).collect();
+                let full: String = (1..=40)
+                    .map(|n| {
+                        if n == 8 {
+                            "-    attempts: 3,\n+    attempts: 5,\n".to_owned()
+                        } else {
+                            format!("     line {n}\n")
+                        }
+                    })
+                    .collect();
                 let patch = format!("--- a/config/retry.rs\t\n+++ b/config/retry.rs\t\n@@ -1,40 +1,40 @@\n{full}");
                 s.diff = DiffState::new(parse(&patch).into_iter().map(|f| f.fold(4)).collect());
             }),

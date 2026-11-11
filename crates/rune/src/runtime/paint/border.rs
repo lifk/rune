@@ -10,7 +10,12 @@ pub(super) fn inset_box(rect: [f32; 4], radii: [f32; 4], by: [f32; 4]) -> ([f32;
     let [t, r, b, l] = by;
     let cut = [t.max(l), t.max(r), b.max(r), b.max(l)];
     (
-        [rect[0] + l, rect[1] + t, (rect[2] - l - r).max(0.0), (rect[3] - t - b).max(0.0)],
+        [
+            rect[0] + l,
+            rect[1] + t,
+            (rect[2] - l - r).max(0.0),
+            (rect[3] - t - b).max(0.0),
+        ],
         std::array::from_fn(|k| (radii[k].abs() - cut[k]).max(0.0).copysign(radii[k])),
     )
 }
@@ -29,19 +34,42 @@ pub(super) fn fill_under(boxed: Instance, shrink: bool) -> Instance {
     } else {
         (boxed.rect, boxed.radii)
     };
-    Instance { rect, radii, border: [0.0; 4], params: [0.0, KIND_RECT, soft, o], uv: [0.0; 4], ..boxed }
+    Instance {
+        rect,
+        radii,
+        border: [0.0; 4],
+        params: [0.0, KIND_RECT, soft, o],
+        uv: [0.0; 4],
+        ..boxed
+    }
 }
 
 /// The inset shadow `sh` in premultiplied `fill`, inside the box `inner` (the padding box, so
 /// inside any border). `scale` is device pixels per point and the window's scale.
-pub(super) fn inset_shadow(sh: &crate::el::Shadow, fill: [f32; 4], inner: ([f32; 4], [f32; 4]), scale: (f32, f32), clip: [f32; 4], fade: [f32; 4]) -> Instance {
+pub(super) fn inset_shadow(
+    sh: &crate::el::Shadow,
+    fill: [f32; 4],
+    inner: ([f32; 4], [f32; 4]),
+    scale: (f32, f32),
+    clip: [f32; 4],
+    fade: [f32; 4],
+) -> Instance {
     let (k_px, s) = scale;
     Instance {
         rect: inner.0,
         radii: inner.1,
         fill,
         border: [0.0; 4],
-        params: [sh.spread * k_px, KIND_INSET, if sh.blur > 0.0 { (sh.blur * s * 0.5).max(0.5) } else { 0.0 }, 1.0],
+        params: [
+            sh.spread * k_px,
+            KIND_INSET,
+            if sh.blur > 0.0 {
+                (sh.blur * s * 0.5).max(0.5)
+            } else {
+                0.0
+            },
+            1.0,
+        ],
         uv: [sh.x * k_px, sh.y * k_px, 0.0, 0.0],
         clip,
         fade: crate::render::pack_fade(fade, clip, clip),

@@ -1,8 +1,8 @@
 //! GFM tables: columns sized from their content with [`rune::text::measure`], then shared out by
 //! flex growth so every row's cells line up without a grid.
 
-use super::*;
 use super::style::{TableBody, TableFrame};
+use super::*;
 
 /// Estimated bytes of column widths kept beyond the tables on screen.
 const WIDTHS_BYTES: usize = 1 << 20;
@@ -43,7 +43,13 @@ thread_local! {
 }
 
 fn font_key(f: TextStyle) -> (u32, u32, u32, u32, String) {
-    (f.size.to_bits(), f.weight.to_bits(), f.line_height.to_bits(), f.tracking.to_bits(), format!("{:?}{}{}{}", f.family, f.variations, f.features, f.italic))
+    (
+        f.size.to_bits(),
+        f.weight.to_bits(),
+        f.line_height.to_bits(),
+        f.tracking.to_bits(),
+        format!("{:?}{}{}{}", f.family, f.variations, f.features, f.italic),
+    )
 }
 
 /// `features` with tabular figures on, interned so the result is `'static` like a
@@ -224,7 +230,10 @@ impl MarkdownStyle {
 
 impl Renderer {
     fn head_font(&self) -> TextStyle {
-        self.cell_font(TextStyle { weight: self.s.table_head_weight.unwrap_or(self.s.strong_weight), ..self.s.table_font.unwrap_or(self.s.body) })
+        self.cell_font(TextStyle {
+            weight: self.s.table_head_weight.unwrap_or(self.s.strong_weight),
+            ..self.s.table_font.unwrap_or(self.s.body)
+        })
     }
 
     fn body_font(&self) -> TextStyle {
@@ -260,10 +269,12 @@ impl Renderer {
         // A frame's ring is `box-shadow: inset 0 0 0 0.5px`, which keeps its fractional width;
         // an outline is a border, which snaps to whole device pixels.
         let framed = s.table_frame.is_some();
-        let ringed = |e: El, c: Color| if framed {
-            e.box_shadow(rune::Shadow { spread: 0.5, color: c, inset: true, ..rune::Shadow::default() })
-        } else {
-            e.border(0.5, c)
+        let ringed = |e: El, c: Color| {
+            if framed {
+                e.box_shadow(rune::Shadow { spread: 0.5, color: c, inset: true, ..rune::Shadow::default() })
+            } else {
+                e.border(0.5, c)
+            }
         };
         // Sized exactly in the known text width, the rows scroll inside a frame that stays put,
         // as a web page's `overflow-x: auto` wrapper keeps its fill and ring while the table
@@ -286,11 +297,24 @@ impl Renderer {
             }
         }
         let widths = fixed.as_ref().map(|(w, _)| w.as_slice());
-        let head = self.table_row(&t.head, head_maps, t, &cols, widths, self.head_font(), s.table_head_text, self.head_pad(), "columnheader").key("th");
+        let head = self
+            .table_row(
+                &t.head,
+                head_maps,
+                t,
+                &cols,
+                widths,
+                self.head_font(),
+                s.table_head_text,
+                self.head_pad(),
+                "columnheader",
+            )
+            .key("th");
         let rule = |key: String| el().key(key).w_full().h(0.5).fill(s.table_rule).a11y_hidden();
         let row_at = |i: usize, cells: &[Inline]| {
             let rmap = row_maps.get(i).map_or(&[][..], Vec::as_slice);
-            self.table_row(cells, rmap, t, &cols, widths, self.body_font(), s.text, s.table_pad, "cell").key(format!("r{i}"))
+            self.table_row(cells, rmap, t, &cols, widths, self.body_font(), s.text, s.table_pad, "cell")
+                .key(format!("r{i}"))
         };
         if let Some(body) = &s.table_body {
             // The frame doesn't clip, so the card's shadow shows past it; the header row and
@@ -315,7 +339,11 @@ impl Renderer {
                     // `tbody tr:not(:last-child) td { border-bottom: 0.5px }`: a border that
                     // takes a whole device pixel of the row, as Chromium lays it out.
                     let row = row_at(i, cells);
-                    rows = rows.child(if i + 1 < t.rows.len() { row.border_sides([0.0, 0.0, 0.5, 0.0], s.table_rule).border_layout() } else { row });
+                    rows = rows.child(if i + 1 < t.rows.len() {
+                        row.border_sides([0.0, 0.0, 0.5, 0.0], s.table_rule).border_layout()
+                    } else {
+                        row
+                    });
                 }
                 let card = col().key("tb").w_full().radius(body.radius).fill(body.fill);
                 frame = frame.child(body.shadows.iter().fold(card, |c, sh| c.box_shadow(*sh)).child(rows));
@@ -340,12 +368,18 @@ impl Renderer {
             frame = frame.child(head);
             for (i, cells) in t.rows.iter().enumerate() {
                 let sep = rule(format!("s{i}"));
-                let sep = match s.table_head_rule { Some(c) if i == 0 => sep.fill(c), _ => sep };
+                let sep = match s.table_head_rule {
+                    Some(c) if i == 0 => sep.fill(c),
+                    _ => sep,
+                };
                 frame = frame.child(sep).child(row_at(i, cells));
             }
             if ring.is_none() {
                 let end = rule("s-end".into());
-                frame = frame.child(match s.table_head_rule { Some(c) if t.rows.is_empty() => end.fill(c), _ => end });
+                frame = frame.child(match s.table_head_rule {
+                    Some(c) if t.rows.is_empty() => end.fill(c),
+                    _ => end,
+                });
             }
         }
         if let Some((widths, over)) = fixed {
@@ -357,7 +391,8 @@ impl Renderer {
             // Full width: the viewport makes `w_full` content its natural width, or its own if wider.
             // Capped at the natural width either way, so a row still streaming in can't widen
             // the frame in the viewport's max-content pass and shift every column.
-            let frame = if s.table_full_width { frame.max_w(total + 2.0 * inset) } else { frame.w(total + 2.0 * inset) };
+            let frame =
+                if s.table_full_width { frame.max_w(total + 2.0 * inset) } else { frame.w(total + 2.0 * inset) };
             return col().key("scroll").w_full().scroll_x().child(frame);
         }
         frame
@@ -374,7 +409,18 @@ impl Renderer {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn table_row(&self, cells: &[Inline], maps: &[SpanMap], t: &Table, cols: &Columns, widths: Option<&[f32]>, font: TextStyle, color: Color, [pad_x, pad_y]: [f32; 2], cell_role: &'static str) -> El {
+    fn table_row(
+        &self,
+        cells: &[Inline],
+        maps: &[SpanMap],
+        t: &Table,
+        cols: &Columns,
+        widths: Option<&[f32]>,
+        font: TextStyle,
+        color: Color,
+        [pad_x, pad_y]: [f32; 2],
+        cell_role: &'static str,
+    ) -> El {
         let empty = Inline::default();
         let total: f32 = cols.natural.iter().sum();
         let mut r = row().role("row").w_full();
@@ -382,12 +428,7 @@ impl Renderer {
             let inl = cells.get(j).unwrap_or(&empty);
             let align = if self.s.table_align { t.align.get(j).copied().unwrap_or_default() } else { Align::Start };
             let content = self
-                .with_reveal(
-                    rich(inl.text.clone(), self.spans(inl, font))
-                        .font(font)
-                        .color(color)
-                        .align(align),
-                )
+                .with_reveal(rich(inl.text.clone(), self.spans(inl, font)).font(font).color(color).align(align))
                 .w_full();
             // Full width: each column's share of the row is its share of the natural width, so
             // a wider row widens columns in proportion and a narrower one shrinks them as
@@ -402,7 +443,11 @@ impl Renderer {
             r = r.child(
                 // Clipped: a word wider than a shrunk column (or a row still streaming in) must
                 // not run into the next column.
-                cell.pl(self.pad_left(j, pad_x)).pr(pad_x).py(pad_y).clip_soft(0.0).child(self.select_inline(content, inl, maps.get(j))),
+                cell.pl(self.pad_left(j, pad_x)).pr(pad_x).py(pad_y).clip_soft(0.0).child(self.select_inline(
+                    content,
+                    inl,
+                    maps.get(j),
+                )),
             );
         }
         r
@@ -421,7 +466,10 @@ impl Renderer {
                 .iter()
                 .chain(rows.iter().flatten())
                 .flat_map(|inl| &inl.links)
-                .map(|(_, _, url)| look(url).map(|(sp, _)| (sp.weight.map(f32::to_bits), sp.size.map(f32::to_bits), sp.mono, sp.italic)))
+                .map(|(_, _, url)| {
+                    look(url)
+                        .map(|(sp, _)| (sp.weight.map(f32::to_bits), sp.size.map(f32::to_bits), sp.mono, sp.italic))
+                })
                 .collect()
         } else {
             Vec::new()
@@ -475,7 +523,11 @@ impl Renderer {
                 })
                 .collect()
         };
-        let cols = Rc::new(Columns { natural: padded(&head_natural, &body_natural), min: padded(&head_min, &body_min), fit: padded(&head_fit, &body_fit) });
+        let cols = Rc::new(Columns {
+            natural: padded(&head_natural, &body_natural),
+            min: padded(&head_min, &body_min),
+            fit: padded(&head_fit, &body_fit),
+        });
         WIDTHS.with_borrow_mut(|c| c.insert(key, cols.clone(), 12 * n + 64));
         cols
     }

@@ -35,23 +35,39 @@ fn table() -> Vec<Row> {
 
 fn runtime() -> Runtime<Real> {
     let mut playground = Playground::<Real>::new();
-    for Row { path, start, step, label } in table() {
-        let story = Story::new(path, move || Counter { n: start }, move |c, _| text(format!("{label} {}", c.n)).key("counter"))
-            .trigger('a', "Add", move |c, _| c.n += step)
-            .trigger('l', "Add later", move |_, play| play.after(0.5, move |c: &mut Counter, _| c.n += step))
-            .trigger_tx('z', "Zero", |c: &mut Counter, tx: &mut Tx| {
-                c.n = 0;
-                tx.instant();
-            })
-            .variant("As listed", |_| {})
-            .variant("Doubled", move |c| c.n = start * 2);
+    for Row {
+        path,
+        start,
+        step,
+        label,
+    } in table()
+    {
+        let story = Story::new(
+            path,
+            move || Counter { n: start },
+            move |c, _| text(format!("{label} {}", c.n)).key("counter"),
+        )
+        .trigger('a', "Add", move |c, _| c.n += step)
+        .trigger('l', "Add later", move |_, play| {
+            play.after(0.5, move |c: &mut Counter, _| c.n += step)
+        })
+        .trigger_tx('z', "Zero", |c: &mut Counter, tx: &mut Tx| {
+            c.n = 0;
+            tx.instant();
+        })
+        .variant("As listed", |_| {})
+        .variant("Doubled", move |c| c.n = start * 2);
         playground = playground.story(story);
     }
-    App::new(AppSpec::new("table", (800.0, 500.0), Real::default, real)).playground(playground).headless_runtime((800.0, 500.0), Env::new(false, 1.0))
+    App::new(AppSpec::new("table", (800.0, 500.0), Real::default, real))
+        .playground(playground)
+        .headless_runtime((800.0, 500.0), Env::new(false, 1.0))
 }
 
 fn shows(rt: &Runtime<Real>) -> String {
-    rt.playground_element("counter").and_then(|e| e.text).unwrap_or_default()
+    rt.playground_element("counter")
+        .and_then(|e| e.text)
+        .unwrap_or_default()
 }
 
 #[test]
@@ -59,16 +75,32 @@ fn fifty_stories_from_a_table_each_with_its_own_row() {
     let mut rt = runtime();
     assert_eq!(slug("Group 3/Story 37"), "group-3-story-37");
     rt.open_playground("group-3-story-37", None);
-    assert_eq!(shows(&rt), "row 37 370", "its init and view captured its row");
+    assert_eq!(
+        shows(&rt),
+        "row 37 370",
+        "its init and view captured its row"
+    );
     rt.playground_trigger('a');
-    assert_eq!(rt.playground_state::<Counter>().map(|c| c.n), Some(408), "and its trigger, the row's step");
+    assert_eq!(
+        rt.playground_state::<Counter>().map(|c| c.n),
+        Some(408),
+        "and its trigger, the row's step"
+    );
     rt.playground_trigger('l');
     for _ in 0..40 {
         rt.frame(1.0 / 60.0);
     }
-    assert_eq!(rt.playground_state::<Counter>().map(|c| c.n), Some(446), "a step it queued captured the row too");
+    assert_eq!(
+        rt.playground_state::<Counter>().map(|c| c.n),
+        Some(446),
+        "a step it queued captured the row too"
+    );
     rt.playground_trigger('z');
-    assert_eq!(rt.playground_state::<Counter>().map(|c| c.n), Some(0), "a trigger that takes just the Tx");
+    assert_eq!(
+        rt.playground_state::<Counter>().map(|c| c.n),
+        Some(0),
+        "a trigger that takes just the Tx"
+    );
     rt.open_playground("group-0-story-4", Some("Doubled"));
     assert_eq!(shows(&rt), "row 4 80", "a variant that captured its row");
 }

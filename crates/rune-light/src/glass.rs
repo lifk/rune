@@ -119,7 +119,12 @@ impl GlassLight {
         }
         let r = 0.5 * (p.rect[2] * p.rect[3]).sqrt();
         Some(GlassLight {
-            pos: [p.rect[0] + p.rect[2] * 0.5, p.rect[1] + p.rect[3] * 0.5, z, r],
+            pos: [
+                p.rect[0] + p.rect[2] * 0.5,
+                p.rect[1] + p.rect[3] * 0.5,
+                z,
+                r,
+            ],
             color: [p.emit[0] * gain, p.emit[1] * gain, p.emit[2] * gain, 0.0],
         })
     }
@@ -139,7 +144,13 @@ pub struct GlassSettings {
 
 impl Default for GlassSettings {
     fn default() -> Self {
-        GlassSettings { env: 1.0, shadow: 0.35, shadow_offset: [8.0, 22.0], shadow_blur: 30.0, caustic: 0.6 }
+        GlassSettings {
+            env: 1.0,
+            shadow: 0.35,
+            shadow_offset: [8.0, 22.0],
+            shadow_blur: 30.0,
+            caustic: 0.6,
+        }
     }
 }
 
@@ -192,13 +203,37 @@ fn section(name: &str) -> String {
 }
 
 impl GlassRenderer {
-    pub fn new(device: &wgpu::Device, width: u32, height: u32, format: wgpu::TextureFormat) -> GlassRenderer {
+    pub fn new(
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+    ) -> GlassRenderer {
         let f = wgpu::ShaderStages::FRAGMENT;
-        let buf = |label, size, usage| device.create_buffer(&wgpu::BufferDescriptor { label: Some(label), size, usage, mapped_at_creation: false });
+        let buf = |label, size, usage| {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size,
+                usage,
+                mapped_at_creation: false,
+            })
+        };
         use wgpu::BufferUsages as B;
-        let uniform = buf("glass u", std::mem::size_of::<GlassU>() as u64, B::UNIFORM | B::COPY_DST);
-        let glass = buf("glass", (MAX_GLASS * std::mem::size_of::<Glass>()) as u64, B::STORAGE | B::COPY_DST);
-        let lights = buf("glass lights", (MAX_GLIGHTS * std::mem::size_of::<GlassLight>()) as u64, B::STORAGE | B::COPY_DST);
+        let uniform = buf(
+            "glass u",
+            std::mem::size_of::<GlassU>() as u64,
+            B::UNIFORM | B::COPY_DST,
+        );
+        let glass = buf(
+            "glass",
+            (MAX_GLASS * std::mem::size_of::<Glass>()) as u64,
+            B::STORAGE | B::COPY_DST,
+        );
+        let lights = buf(
+            "glass lights",
+            (MAX_GLIGHTS * std::mem::size_of::<GlassLight>()) as u64,
+            B::STORAGE | B::COPY_DST,
+        );
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("glass linear"),
             mag_filter: wgpu::FilterMode::Linear,
@@ -221,13 +256,29 @@ impl GlassRenderer {
                 crate::bgl::sampler(6, f),
             ],
         );
-        let pipeline = |label: &str, src: String, entry: &str, layout: &wgpu::BindGroupLayout, fmt: wgpu::TextureFormat| {
-            let m = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some(label), source: wgpu::ShaderSource::Wgsl(src.into()) });
-            let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[Some(layout)], immediate_size: 0 });
+        let pipeline = |label: &str,
+                        src: String,
+                        entry: &str,
+                        layout: &wgpu::BindGroupLayout,
+                        fmt: wgpu::TextureFormat| {
+            let m = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some(label),
+                source: wgpu::ShaderSource::Wgsl(src.into()),
+            });
+            let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: None,
+                bind_group_layouts: &[Some(layout)],
+                immediate_size: 0,
+            });
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(label),
                 layout: Some(&pl),
-                vertex: wgpu::VertexState { module: &m, entry_point: Some("vs"), compilation_options: Default::default(), buffers: &[] },
+                vertex: wgpu::VertexState {
+                    module: &m,
+                    entry_point: Some("vs"),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
                 primitive: wgpu::PrimitiveState::default(),
                 depth_stencil: None,
                 multisample: Default::default(),
@@ -235,20 +286,38 @@ impl GlassRenderer {
                     module: &m,
                     entry_point: Some(entry),
                     compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState { format: fmt, blend: None, write_mask: wgpu::ColorWrites::ALL })],
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: fmt,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
                 }),
                 multiview_mask: None,
                 cache: None,
             })
         };
         let pipe = pipeline("glass", section("glass"), "fs", &bgl, format);
-        let down_bgl = crate::layout(device, "glass down", &[crate::bgl::f2(0, f), crate::bgl::sampler(1, f)]);
-        let down = pipeline("glass down", section("pyramid"), "fs_down", &down_bgl, wgpu::TextureFormat::Rgba16Float);
+        let down_bgl = crate::layout(
+            device,
+            "glass down",
+            &[crate::bgl::f2(0, f), crate::bgl::sampler(1, f)],
+        );
+        let down = pipeline(
+            "glass down",
+            section("pyramid"),
+            "fs_down",
+            &down_bgl,
+            wgpu::TextureFormat::Rgba16Float,
+        );
         let half = (width.div_ceil(2).max(1), height.div_ceil(2).max(1));
         let mips = LEVELS.min(32 - half.0.max(half.1).leading_zeros());
         let tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("glass pyramid"),
-            size: wgpu::Extent3d { width: half.0, height: half.1, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: half.0,
+                height: half.1,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: mips,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -258,22 +327,62 @@ impl GlassRenderer {
         });
         let pyramid = tex.create_view(&Default::default());
         let levels: Vec<wgpu::TextureView> = (0..mips)
-            .map(|k| tex.create_view(&wgpu::TextureViewDescriptor { base_mip_level: k, mip_level_count: Some(1), ..Default::default() }))
+            .map(|k| {
+                tex.create_view(&wgpu::TextureViewDescriptor {
+                    base_mip_level: k,
+                    mip_level_count: Some(1),
+                    ..Default::default()
+                })
+            })
             .collect();
         let down_bgs = (1..mips as usize)
-            .map(|k| crate::bind(device, &down_bgl, [crate::tv(&levels[k - 1]), wgpu::BindingResource::Sampler(&sampler)]))
+            .map(|k| {
+                crate::bind(
+                    device,
+                    &down_bgl,
+                    [
+                        crate::tv(&levels[k - 1]),
+                        wgpu::BindingResource::Sampler(&sampler),
+                    ],
+                )
+            })
             .collect();
-        GlassRenderer { width, height, mips, uniform, glass, lights, sampler, pipe, bgl, down, down_bgl, pyramid, levels, down_bgs, first_bg: crate::BindCache::new(), bg: crate::BindCache::new(), staging: None }
+        GlassRenderer {
+            width,
+            height,
+            mips,
+            uniform,
+            glass,
+            lights,
+            sampler,
+            pipe,
+            bgl,
+            down,
+            down_bgl,
+            pyramid,
+            levels,
+            down_bgs,
+            first_bg: crate::BindCache::new(),
+            bg: crate::BindCache::new(),
+            staging: None,
+        }
     }
 
-    fn pass<'a>(encoder: &'a mut wgpu::CommandEncoder, target: &'a wgpu::TextureView, label: &'a str) -> wgpu::RenderPass<'a> {
+    fn pass<'a>(
+        encoder: &'a mut wgpu::CommandEncoder,
+        target: &'a wgpu::TextureView,
+        label: &'a str,
+    ) -> wgpu::RenderPass<'a> {
         encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some(label),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: target,
                 depth_slice: None,
                 resolve_target: None,
-                ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
             })],
             depth_stencil_attachment: None,
             timestamp_writes: None,
@@ -299,19 +408,38 @@ impl GlassRenderer {
     ) {
         let ng = glass.len().min(MAX_GLASS);
         let nl = lights.len().min(MAX_GLIGHTS);
-        let staging = self.staging.get_or_insert_with(|| rune_staging::Staging::new(device, queue));
+        let staging = self
+            .staging
+            .get_or_insert_with(|| rune_staging::Staging::new(device, queue));
         staging.write_buffer(&self.glass, 0, bytemuck::cast_slice(&glass[..ng]));
         staging.write_buffer(&self.lights, 0, bytemuck::cast_slice(&lights[..nl]));
         let u = GlassU {
             size: [self.width as f32, self.height as f32, ng as f32, nl as f32],
-            misc: [self.mips as f32, settings.env, settings.shadow, settings.caustic],
-            shadow: [settings.shadow_offset[0], settings.shadow_offset[1], settings.shadow_blur, 0.0],
+            misc: [
+                self.mips as f32,
+                settings.env,
+                settings.shadow,
+                settings.caustic,
+            ],
+            shadow: [
+                settings.shadow_offset[0],
+                settings.shadow_offset[1],
+                settings.shadow_blur,
+                0.0,
+            ],
         };
         staging.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&u));
         staging.flush(encoder);
         if ng > 0 {
             let first = self.first_bg.get(backdrop.clone(), || {
-                crate::bind(device, &self.down_bgl, [crate::tv(backdrop), wgpu::BindingResource::Sampler(&self.sampler)])
+                crate::bind(
+                    device,
+                    &self.down_bgl,
+                    [
+                        crate::tv(backdrop),
+                        wgpu::BindingResource::Sampler(&self.sampler),
+                    ],
+                )
             });
             for k in 0..self.mips as usize {
                 let mut pass = Self::pass(encoder, &self.levels[k], "glass pyramid");

@@ -4,7 +4,9 @@ use std::cell::{Cell, Ref, RefCell};
 use std::ops::Range;
 
 use rune_taffy::CompactStyle;
-use taffy::style::{Display, FlexDirection, FlexWrap, LengthPercentage, LengthPercentageAuto, Position};
+use taffy::style::{
+    Display, FlexDirection, FlexWrap, LengthPercentage, LengthPercentageAuto, Position,
+};
 
 use crate::El;
 use crate::runtime::{HashMap, HashSet};
@@ -83,9 +85,15 @@ pub(crate) fn height_bound(style: &CompactStyle, avail: f32) -> f32 {
 
 /// A column flex container's vertical gap in points; zero for non-column containers.
 pub(crate) fn gap_y(style: &CompactStyle) -> f32 {
-    let column = style.display() == Display::Flex && style.flex_wrap() == FlexWrap::NoWrap
-        && matches!(style.flex_direction(), FlexDirection::Column | FlexDirection::ColumnReverse);
-    if !column { return 0.0; }
+    let column = style.display() == Display::Flex
+        && style.flex_wrap() == FlexWrap::NoWrap
+        && matches!(
+            style.flex_direction(),
+            FlexDirection::Column | FlexDirection::ColumnReverse
+        );
+    if !column {
+        return 0.0;
+    }
     match style.gap().height.expand() {
         taffy::style::ExpandedLengthPercentage::Length(x) => x,
         _ => 0.0,
@@ -96,19 +104,52 @@ pub(crate) fn gap_y(style: &CompactStyle) -> f32 {
 /// and, in a column, what siblings of fixed height and gaps don't take. A scroll viewport's
 /// content is unbounded, as is an out-of-flow child not pinned to both its parent's top and
 /// bottom.
-pub(crate) fn child_bounds(style: &CompactStyle, scrolls: bool, bound: f32, children: &[El]) -> ChildBounds {
-    if scrolls { return ChildBounds { outer: f32::INFINITY, inner: f32::INFINITY, fixed: 0.0, column: false } }
+pub(crate) fn child_bounds(
+    style: &CompactStyle,
+    scrolls: bool,
+    bound: f32,
+    children: &[El],
+) -> ChildBounds {
+    if scrolls {
+        return ChildBounds {
+            outer: f32::INFINITY,
+            inner: f32::INFINITY,
+            fixed: 0.0,
+            column: false,
+        };
+    }
     let points = |p: LengthPercentage| match p.expand() {
         taffy::style::ExpandedLengthPercentage::Length(x) => x,
         _ => 0.0,
     };
     let pad = style.padding();
     let inner = bound - points(pad.top) - points(pad.bottom);
-    let column = style.display() == Display::Flex && style.flex_wrap() == FlexWrap::NoWrap
-        && matches!(style.flex_direction(), FlexDirection::Column | FlexDirection::ColumnReverse);
-    if !column || children.len() < 2 { return ChildBounds { outer: bound, inner, fixed: 0.0, column: false } }
-    let gaps = points(style.gap().height) * children.iter().filter(|c| in_flow(&c.style)).count().saturating_sub(1) as f32;
-    ChildBounds { outer: bound, inner: inner - gaps, fixed: children.iter().map(|c| fixed_height(&c.style)).sum(), column }
+    let column = style.display() == Display::Flex
+        && style.flex_wrap() == FlexWrap::NoWrap
+        && matches!(
+            style.flex_direction(),
+            FlexDirection::Column | FlexDirection::ColumnReverse
+        );
+    if !column || children.len() < 2 {
+        return ChildBounds {
+            outer: bound,
+            inner,
+            fixed: 0.0,
+            column: false,
+        };
+    }
+    let gaps = points(style.gap().height)
+        * children
+            .iter()
+            .filter(|c| in_flow(&c.style))
+            .count()
+            .saturating_sub(1) as f32;
+    ChildBounds {
+        outer: bound,
+        inner: inner - gaps,
+        fixed: children.iter().map(|c| fixed_height(&c.style)).sum(),
+        column,
+    }
 }
 
 pub(crate) struct ChildBounds {
@@ -151,11 +192,17 @@ fn in_flow(style: &CompactStyle) -> bool {
 /// The height a column's child takes whatever the others need: its own height when it can't
 /// shrink, and its minimum.
 fn fixed_height(style: &CompactStyle) -> f32 {
-    if !in_flow(style) { return 0.0 }
+    if !in_flow(style) {
+        return 0.0;
+    }
     let min = length(style.min_size().height).unwrap_or(0.0);
-    if style.flex_shrink() > 0.0 { return min }
+    if style.flex_shrink() > 0.0 {
+        return min;
+    }
     let h = style.size().height.into_option().unwrap_or(0.0);
-    length(style.max_size().height).map_or(h, |m| h.min(m)).max(min)
+    length(style.max_size().height)
+        .map_or(h, |m| h.min(m))
+        .max(min)
 }
 
 /// How far ahead an index-built list keeps rows mounted, in viewports either side.
@@ -169,7 +216,10 @@ const INDEXED_BUDGET: f32 = 0.5;
 
 impl VirtualList {
     pub fn height(&self, key: &str) -> f32 {
-        self.rows.get(key).and_then(|r| r.height).unwrap_or(self.estimate)
+        self.rows
+            .get(key)
+            .and_then(|r| r.height)
+            .unwrap_or(self.estimate)
     }
 
     pub fn has(&self, key: &str) -> bool {
@@ -186,8 +236,11 @@ impl VirtualList {
     /// replaces leave with their exits. Rows mounting with their transition are noted in
     /// `entering`, and the runtime lands the ones that drew out of view, so only what shows fades.
     pub fn mounts_quietly(&mut self, i: usize, commit: u64) -> bool {
-        let quiet = self.born[i] < commit && !(self.keys_fresh && !self.shown.contains(&self.keys[i]));
-        if !quiet { self.entering.insert(self.keys[i].clone()); }
+        let quiet =
+            self.born[i] < commit && !(self.keys_fresh && !self.shown.contains(&self.keys[i]));
+        if !quiet {
+            self.entering.insert(self.keys[i].clone());
+        }
         quiet
     }
 
@@ -212,7 +265,12 @@ impl VirtualList {
     /// Replaces the rows. Keys that stay keep their measured height and birth; new ones are born
     /// at `commit`. Returns the first row visible at `offset` (when given) that stays, with its
     /// top before the change, to anchor the reader to: none when no row in view stays.
-    pub fn set_keys(&mut self, keys: Vec<String>, commit: u64, offset: Option<f32>) -> Option<(String, f32)> {
+    pub fn set_keys(
+        &mut self,
+        keys: Vec<String>,
+        commit: u64,
+        offset: Option<f32>,
+    ) -> Option<(String, f32)> {
         let mut rows = HashMap::with_capacity_and_hasher(keys.len(), Default::default());
         let mut born = Vec::with_capacity(keys.len());
         let mut heights = Vec::with_capacity(keys.len());
@@ -221,14 +279,22 @@ impl VirtualList {
             let height = old.and_then(|r| r.height);
             born.push(old.map_or(commit, |r| self.born[r.index]));
             heights.push(height.unwrap_or(self.estimate));
-            assert!(rows.insert(key.clone(), Row { index, height }).is_none(), "virtual row keys must be unique");
+            assert!(
+                rows.insert(key.clone(), Row { index, height }).is_none(),
+                "virtual row keys must be unique"
+            );
         }
         // A change that keeps none of the rows in view (a filter) leaves nothing to hold.
-        let anchor = offset.and_then(|offset| self.first_visible(offset, |k| rows.contains_key(k)))
+        let anchor = offset
+            .and_then(|offset| self.first_visible(offset, |k| rows.contains_key(k)))
             .filter(|(_, top)| offset.is_some_and(|offset| *top < offset + self.viewport));
         if keys != self.keys {
             self.keys_fresh = true;
-            self.held = if offset.is_some() { anchor.is_some() } else { self.keys.iter().any(|k| rows.contains_key(k)) };
+            self.held = if offset.is_some() {
+                anchor.is_some()
+            } else {
+                self.keys.iter().any(|k| rows.contains_key(k))
+            };
         }
         self.rows = rows;
         self.born = born;
@@ -255,7 +321,9 @@ impl VirtualList {
     }
 
     pub fn set_height(&mut self, key: &str, height: f32) {
-        let Some(row) = self.rows.get_mut(key) else { return };
+        let Some(row) = self.rows.get_mut(key) else {
+            return;
+        };
         row.height = Some(height);
         let i = row.index;
         if self.row_heights[i] != height {
@@ -265,7 +333,8 @@ impl VirtualList {
     }
 
     fn sums(&self) -> Ref<'_, Vec<f32>> {
-        if self.sums_stale.replace(false) || self.sums.borrow().len() != self.row_heights.len() + 1 {
+        if self.sums_stale.replace(false) || self.sums.borrow().len() != self.row_heights.len() + 1
+        {
             let mut sums = self.sums.borrow_mut();
             sums.clear();
             sums.push(0.0);
@@ -280,12 +349,20 @@ impl VirtualList {
 
     pub fn prefix(&self, end: usize) -> f32 {
         let sums = self.sums();
-        if end == 0 || end < self.keys.len() { sums[end] } else { sums[end] - self.gap }
+        if end == 0 || end < self.keys.len() {
+            sums[end]
+        } else {
+            sums[end] - self.gap
+        }
     }
 
     /// The bottom of the first `end` rows (without the gap after row `end - 1`).
     pub fn row_end(&self, end: usize) -> f32 {
-        if end == 0 { 0.0 } else { self.sums()[end] - self.gap }
+        if end == 0 {
+            0.0
+        } else {
+            self.sums()[end] - self.gap
+        }
     }
 
     /// The first row still visible at `offset`, among those `keep` accepts, and its top.
@@ -307,10 +384,16 @@ impl VirtualList {
         if self.keys.is_empty() {
             return 0..0;
         }
-        let offset = if pinned { self.max_offset() } else { offset.clamp(0.0, self.max_offset()) };
+        let offset = if pinned {
+            self.max_offset()
+        } else {
+            offset.clamp(0.0, self.max_offset())
+        };
         let sums = self.sums();
         let start = sums[1..].partition_point(|&s| self.pad_top + s - self.gap <= offset);
-        let end = sums[..self.keys.len()].partition_point(|&s| self.pad_top + s < offset + self.viewport).max(start);
+        let end = sums[..self.keys.len()]
+            .partition_point(|&s| self.pad_top + s < offset + self.viewport)
+            .max(start);
         start..end
     }
 
@@ -318,22 +401,32 @@ impl VirtualList {
     /// rows shown last commit), at most [`INDEXED_BUDGET`] of rows not among them mount per
     /// side beyond the viewport.
     pub fn select(&mut self, offset: f32, pinned: bool, budget: Option<&HashSet<String>>) {
-        let offset = if pinned { self.max_offset() } else { offset.min(self.max_offset()) };
+        let offset = if pinned {
+            self.max_offset()
+        } else {
+            offset.min(self.max_offset())
+        };
         let (start, end) = self.overscan(offset);
         let (mut start, mut end) = {
             let sums = self.sums();
             if let Some(shown) = budget.filter(|_| !pinned) {
                 let mounted = |k: &str| shown.contains(k);
                 // The viewport's own rows always mount; the overscan takes new rows up to a budget.
-                let first = sums[1..].partition_point(|&s| self.pad_top + s - self.gap <= offset).max(start);
-                let last = sums[..self.keys.len()].partition_point(|&s| self.pad_top + s < offset + self.viewport).max(first);
+                let first = sums[1..]
+                    .partition_point(|&s| self.pad_top + s - self.gap <= offset)
+                    .max(start);
+                let last = sums[..self.keys.len()]
+                    .partition_point(|&s| self.pad_top + s < offset + self.viewport)
+                    .max(first);
                 let budget = self.viewport * INDEXED_BUDGET;
                 let mut spent = 0.0;
                 let mut from = first;
                 while from > start {
                     let i = from - 1;
                     if !mounted(&self.keys[i]) {
-                        if spent >= budget { break; }
+                        if spent >= budget {
+                            break;
+                        }
                         spent += self.row_heights[i] + self.gap;
                     }
                     from = i;
@@ -342,7 +435,9 @@ impl VirtualList {
                 let mut to = last.min(end);
                 while to < end {
                     if !mounted(&self.keys[to]) {
-                        if spent >= budget { break; }
+                        if spent >= budget {
+                            break;
+                        }
                         spent += self.row_heights[to] + self.gap;
                     }
                     to += 1;
@@ -356,14 +451,20 @@ impl VirtualList {
         // them out (rows below a fold gliding open), within an overscan of the window.
         let (mut lo, mut hi) = (start, end);
         for i in self.drawn.iter().filter_map(|k| self.index_of(k)) {
-            if i < start && self.prefix(start) - self.prefix(i) <= self.viewport * OVERSCAN { lo = lo.min(i); }
-            if i >= end && self.row_end(i + 1) - self.row_end(end) <= self.viewport * OVERSCAN { hi = hi.max(i + 1); }
+            if i < start && self.prefix(start) - self.prefix(i) <= self.viewport * OVERSCAN {
+                lo = lo.min(i);
+            }
+            if i >= end && self.row_end(i + 1) - self.row_end(end) <= self.viewport * OVERSCAN {
+                hi = hi.max(i + 1);
+            }
         }
         (start, end) = (lo, hi);
         // A row still at its estimate grows or shrinks once measured; anchoring to it would move
         // the measured rows below, such as the reader's row under a page that just landed.
         self.anchor = if pinned { None } else { self.anchor_at(offset) };
-        if pinned { start = start.min(end.saturating_sub(32)); }
+        if pinned {
+            start = start.min(end.saturating_sub(32));
+        }
         end = end.max(start);
         self.place(start..end);
     }
@@ -371,7 +472,11 @@ impl VirtualList {
     /// Keeps the rows mounted now (clamped to the rows), sets the anchor for `offset` as
     /// [`select`](Self::select) does, and re-derives the space above and below them.
     pub fn hold(&mut self, offset: f32, pinned: bool) {
-        let offset = if pinned { self.max_offset() } else { offset.min(self.max_offset()) };
+        let offset = if pinned {
+            self.max_offset()
+        } else {
+            offset.min(self.max_offset())
+        };
         self.anchor = if pinned { None } else { self.anchor_at(offset) };
         let len = self.keys.len();
         self.place(self.range.start.min(len)..self.range.end.min(len));
@@ -382,13 +487,19 @@ impl VirtualList {
         let (start, end) = (range.start, range.end.max(range.start));
         self.range = start..end;
         self.before = self.prefix(start);
-        self.after = if start < end { total - self.row_end(end) } else { total - self.before };
+        self.after = if start < end {
+            total - self.row_end(end)
+        } else {
+            total - self.before
+        };
     }
 
     fn anchor_at(&self, offset: f32) -> Option<(String, f32)> {
         let range = self.visible_range(offset, false);
         let sums = self.sums();
-        range.into_iter().find(|&i| self.rows[&self.keys[i]].height.is_some())
+        range
+            .into_iter()
+            .find(|&i| self.rows[&self.keys[i]].height.is_some())
             .map(|i| (self.keys[i].clone(), self.pad_top + sums[i]))
             .or_else(|| self.first_visible(offset, |_| true))
     }
@@ -400,28 +511,43 @@ impl VirtualList {
         let hi = offset + self.viewport * (1.0 + OVERSCAN);
         let sums = self.sums();
         let start = sums[1..].partition_point(|&s| self.pad_top + s - self.gap <= lo);
-        (start, sums[..self.keys.len()].partition_point(|&s| self.pad_top + s < hi))
+        (
+            start,
+            sums[..self.keys.len()].partition_point(|&s| self.pad_top + s < hi),
+        )
     }
 
     /// How tall the mounted rows outside the overscan around `offset` are: rows that grew since
     /// the window was picked and lay out for nothing.
     pub(crate) fn spare(&self, offset: f32, pinned: bool) -> f32 {
-        if pinned || self.keys.is_empty() { return 0.0; }
+        if pinned || self.keys.is_empty() {
+            return 0.0;
+        }
         let (start, end) = self.overscan(offset.min(self.max_offset()));
-        let above = self.prefix(start.min(self.range.end)) - self.prefix(self.range.start.min(start));
-        let below = self.row_end(self.range.end) - self.row_end(end.max(self.range.start).min(self.range.end));
+        let above =
+            self.prefix(start.min(self.range.end)) - self.prefix(self.range.start.min(start));
+        let below = self.row_end(self.range.end)
+            - self.row_end(end.max(self.range.start).min(self.range.end));
         above.max(0.0) + below.max(0.0)
     }
 
     pub fn anchor_delta(&self) -> f32 {
-        let Some((key, old)) = &self.anchor else { return 0.0 };
-        let Some(i) = self.index_of(key) else { return 0.0 };
+        let Some((key, old)) = &self.anchor else {
+            return 0.0;
+        };
+        let Some(i) = self.index_of(key) else {
+            return 0.0;
+        };
         self.pad_top + self.prefix(i) - old
     }
 
     pub fn needs_window(&self, offset: f32, pinned: bool) -> bool {
-        if self.keys.is_empty() { return false; }
-        if pinned { return self.range.end != self.keys.len(); }
+        if self.keys.is_empty() {
+            return false;
+        }
+        if pinned {
+            return self.range.end != self.keys.len();
+        }
         let edge = self.viewport * if self.indexed { INDEXED_EDGE } else { 0.5 };
         let top = self.pad_top + self.before;
         let bottom = self.pad_top + self.row_end(self.range.end);
@@ -453,9 +579,17 @@ mod tests {
         assert_eq!(v.before + mounted + v.after, 2693.0);
         assert_eq!(v.before, v.range.start as f32 * 27.0);
         v.set_height("r0", 35.0);
-        assert_eq!(v.prefix(50), 1365.0, "measured heights replace only the estimate, not the gap");
+        assert_eq!(
+            v.prefix(50),
+            1365.0,
+            "measured heights replace only the estimate, not the gap"
+        );
         v.set_gap(3.0);
-        assert_eq!(v.prefix(100), 2312.0, "a changed gap invalidates prefix sums");
+        assert_eq!(
+            v.prefix(100),
+            2312.0,
+            "a changed gap invalidates prefix sums"
+        );
         v.set_keys(Vec::new(), 1, None);
         assert_eq!(v.prefix(0), 0.0);
     }
@@ -476,8 +610,20 @@ mod tests {
         ];
         let parent = col().h(100.0).pt(5.0);
         let bounds = child_bounds(&parent.style, false, 100.0, &children);
-        assert_eq!(bounds.of(&children[0]), 70.0, "between its insets in the padding box");
-        assert_eq!(bounds.of(&children[1]), f32::INFINITY, "free to grow past its parent");
-        assert_eq!(bounds.of(&children[3]), 55.0, "in flow, what padding and the fixed sibling leave");
+        assert_eq!(
+            bounds.of(&children[0]),
+            70.0,
+            "between its insets in the padding box"
+        );
+        assert_eq!(
+            bounds.of(&children[1]),
+            f32::INFINITY,
+            "free to grow past its parent"
+        );
+        assert_eq!(
+            bounds.of(&children[3]),
+            55.0,
+            "in flow, what padding and the fixed sibling leave"
+        );
     }
 }

@@ -168,7 +168,9 @@ impl Script {
         i.dark.set(dark);
         // The surface's root is keyed by its memo id, whatever key the script gave it.
         let id = format!("{}{name}", i.prefix);
-        rune::memo::memo_with_hash(id.clone(), mix(i.version.get(), i.salt.get()), || i.render::<S>(name, dark).key(id))
+        rune::memo::memo_with_hash(id.clone(), mix(i.version.get(), i.salt.get()), || {
+            i.render::<S>(name, dark).key(id)
+        })
     }
 
     /// Runs the surface's render function now, outside any memo: the cost of a rebuild.
@@ -180,9 +182,14 @@ impl Script {
     /// `loadHotState(state)` in the new one. A compile or start error keeps the old VM running.
     pub fn reload(&self, sources: Sources) -> Result<Reload, ScriptError> {
         let start = Instant::now();
-        let compiled = sources.compile().inspect_err(|e| self.inner.log(LogLevel::Error, &e.message))?;
+        let compiled = sources
+            .compile()
+            .inspect_err(|e| self.inner.log(LogLevel::Error, &e.message))?;
         let compile = start.elapsed();
-        let mut report = self.inner.swap(compiled).inspect_err(|e| self.inner.log(LogLevel::Error, &e.message))?;
+        let mut report = self
+            .inner
+            .swap(compiled)
+            .inspect_err(|e| self.inner.log(LogLevel::Error, &e.message))?;
         report.compile = compile;
         *self.inner.sources.borrow_mut() = sources;
         self.inner.note_reload(report);
@@ -197,26 +204,52 @@ impl Script {
     }
 
     /// Calls the module's function `name` with `args` in a new task.
-    pub fn call(&self, name: &str, args: impl IntoIterator<Item = Data>) -> Result<(), ScriptError> {
+    pub fn call(
+        &self,
+        name: &str,
+        args: impl IntoIterator<Item = Data>,
+    ) -> Result<(), ScriptError> {
         let args: Vec<Data> = args.into_iter().collect();
         let ran = self.inner.enter(None, |vm| {
-            let f = vm.export(name).ok_or_else(|| ScriptError::new(ErrorKind::Missing, format!("no function {name}")))?;
+            let f = vm.export(name).ok_or_else(|| {
+                ScriptError::new(ErrorKind::Missing, format!("no function {name}"))
+            })?;
             let thread = vm.lua.create_thread(f)?;
             task::run(&vm.lua, &thread, mlua::Variadic::from_iter(args));
             Ok(())
         });
-        ran.unwrap_or_else(|| Err(self.inner.failed.borrow().clone().unwrap_or_else(|| ScriptError::new(ErrorKind::Missing, "not running"))))
+        ran.unwrap_or_else(|| {
+            Err(self
+                .inner
+                .failed
+                .borrow()
+                .clone()
+                .unwrap_or_else(|| ScriptError::new(ErrorKind::Missing, "not running")))
+        })
     }
 
     /// Calls the module's function `name` with `args` and returns its result. It runs to the
     /// end at once: like a render, it can't wait.
-    pub fn query(&self, name: &str, args: impl IntoIterator<Item = Data>) -> Result<Data, ScriptError> {
+    pub fn query(
+        &self,
+        name: &str,
+        args: impl IntoIterator<Item = Data>,
+    ) -> Result<Data, ScriptError> {
         let args: Vec<Data> = args.into_iter().collect();
         let ran = self.inner.enter(None, |vm| {
-            let f = vm.export(name).ok_or_else(|| ScriptError::new(ErrorKind::Missing, format!("no function {name}")))?;
+            let f = vm.export(name).ok_or_else(|| {
+                ScriptError::new(ErrorKind::Missing, format!("no function {name}"))
+            })?;
             Ok(f.call::<Data>(mlua::Variadic::from_iter(args))?)
         });
-        ran.unwrap_or_else(|| Err(self.inner.failed.borrow().clone().unwrap_or_else(|| ScriptError::new(ErrorKind::Missing, "not running"))))
+        ran.unwrap_or_else(|| {
+            Err(self
+                .inner
+                .failed
+                .borrow()
+                .clone()
+                .unwrap_or_else(|| ScriptError::new(ErrorKind::Missing, "not running")))
+        })
     }
 
     /// Why the script isn't running, if it isn't.
@@ -283,7 +316,10 @@ impl Inner {
         if log.len() == 256 {
             log.pop_front();
         }
-        log.push_back(LogLine { level, message: message.to_owned() });
+        log.push_back(LogLine {
+            level,
+            message: message.to_owned(),
+        });
     }
 
     /// One entry into the VM under the watchdog, counted in the metrics. Errors are logged.
@@ -301,7 +337,11 @@ impl Inner {
 
     /// Runs script code that may change state: afterwards the version moves, deferred tasks
     /// run, task errors are logged and the next deadline is armed (on `tx`, or by waking).
-    pub(crate) fn enter<R>(&self, tx: Option<&mut Tx>, f: impl FnOnce(&Vm) -> Result<R, ScriptError>) -> Option<Result<R, ScriptError>> {
+    pub(crate) fn enter<R>(
+        &self,
+        tx: Option<&mut Tx>,
+        f: impl FnOnce(&Vm) -> Result<R, ScriptError>,
+    ) -> Option<Result<R, ScriptError>> {
         let vm = self.vm()?;
         let out = self.timed(&vm, |vm| {
             let out = f(vm);
@@ -321,11 +361,13 @@ impl Inner {
         // One incremental collection step while the VM is warm, so garbage from this batch is
         // swept between frames rather than in the middle of a render. An idle script runs none.
         vm.lua.gc_step().ok();
-        let Some((errors, deadline, wait, changed)) = vm.lua.app_data_mut::<Sched>().map(|mut s| {
-            let errors = std::mem::take(&mut s.errors);
-            let deadline = s.next_deadline();
-            (errors, deadline, s.wait_for(deadline), s.take_changed())
-        }) else {
+        let Some((errors, deadline, wait, changed)) =
+            vm.lua.app_data_mut::<Sched>().map(|mut s| {
+                let errors = std::mem::take(&mut s.errors);
+                let deadline = s.next_deadline();
+                (errors, deadline, s.wait_for(deadline), s.take_changed())
+            })
+        else {
             return;
         };
         for e in errors {
@@ -342,13 +384,19 @@ impl Inner {
     /// After a render, which has no `Tx`: a `task.delay` or `task.defer` it set asks for a
     /// frame, whose poll runs it.
     pub(crate) fn note_schedule(&self, vm: &Vm) {
-        let Some((changed, deadline, defers)) =
-            vm.lua.app_data_mut::<Sched>().map(|mut s| (s.take_changed(), s.next_deadline(), s.has_defers()))
+        let Some((changed, deadline, defers)) = vm
+            .lua
+            .app_data_mut::<Sched>()
+            .map(|mut s| (s.take_changed(), s.next_deadline(), s.has_defers()))
         else {
             return;
         };
         if changed || defers {
-            self.deadline.set(if defers { self.clock.get() } else { deadline.unwrap_or(f64::INFINITY) });
+            self.deadline.set(if defers {
+                self.clock.get()
+            } else {
+                deadline.unwrap_or(f64::INFINITY)
+            });
             self.shared.mark();
             self.shared.wake();
         }
@@ -413,7 +461,13 @@ impl Inner {
         self.metrics.set(m);
         let ms = |d: Duration| d.as_secs_f64() * 1e3;
         let (compile, swap) = (ms(report.compile), ms(report.swap));
-        self.log(LogLevel::Info, &format!("reloaded in {:.2} ms: compile {compile:.2} ms, swap {swap:.2} ms", compile + swap));
+        self.log(
+            LogLevel::Info,
+            &format!(
+                "reloaded in {:.2} ms: compile {compile:.2} ms, swap {swap:.2} ms",
+                compile + swap
+            ),
+        );
     }
 
     /// Starts a VM from `compiled`, carrying hot state over from the running one, and swaps it
@@ -423,7 +477,9 @@ impl Inner {
         let old = self.vm();
         let saved = old.as_ref().and_then(|vm| {
             let save = vm.export("saveHotState")?;
-            self.timed(vm, |_| save.call::<Data>(())).inspect_err(|e| self.log(LogLevel::Warn, &format!("saveHotState: {e}"))).ok()
+            self.timed(vm, |_| save.call::<Data>(()))
+                .inspect_err(|e| self.log(LogLevel::Warn, &format!("saveHotState: {e}")))
+                .ok()
         });
         let base = match self.spare.take() {
             Some(base) => base,
@@ -446,7 +502,10 @@ impl Inner {
             self.settle(&vm, None);
         }
         drop(old);
-        Ok(Reload { compile: Duration::ZERO, swap: start.elapsed() })
+        Ok(Reload {
+            compile: Duration::ZERO,
+            swap: start.elapsed(),
+        })
     }
 
     /// The part of a new VM that doesn't depend on the script's files.
@@ -457,7 +516,13 @@ impl Inner {
                 i.log(level, &message);
             }
         });
-        Base::new(Setup { shared: &self.shared, memory_limit: self.options.memory_limit, nodes: &self.options.nodes, host: self.options.setup.as_deref(), log })
+        Base::new(Setup {
+            shared: &self.shared,
+            memory_limit: self.options.memory_limit,
+            nodes: &self.options.nodes,
+            host: self.options.setup.as_deref(),
+            log,
+        })
     }
 
     pub(crate) fn prewarm(&self) {
@@ -489,11 +554,21 @@ impl Inner {
 
     pub(crate) fn render<S: 'static>(&self, name: &str, dark: bool) -> El {
         let attach = attach::<S>();
-        let card = |message: &str| error_card(message, &self.options.palette, dark, attach, self.weak.clone());
+        let card = |message: &str| {
+            error_card(
+                message,
+                &self.options.palette,
+                dark,
+                attach,
+                self.weak.clone(),
+            )
+        };
         if let Some(err) = self.failed.borrow().as_ref() {
             return card(&err.message);
         }
-        let Some(vm) = self.vm() else { return card("the script isn't running") };
+        let Some(vm) = self.vm() else {
+            return card("the script isn't running");
+        };
         let Some(render) = vm.export(name) else {
             return card(&format!("init.luau exports no {name} function"));
         };
@@ -524,7 +599,9 @@ impl Inner {
     }
 
     pub(crate) fn row<S: 'static>(&self, spec: &Spec, i: usize) -> El {
-        let Some(vm) = self.vm().filter(|vm| vm.id == spec.render.vm) else { return rune::el() };
+        let Some(vm) = self.vm().filter(|vm| vm.id == spec.render.vm) else {
+            return rune::el();
+        };
         let env = self.env(&vm, self.dark.get());
         let r = spec.render.func.r;
         let built = with_frame(attach::<S>(), env, || {
@@ -545,7 +622,9 @@ impl Inner {
     }
 
     pub(crate) fn row_key(&self, cb: &Callback, i: usize) -> String {
-        let Some(vm) = self.vm().filter(|vm| vm.id == cb.vm) else { return i.to_string() };
+        let Some(vm) = self.vm().filter(|vm| vm.id == cb.vm) else {
+            return i.to_string();
+        };
         let r = cb.func.r;
         let key = self.timed(&vm, |vm| vm.function(r)?.call::<Value>(i + 1));
         match key {
@@ -560,8 +639,13 @@ impl Inner {
 /// The element behind the handle a render or row function returned.
 pub(crate) fn take_root(out: Value) -> mlua::Result<El> {
     match out {
-        Value::LightUserData(LightUserData(p)) => top(|f| f.take(p)).unwrap_or_else(|| Err("no render in progress".into())).map_err(mlua::Error::runtime),
+        Value::LightUserData(LightUserData(p)) => top(|f| f.take(p))
+            .unwrap_or_else(|| Err("no render in progress".into()))
+            .map_err(mlua::Error::runtime),
         Value::Nil => Ok(rune::el()),
-        other => Err(mlua::Error::runtime(format!("a render function must return a ui node, not a {}", other.type_name()))),
+        other => Err(mlua::Error::runtime(format!(
+            "a render function must return a ui node, not a {}",
+            other.type_name()
+        ))),
     }
 }

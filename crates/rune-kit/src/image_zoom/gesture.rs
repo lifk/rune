@@ -29,7 +29,9 @@ pub enum State {
 }
 
 impl Default for State {
-    fn default() -> State { State::Still(Gesture::Idle) }
+    fn default() -> State {
+        State::Still(Gesture::Idle)
+    }
 }
 
 /// `zoomed` is whether the image shows above fit once the event's change applies.
@@ -37,17 +39,32 @@ impl Default for State {
 pub enum Event {
     /// A primary press: on the body the image zooms in (`on_body`), and on the backdrop around
     /// the image rather than the image itself (`on_backdrop`).
-    PointerDown { on_body: bool, on_backdrop: bool, zoomed: bool, at: [f32; 2] },
-    PointerMoved { at: [f32; 2] },
+    PointerDown {
+        on_body: bool,
+        on_backdrop: bool,
+        zoomed: bool,
+        at: [f32; 2],
+    },
+    PointerMoved {
+        at: [f32; 2],
+    },
     PointerUp,
     /// The press ended unreleased (a cancelled drag).
     PointerCancel,
     /// The click a release makes, landing on the backdrop or not.
-    Click { on_backdrop: bool },
+    Click {
+        on_backdrop: bool,
+    },
     /// Pinch, wheel, drag or a resize set the view directly.
-    Follow { zoomed: bool },
-    GlideStart { now: f64 },
-    GlideSettled { zoomed: bool },
+    Follow {
+        zoomed: bool,
+    },
+    GlideStart {
+        now: f64,
+    },
+    GlideSettled {
+        zoomed: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -83,7 +100,9 @@ pub fn step(state: &mut State, event: Event) -> Effects<Effect> {
         Event::PointerMoved { at } => {
             let Gesture::Panning { cursor, .. } = gesture else { return Effects::none() };
             let delta = [at[0] - cursor[0], at[1] - cursor[1]];
-            if delta == [0.0, 0.0] { return Effects::none(); }
+            if delta == [0.0, 0.0] {
+                return Effects::none();
+            }
             set(state, Gesture::Panning { on_backdrop: false, moved: true, cursor: at });
             Effects::one(Effect::Pan(delta))
         }
@@ -94,11 +113,15 @@ pub fn step(state: &mut State, event: Event) -> Effects<Effect> {
             Effects::none()
         }
         Event::PointerCancel => {
-            if pan { set(state, Gesture::Idle); }
+            if pan {
+                set(state, Gesture::Idle);
+            }
             Effects::none()
         }
         Event::Click { on_backdrop } => {
-            if gesture != Gesture::BackdropPress { return Effects::none(); }
+            if gesture != Gesture::BackdropPress {
+                return Effects::none();
+            }
             set(state, Gesture::Idle);
             if on_backdrop { Effects::one(Effect::Close) } else { Effects::none() }
         }
@@ -116,7 +139,9 @@ pub fn step(state: &mut State, event: Event) -> Effects<Effect> {
             Effects::none()
         }
         Event::GlideSettled { zoomed } => {
-            if gliding.is_none() { return Effects::none(); }
+            if gliding.is_none() {
+                return Effects::none();
+            }
             *state = State::Still(if pan && !zoomed { Gesture::Idle } else { gesture });
             Effects::none()
         }

@@ -34,12 +34,18 @@ struct State {
 
 pub(crate) fn shared() -> Arc<Pool> {
     static POOL: OnceLock<Arc<Pool>> = OnceLock::new();
-    POOL.get_or_init(|| Pool::new(MAX_THREADS, IDLE_EXIT)).clone()
+    POOL.get_or_init(|| Pool::new(MAX_THREADS, IDLE_EXIT))
+        .clone()
 }
 
 impl Pool {
     pub(crate) fn new(max: usize, idle_exit: Duration) -> Arc<Pool> {
-        Arc::new(Pool { state: Mutex::default(), ready: Condvar::new(), max: max.max(1), idle_exit })
+        Arc::new(Pool {
+            state: Mutex::default(),
+            ready: Condvar::new(),
+            max: max.max(1),
+            idle_exit,
+        })
     }
 
     pub(crate) fn submit(self: &Arc<Self>, task: Arc<dyn Drive>) {
@@ -51,10 +57,15 @@ impl Pool {
         }
         state.threads += 1;
         #[cfg(test)]
-        { state.started += 1; }
+        {
+            state.started += 1;
+        }
         drop(state);
         let pool = self.clone();
-        std::thread::Builder::new().name("rune-latest".into()).spawn(move || pool.work()).expect("rune::Latest worker");
+        std::thread::Builder::new()
+            .name("rune-latest".into())
+            .spawn(move || pool.work())
+            .expect("rune::Latest worker");
     }
 
     fn work(&self) {

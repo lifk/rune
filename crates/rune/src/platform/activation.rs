@@ -59,10 +59,14 @@ impl Activator {
         let backend = unsafe { Backend::from_foreign_display(display.display.as_ptr().cast()) };
         let conn = Connection::from_backend(backend);
         let (globals, queue) = registry_queue_init::<State>(&conn).ok()?;
-        let activation = globals.bind::<XdgActivationV1, _, _>(&queue.handle(), 1..=1, ()).ok()?;
+        let activation = globals
+            .bind::<XdgActivationV1, _, _>(&queue.handle(), 1..=1, ())
+            .ok()?;
         // SAFETY: the pointer is the live `wl_surface` proxy winit created for this window, and
         // the activator is dropped before the window.
-        let id = unsafe { ObjectId::from_ptr(WlSurface::interface(), handle.surface.as_ptr().cast()) }.ok()?;
+        let id =
+            unsafe { ObjectId::from_ptr(WlSurface::interface(), handle.surface.as_ptr().cast()) }
+                .ok()?;
         let surface = WlSurface::from_id(&conn, id).ok()?;
         Some(Activator {
             queue,

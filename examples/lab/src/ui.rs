@@ -4,11 +4,13 @@
 use std::sync::OnceLock;
 
 use rune::tok::motion;
-use rune::{Align, Color, Cx, Drag, El, Phase, Spring, TextStyle, Theme, col, el, row, spacer, text};
+use rune::{
+    Align, Color, Cx, Drag, El, Phase, Spring, TextStyle, Theme, col, el, row, spacer, text,
+};
 
+use crate::Lab;
 use crate::knobs::{ALL, Kind, KnobSpec, Scene, specs};
 use crate::stage;
-use crate::Lab;
 
 const SIDEBAR_W: f32 = 212.0;
 const PANEL_W: f32 = 272.0;
@@ -45,7 +47,8 @@ pub struct Pal {
 pub fn pal() -> &'static Pal {
     static P: OnceLock<Pal> = OnceLock::new();
     P.get_or_init(|| {
-        let t = Theme::from_json(include_str!("../assets/theme.json"), true).unwrap_or_else(|e| panic!("{e}"));
+        let t = Theme::from_json(include_str!("../assets/theme.json"), true)
+            .unwrap_or_else(|e| panic!("{e}"));
         let c = |n: &str| t.color(n);
         Pal {
             base: c("background-bg-base"),
@@ -93,7 +96,10 @@ fn sidebar(s: &Lab, hair: f32) -> El {
     let mut y = 0.0;
     let mut sel_y = 0.0;
     let mut items: Vec<El> = Vec::new();
-    for (g, group) in [("Light", &ALL[..5]), ("Effects", &ALL[5..])].iter().enumerate() {
+    for (g, group) in [("Light", &ALL[..5]), ("Effects", &ALL[5..])]
+        .iter()
+        .enumerate()
+    {
         if g > 0 {
             y += GROUP_GAP;
         }
@@ -104,7 +110,12 @@ fn sidebar(s: &Lab, hair: f32) -> El {
                 .size(SIDEBAR_W, GROUP_H)
                 .pl(TEXT_X)
                 .center_y()
-                .child(text(group.0.to_uppercase()).key("label").font(EYEBROW).color(p.faint)),
+                .child(
+                    text(group.0.to_uppercase())
+                        .key("label")
+                        .font(EYEBROW)
+                        .color(p.faint),
+                ),
         );
         y += GROUP_H;
         for sc in group.1.iter().copied() {
@@ -122,10 +133,18 @@ fn sidebar(s: &Lab, hair: f32) -> El {
                     .px(PILL_PAD)
                     .center_y()
                     .radius(PILL_R)
-                    .hover(if selected { Color::TRANSPARENT } else { p.hover })
+                    .hover(if selected {
+                        Color::TRANSPARENT
+                    } else {
+                        p.hover
+                    })
                     .press(p.pressed)
                     .on_press(move |s: &mut Lab| s.select(sc))
-                    .child(text(sc.title()).key("label").font(BODY).color(if selected { p.text } else { p.muted })),
+                    .child(text(sc.title()).key("label").font(BODY).color(if selected {
+                        p.text
+                    } else {
+                        p.muted
+                    })),
             );
             y += ROW_PITCH;
         }
@@ -150,7 +169,20 @@ fn sidebar(s: &Lab, hair: f32) -> El {
                 .w(SIDEBAR_W)
                 .h_full()
                 .fill(p.base)
-                .child(row().key("brand").h(52.0).w_full().pl(86.0).center_y().child(text("Rune Lab").key("title").font(TextStyle::new(13.0, 600.0)).color(p.text)))
+                .child(
+                    row()
+                        .key("brand")
+                        .h(52.0)
+                        .w_full()
+                        .pl(86.0)
+                        .center_y()
+                        .child(
+                            text("Rune Lab")
+                                .key("title")
+                                .font(TextStyle::new(13.0, 600.0))
+                                .color(p.text),
+                        ),
+                )
                 .child(list)
                 .child(spacer())
                 .child(
@@ -203,13 +235,38 @@ fn panel(s: &Lab, hair: f32) -> El {
                 .px(20.0)
                 .pt(48.0)
                 .pb(20.0)
-                .child(text(sc.title()).key("scene-title").font(TITLE).color(p.text))
-                .child(text(sc.hint()).key("scene-hint").w(PANEL_W - 40.0).wrap().font(TextStyle::new(12.5, 400.0).lh(18.0)).color(p.muted).mt(8.0))
-                .child(el().key("sep").h(hair).w_full().fill(p.border).mt(20.0).mb(20.0))
+                .child(
+                    text(sc.title())
+                        .key("scene-title")
+                        .font(TITLE)
+                        .color(p.text),
+                )
+                .child(
+                    text(sc.hint())
+                        .key("scene-hint")
+                        .w(PANEL_W - 40.0)
+                        .wrap()
+                        .font(TextStyle::new(12.5, 400.0).lh(18.0))
+                        .color(p.muted)
+                        .mt(8.0),
+                )
+                .child(
+                    el().key("sep")
+                        .h(hair)
+                        .w_full()
+                        .fill(p.border)
+                        .mt(20.0)
+                        .mb(20.0),
+                )
                 .child(knobs)
                 .child(spacer())
                 .child(el().key("sep2").h(hair).w_full().fill(p.border).mb(14.0))
-                .child(toggle_row("reduced", "Reduce motion", s.reduced, |s: &mut Lab| s.reduced = !s.reduced))
+                .child(toggle_row(
+                    "reduced",
+                    "Reduce motion",
+                    s.reduced,
+                    |s: &mut Lab| s.reduced = !s.reduced,
+                ))
                 .child(readout(s)),
         )
 }
@@ -224,16 +281,35 @@ fn readout(s: &Lab) -> El {
             .w_full()
             .center_y()
             .justify_between()
-            .child(text(name).key("name").font(TextStyle::new(12.0, 400.0)).color(p.faint))
-            .child(text(value).key("value").font(VALUE).color(p.muted).align(Align::End))
+            .child(
+                text(name)
+                    .key("name")
+                    .font(TextStyle::new(12.0, 400.0))
+                    .color(p.faint),
+            )
+            .child(
+                text(value)
+                    .key("value")
+                    .font(VALUE)
+                    .color(p.muted)
+                    .align(Align::End),
+            )
     };
-    let state = if s.perf.live { "Animating" } else { "At rest · no frames" };
+    let state = if s.perf.live {
+        "Animating"
+    } else {
+        "At rest · no frames"
+    };
     col()
         .key("readout")
         .mt(12.0)
         .gap(2.0)
         .child(line("gpu", "GPU frame", f(s.perf.gpu_ms)))
-        .child(line("cpu", "CPU frame", f(Some(s.perf.cpu_ms).filter(|v| *v > 0.0))))
+        .child(line(
+            "cpu",
+            "CPU frame",
+            f(Some(s.perf.cpu_ms).filter(|v| *v > 0.0)),
+        ))
         .child(line("state", "Display link", state.to_owned()))
 }
 
@@ -269,7 +345,13 @@ fn slider(sc: Scene, i: usize, k: &KnobSpec, v: f32, dec: u8) -> El {
                 .w_full()
                 .justify_between()
                 .child(text(k.label).key("label").font(LABEL).color(p.text))
-                .child(text(value).key("value").font(VALUE).color(p.muted).align(Align::End)),
+                .child(
+                    text(value)
+                        .key("value")
+                        .font(VALUE)
+                        .color(p.muted)
+                        .align(Align::End),
+                ),
         )
         .child(
             el().key("slider")
@@ -288,16 +370,37 @@ fn slider(sc: Scene, i: usize, k: &KnobSpec, v: f32, dec: u8) -> El {
                             }
                         }
                         Phase::Move => {
-                            let knob = kd / 2.0 + ((d.data - min) / (max - min)).clamp(0.0, 1.0) * travel;
-                            let grab = if (d.start_x - knob).abs() <= kd / 2.0 + 3.0 { d.start_x - knob } else { 0.0 };
+                            let knob =
+                                kd / 2.0 + ((d.data - min) / (max - min)).clamp(0.0, 1.0) * travel;
+                            let grab = if (d.start_x - knob).abs() <= kd / 2.0 + 3.0 {
+                                d.start_x - knob
+                            } else {
+                                0.0
+                            };
                             s.vals[sc.idx()][i] = to_value(d.x - grab);
                             tx.instant();
                         }
-                        Phase::Up => { if d.cancelled() { s.vals[sc.idx()][i] = d.data; } }
+                        Phase::Up => {
+                            if d.cancelled() {
+                                s.vals[sc.idx()][i] = d.data;
+                            }
+                        }
                     }
                 })
-                .child(el().key("track").size(w, bar).absolute(0.0, (h - bar) / 2.0).radius(bar / 2.0).fill(p.track))
-                .child(el().key("fill").size(kd / 2.0 + u * travel, bar).absolute(0.0, (h - bar) / 2.0).radius(bar / 2.0).fill(p.accent))
+                .child(
+                    el().key("track")
+                        .size(w, bar)
+                        .absolute(0.0, (h - bar) / 2.0)
+                        .radius(bar / 2.0)
+                        .fill(p.track),
+                )
+                .child(
+                    el().key("fill")
+                        .size(kd / 2.0 + u * travel, bar)
+                        .absolute(0.0, (h - bar) / 2.0)
+                        .radius(bar / 2.0)
+                        .fill(p.accent),
+                )
                 .child(
                     el().key("knob")
                         .size(kd, kd)
@@ -322,14 +425,26 @@ fn toggle_row(key: &'static str, label: &str, on: bool, flip: impl Fn(&mut Lab) 
         .center_y()
         .justify_between()
         .on_press(flip)
-        .child(text(label.to_owned()).key("label").font(LABEL).color(p.text))
+        .child(
+            text(label.to_owned())
+                .key("label")
+                .font(LABEL)
+                .color(p.text),
+        )
         .child(
             el().key("switch")
                 .size(w, h)
                 .radius(h / 2.0)
                 .fill(if on { p.accent } else { p.track })
                 .motion(motion::SNAPPY)
-                .child(el().key("knob").size(k, k).absolute(if on { w - k - inset } else { inset }, inset).radius(k / 2.0).fill(p.knob).shadow(1.0, 2.0, p.shadow)),
+                .child(
+                    el().key("knob")
+                        .size(k, k)
+                        .absolute(if on { w - k - inset } else { inset }, inset)
+                        .radius(k / 2.0)
+                        .fill(p.knob)
+                        .shadow(1.0, 2.0, p.shadow),
+                ),
         )
 }
 
@@ -356,5 +471,9 @@ fn swatches(sc: Scene, i: usize, k: &KnobSpec, cur: usize, palette: &'static [u3
                 .on_press(move |s: &mut Lab| s.vals[sc.idx()][i] = j as f32),
         );
     }
-    col().key(k.id).gap(10.0).child(text(k.label).key("label").font(LABEL).color(p.text)).child(r)
+    col()
+        .key(k.id)
+        .gap(10.0)
+        .child(text(k.label).key("label").font(LABEL).color(p.text))
+        .child(r)
 }

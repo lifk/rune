@@ -40,12 +40,20 @@ impl<S: 'static> Runtime<S> {
         self.memo.on_prune(&remap);
         remap.clear();
         self.apply_scratch.remap = remap;
-        self.virtuals.retain(|path, _| self.nodes.iter().any(|n| n.path == *path));
+        self.virtuals
+            .retain(|path, _| self.nodes.iter().any(|n| n.path == *path));
         self.refresh_modal_index();
-        self.flying.retain(|(id, _)| self.node_index.contains_key(id));
+        self.flying
+            .retain(|(id, _)| self.node_index.contains_key(id));
         self.has_raise = self.nodes.iter().any(|n| n.vis_flags.raise());
         self.has_paint_order = self.nodes.iter().any(|n| n.vis.paint_order != 0);
-        if !self.layer_paint_order.is_empty() || !self.flying.is_empty() || self.has_raise || self.has_paint_order { self.update_layer_paint_order(); }
+        if !self.layer_paint_order.is_empty()
+            || !self.flying.is_empty()
+            || self.has_raise
+            || self.has_paint_order
+        {
+            self.update_layer_paint_order();
+        }
         // A removed element's live sources (a `Pixels` stream) stop waking this window.
         if !self.live_subscriptions.is_empty() {
             let dirty = self.live_dirty;

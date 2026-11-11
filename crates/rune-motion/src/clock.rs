@@ -22,13 +22,24 @@ pub struct Clock {
 impl Clock {
     /// Driven by host timestamps (seconds, any epoch).
     pub fn display() -> Clock {
-        Clock { base: 0.0, anchor: f64::NAN, scale: 1.0, paused: false, manual_hz: None, frame: 0, now: 0.0 }
+        Clock {
+            base: 0.0,
+            anchor: f64::NAN,
+            scale: 1.0,
+            paused: false,
+            manual_hz: None,
+            frame: 0,
+            now: 0.0,
+        }
     }
 
     /// Driven by `step()` at a fixed rate, starting at τ = 0.
     pub fn manual(hz: f64) -> Clock {
         assert!(hz > 0.0);
-        Clock { manual_hz: Some(hz), ..Clock::display() }
+        Clock {
+            manual_hz: Some(hz),
+            ..Clock::display()
+        }
     }
 
     /// Animation time for a host timestamp, without advancing.

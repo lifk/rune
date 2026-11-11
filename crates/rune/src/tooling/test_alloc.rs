@@ -18,8 +18,14 @@ fn track(allocs: usize, bytes: isize) {
 }
 // SAFETY: forwards to the system allocator, counting calls and bytes on this thread.
 unsafe impl GlobalAlloc for Counting {
-    unsafe fn alloc(&self, l: Layout) -> *mut u8 { track(1, l.size() as isize); unsafe { System.alloc(l) } }
-    unsafe fn dealloc(&self, p: *mut u8, l: Layout) { track(0, -(l.size() as isize)); unsafe { System.dealloc(p, l) } }
+    unsafe fn alloc(&self, l: Layout) -> *mut u8 {
+        track(1, l.size() as isize);
+        unsafe { System.alloc(l) }
+    }
+    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
+        track(0, -(l.size() as isize));
+        unsafe { System.dealloc(p, l) }
+    }
     unsafe fn realloc(&self, p: *mut u8, l: Layout, n: usize) -> *mut u8 {
         track(1, n as isize - l.size() as isize);
         unsafe { System.realloc(p, l, n) }
@@ -29,7 +35,9 @@ unsafe impl GlobalAlloc for Counting {
 static COUNTING: Counting = Counting;
 
 /// Allocations made on this thread so far.
-pub(crate) fn allocs() -> usize { ALLOCS.with(Cell::get) }
+pub(crate) fn allocs() -> usize {
+    ALLOCS.with(Cell::get)
+}
 
 /// Runs `f`, returning its result and the most bytes it held allocated at once on this thread
 /// beyond what was live when it started.

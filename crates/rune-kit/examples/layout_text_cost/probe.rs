@@ -51,7 +51,9 @@ struct Book {
 
 impl Book {
     fn intern(&mut self, stack: &[u64]) -> u32 {
-        if let Some(&id) = self.ids.get(stack) { return id; }
+        if let Some(&id) = self.ids.get(stack) {
+            return id;
+        }
         let id = self.stacks.len() as u32;
         self.stacks.push(stack.to_vec());
         self.ids.insert(stack.to_vec(), id);
@@ -82,13 +84,17 @@ unsafe impl GlobalAlloc for Probe {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         // SAFETY: forwarded unchanged.
         let p = unsafe { System.alloc(layout) };
-        if !p.is_null() { note_alloc(p, layout.size()); }
+        if !p.is_null() {
+            note_alloc(p, layout.size());
+        }
         p
     }
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
         // SAFETY: forwarded unchanged.
         let p = unsafe { System.alloc_zeroed(layout) };
-        if !p.is_null() { note_alloc(p, layout.size()); }
+        if !p.is_null() {
+            note_alloc(p, layout.size());
+        }
         p
     }
     unsafe fn dealloc(&self, p: *mut u8, layout: Layout) {
@@ -100,14 +106,20 @@ unsafe impl GlobalAlloc for Probe {
         note_free(p, layout.size());
         // SAFETY: forwarded unchanged.
         let q = unsafe { System.realloc(p, layout, new) };
-        if q.is_null() { note_alloc(p, layout.size()); } else { note_alloc(q, new); }
+        if q.is_null() {
+            note_alloc(p, layout.size());
+        } else {
+            note_alloc(q, new);
+        }
         q
     }
 }
 
 #[inline(always)]
 fn note_alloc(p: *mut u8, size: usize) {
-    if !on_main() { return; }
+    if !on_main() {
+        return;
+    }
     ALLOCS.fetch_add(1, Relaxed);
     BYTES.fetch_add(size as u64, Relaxed);
     LIVE.fetch_add(size as i64, Relaxed);
@@ -129,19 +141,29 @@ fn note_alloc(p: *mut u8, size: usize) {
 
 #[inline(always)]
 fn note_free(p: *mut u8, size: usize) {
-    if !on_main() { return; }
+    if !on_main() {
+        return;
+    }
     LIVE.fetch_sub(size as i64, Relaxed);
     if TRACK.load(Relaxed) && !BUSY.get() {
-        with_book(|b| { b.live.remove(&(p as usize)); });
+        with_book(|b| {
+            b.live.remove(&(p as usize));
+        });
     }
 }
 
 /// Allocations the main thread has made, a running count.
-pub fn allocations() -> u64 { ALLOCS.load(Relaxed) }
+pub fn allocations() -> u64 {
+    ALLOCS.load(Relaxed)
+}
 /// Bytes the main thread has allocated, a running total.
-pub fn allocated_bytes() -> u64 { BYTES.load(Relaxed) }
+pub fn allocated_bytes() -> u64 {
+    BYTES.load(Relaxed)
+}
 /// Bytes the main thread has allocated and not freed since `init`.
-pub fn live_bytes() -> i64 { LIVE.load(Relaxed) }
+pub fn live_bytes() -> i64 {
+    LIVE.load(Relaxed)
+}
 
 /// Marks the calling thread as the one measured, and starts recording allocation stacks when
 /// `heap`. Call first thing in `main`.
@@ -149,12 +171,16 @@ pub fn init(heap: bool) {
     // SAFETY: pthread_self has no preconditions.
     MAIN.store(unsafe { pthread_self() }, Relaxed);
     BUSY.set(false);
-    if heap && cfg!(all(target_os = "macos", target_arch = "aarch64")) { TRACK.store(true, Relaxed); }
+    if heap && cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        TRACK.store(true, Relaxed);
+    }
 }
 
 /// Records what is live now under case `tag`, by allocating stack.
 pub fn snapshot(tag: u32) {
-    if !TRACK.load(Relaxed) { return; }
+    if !TRACK.load(Relaxed) {
+        return;
+    }
     with_book(|b| {
         let mut held: HashMap<(u32, u32), (u64, u64)> = HashMap::new();
         for &(size, id, _) in b.live.values() {
@@ -179,7 +205,10 @@ fn own_stack(out: &mut [u64; DEPTH]) -> usize {
         unsafe { mac::walk(fp, lo, hi, out, 0) }
     }
     #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
-    { let _ = out; 0 }
+    {
+        let _ = out;
+        0
+    }
 }
 
 /// A sampling profiler of the main thread, recording under the current `TAG`.
@@ -204,13 +233,19 @@ impl Sampler {
                 while !stop.load(Relaxed) {
                     // Spin rather than sleep: macOS stretches short sleeps to a millisecond or more.
                     due += period;
-                    while std::time::Instant::now() < due { std::thread::yield_now(); }
+                    while std::time::Instant::now() < due {
+                        std::thread::yield_now();
+                    }
                     let tag = TAG.load(Relaxed);
-                    if tag == 0 { continue; }
+                    if tag == 0 {
+                        continue;
+                    }
                     // Nothing may allocate between suspend and resume: the main thread could
                     // hold the allocator's lock.
                     let n = target.sample(&mut buf);
-                    if n > 0 { taken.push((tag, buf[..n].to_vec())); }
+                    if n > 0 {
+                        taken.push((tag, buf[..n].to_vec()));
+                    }
                 }
                 // SAFETY: the main thread is blocked in `stop` (joining), so the book is ours.
                 let book = unsafe { (*BOOK.0.get()).get_or_insert_with(Book::default) };
@@ -221,13 +256,18 @@ impl Sampler {
             }))
         };
         #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
-        let thread = { let _ = micros; None };
+        let thread = {
+            let _ = micros;
+            None
+        };
         Sampler { stop, thread }
     }
 
     pub fn stop(mut self) {
         self.stop.store(true, Relaxed);
-        if let Some(t) = self.thread.take() { t.join().unwrap(); }
+        if let Some(t) = self.thread.take() {
+            t.join().unwrap();
+        }
     }
 }
 
@@ -239,8 +279,12 @@ pub fn dump(path: &str, cases: &[(u32, String)], meta: &[String]) {
     // SAFETY: tracking is off and the sampler has stopped; only this thread touches the book.
     let Some(book) = (unsafe { (*BOOK.0.get()).take() }) else { return };
     let mut out = std::io::BufWriter::new(std::fs::File::create(path).expect("--out"));
-    for (tag, name) in cases { writeln!(out, "CASE {tag} {name}").unwrap(); }
-    for line in meta { writeln!(out, "META {line}").unwrap(); }
+    for (tag, name) in cases {
+        writeln!(out, "CASE {tag} {name}").unwrap();
+    }
+    for line in meta {
+        writeln!(out, "META {line}").unwrap();
+    }
     let mut addrs: Vec<u64> = book.stacks.iter().flatten().copied().collect();
     addrs.sort_unstable();
     addrs.dedup();
@@ -250,19 +294,32 @@ pub fn dump(path: &str, cases: &[(u32, String)], meta: &[String]) {
     }
     for (id, s) in book.stacks.iter().enumerate() {
         write!(out, "STACK {id}").unwrap();
-        for a in s { write!(out, " {a:x}").unwrap(); }
+        for a in s {
+            write!(out, " {a:x}").unwrap();
+        }
         writeln!(out).unwrap();
     }
-    for ((tag, id), n) in &book.samples { writeln!(out, "SAMPLE {tag} {id} {n}").unwrap(); }
-    for ((tag, id), (n, bytes)) in &book.made { writeln!(out, "ALLOC {tag} {id} {n} {bytes}").unwrap(); }
-    for ((tag, id), (n, bytes)) in &book.held { writeln!(out, "LIVE {tag} {id} {n} {bytes}").unwrap(); }
+    for ((tag, id), n) in &book.samples {
+        writeln!(out, "SAMPLE {tag} {id} {n}").unwrap();
+    }
+    for ((tag, id), (n, bytes)) in &book.made {
+        writeln!(out, "ALLOC {tag} {id} {n} {bytes}").unwrap();
+    }
+    for ((tag, id), (n, bytes)) in &book.held {
+        writeln!(out, "LIVE {tag} {id} {n} {bytes}").unwrap();
+    }
 }
 
 fn describe(a: u64) -> (String, u64, String) {
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    { mac::describe(a) }
+    {
+        mac::describe(a)
+    }
     #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
-    { let _ = a; ("?".into(), 0, "?".into()) }
+    {
+        let _ = a;
+        ("?".into(), 0, "?".into())
+    }
 }
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -273,10 +330,23 @@ mod mac {
 
     #[repr(C)]
     #[derive(Default)]
-    struct ThreadState { x: [u64; 29], fp: u64, lr: u64, sp: u64, pc: u64, cpsr: u32, pad: u32 }
+    struct ThreadState {
+        x: [u64; 29],
+        fp: u64,
+        lr: u64,
+        sp: u64,
+        pc: u64,
+        cpsr: u32,
+        pad: u32,
+    }
 
     #[repr(C)]
-    struct DlInfo { fname: *const c_char, fbase: *mut c_void, sname: *const c_char, saddr: *mut c_void }
+    struct DlInfo {
+        fname: *const c_char,
+        fbase: *mut c_void,
+        sname: *const c_char,
+        saddr: *mut c_void,
+    }
 
     unsafe extern "C" {
         fn mach_thread_self() -> u32;
@@ -289,7 +359,9 @@ mod mac {
     }
 
     /// Drops pointer-authentication bits from a return address saved by arm64e code.
-    fn strip(a: u64) -> u64 { a & 0x0000_7fff_ffff_ffff }
+    fn strip(a: u64) -> u64 {
+        a & 0x0000_7fff_ffff_ffff
+    }
 
     pub fn stack_bounds(thread: usize) -> (u64, u64) {
         // SAFETY: `thread` is a live pthread (the main thread).
@@ -307,16 +379,24 @@ mod mac {
         while n < out.len() && fp >= lo && fp + 16 <= hi && fp % 8 == 0 {
             // SAFETY: `fp..fp + 16` is inside the stack (checked above).
             let (next, ret) = unsafe { (*(fp as *const u64), *((fp + 8) as *const u64)) };
-            if ret == 0 { break; }
+            if ret == 0 {
+                break;
+            }
             out[n] = strip(ret);
             n += 1;
-            if next <= fp { break; }
+            if next <= fp {
+                break;
+            }
             fp = next;
         }
         n
     }
 
-    pub struct Target { port: u32, lo: u64, hi: u64 }
+    pub struct Target {
+        port: u32,
+        lo: u64,
+        hi: u64,
+    }
 
     impl Target {
         pub fn current() -> Target {
@@ -334,7 +414,9 @@ mod mac {
             // SAFETY: `port` names a live thread of this process; the state buffer is the
             // flavor's size. The thread is resumed before return whatever happens.
             unsafe {
-                if thread_suspend(self.port) != 0 { return 0; }
+                if thread_suspend(self.port) != 0 {
+                    return 0;
+                }
                 let n = if thread_get_state(self.port, ARM_THREAD_STATE64, &mut st, &mut count) == 0 {
                     out[0] = strip(st.pc);
                     // The link register is the caller when pc is in a leaf function without
@@ -351,7 +433,12 @@ mod mac {
     }
 
     pub fn describe(a: u64) -> (String, u64, String) {
-        let mut info = DlInfo { fname: std::ptr::null(), fbase: std::ptr::null_mut(), sname: std::ptr::null(), saddr: std::ptr::null_mut() };
+        let mut info = DlInfo {
+            fname: std::ptr::null(),
+            fbase: std::ptr::null_mut(),
+            sname: std::ptr::null(),
+            saddr: std::ptr::null_mut(),
+        };
         // A return address points after the call; look up the call itself.
         // SAFETY: dladdr only reads loader tables; `info` is writable.
         if unsafe { dladdr(a.saturating_sub(1) as *const c_void, &mut info) } == 0 || info.fname.is_null() {
@@ -359,7 +446,11 @@ mod mac {
         }
         // SAFETY: dladdr returned C strings owned by the loader.
         let image = unsafe { CStr::from_ptr(info.fname) }.to_string_lossy().into_owned();
-        let sym = if info.sname.is_null() { "?".into() } else { unsafe { CStr::from_ptr(info.sname) }.to_string_lossy().into_owned() };
+        let sym = if info.sname.is_null() {
+            "?".into()
+        } else {
+            unsafe { CStr::from_ptr(info.sname) }.to_string_lossy().into_owned()
+        };
         (image, info.fbase as u64, sym.replace(' ', "_"))
     }
 }

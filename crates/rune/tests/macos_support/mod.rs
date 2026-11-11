@@ -1,10 +1,14 @@
 #![allow(dead_code)]
 
-use std::process::Command;
-use std::time::{Duration, Instant};
-use objc2::{class, msg_send, msg_send_id, rc::Retained, runtime::{AnyObject, Bool}};
+use objc2::{
+    class, msg_send, msg_send_id,
+    rc::Retained,
+    runtime::{AnyObject, Bool},
+};
 use objc2_foundation::{NSArray, NSPoint, NSString};
 use rune::AppHandle;
+use std::process::Command;
+use std::time::{Duration, Instant};
 
 pub const CUA_DRIVER: &str = "/Applications/CuaDriver.app/Contents/MacOS/cua-driver";
 
@@ -24,18 +28,25 @@ unsafe extern "C" {
     fn CFRelease(object: *mut std::ffi::c_void);
 }
 
-pub fn on_main<S: 'static, T: Send + 'static>(handle: &AppHandle<S>, f: impl FnOnce() -> T + Send + 'static) -> T {
+pub fn on_main<S: 'static, T: Send + 'static>(
+    handle: &AppHandle<S>,
+    f: impl FnOnce() -> T + Send + 'static,
+) -> T {
     let (tx, rx) = std::sync::mpsc::channel();
     handle.update(move |_, _| {
         let _ = tx.send(f());
     });
-    rx.recv_timeout(Duration::from_secs(10)).expect("event thread stalled")
+    rx.recv_timeout(Duration::from_secs(10))
+        .expect("event thread stalled")
 }
 
 pub fn wait(what: &str, f: impl Fn() -> bool) {
     let start = Instant::now();
     while !f() {
-        assert!(start.elapsed() < Duration::from_secs(10), "timed out waiting for {what}");
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "timed out waiting for {what}"
+        );
         std::thread::sleep(Duration::from_millis(10));
     }
 }
@@ -68,10 +79,14 @@ pub fn drag_pasteboard() -> (Option<String>, Option<String>) {
     unsafe {
         let name = NSString::from_str("Apple CFPasteboard drag");
         let board: *mut AnyObject = msg_send![class!(NSPasteboard), pasteboardWithName: &*name];
-        let url: Option<Retained<NSString>> = msg_send_id![board, stringForType: &*NSString::from_str("public.file-url")];
+        let url: Option<Retained<NSString>> =
+            msg_send_id![board, stringForType: &*NSString::from_str("public.file-url")];
         let names: Option<Retained<NSArray<NSString>>> =
             msg_send_id![board, propertyListForType: &*NSString::from_str("NSFilenamesPboardType")];
-        (url.map(|u| u.to_string()), names.and_then(|n| n.iter().next().map(|s| s.to_string())))
+        (
+            url.map(|u| u.to_string()),
+            names.and_then(|n| n.iter().next().map(|s| s.to_string())),
+        )
     }
 }
 
@@ -107,7 +122,8 @@ pub fn activate_helper(handle: &AppHandle<()>, pid: i32) {
         })
     });
     on_main(handle, move || unsafe {
-        let app: *mut AnyObject = msg_send![class!(NSRunningApplication), runningApplicationWithProcessIdentifier: pid];
+        let app: *mut AnyObject =
+            msg_send![class!(NSRunningApplication), runningApplicationWithProcessIdentifier: pid];
         // NSApplicationActivateIgnoringOtherApps
         let _: Bool = msg_send![app, activateWithOptions: 1usize << 1];
     });
@@ -122,7 +138,10 @@ pub fn activate_helper(handle: &AppHandle<()>, pid: i32) {
             .arg(format!(r#"{{"pid":{pid}}}"#))
             .stdout(std::process::Stdio::null())
             .status();
-        assert!(status.is_ok_and(|s| s.success()), "couldn't hand the focus to the helper (needs {CUA_DRIVER})");
+        assert!(
+            status.is_ok_and(|s| s.success()),
+            "couldn't hand the focus to the helper (needs {CUA_DRIVER})"
+        );
     }
     wait("the helper to be frontmost", helper_front);
 }

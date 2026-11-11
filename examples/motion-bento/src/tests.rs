@@ -11,8 +11,20 @@ use motion_bento_chaos::look::grid;
 #[test]
 fn script_taps_reach_the_same_state_as_the_schedule() {
     for seed in [1, 2, 3] {
-        let cfg = Config { seed, duration: 12.0, ..Config::default() };
-        let mut rt = Runtime::new(State::new(), view, (grid::WIDTH, grid::HEIGHT), Env { system_dark: true, scale: 1.0 });
+        let cfg = Config {
+            seed,
+            duration: 12.0,
+            ..Config::default()
+        };
+        let mut rt = Runtime::new(
+            State::new(),
+            view,
+            (grid::WIDTH, grid::HEIGHT),
+            Env {
+                system_dark: true,
+                scale: 1.0,
+            },
+        );
         rt.state.player = None;
         rt.state.m = Model::new(seed);
         let mut want = Model::new(seed);
@@ -25,7 +37,9 @@ fn script_taps_reach_the_same_state_as_the_schedule() {
                 rt.frame(dt);
             }
             let key = e.action.key();
-            let (x, y) = rt.find(&key).unwrap_or_else(|| panic!("seed {seed}: event {n} at {:.3}: no element {key}", e.t));
+            let (x, y) = rt.find(&key).unwrap_or_else(|| {
+                panic!("seed {seed}: event {n} at {:.3}: no element {key}", e.t)
+            });
             rt.pointer_move(x, y);
             rt.pointer_down(x, y);
             t += dt;

@@ -60,7 +60,10 @@ pub(super) enum BlockMap {
     Code(SpanMap),
     List(Vec<Vec<BlockMap>>),
     Quote(Vec<BlockMap>),
-    Table { head: Vec<SpanMap>, rows: Vec<Vec<SpanMap>> },
+    Table {
+        head: Vec<SpanMap>,
+        rows: Vec<Vec<SpanMap>>,
+    },
     #[default]
     None,
 }
@@ -298,7 +301,9 @@ impl Builder {
                     item_maps.push(maps);
                 }
             }
-            Container::List(start, items, item_maps) => self.push(Block::List { start, items }, BlockMap::List(item_maps)),
+            Container::List(start, items, item_maps) => {
+                self.push(Block::List { start, items }, BlockMap::List(item_maps))
+            }
             Container::Quote => self.push(Block::Quote(blocks), BlockMap::Quote(maps)),
             Container::Table(mut t, cells, head, mut rows, cell_maps) => {
                 if !cells.is_empty() {
@@ -337,7 +342,9 @@ impl Builder {
         true
     }
 
-    fn table(&mut self) -> Option<(&mut Table, &mut Vec<Inline>, &mut Vec<SpanMap>, &mut Vec<Vec<SpanMap>>, &mut Vec<SpanMap>)> {
+    fn table(
+        &mut self,
+    ) -> Option<(&mut Table, &mut Vec<Inline>, &mut Vec<SpanMap>, &mut Vec<Vec<SpanMap>>, &mut Vec<SpanMap>)> {
         match self.stack.last_mut() {
             Some((Container::Table(t, cells, head, rows, cell_maps), _, _)) => Some((t, cells, head, rows, cell_maps)),
             _ => None,
@@ -387,14 +394,21 @@ fn map_code_span(src: &str, range: Range<usize>, rendered: &str, offset: usize, 
                     c = next;
                     end = j + c.len_utf8();
                 }
-                if !remaining[consumed..].starts_with(c) { return None; }
-                pairs.push((at + skip + i..at + skip + end, offset + out + consumed..offset + out + consumed + c.len_utf8()));
+                if !remaining[consumed..].starts_with(c) {
+                    return None;
+                }
+                pairs.push((
+                    at + skip + i..at + skip + end,
+                    offset + out + consumed..offset + out + consumed + c.len_utf8(),
+                ));
                 consumed += c.len_utf8();
             }
             Some((consumed, pairs))
         });
         if let Some((consumed, pairs)) = matched {
-            for (src, dest) in pairs { map.push(src, dest); }
+            for (src, dest) in pairs {
+                map.push(src, dest);
+            }
             out += consumed;
         }
         if line.ends_with(['\r', '\n']) && rendered[out..].starts_with(' ') {
@@ -438,7 +452,13 @@ pub(super) fn parse_doc_tail(src: &str, autolink: bool) -> (ParsedDoc, Tail) {
         let starts_block = matches!(
             ev,
             Event::Start(
-                Tag::Paragraph | Tag::Heading { .. } | Tag::CodeBlock(_) | Tag::BlockQuote(_) | Tag::List(_) | Tag::Table(_) | Tag::HtmlBlock
+                Tag::Paragraph
+                    | Tag::Heading { .. }
+                    | Tag::CodeBlock(_)
+                    | Tag::BlockQuote(_)
+                    | Tag::List(_)
+                    | Tag::Table(_)
+                    | Tag::HtmlBlock
             ) | Event::Rule
         );
         if starts_block && b.stack.len() == 1 && b.code.is_none() {
@@ -518,7 +538,13 @@ pub(super) fn parse_doc_tail(src: &str, autolink: bool) -> (ParsedDoc, Tail) {
                         })
                         .collect();
                     b.stack.push((
-                        Container::Table(Table { align, ..Table::default() }, Vec::new(), Vec::new(), Vec::new(), Vec::new()),
+                        Container::Table(
+                            Table { align, ..Table::default() },
+                            Vec::new(),
+                            Vec::new(),
+                            Vec::new(),
+                            Vec::new(),
+                        ),
                         Vec::new(),
                         Vec::new(),
                     ));

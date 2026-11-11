@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 
-use crate::color::{oklch, oklcha, Color};
+use crate::color::{Color, oklch, oklcha};
 
 /// Maximum nesting level (`0..=MAX_LIST_LEVEL`) for [`Block::Bullet`] and [`Block::Numbered`].
 pub const MAX_LIST_LEVEL: u8 = 3;
@@ -84,7 +84,11 @@ pub struct MarkRange {
 
 impl MarkRange {
     pub fn new(range: Range<usize>, mark: Mark) -> Self {
-        Self { start: range.start, end: range.end, mark }
+        Self {
+            start: range.start,
+            end: range.end,
+            mark,
+        }
     }
 
     pub fn range(&self) -> Range<usize> {

@@ -7,8 +7,13 @@ use rune::{Color, TextStyle};
 
 use super::canvas::{Measured, Scene, measure_wrap};
 use super::layered::Spacing;
-use super::layered_draw::{Dir, DrawNode, ENTITY_PAD, Edge, Head, Line, draw_layered, entity_row_h};
-use super::{DiagramStyle, EdgeStyle, Hover, MAX_ITEMS, NodeStyle, StyleSheet, clean, clean_quoted, statements};
+use super::layered_draw::{
+    Dir, DrawNode, ENTITY_PAD, Edge, Head, Line, draw_layered, entity_row_h,
+};
+use super::{
+    DiagramStyle, EdgeStyle, Hover, MAX_ITEMS, NodeStyle, StyleSheet, clean, clean_quoted,
+    statements,
+};
 
 #[derive(Debug)]
 pub(crate) struct Entity {
@@ -38,7 +43,12 @@ pub(crate) struct ErDiagram {
 
 pub(crate) fn parse(header: &str, body: &[&str]) -> Option<ErDiagram> {
     let mut p = Parser {
-        d: ErDiagram { title: None, dir: Dir::Down, entities: Vec::new(), edges: Vec::new() },
+        d: ErDiagram {
+            title: None,
+            dir: Dir::Down,
+            entities: Vec::new(),
+            edges: Vec::new(),
+        },
         ids: HashMap::new(),
         open: None,
         skipping: false,
@@ -84,7 +94,8 @@ struct Parser {
 
 impl Parser {
     fn budget(&mut self) -> Option<()> {
-        self.over |= self.d.entities.len() + self.d.edges.len() >= MAX_ITEMS || self.attrs > MAX_ITEMS * 4;
+        self.over |=
+            self.d.entities.len() + self.d.edges.len() >= MAX_ITEMS || self.attrs > MAX_ITEMS * 4;
         (!self.over).then_some(())
     }
 
@@ -100,7 +111,10 @@ impl Parser {
             self.d.entities[idx].attrs.push(attr);
             return Some(());
         }
-        let word = s.split(|c: char| c.is_whitespace() || c == ':').next().unwrap_or("");
+        let word = s
+            .split(|c: char| c.is_whitespace() || c == ':')
+            .next()
+            .unwrap_or("");
         match word {
             "title" => {
                 let t = clean_quoted(s["title".len()..].trim());
@@ -167,7 +181,17 @@ impl Parser {
         let to = self.entity(b)?;
         self.budget()?;
         let label = label.filter(|l| !l.is_empty());
-        self.d.edges.push(Edge { from, to, label, line, start, end, minlen: 1, style: EdgeStyle::default(), on_cluster: [None; 2] });
+        self.d.edges.push(Edge {
+            from,
+            to,
+            label,
+            line,
+            start,
+            end,
+            minlen: 1,
+            style: EdgeStyle::default(),
+            on_cluster: [None; 2],
+        });
         Some(())
     }
 
@@ -177,7 +201,10 @@ impl Parser {
             None => (raw.trim(), None),
         };
         let (id, alias) = match raw.find('[') {
-            Some(at) if raw.ends_with(']') && at > 0 => (raw[..at].trim(), Some(clean_quoted(&raw[at + 1..raw.len() - 1]))),
+            Some(at) if raw.ends_with(']') && at > 0 => (
+                raw[..at].trim(),
+                Some(clean_quoted(&raw[at + 1..raw.len() - 1])),
+            ),
             _ => (raw, None),
         };
         let id = match id.strip_prefix('"').and_then(|r| r.strip_suffix('"')) {
@@ -192,7 +219,12 @@ impl Parser {
             Some(&i) => i,
             None => {
                 self.budget()?;
-                self.d.entities.push(Entity { id: id.to_owned(), label: clean(id), attrs: Vec::new(), style: NodeStyle::default() });
+                self.d.entities.push(Entity {
+                    id: id.to_owned(),
+                    label: clean(id),
+                    attrs: Vec::new(),
+                    style: NodeStyle::default(),
+                });
                 self.ids.insert(id.to_owned(), self.d.entities.len() - 1);
                 self.d.entities.len() - 1
             }
@@ -205,7 +237,9 @@ impl Parser {
 }
 
 fn valid_id(s: &str) -> bool {
-    !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.' | '*'))
+    !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.' | '*'))
 }
 
 /// `A ||--o{ B`: two marks either side of `--` (identifying) or `..` (not).
@@ -289,7 +323,9 @@ fn colon_outside_quotes(s: &str) -> Option<usize> {
     for (i, ch) in s.char_indices() {
         match ch {
             '"' => quoted = !quoted,
-            ':' if !quoted && !s[i..].starts_with(":::") && !s[..i].ends_with(':') => return Some(i),
+            ':' if !quoted && !s[i..].starts_with(":::") && !s[..i].ends_with(':') => {
+                return Some(i);
+            }
             _ => {}
         }
     }
@@ -306,13 +342,22 @@ fn parse_attr(s: &str) -> Option<Attr> {
     let ty = words.next()?;
     let name = words.next()?;
     let mut keys = Vec::new();
-    for w in words.flat_map(|w| w.split(',')).map(str::trim).filter(|w| !w.is_empty()) {
+    for w in words
+        .flat_map(|w| w.split(','))
+        .map(str::trim)
+        .filter(|w| !w.is_empty())
+    {
         match w {
             "PK" | "FK" | "UK" => keys.push(w),
             _ => return None,
         }
     }
-    Some(Attr { ty: generics(ty), name: name.to_owned(), keys: keys.join(", "), comment })
+    Some(Attr {
+        ty: generics(ty),
+        name: name.to_owned(),
+        keys: keys.join(", "),
+        comment,
+    })
 }
 
 /// `list~string~` as `list<string>`.
@@ -329,11 +374,26 @@ fn generics(s: &str) -> String {
         .collect()
 }
 
-const SPACING: Spacing = Spacing { node: 40.0, rank: 52.0, cluster: 16.0 };
+const SPACING: Spacing = Spacing {
+    node: 40.0,
+    rank: 52.0,
+    cluster: 16.0,
+};
 
-pub(crate) fn draw(d: &ErDiagram, paint: &DiagramStyle, hover: Option<(Hover, Color)>) -> Option<Scene> {
-    let head_font = TextStyle { weight: 600.0, ..paint.font };
-    let row_font = TextStyle { size: paint.font.size - 1.0, line_height: paint.font.line_height - 2.0, ..paint.font };
+pub(crate) fn draw(
+    d: &ErDiagram,
+    paint: &DiagramStyle,
+    hover: Option<(Hover, Color)>,
+) -> Option<Scene> {
+    let head_font = TextStyle {
+        weight: 600.0,
+        ..paint.font
+    };
+    let row_font = TextStyle {
+        size: paint.font.size - 1.0,
+        line_height: paint.font.line_height - 2.0,
+        ..paint.font
+    };
     let nodes: Vec<DrawNode> = d
         .entities
         .iter()
@@ -342,7 +402,12 @@ pub(crate) fn draw(d: &ErDiagram, paint: &DiagramStyle, hover: Option<(Hover, Co
             let rows: Vec<Vec<Measured>> = e
                 .attrs
                 .iter()
-                .map(|a| [&a.ty, &a.name, &a.keys, &a.comment].iter().map(|t| measure_wrap(t, row_font, 180.0)).collect())
+                .map(|a| {
+                    [&a.ty, &a.name, &a.keys, &a.comment]
+                        .iter()
+                        .map(|t| measure_wrap(t, row_font, 180.0))
+                        .collect()
+                })
                 .collect();
             // A column nobody fills takes no room.
             let mut cols = vec![0.0f32; 4];
@@ -359,8 +424,16 @@ pub(crate) fn draw(d: &ErDiagram, paint: &DiagramStyle, hover: Option<(Hover, Co
             if let Some(last) = cols.iter_mut().rev().find(|w| **w > 0.0) {
                 *last += w - table;
             }
-            let h = name.size[1] + ENTITY_PAD[1] * 2.0 + rows.iter().map(|r| entity_row_h(r)).sum::<f32>();
-            DrawNode::Entity { name, rows, cols, size: [w, h.max(36.0)], style: e.style }
+            let h = name.size[1]
+                + ENTITY_PAD[1] * 2.0
+                + rows.iter().map(|r| entity_row_h(r)).sum::<f32>();
+            DrawNode::Entity {
+                name,
+                rows,
+                cols,
+                size: [w, h.max(36.0)],
+                style: e.style,
+            }
         })
         .collect();
     draw_layered(d.dir, &nodes, &d.edges, &[], &SPACING, paint, hover)

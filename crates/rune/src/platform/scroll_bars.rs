@@ -51,7 +51,11 @@ pub(crate) struct SystemScrollBars {
 }
 
 impl SystemScrollBars {
-    pub const DEFAULT: Self = Self { bars: ScrollBars::WhenScrolling, scroller_overlay: true, jump_to_click: false };
+    pub const DEFAULT: Self = Self {
+        bars: ScrollBars::WhenScrolling,
+        scroller_overlay: true,
+        jump_to_click: false,
+    };
 
     pub const fn is_overlay(self) -> bool {
         self.bars.is_overlay(self.scroller_overlay)
@@ -104,7 +108,9 @@ pub(crate) fn scoped() -> Option<SystemScrollBars> {
 
 #[doc(hidden)]
 pub fn current_runtime_id() -> u64 {
-    VIEW_SCOPE.with(std::cell::Cell::get).map_or(0, |(_, id)| id)
+    VIEW_SCOPE
+        .with(std::cell::Cell::get)
+        .map_or(0, |(_, id)| id)
 }
 
 /// The user's "Show scroll bars" preference: the building window's setting inside a view, or the
@@ -154,7 +160,11 @@ pub(crate) fn watch() {
 #[cfg(target_os = "macos")]
 mod mac {
     use super::{SystemScrollBars, parse_show_scroll_bars};
-    use objc2::{class, msg_send, msg_send_id, rc::Retained, runtime::{AnyObject, Bool}};
+    use objc2::{
+        class, msg_send, msg_send_id,
+        rc::Retained,
+        runtime::{AnyObject, Bool},
+    };
     use objc2_foundation::{MainThreadMarker, NSString, NSUserDefaults};
     use std::{cell::Cell, sync::Mutex};
 
@@ -221,7 +231,8 @@ mod mac {
         });
         // SAFETY: main thread; the observer lives for the process, so its token is leaked.
         unsafe {
-            let center: Retained<AnyObject> = msg_send_id![class!(NSNotificationCenter), defaultCenter];
+            let center: Retained<AnyObject> =
+                msg_send_id![class!(NSNotificationCenter), defaultCenter];
             let name = NSString::from_str("NSPreferredScrollerStyleDidChangeNotification");
             let token: Option<Retained<AnyObject>> = msg_send_id![
                 &*center,
@@ -257,9 +268,18 @@ mod tests {
     #[test]
     fn parses_macos_show_scroll_bars_values() {
         assert_eq!(parse_show_scroll_bars(None), ScrollBars::Automatic);
-        assert_eq!(parse_show_scroll_bars(Some("Automatic")), ScrollBars::Automatic);
-        assert_eq!(parse_show_scroll_bars(Some("WhenScrolling")), ScrollBars::WhenScrolling);
+        assert_eq!(
+            parse_show_scroll_bars(Some("Automatic")),
+            ScrollBars::Automatic
+        );
+        assert_eq!(
+            parse_show_scroll_bars(Some("WhenScrolling")),
+            ScrollBars::WhenScrolling
+        );
         assert_eq!(parse_show_scroll_bars(Some("Always")), ScrollBars::Always);
-        assert_eq!(parse_show_scroll_bars(Some("Unexpected")), ScrollBars::Automatic);
+        assert_eq!(
+            parse_show_scroll_bars(Some("Unexpected")),
+            ScrollBars::Automatic
+        );
     }
 }

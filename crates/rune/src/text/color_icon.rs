@@ -38,7 +38,12 @@ impl ColorIcons {
     pub(super) fn begin_frame(&mut self) {
         if self.bytes > BUDGET {
             self.images.retain(|_, e| e.used);
-            self.bytes = self.images.values().filter_map(|e| e.pixels.as_ref()).map(bytes_of).sum();
+            self.bytes = self
+                .images
+                .values()
+                .filter_map(|e| e.pixels.as_ref())
+                .map(bytes_of)
+                .sum();
         }
         self.images.values_mut().for_each(|e| e.used = false);
     }
@@ -52,9 +57,19 @@ impl TextSystem {
     ///
     /// With `one` (`El::icon_one_color`) the image is the icon's silhouette in `color`: its own
     /// colours drawn as their coverage only, as an SVG mask filled with `currentColor` draws it.
-    pub fn color_icon(&mut self, icon: &'static Icon, px: u32, color: Color, one: bool) -> Option<&Pixels> {
+    pub fn color_icon(
+        &mut self,
+        icon: &'static Icon,
+        px: u32,
+        color: Color,
+        one: bool,
+    ) -> Option<&Pixels> {
         let at = icon as *const Icon as usize;
-        let ColorIcons { kinds, images, bytes } = &mut self.color_icons;
+        let ColorIcons {
+            kinds,
+            images,
+            bytes,
+        } = &mut self.color_icons;
         let hex = || color.hex()[..7].to_owned();
         let current = match *kinds.entry(at).or_insert_with(|| kind(icon)) {
             Kind::Mono => return None,
@@ -62,14 +77,19 @@ impl TextSystem {
             Kind::Color => String::new(),
             Kind::ColorAndCurrent => hex(),
         };
-        let entry = images.entry((at, px, current)).or_insert_with_key(|(_, _, current)| {
-            let pixels = match current.strip_prefix("one") {
-                Some(hex) => rasterize(icon, px, hex, Some(color)),
-                None => rasterize(icon, px, current, None),
-            };
-            *bytes += pixels.as_ref().map_or(0, bytes_of);
-            Entry { pixels, used: false }
-        });
+        let entry = images
+            .entry((at, px, current))
+            .or_insert_with_key(|(_, _, current)| {
+                let pixels = match current.strip_prefix("one") {
+                    Some(hex) => rasterize(icon, px, hex, Some(color)),
+                    None => rasterize(icon, px, current, None),
+                };
+                *bytes += pixels.as_ref().map_or(0, bytes_of);
+                Entry {
+                    pixels,
+                    used: false,
+                }
+            });
         entry.used = true;
         entry.pixels.as_ref()
     }
@@ -77,12 +97,18 @@ impl TextSystem {
 
 fn kind(icon: &Icon) -> Kind {
     let b = icon.body;
-    if !["fill=\"#", "stroke=\"#", "stop-color=\"#"].iter().any(|p| b.contains(p)) {
+    if !["fill=\"#", "stroke=\"#", "stop-color=\"#"]
+        .iter()
+        .any(|p| b.contains(p))
+    {
         return Kind::Mono;
     }
-    if b.contains("currentColor") { Kind::ColorAndCurrent } else { Kind::Color }
+    if b.contains("currentColor") {
+        Kind::ColorAndCurrent
+    } else {
+        Kind::Color
+    }
 }
-
 
 fn bytes_of(p: &Pixels) -> usize {
     let (w, h) = p.size();
@@ -92,7 +118,11 @@ fn bytes_of(p: &Pixels) -> usize {
 #[cfg(feature = "svg")]
 fn rasterize(icon: &Icon, px: u32, current: &str, one: Option<Color>) -> Option<Pixels> {
     let v = icon.view;
-    let body = if current.is_empty() { icon.body.to_owned() } else { icon.body.replace("currentColor", current) };
+    let body = if current.is_empty() {
+        icon.body.to_owned()
+    } else {
+        icon.body.replace("currentColor", current)
+    };
     let doc = format!(
         r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 {v} {v}">{body}</svg>"#
     );
@@ -100,7 +130,8 @@ fn rasterize(icon: &Icon, px: u32, current: &str, one: Option<Color>) -> Option<
     // One colour: the drawing's coverage in it; its alpha comes from the instance.
     if let Some(c) = one {
         let rgb = [c.r, c.g, c.b].map(|v| (crate::color::srgb_encode(v) * 255.0).round() as u8);
-        rgba.chunks_exact_mut(4).for_each(|p| p[..3].copy_from_slice(&rgb));
+        rgba.chunks_exact_mut(4)
+            .for_each(|p| p[..3].copy_from_slice(&rgb));
     }
     let pixels = Pixels::new();
     pixels.set(w, h, rgba);

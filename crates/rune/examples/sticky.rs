@@ -43,7 +43,10 @@ const GROUPS: &[Group] = &[
         steps: &[
             ("edit", "crates/rune/src/sticky.rs — shift & keep_on_screen"),
             ("edit", "crates/rune/src/runtime.rs — paint pass sticky dy"),
-            ("test", "sticky_top_and_bottom_hold_push_out_hit_above_siblings"),
+            (
+                "test",
+                "sticky_top_and_bottom_hold_push_out_hit_above_siblings",
+            ),
             ("test", "nested_scroll_viewports_stick_each_header"),
             ("test", "virtual_rows_keep_stuck_header_on_screen"),
         ],
@@ -76,7 +79,10 @@ struct State {
 
 impl Default for State {
     fn default() -> Self {
-        Self { collapsed: [false; 4], stuck_px: [0.0; 4] }
+        Self {
+            collapsed: [false; 4],
+            stuck_px: [0.0; 4],
+        }
     }
 }
 
@@ -87,8 +93,17 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
     let hdr_bg = oklch(0.23, 0.018, 265.0);
     let accent = oklch(0.72, 0.14, 250.0);
     let border = Color::WHITE.alpha(0.08);
-    let divider = Shadow { y: 1.0, color: Color::WHITE.alpha(0.11), ..Default::default() };
-    let drop = Shadow { y: 6.0, blur: 14.0, color: Color::BLACK.alpha(0.45), ..Default::default() };
+    let divider = Shadow {
+        y: 1.0,
+        color: Color::WHITE.alpha(0.11),
+        ..Default::default()
+    };
+    let drop = Shadow {
+        y: 6.0,
+        blur: 14.0,
+        color: Color::BLACK.alpha(0.45),
+        ..Default::default()
+    };
 
     let mut timeline = col().key("timeline").w_full().py(8.0).gap(10.0);
     for (i, g) in GROUPS.iter().enumerate() {
@@ -112,18 +127,28 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
                 st.collapsed[i] = !st.collapsed[i];
                 tx.keep_on_screen(&keep_key);
             })
-            .child(text(chevron).font(TextStyle::new(13.0, 600.0)).color(accent))
-            .child(text(g.title).font(TextStyle::new(13.0, 600.0)).color(theme.text).grow(1.0))
+            .child(
+                text(chevron)
+                    .font(TextStyle::new(13.0, 600.0))
+                    .color(accent),
+            )
+            .child(
+                text(g.title)
+                    .font(TextStyle::new(13.0, 600.0))
+                    .color(theme.text)
+                    .grow(1.0),
+            )
             .child(text(g.badge).font(type_::LABEL).color(theme.text_secondary));
 
-        let mut sec = col()
-            .key(format!("sec-{i}"))
-            .w_full()
-            .pb(6.0)
-            .child(header);
+        let mut sec = col().key(format!("sec-{i}")).w_full().pb(6.0).child(header);
 
         if !collapsed {
-            let mut body = col().key(format!("body-{i}")).w_full().px(16.0).pt(10.0).gap(8.0);
+            let mut body = col()
+                .key(format!("body-{i}"))
+                .w_full()
+                .px(16.0)
+                .pt(10.0)
+                .gap(8.0);
             for (k, (kind, detail)) in g.steps.iter().enumerate() {
                 body = body.child(
                     row()
@@ -153,23 +178,25 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
         timeline = timeline.child(sec);
     }
 
-    col()
-        .w_full()
-        .h_full()
-        .fill(bg)
-        .child(
-            col()
-                .key("scroll")
-                .w_full()
-                .grow(1.0)
-                .min_h(0.0)
-                .scroll(ScrollSpec { stick_bottom: false })
-                .child(timeline),
-        )
+    col().w_full().h_full().fill(bg).child(
+        col()
+            .key("scroll")
+            .w_full()
+            .grow(1.0)
+            .min_h(0.0)
+            .scroll(ScrollSpec {
+                stick_bottom: false,
+            })
+            .child(timeline),
+    )
 }
 
 fn bench_view(sticky: &bool, _: &mut Cx<bool>) -> El {
-    let divider = Shadow { y: 1.0, color: Color::WHITE.alpha(0.11), ..Default::default() };
+    let divider = Shadow {
+        y: 1.0,
+        color: Color::WHITE.alpha(0.11),
+        ..Default::default()
+    };
     let mut list = col().key("list").w_full();
     for i in 0..50 {
         let mut hdr = row()
@@ -192,15 +219,24 @@ fn bench_view(sticky: &bool, _: &mut Cx<bool>) -> El {
                     .h(28.0)
                     .px(12.0)
                     .center_y()
-                    .child(text(format!("step {r}: crates/rune/src/runtime.rs")).font(TextStyle::new(12.0, 400.0))),
+                    .child(
+                        text(format!("step {r}: crates/rune/src/runtime.rs"))
+                            .font(TextStyle::new(12.0, 400.0)),
+                    ),
             );
         }
         list = list.child(sec);
     }
-    col()
-        .w_full()
-        .h_full()
-        .child(col().key("scroll").w_full().h_full().scroll(ScrollSpec { stick_bottom: false }).child(list))
+    col().w_full().h_full().child(
+        col()
+            .key("scroll")
+            .w_full()
+            .h_full()
+            .scroll(ScrollSpec {
+                stick_bottom: false,
+            })
+            .child(list),
+    )
 }
 
 fn run_bench() {
@@ -226,7 +262,10 @@ fn run_bench() {
         us.sort_by(|a, b| a.total_cmp(b));
         let median = us[us.len() / 2];
         let p95 = us[(us.len() * 95) / 100];
-        println!("BENCH case={label} frames={} median_us={median:.1} p95_us={p95:.1}", us.len());
+        println!(
+            "BENCH case={label} frames={} median_us={median:.1} p95_us={p95:.1}",
+            us.len()
+        );
     }
 }
 
@@ -235,5 +274,10 @@ fn main() {
         run_bench();
         return;
     }
-    rune::run(AppSpec::new("Sticky headers", (560.0, 420.0), State::default, view));
+    rune::run(AppSpec::new(
+        "Sticky headers",
+        (560.0, 420.0),
+        State::default,
+        view,
+    ));
 }

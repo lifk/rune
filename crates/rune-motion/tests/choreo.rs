@@ -3,11 +3,17 @@ use rune_motion::{Choreography, PhaseAnimator, When, stagger};
 
 #[test]
 fn stagger_delays_ripple_from_the_origin() {
-    let d: Vec<f32> = (0..5).map(|i| stagger(i, 5, 0.1, StaggerFrom::First)).collect();
+    let d: Vec<f32> = (0..5)
+        .map(|i| stagger(i, 5, 0.1, StaggerFrom::First))
+        .collect();
     assert_eq!(d, vec![0.0, 0.1, 0.2, 0.3, 0.4]);
-    let d: Vec<f32> = (0..5).map(|i| stagger(i, 5, 0.1, StaggerFrom::Last)).collect();
+    let d: Vec<f32> = (0..5)
+        .map(|i| stagger(i, 5, 0.1, StaggerFrom::Last))
+        .collect();
     assert_eq!(d, vec![0.4, 0.3, 0.2, 0.1, 0.0]);
-    let d: Vec<f32> = (0..5).map(|i| stagger(i, 5, 0.1, StaggerFrom::Center)).collect();
+    let d: Vec<f32> = (0..5)
+        .map(|i| stagger(i, 5, 0.1, StaggerFrom::Center))
+        .collect();
     assert!((d[0] - 0.2).abs() < 1e-6 && d[2] == 0.0 && (d[4] - 0.2).abs() < 1e-6);
     let eased = Stagger::new(0.1).ease(Easing::EASE_IN);
     // Eased stagger keeps the ends and bunches the start.
@@ -40,7 +46,11 @@ fn sequence_starts_on_arrival_not_on_physical_rest() {
         t += 1.0 / 120.0;
     }
     // Step 2 is scheduled exactly at s1's logical arrival (its 0.3 s duration) + 0.05.
-    assert!((ch.start_time(s2).unwrap() - 0.35).abs() < 1e-6, "{:?}", ch.start_time(s2));
+    assert!(
+        (ch.start_time(s2).unwrap() - 0.35).abs() < 1e-6,
+        "{:?}",
+        ch.start_time(s2)
+    );
     // Step 3 waits for physical rest *and* the guard.
     assert!(ch.start_time(s3).unwrap() >= 1.5);
     assert!(ch.is_done(&store));
@@ -66,8 +76,14 @@ fn choreography_stagger_cascades_items() {
         assert!((ch.start_time(*s).unwrap() - 0.04 * i as f64).abs() < 1e-6);
     }
     store.tick_at(0.05);
-    let y: Vec<f32> = ids.iter().map(|&n| store.get(n, prop::OFFSET).unwrap().y).collect();
-    assert!(y[0] < y[1] && y[1] < y[2] && y[2] == 12.0 && y[3] == 12.0, "{y:?}");
+    let y: Vec<f32> = ids
+        .iter()
+        .map(|&n| store.get(n, prop::OFFSET).unwrap().y)
+        .collect();
+    assert!(
+        y[0] < y[1] && y[1] < y[2] && y[2] == 12.0 && y[3] == 12.0,
+        "{y:?}"
+    );
 }
 
 #[test]
@@ -130,7 +146,11 @@ fn a_cue_on_a_frozen_step_waits_and_scaled_steps_keep_one_clock() {
         }
     }
     // Resumed at 1 s, `a` arrives 0.3 s later.
-    assert!((ch.start_time(s2).unwrap() - 1.3).abs() < 1e-3, "{:?}", ch.start_time(s2));
+    assert!(
+        (ch.start_time(s2).unwrap() - 1.3).abs() < 1e-3,
+        "{:?}",
+        ch.start_time(s2)
+    );
     assert_eq!(store.get(b, prop::OPACITY), Some(1.0));
 
     // Both at half speed: `b` starts when `a` arrives, 0.6 s in, and runs on the same curve.
@@ -158,7 +178,10 @@ fn a_cue_on_a_frozen_step_waits_and_scaled_steps_keep_one_clock() {
             b_at = store.get(b, prop::OPACITY).unwrap();
         }
     }
-    assert!(a_at > 0.05 && (a_at - b_at).abs() < 1e-3, "b at 0.8 s {b_at} vs a at 0.2 s {a_at}");
+    assert!(
+        a_at > 0.05 && (a_at - b_at).abs() < 1e-3,
+        "b at 0.8 s {b_at} vs a at 0.2 s {a_at}"
+    );
 }
 
 #[test]
@@ -184,7 +207,15 @@ fn a_phase_started_frozen_advances_after_resuming() {
         phases.push(ph.current());
     }
     let switches = |p: &[usize]| p.windows(2).filter(|w| w[0] != w[1]).count();
-    assert_eq!(switches(&phases[1..120]), 0, "frozen in its first animated phase");
+    assert_eq!(
+        switches(&phases[1..120]),
+        0,
+        "frozen in its first animated phase"
+    );
     // 0.3 s per phase for 3 s ≈ 10 switches.
-    assert!(switches(&phases[120..]) >= 8, "{}", switches(&phases[120..]));
+    assert!(
+        switches(&phases[120..]) >= 8,
+        "{}",
+        switches(&phases[120..])
+    );
 }

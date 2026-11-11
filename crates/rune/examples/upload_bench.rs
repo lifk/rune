@@ -17,7 +17,12 @@ const FRAMES: usize = 600;
 const WARMUP: usize = 60;
 
 /// `UPLOAD_FRAMES` frames, default `FRAMES`: more to profile a run.
-fn frames() -> usize { std::env::var("UPLOAD_FRAMES").ok().and_then(|s| s.parse().ok()).unwrap_or(FRAMES) }
+fn frames() -> usize {
+    std::env::var("UPLOAD_FRAMES")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(FRAMES)
+}
 
 fn scene(frame: usize, scroll: bool) -> Vec<Instance> {
     (0..COUNT)
@@ -28,7 +33,13 @@ fn scene(frame: usize, scroll: bool) -> Vec<Instance> {
             } else if i % 700 == 0 {
                 x += (frame % 100) as f32;
             }
-            Instance { rect: [x, y, 20.0, 14.0], fill: [0.2, 0.4, 0.8, 1.0], radii: [3.0; 4], clip: NO_CLIP, ..Zeroable::zeroed() }
+            Instance {
+                rect: [x, y, 20.0, 14.0],
+                fill: [0.2, 0.4, 0.8, 1.0],
+                radii: [3.0; 4],
+                clip: NO_CLIP,
+                ..Zeroable::zeroed()
+            }
         })
         .collect()
 }
@@ -58,7 +69,8 @@ fn main() {
     let target = Offscreen::new(device, SIZE.0, SIZE.1);
     for (name, scroll) in [("steady", false), ("scroll", true)] {
         let mut renderer = Renderer::new(device, rune::render::OFFSCREEN_FORMAT);
-        let (mut cpu, mut instructions, mut frame, mut created) = (Vec::new(), Vec::new(), Vec::new(), 0isize);
+        let (mut cpu, mut instructions, mut frame, mut created) =
+            (Vec::new(), Vec::new(), Vec::new(), 0isize);
         let mut phases: Vec<[f64; 4]> = Vec::new();
         for i in 0..frames() + WARMUP {
             let instances = scene(i, scroll);
@@ -72,7 +84,9 @@ fn main() {
             let k3 = kinstr();
             let made = device.get_internal_counters().hal.buffers.read() - buffers;
             renderer.submit(queue, encoder);
-            if i >= WARMUP { phases.push([k1 - start_kinstr, k2 - k1, k3 - k2, kinstr() - k3]); }
+            if i >= WARMUP {
+                phases.push([k1 - start_kinstr, k2 - k1, k3 - k2, kinstr() - k3]);
+            }
             let (recorded, recorded_kinstr) = (start.elapsed(), kinstr() - start_kinstr);
             device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
             if i >= WARMUP {
@@ -90,6 +104,12 @@ fn main() {
             created as f64 / frames() as f64
         );
         let ph = |j: usize| median(phases.iter().map(|p| p[j]).collect());
-        println!("  phases kinstr: prepare={:.1} encoder={:.1} draw={:.1} submit={:.1}", ph(0), ph(1), ph(2), ph(3));
+        println!(
+            "  phases kinstr: prepare={:.1} encoder={:.1} draw={:.1} submit={:.1}",
+            ph(0),
+            ph(1),
+            ph(2),
+            ph(3)
+        );
     }
 }

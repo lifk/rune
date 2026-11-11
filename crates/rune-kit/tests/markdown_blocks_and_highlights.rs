@@ -20,7 +20,8 @@ fn caller_block_keys_insert_remove_edit_and_retarget_mid_flight() {
         col().w(320.0).child(Markdown::new(src.clone()).block_keys(fixture_keys(src, keys)).build(&Kit::neutral(true)))
     }
 
-    let mut rt = Runtime::new(("Alpha\n\nBeta".to_owned(), vec!["p-a", "p-b"]), view, (320.0, 400.0), Env::new(true, 1.0));
+    let mut rt =
+        Runtime::new(("Alpha\n\nBeta".to_owned(), vec!["p-a", "p-b"]), view, (320.0, 400.0), Env::new(true, 1.0));
     rt.frame(0.0);
     let y_a0 = by_key(&rt, "p-a").rect[1];
     let y_b0 = by_key(&rt, "p-b").rect[1];
@@ -53,8 +54,14 @@ fn caller_block_keys_insert_remove_edit_and_retarget_mid_flight() {
     rt.frame(1.0 / 60.0);
     let a_exit = by_key(&rt, "p-a");
     let b_reflow = by_key(&rt, "p-b");
-    assert!(a_exit.exiting && a_exit.opacity > 0.0 && a_exit.opacity < 1.0, "removed block stays mounted while exiting: {a_exit:?}");
-    assert!(b_reflow.moving && b_reflow.rect[1] < y_b_landed && b_reflow.rect[1] > y_a_landed, "p-b springs up: {b_reflow:?}");
+    assert!(
+        a_exit.exiting && a_exit.opacity > 0.0 && a_exit.opacity < 1.0,
+        "removed block stays mounted while exiting: {a_exit:?}"
+    );
+    assert!(
+        b_reflow.moving && b_reflow.rect[1] < y_b_landed && b_reflow.rect[1] > y_a_landed,
+        "p-b springs up: {b_reflow:?}"
+    );
     for _ in 0..60 {
         rt.frame(1.0 / 60.0);
     }
@@ -73,15 +80,23 @@ fn caller_block_keys_insert_remove_edit_and_retarget_mid_flight() {
     let h_mid = by_key(&rt, "p-intro").rect[3];
     let y_mid = by_key(&rt, "p-b").rect[1];
     assert!(h_mid > h0 && y_mid > y0, "height and sibling y are mid-spring: {h_mid} > {h0}, {y_mid} > {y0}");
-    assert!(h_mid < by_key(&rt, "p-intro").target[3] && y_mid < by_key(&rt, "p-b").target[1],
-        "editing animates toward the larger height and sibling position, not straight to them");
+    assert!(
+        h_mid < by_key(&rt, "p-intro").target[3] && y_mid < by_key(&rt, "p-b").target[1],
+        "editing animates toward the larger height and sibling position, not straight to them"
+    );
 
-    rt.state = ("Intro line one  \nline two  \nline three  \nline four  \nline five\n\nBeta".to_owned(), vec!["p-intro", "p-b"]);
+    rt.state = (
+        "Intro line one  \nline two  \nline three  \nline four  \nline five\n\nBeta".to_owned(),
+        vec!["p-intro", "p-b"],
+    );
     rt.invalidate();
     rt.frame(0.0);
     let h_retarget = by_key(&rt, "p-intro").rect[3];
     let y_retarget = by_key(&rt, "p-b").rect[1];
-    assert!((h_retarget - h_mid).abs() < 0.5 && (y_retarget - y_mid).abs() < 0.5, "retarget commit does not jump: {h_retarget} vs {h_mid}, {y_retarget} vs {y_mid}");
+    assert!(
+        (h_retarget - h_mid).abs() < 0.5 && (y_retarget - y_mid).abs() < 0.5,
+        "retarget commit does not jump: {h_retarget} vs {h_mid}, {y_retarget} vs {y_mid}"
+    );
     rt.frame(1.0 / 60.0);
     assert!(by_key(&rt, "p-intro").rect[3] > h_retarget && by_key(&rt, "p-b").rect[1] > y_retarget);
 }
@@ -90,7 +105,13 @@ fn caller_block_keys_insert_remove_edit_and_retarget_mid_flight() {
 fn block_keys_fallback_nested_and_selectable() {
     fn view(keys: &Vec<&'static str>, _: &mut Cx<Vec<&'static str>>) -> El {
         let src = "# Heading\n\n> Quoted one\n>\n> Quoted two\n\nParagraph three";
-        col().w(320.0).child(Markdown::new(src).block_keys(fixture_keys(src, keys)).selectable(true).reveal(0.15).build(&Kit::neutral(true)))
+        col().w(320.0).child(
+            Markdown::new(src)
+                .block_keys(fixture_keys(src, keys))
+                .selectable(true)
+                .reveal(0.15)
+                .build(&Kit::neutral(true)),
+        )
     }
 
     // Fewer keys, empty key and duplicate key fall back to unused b{i} keys without panicking;
@@ -99,14 +120,23 @@ fn block_keys_fallback_nested_and_selectable() {
     rt.frame(0.0);
     let paths: Vec<_> = rt.elements().into_iter().map(|e| e.path).collect();
     assert!(paths.iter().any(|p| p.ends_with("/sec-head")), "{paths:?}");
-    assert!(paths.iter().any(|p| p.contains("/sec-quote/") && p.ends_with("/b0")) && paths.iter().any(|p| p.contains("/sec-quote/") && p.ends_with("/b1")), "{paths:?}");
+    assert!(
+        paths.iter().any(|p| p.contains("/sec-quote/") && p.ends_with("/b0"))
+            && paths.iter().any(|p| p.contains("/sec-quote/") && p.ends_with("/b1")),
+        "{paths:?}"
+    );
     assert!(paths.iter().any(|p| p.ends_with("/b2")), "missing 3rd key falls back to b2: {paths:?}");
 
     // Extra keys, empty keys and duplicates never collide or panic.
     rt.state = vec!["", "dup", "dup", "extra-1", "extra-2"];
     rt.invalidate();
     rt.frame(1.0 / 60.0);
-    let top_keys: Vec<_> = rt.elements().into_iter().filter(|e| !e.exiting && e.path.matches('/').count() == 2).filter_map(|e| e.key).collect();
+    let top_keys: Vec<_> = rt
+        .elements()
+        .into_iter()
+        .filter(|e| !e.exiting && e.path.matches('/').count() == 2)
+        .filter_map(|e| e.key)
+        .collect();
     assert_eq!(top_keys, ["b0", "dup", "b2"]);
 
     // Selection across caller-keyed blocks copies the whole document in order.
@@ -127,13 +157,27 @@ fn source_keys_do_not_shift_when_parsers_disagree() {
     fn view(src: &String, _: &mut Cx<String>) -> El {
         // The caller splits a loose list into two blocks and keeps an HTML block that the
         // renderer omits. Neither boundary must steal the later paragraph's durable ID.
-        let keys = [(0, "list"), (src.find("- second").unwrap(), "second-item"),
-            (src.find("<div>").unwrap(), "html"), (src.find("After").unwrap(), "after")];
-        col().w(320.0).child(Markdown::new(src.clone()).block_keys(keys).reveal(0.15)
-            .selectable(true).streaming(true).build(&Kit::neutral(true)))
+        let keys = [
+            (0, "list"),
+            (src.find("- second").unwrap(), "second-item"),
+            (src.find("<div>").unwrap(), "html"),
+            (src.find("After").unwrap(), "after"),
+        ];
+        col().w(320.0).child(
+            Markdown::new(src.clone())
+                .block_keys(keys)
+                .reveal(0.15)
+                .selectable(true)
+                .streaming(true)
+                .build(&Kit::neutral(true)),
+        )
     }
-    let mut rt = Runtime::new("- first\n\n- second\n\n<div>ignored</div>\n\nAfter".to_owned(), view,
-        (320.0, 400.0), Env::new(true, 1.0));
+    let mut rt = Runtime::new(
+        "- first\n\n- second\n\n<div>ignored</div>\n\nAfter".to_owned(),
+        view,
+        (320.0, 400.0),
+        Env::new(true, 1.0),
+    );
     rt.frame(0.0);
     assert_eq!(by_key(&rt, "after").text.as_deref(), Some("After"));
     assert!(rt.elements().iter().all(|e| !matches!(e.key.as_deref(), Some("second-item" | "html"))));
@@ -149,14 +193,20 @@ fn source_keys_do_not_shift_when_parsers_disagree() {
 #[test]
 fn nested_tasks_report_exact_source_marker_offsets_and_tab_skips_read_only() {
     let src = "Préface\n\n- plain\n  - [ ] nested\n- [x] outer\n\nTail\n\n- [ ] last\n";
-    let mut rt = Runtime::new(TaskDoc { src: src.into(), handled: true, ..Default::default() },
-        task_view, (320.0, 400.0), Env::new(true, 1.0));
+    let mut rt = Runtime::new(
+        TaskDoc { src: src.into(), handled: true, ..Default::default() },
+        task_view,
+        (320.0, 400.0),
+        Env::new(true, 1.0),
+    );
     rt.frame(0.0);
     // Space without focus does nothing. Tab walks document order, including nested tasks.
     rt.key(rune::KeyEvent { key: rune::Key::Text(" ".into()), mods: Default::default() });
     rt.frame(1.0 / 60.0);
     assert!(rt.state.toggled.is_empty());
-    for (n, (marker, key, checked)) in [("[ ] nested", "b1", true), ("[x] outer", "b1", false), ("[ ] last", "b3", true)].into_iter().enumerate() {
+    for (n, (marker, key, checked)) in
+        [("[ ] nested", "b1", true), ("[x] outer", "b1", false), ("[ ] last", "b3", true)].into_iter().enumerate()
+    {
         rt.key(rune::KeyEvent { key: rune::Key::Tab, mods: Default::default() });
         rt.frame(1.0 / 60.0);
         rt.key(rune::KeyEvent { key: rune::Key::Text(" ".into()), mods: Default::default() });
@@ -181,7 +231,8 @@ fn nested_tasks_report_exact_source_marker_offsets_and_tab_skips_read_only() {
 fn task_controls_match_checkbox_paint_in_both_themes() {
     fn view(&(dark, checked): &(bool, bool), _: &mut Cx<(bool, bool)>) -> El {
         let kit = Kit::neutral(dark);
-        col().w(320.0)
+        col()
+            .w(320.0)
             .child(rune_kit::Checkbox::new(checked).label("Task").build(&kit).key("standard"))
             .child(Markdown::new(if checked { "- [x] Task" } else { "- [ ] Task" }).build(&kit).key("markdown"))
     }
@@ -191,11 +242,15 @@ fn task_controls_match_checkbox_paint_in_both_themes() {
             rt.frame(0.0);
             let controls: Vec<_> = rt.elements().into_iter().filter(|e| e.key.as_deref() == Some("control")).collect();
             assert_eq!(controls.len(), 2);
-            assert_eq!((controls[0].fill, controls[0].radius, controls[0].rect[2..].to_vec()),
-                (controls[1].fill, controls[1].radius, controls[1].rect[2..].to_vec()));
+            assert_eq!(
+                (controls[0].fill, controls[0].radius, controls[0].rect[2..].to_vec()),
+                (controls[1].fill, controls[1].radius, controls[1].rect[2..].to_vec())
+            );
             let marks: Vec<_> = rt.elements().into_iter().filter(|e| e.key.as_deref() == Some("mark")).collect();
-            assert_eq!((marks[0].opacity, marks[0].text_color, marks[0].rect[2..].to_vec()),
-                (marks[1].opacity, marks[1].text_color, marks[1].rect[2..].to_vec()));
+            assert_eq!(
+                (marks[0].opacity, marks[0].text_color, marks[0].rect[2..].to_vec()),
+                (marks[1].opacity, marks[1].text_color, marks[1].rect[2..].to_vec())
+            );
         }
     }
 }
@@ -305,19 +360,14 @@ fn task_lists_render_checkboxes_press_space_and_respect_read_only() {
     }
 }
 
-
 #[test]
 fn strikethrough_parses_and_paints_in_light_and_dark_themes() {
     let src = "Keep ~~struck~~ and ~~**bold** `code`~~ in\n\n- ~~item~~\n\n| Col |\n|---|\n| ~~cell~~ |\n";
     let b = parse(src);
     let Block::Para(p) = &b[0] else { panic!("{b:?}") };
     assert_eq!(p.text, "Keep struck and bold \u{202f}\u{202f}code\u{202f}\u{202f} in");
-    let struck: Vec<&str> = p
-        .spans
-        .iter()
-        .filter(|s| matches!(s.2, Style::Strike))
-        .map(|&(a, z, _)| &p.text[a..z])
-        .collect();
+    let struck: Vec<&str> =
+        p.spans.iter().filter(|s| matches!(s.2, Style::Strike)).map(|&(a, z, _)| &p.text[a..z]).collect();
     assert_eq!(struck, ["struck", "bold \u{202f}\u{202f}code\u{202f}\u{202f}"]);
 
     fn view(&(dark, strike): &(bool, bool), _: &mut Cx<(bool, bool)>) -> El {
@@ -339,12 +389,17 @@ fn strikethrough_parses_and_paints_in_light_and_dark_themes() {
         let thin_rects = |rt: &Runtime<(bool, bool)>| -> Vec<[f32; 4]> {
             rt.instances
                 .iter()
-                .filter(|i| i.params[1] == rune::render::KIND_RECT && i.rect[3] >= 0.9 && i.rect[3] <= 2.5 && i.rect[2] > 12.0)
+                .filter(|i| {
+                    i.params[1] == rune::render::KIND_RECT && i.rect[3] >= 0.9 && i.rect[3] <= 2.5 && i.rect[2] > 12.0
+                })
                 .map(|i| i.rect)
                 .collect()
         };
         let extra = thin_rects(&struck_rt).len().saturating_sub(thin_rects(&plain).len());
-        assert!(extra >= 4, "dark={dark}: strike lines drawn for paragraph, list item and table cell ({extra} new lines)");
+        assert!(
+            extra >= 4,
+            "dark={dark}: strike lines drawn for paragraph, list item and table cell ({extra} new lines)"
+        );
     }
 }
 
@@ -389,7 +444,8 @@ fn bare_urls_autolink_with_gfm_punctuation_rules_and_respect_opt_out() {
                 .build(&Kit::neutral(true)),
         )
     }
-    let mut rt = Runtime::new(AutoState { autolink: true, opened: Vec::new() }, auto_view, (480.0, 120.0), Env::new(true, 1.0));
+    let mut rt =
+        Runtime::new(AutoState { autolink: true, opened: Vec::new() }, auto_view, (480.0, 120.0), Env::new(true, 1.0));
     rt.frame(0.0);
     let (x, y) = rt.find("http://www.example.org/hello").expect("bare www link is findable by normalized URL");
     rt.pointer_move(x, y);
@@ -504,7 +560,10 @@ fn highlights_map_source_bytes_across_formatting_blocks_and_syntax_without_resha
     assert!(marks.contains(&("active-match".into(), "compute(value".into())), "{marks:?}");
 
     // Syntax-only ranges produce no mark elements at all.
-    assert!(!marks.iter().any(|(k, _)| k.starts_with("syntax-only")), "syntax-only ranges must not highlight: {marks:?}");
+    assert!(
+        !marks.iter().any(|(k, _)| k.starts_with("syntax-only")),
+        "syntax-only ranges must not highlight: {marks:?}"
+    );
 
     // 3. Current match draws its inset ring, while standard matches draw rounded bg rects without a ring.
     let want_ring = rune::color::hex("#f59e0b").unwrap().premul(1.0);
@@ -545,10 +604,7 @@ fn scroll_into_view_scrolls_to_highlighted_match_in_tall_document_and_code_block
     }
 
     fn search_view(s: &SearchApp, _: &mut Cx<SearchApp>) -> El {
-        let hls = [
-            (s.r1.clone(), Highlight::new()),
-            (s.r2.clone(), Highlight::current().key("code-hit")),
-        ];
+        let hls = [(s.r1.clone(), Highlight::new()), (s.r2.clone(), Highlight::current().key("code-hit"))];
         col()
             .key("doc-scroll")
             .w_full()
@@ -566,9 +622,7 @@ fn scroll_into_view_scrolls_to_highlighted_match_in_tall_document_and_code_block
     rt.frame(0.0);
 
     // Initially both targets are well below the 200pt viewport.
-    let mark_y = |rt: &Runtime<SearchApp>, key: &str| -> f32 {
-        by_key(rt, key).rect[1]
-    };
+    let mark_y = |rt: &Runtime<SearchApp>, key: &str| -> f32 { by_key(rt, key).rect[1] };
     let y1_initial = mark_y(&rt, &Markdown::highlight_key(0));
     let y2_initial = mark_y(&rt, "code-hit");
     assert!(y1_initial > 400.0 && y2_initial > y1_initial + 300.0, "initially below fold: {y1_initial}, {y2_initial}");
@@ -617,17 +671,28 @@ fn review_highlight_mapping_edges_and_streaming() {
         ("reference [^needle]\n\n[^needle]: text", "needle", "needle"),
     ] {
         let start = src.find(needle).unwrap();
-        let mut rt = Runtime::new((src.into(), vec![(start..start + needle.len(), Highlight::new())]), view, (480.0, 200.0), Env::new(true, 1.0));
+        let mut rt = Runtime::new(
+            (src.into(), vec![(start..start + needle.len(), Highlight::new())]),
+            view,
+            (480.0, 200.0),
+            Env::new(true, 1.0),
+        );
         rt.frame(0.0);
         let labels: Vec<_> = rt.elements().into_iter().filter(|e| e.role == "mark").filter_map(|e| e.label).collect();
         assert_eq!(labels, [expected], "source={src:?}");
     }
     let src = "αβ **needle**\n\nsecond https://example.org/path";
     let start = src.find("needle").unwrap();
-    let marks = vec![(start..start + 6, Highlight::new()), (1..3, Highlight::current()), (usize::MAX - 1..usize::MAX, Highlight::new())];
+    let marks = vec![
+        (start..start + 6, Highlight::new()),
+        (1..3, Highlight::current()),
+        (usize::MAX - 1..usize::MAX, Highlight::new()),
+    ];
     let mut rt = Runtime::new((String::new(), marks), view, (480.0, 200.0), Env::new(true, 1.0));
     for end in 0..=src.len() {
-        if !src.is_char_boundary(end) { continue; }
+        if !src.is_char_boundary(end) {
+            continue;
+        }
         rt.state.0 = src[..end].into();
         rt.invalidate();
         rt.frame(0.0);
@@ -643,14 +708,26 @@ fn review_highlight_mapping_edges_and_streaming() {
 
 #[test]
 fn review_marks_do_not_wrap_large_offsets_or_intercept_links() {
-    struct State { opened: Vec<String> }
+    struct State {
+        opened: Vec<String>,
+    }
     fn view(_: &State, _: &mut Cx<State>) -> El {
         let src = "~~https://example.org/path~~ and שלום world";
-        col().w(220.0).child(Markdown::new(src).selectable(true)
-            .highlights([(10..24, Highlight::new()), (2..26, Highlight::current().key("hit"))])
-            .on_link(|s: &mut State, url| s.opened.push(url.into())).build(&Kit::neutral(true)))
-            .child(rune::text("plain").text_highlight(rune::TextHighlight::new(
-                (u32::MAX as usize + 1)..(u32::MAX as usize + 5), rune::Color::WHITE).key("outside")))
+        col()
+            .w(220.0)
+            .child(
+                Markdown::new(src)
+                    .selectable(true)
+                    .highlights([(10..24, Highlight::new()), (2..26, Highlight::current().key("hit"))])
+                    .on_link(|s: &mut State, url| s.opened.push(url.into()))
+                    .build(&Kit::neutral(true)),
+            )
+            .child(
+                rune::text("plain").text_highlight(
+                    rune::TextHighlight::new((u32::MAX as usize + 1)..(u32::MAX as usize + 5), rune::Color::WHITE)
+                        .key("outside"),
+                ),
+            )
     }
     let mut rt = Runtime::new(State { opened: Vec::new() }, view, (220.0, 180.0), Env::new(true, 1.0));
     rt.frame(0.0);
@@ -669,16 +746,25 @@ fn review_autolinks_skip_images_emails_and_unsafe_schemes() {
     let src = "HTTP://example.org/a, ![https://image.example/alt](image.png) [https://label.example](https://dest.example) <https://angle.example> `https://code.example` foo@bar.com javascript:alert(1) data:text/plain,test";
     let blocks = parse(src);
     let Block::Para(p) = &blocks[0] else { panic!("{blocks:?}") };
-    assert_eq!(p.links.iter().map(|(_, _, u)| u.as_str()).collect::<Vec<_>>(),
-        ["HTTP://example.org/a", "https://dest.example", "https://angle.example"]);
+    assert_eq!(
+        p.links.iter().map(|(_, _, u)| u.as_str()).collect::<Vec<_>>(),
+        ["HTTP://example.org/a", "https://dest.example", "https://angle.example"]
+    );
 }
 
 #[test]
 fn review_two_thousand_matches_add_no_layout_nodes_or_shapes() {
     type State = (String, bool);
     fn view((src, marked): &State, _: &mut Cx<State>) -> El {
-        let ranges = if *marked { src.match_indices("needle").map(|(i, _)| (i..i + 6, Highlight::new())).collect() } else { Vec::new() };
-        col().w(480.0).h(200.0).scroll(ScrollSpec { stick_bottom: false })
+        let ranges = if *marked {
+            src.match_indices("needle").map(|(i, _)| (i..i + 6, Highlight::new())).collect()
+        } else {
+            Vec::new()
+        };
+        col()
+            .w(480.0)
+            .h(200.0)
+            .scroll(ScrollSpec { stick_bottom: false })
             .child(Markdown::new(src.as_str()).highlights(ranges).build(&Kit::neutral(true)))
     }
     let src = "needle needle needle needle with some fictional filler words.\n\n".repeat(500);

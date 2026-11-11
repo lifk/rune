@@ -27,7 +27,12 @@ pub struct Config {
 
 impl Config {
     pub fn new(directory: impl Into<PathBuf>, app: impl Into<String>) -> Self {
-        Self { directory: directory.into(), app: app.into(), build: String::new(), incidents: None }
+        Self {
+            directory: directory.into(),
+            app: app.into(),
+            build: String::new(),
+            incidents: None,
+        }
     }
 
     /// Build identity written into snapshots and incidents, such as a version or commit.
@@ -55,7 +60,11 @@ pub enum Outcome {
 
 impl Outcome {
     fn name(self) -> &'static str {
-        match self { Self::Drawn => "drawn", Self::Unchanged => "unchanged", Self::Skipped => "skipped" }
+        match self {
+            Self::Drawn => "drawn",
+            Self::Unchanged => "unchanged",
+            Self::Skipped => "skipped",
+        }
     }
 }
 
@@ -77,7 +86,12 @@ pub struct Frame {
 
 impl Frame {
     pub fn new(window: u64, seq: u64, outcome: Outcome) -> Self {
-        Self { window, seq, outcome, ..Self::default() }
+        Self {
+            window,
+            seq,
+            outcome,
+            ..Self::default()
+        }
     }
 
     pub fn update_ms(mut self, ms: impl Into<Option<f64>>) -> Self {
@@ -117,10 +131,20 @@ impl Frame {
     }
 
     /// Update plus compositor time, when both were measured.
-    pub fn work_ms(self) -> Option<f64> { self.update_ms.zip(self.render_ms).map(|(u, r)| u + r).filter(|v| v.is_finite()) }
+    pub fn work_ms(self) -> Option<f64> {
+        self.update_ms
+            .zip(self.render_ms)
+            .map(|(u, r)| u + r)
+            .filter(|v| v.is_finite())
+    }
 
     fn sanitize(mut self) -> Self {
-        for t in [&mut self.update_ms, &mut self.render_ms, &mut self.input_to_frame_ms, &mut self.gpu_ms] {
+        for t in [
+            &mut self.update_ms,
+            &mut self.render_ms,
+            &mut self.input_to_frame_ms,
+            &mut self.gpu_ms,
+        ] {
             *t = t.filter(|v| v.is_finite() && *v >= 0.0);
         }
         self
@@ -140,7 +164,10 @@ pub fn take_allocated_bytes() -> Option<u64> {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Sample { at_ms: u64, frame: Frame }
+pub(crate) struct Sample {
+    at_ms: u64,
+    frame: Frame,
+}
 
 impl Sample {
     fn anomaly(self) -> bool {

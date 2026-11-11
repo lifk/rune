@@ -15,7 +15,11 @@ impl LastBuild {
     pub(super) fn find(&mut self, old: &[Node], id: NodeId) -> Option<usize> {
         let at = match old.get(self.next) {
             Some(n) if n.id == id => Some(self.next),
-            _ => self.map.get_or_insert_with(|| old.iter().enumerate().map(|(i, n)| (n.id, i)).collect()).get(&id).copied(),
+            _ => self
+                .map
+                .get_or_insert_with(|| old.iter().enumerate().map(|(i, n)| (n.id, i)).collect())
+                .get(&id)
+                .copied(),
         }?;
         self.next = at + 1;
         Some(at)
@@ -29,13 +33,27 @@ impl LastBuild {
 /// Resolves `old` against `old_nodes`, falling back to `nodes[i]` when `old` was moved out of
 /// `old_nodes` by a `same_path` memo reuse (leaving its paint and text fields unchanged on `nodes[i]`).
 #[inline]
-pub(super) fn prev_node<'a>(old_nodes: &'a [Node], nodes: &'a [Node], old: Option<usize>, i: usize) -> Option<&'a Node> {
-    old.map(|o| if old_nodes[o].is_moved_stub() { &nodes[i] } else { &old_nodes[o] })
+pub(super) fn prev_node<'a>(
+    old_nodes: &'a [Node],
+    nodes: &'a [Node],
+    old: Option<usize>,
+    i: usize,
+) -> Option<&'a Node> {
+    old.map(|o| {
+        if old_nodes[o].is_moved_stub() {
+            &nodes[i]
+        } else {
+            &old_nodes[o]
+        }
+    })
 }
 
 /// The colour a node's text or icon draws in.
 pub(super) fn text_color(n: &Node) -> Option<Color> {
-    n.text.as_ref().map(|t| t.color).or(n.vis.icon.map(|(_, c)| c))
+    n.text
+        .as_ref()
+        .map(|t| t.color)
+        .or(n.vis.icon.map(|(_, c)| c))
 }
 
 /// Which of a node's colours a live value owns. A commit leaves those tracks to the latch.
@@ -50,7 +68,9 @@ pub(super) struct LiveColors {
 
 pub(super) fn live_colors(n: &Node) -> LiveColors {
     let mut c = LiveColors::default();
-    for b in n.live.iter() { c.add(b.property); }
+    for b in n.live.iter() {
+        c.add(b.property);
+    }
     c
 }
 
@@ -71,19 +91,34 @@ impl LiveColors {
     /// Puts back on `new` the colours `old` last latched for the bindings it kept, since the
     /// view authored its own placeholder colour.
     pub(super) fn carry(self, old: &Node, new: &mut Node) {
-        if self.fill { new.vis.fill = old.vis.fill; }
-        if self.border { new.vis.set_border_color(old.vis.border()); }
-        if self.text && let Some(c) = text_color(old) {
-            if let Some(spec) = &mut new.text { if spec.color != c { spec.color = c; } }
-            else if new.vis.icon.is_some_and(|(_, ic)| ic != c) && let Some((_, ic)) = &mut new.vis.cold_mut().icon { *ic = c; }
+        if self.fill {
+            new.vis.fill = old.vis.fill;
         }
-        if self.shadow && let Some(c) = old.vis.shadows.first().map(|s| s.color)
+        if self.border {
+            new.vis.set_border_color(old.vis.border());
+        }
+        if self.text
+            && let Some(c) = text_color(old)
+        {
+            if let Some(spec) = &mut new.text {
+                if spec.color != c {
+                    spec.color = c;
+                }
+            } else if new.vis.icon.is_some_and(|(_, ic)| ic != c)
+                && let Some((_, ic)) = &mut new.vis.cold_mut().icon
+            {
+                *ic = c;
+            }
+        }
+        if self.shadow
+            && let Some(c) = old.vis.shadows.first().map(|s| s.color)
             && new.vis.shadows.first().is_some_and(|s| s.color != c)
         {
             new.vis.cold_mut().shadows[0].color = c;
         }
         for k in 0..2 {
-            if self.gradient[k] && let Some(c) = old.vis.gradient.as_deref().map(|g| g[k])
+            if self.gradient[k]
+                && let Some(c) = old.vis.gradient.as_deref().map(|g| g[k])
                 && new.vis.gradient.as_deref().is_some_and(|g| g[k] != c)
                 && let Some(g) = new.vis.cold_mut().gradient.as_deref_mut()
             {
@@ -96,7 +131,13 @@ impl LiveColors {
 /// Readies `p` (hover, press, press scale), which reads `rest` without a track, to move to
 /// `to`: false when it has no track and `to` is `rest`, so there's nothing to do; otherwise it
 /// has a track, made at `rest` if it had none.
-pub(super) fn ready_from_rest(scene: &mut Scene, id: NodeId, p: Prop<f32>, rest: f32, to: f32) -> bool {
+pub(super) fn ready_from_rest(
+    scene: &mut Scene,
+    id: NodeId,
+    p: Prop<f32>,
+    rest: f32,
+    to: f32,
+) -> bool {
     if scene.store().has(id, p) {
         return true;
     }
@@ -109,7 +150,12 @@ pub(super) fn ready_from_rest(scene: &mut Scene, id: NodeId, p: Prop<f32>, rest:
 
 /// A shadow's geometry as its track holds it.
 pub(super) fn shadow_geo(sh: &crate::el::Shadow) -> rune_motion::Rect {
-    rune_motion::Rect { x: sh.x, y: sh.y, w: sh.blur, h: sh.spread }
+    rune_motion::Rect {
+        x: sh.x,
+        y: sh.y,
+        w: sh.blur,
+        h: sh.spread,
+    }
 }
 
 impl<S: 'static> Runtime<S> {
@@ -117,7 +163,15 @@ impl<S: 'static> Runtime<S> {
     /// new). Without a track a node draws its own value (`Runtime::color`, `shadow_at`), so it
     /// needs none until the value changes, and a commit that leaves it changes nothing.
     #[inline]
-    pub(super) fn commit_paint<T: rune_motion::Animatable + PartialEq>(&mut self, id: NodeId, p: Prop<T>, from: Option<T>, to: T, s: Spring, instant: bool) {
+    pub(super) fn commit_paint<T: rune_motion::Animatable + PartialEq>(
+        &mut self,
+        id: NodeId,
+        p: Prop<T>,
+        from: Option<T>,
+        to: T,
+        s: Spring,
+        instant: bool,
+    ) {
         if !instant && from == Some(to) {
             // Its track, if any, already heads to `to`: nothing else moves this property.
             return;
@@ -145,9 +199,17 @@ impl<S: 'static> Runtime<S> {
         spring_l: Spring,
         instant: bool,
     ) {
-        fn prev_vis<'a>(old_nodes: &'a [Node], vis: &'a Visual, old: Option<usize>) -> Option<&'a Visual> {
+        fn prev_vis<'a>(
+            old_nodes: &'a [Node],
+            vis: &'a Visual,
+            old: Option<usize>,
+        ) -> Option<&'a Visual> {
             let o = old?;
-            Some(if old_nodes[o].is_moved_stub() { vis } else { &old_nodes[o].vis })
+            Some(if old_nodes[o].is_moved_stub() {
+                vis
+            } else {
+                &old_nodes[o].vis
+            })
         }
         for (k, sh) in vis.shadows.iter().take(P_SHADOWS.len()).enumerate() {
             let was = prev_vis(&self.nodes, vis, old).and_then(|o| o.shadows.get(k).copied());
@@ -155,11 +217,27 @@ impl<S: 'static> Runtime<S> {
             // one changing: it lands rather than morphing between the two.
             let instant = instant || was.is_some_and(|w| w.inset != sh.inset);
             if !(k == 0 && live.shadow) {
-                self.commit_paint(id, P_SHADOWS[k], was.map(|w| w.color), sh.color, spring_c, instant);
+                self.commit_paint(
+                    id,
+                    P_SHADOWS[k],
+                    was.map(|w| w.color),
+                    sh.color,
+                    spring_c,
+                    instant,
+                );
             }
-            self.commit_paint(id, P_SHADOW_GEO[k], was.map(|w| shadow_geo(&w)), shadow_geo(sh), spring_l, instant);
+            self.commit_paint(
+                id,
+                P_SHADOW_GEO[k],
+                was.map(|w| shadow_geo(&w)),
+                shadow_geo(sh),
+                spring_l,
+                instant,
+            );
         }
-        let prev_shadows = prev_vis(&self.nodes, vis, old).map_or(0, |o| o.shadows.len()).min(P_SHADOWS.len());
+        let prev_shadows = prev_vis(&self.nodes, vis, old)
+            .map_or(0, |o| o.shadows.len())
+            .min(P_SHADOWS.len());
         for k in vis.shadows.len()..prev_shadows {
             self.scene.store_mut().remove(id, P_SHADOWS[k]);
             self.scene.store_mut().remove(id, P_SHADOW_GEO[k]);
@@ -168,13 +246,21 @@ impl<S: 'static> Runtime<S> {
             let was = prev_vis(&self.nodes, vis, old).and_then(|o| o.gradient.as_deref().copied());
             for k in 0..2 {
                 if !live.gradient[k] {
-                    self.commit_paint(id, P_GRADIENT[k], was.map(|w| w[k]), g[k], spring_c, instant);
+                    self.commit_paint(
+                        id,
+                        P_GRADIENT[k],
+                        was.map(|w| w[k]),
+                        g[k],
+                        spring_c,
+                        instant,
+                    );
                 }
             }
         }
         if let Some(rg) = &vis.radial {
             for (k, &(_, c)) in rg.stops.iter().take(P_RADIAL.len()).enumerate() {
-                let was = prev_vis(&self.nodes, vis, old).and_then(|o| o.radial.as_ref()?.stops.get(k).map(|s| s.1));
+                let was = prev_vis(&self.nodes, vis, old)
+                    .and_then(|o| o.radial.as_ref()?.stops.get(k).map(|s| s.1));
                 self.commit_paint(id, P_RADIAL[k], was, c, spring_c, instant);
             }
         }
@@ -222,7 +308,11 @@ impl<S: 'static> Runtime<S> {
             && memo_reuse::same_visual(&n.vis, &o.vis)
             && text_color(n) == text_color(o)
             && n.text.as_ref().is_none_or(|t| {
-                t.reveal < 0.0 || self.reveals.get(&n.id).is_some_and(|r| r.words.is_empty() && r.len == t.content.len())
+                t.reveal < 0.0
+                    || self
+                        .reveals
+                        .get(&n.id)
+                        .is_some_and(|r| r.words.is_empty() && r.len == t.content.len())
             })
             && self.scene.is_resting_at(n.id, scene_rect)
             && (self.stacks.is_empty()
@@ -232,8 +322,8 @@ impl<S: 'static> Runtime<S> {
 }
 
 #[cfg(test)]
-#[path = "../paint_tracks_tests.rs"]
-mod tests;
-#[cfg(test)]
 #[path = "../live_colors_tests.rs"]
 mod live_colors_tests;
+#[cfg(test)]
+#[path = "../paint_tracks_tests.rs"]
+mod tests;

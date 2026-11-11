@@ -16,7 +16,8 @@ impl El {
     /// (`El::offset` from a value it animates), so it glides instead of stepping a pixel at a
     /// time.
     pub fn pixel_snap(mut self, on: bool) -> Self {
-        self.vis_flags.set(crate::el::VisualFlags::NO_PIXEL_SNAP, !on);
+        self.vis_flags
+            .set(crate::el::VisualFlags::NO_PIXEL_SNAP, !on);
         self
     }
 }

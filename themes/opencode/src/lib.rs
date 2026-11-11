@@ -206,7 +206,8 @@ fn build(dark: bool) -> Kit {
     elevation.switch_on = sh("v2-elevation-switch-on");
     elevation.md = sh("shadow-md");
     // switch.css, standard appearance: rgba(19, 16, 16, .04/.06/.08).
-    elevation.knob = css::box_shadows("#1310100a 0px 1px 2px -1px, #1310100f 0px 1px 2px 0px, #13101014 0px 1px 3px 0px", solve);
+    elevation.knob =
+        css::box_shadows("#1310100a 0px 1px 2px -1px, #1310100f 0px 1px 2px 0px, #13101014 0px 1px 3px 0px", solve);
     // `line-height-large` is 150%; the older text styles derive their line from it.
     let ty = Type {
         ui: inter(13.0, 440.0, 20.0, -0.04),
@@ -282,7 +283,8 @@ mod tests {
             assert!(std::ptr::eq(super::kit(dark), srgb), "windows blend in sRGB by default");
             // Shadows too: light's floating elevation is `#0000000a 0px 8px 16px 0px, #00000014 …`.
             if !dark {
-                let alphas: Vec<u8> = srgb.elevation.floating.iter().map(|s| (s.color.a * 255.0).round() as u8).collect();
+                let alphas: Vec<u8> =
+                    srgb.elevation.floating.iter().map(|s| (s.color.a * 255.0).round() as u8).collect();
                 assert_eq!(alphas[..3], [0x0a, 0x14, 0x1f], "sRGB blending paints the authored shadow alpha");
             }
         }

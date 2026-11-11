@@ -5,25 +5,44 @@ use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 
 /// `x11:<hex xid>`, or empty for no parent.
-pub(super) fn parent_window(xid: u32) -> String { if xid == 0 { String::new() } else { format!("x11:{xid:x}") } }
+pub(super) fn parent_window(xid: u32) -> String {
+    if xid == 0 {
+        String::new()
+    } else {
+        format!("x11:{xid:x}")
+    }
+}
 
 pub(super) type Filter = (String, Vec<(u32, String)>);
 /// Portal filters are glob (0) or MIME (1) patterns; Rune's filters are extensions.
 /// The portal rejects filters with an empty name or an empty pattern list.
 pub(super) fn filters(options: &FileDialogOptions) -> Vec<Filter> {
-    options.filters.iter().filter(|(_, extensions)| !extensions.is_empty()).map(|(name, extensions)| {
-        let patterns: Vec<_> = extensions.iter().map(|ext| (0, glob(ext))).collect();
-        let label = if name.is_empty() {
-            patterns.iter().map(|(_, g)| g.as_str()).collect::<Vec<_>>().join(", ")
-        } else {
-            name.clone()
-        };
-        (label, patterns)
-    }).collect()
+    options
+        .filters
+        .iter()
+        .filter(|(_, extensions)| !extensions.is_empty())
+        .map(|(name, extensions)| {
+            let patterns: Vec<_> = extensions.iter().map(|ext| (0, glob(ext))).collect();
+            let label = if name.is_empty() {
+                patterns
+                    .iter()
+                    .map(|(_, g)| g.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            } else {
+                name.clone()
+            };
+            (label, patterns)
+        })
+        .collect()
 }
 fn glob(extension: &str) -> String {
     let ext = extension.trim_start_matches('*').trim_start_matches('.');
-    if ext.is_empty() || ext == "*" { "*".into() } else { format!("*.{ext}") }
+    if ext.is_empty() || ext == "*" {
+        "*".into()
+    } else {
+        format!("*.{ext}")
+    }
 }
 
 /// The portal takes folders as NUL-terminated bytes with no interior NULs.
@@ -61,8 +80,10 @@ pub(super) fn uri_path(uri: &str) -> Result<PathBuf, FileDialogError> {
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len()
-            && let (Some(hi), Some(lo)) = (hex(bytes[i + 1]), hex(bytes[i + 2])) {
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let (Some(hi), Some(lo)) = (hex(bytes[i + 1]), hex(bytes[i + 2]))
+        {
             out.push(hi << 4 | lo);
             i += 3;
         } else {
@@ -76,21 +97,46 @@ pub(super) fn uri_path(uri: &str) -> Result<PathBuf, FileDialogError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn uris(list: &[&str]) -> Vec<String> { list.iter().map(|s| (*s).into()).collect() }
+    fn uris(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| (*s).into()).collect()
+    }
     #[test]
     fn chosen_uris_become_percent_decoded_paths() {
-        assert_eq!(outcome(0, &uris(&["file:///home/a/My%20Export%20%E5%BD%95.csv"])).unwrap(),
-            Some(PathBuf::from("/home/a/My Export 录.csv")));
-        assert_eq!(outcome(0, &uris(&["file://localhost/tmp/a%2fb", "file:///tmp/second"])).unwrap(),
-            Some(PathBuf::from("/tmp/a/b")));
-        assert_eq!(outcome(0, &uris(&["file://LOCALHOST/tmp/a"])).unwrap(), Some(PathBuf::from("/tmp/a")));
+        assert_eq!(
+            outcome(0, &uris(&["file:///home/a/My%20Export%20%E5%BD%95.csv"])).unwrap(),
+            Some(PathBuf::from("/home/a/My Export 录.csv"))
+        );
+        assert_eq!(
+            outcome(
+                0,
+                &uris(&["file://localhost/tmp/a%2fb", "file:///tmp/second"])
+            )
+            .unwrap(),
+            Some(PathBuf::from("/tmp/a/b"))
+        );
+        assert_eq!(
+            outcome(0, &uris(&["file://LOCALHOST/tmp/a"])).unwrap(),
+            Some(PathBuf::from("/tmp/a"))
+        );
         assert_eq!(outcome(0, &[]).unwrap(), None);
         // A malformed or truncated escape stays literal.
-        assert_eq!(uri_path("file:///tmp/100%").unwrap(), PathBuf::from("/tmp/100%"));
-        assert_eq!(uri_path("file:///tmp/1%2").unwrap(), PathBuf::from("/tmp/1%2"));
-        assert_eq!(uri_path("file:///tmp/%zz").unwrap(), PathBuf::from("/tmp/%zz"));
+        assert_eq!(
+            uri_path("file:///tmp/100%").unwrap(),
+            PathBuf::from("/tmp/100%")
+        );
+        assert_eq!(
+            uri_path("file:///tmp/1%2").unwrap(),
+            PathBuf::from("/tmp/1%2")
+        );
+        assert_eq!(
+            uri_path("file:///tmp/%zz").unwrap(),
+            PathBuf::from("/tmp/%zz")
+        );
         // Non-UTF-8 names survive as bytes.
-        assert_eq!(uri_path("file:///tmp/%FF").unwrap().as_os_str().as_bytes(), b"/tmp/\xff");
+        assert_eq!(
+            uri_path("file:///tmp/%FF").unwrap().as_os_str().as_bytes(),
+            b"/tmp/\xff"
+        );
         assert!(uri_path("file://server/share/a").is_err());
         assert!(uri_path("https://example.com/a").is_err());
     }
@@ -107,12 +153,25 @@ mod tests {
             .filter("Empty", &[])
             .filter("", &["wav"])
             .filter("All files", &["*"]);
-        assert_eq!(filters(&options), vec![
-            ("Exports".to_string(), vec![(0, "*.csv".to_string()), (0, "*.json".to_string()), (0, "*.txt".to_string())]),
-            ("*.wav".to_string(), vec![(0, "*.wav".to_string())]),
-            ("All files".to_string(), vec![(0, "*".to_string())]),
-        ]);
-        assert_eq!(path_bytes(Path::new("/home/a/Downloads")).as_deref(), Some(&b"/home/a/Downloads\0"[..]));
+        assert_eq!(
+            filters(&options),
+            vec![
+                (
+                    "Exports".to_string(),
+                    vec![
+                        (0, "*.csv".to_string()),
+                        (0, "*.json".to_string()),
+                        (0, "*.txt".to_string())
+                    ]
+                ),
+                ("*.wav".to_string(), vec![(0, "*.wav".to_string())]),
+                ("All files".to_string(), vec![(0, "*".to_string())]),
+            ]
+        );
+        assert_eq!(
+            path_bytes(Path::new("/home/a/Downloads")).as_deref(),
+            Some(&b"/home/a/Downloads\0"[..])
+        );
         assert_eq!(path_bytes(Path::new("")), None);
         assert_eq!(path_bytes(Path::new("/tmp/a\0b")), None);
         assert_eq!(parent_window(0), "");

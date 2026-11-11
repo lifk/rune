@@ -51,30 +51,81 @@ fn svg(panels: &[Panel], cols: usize, pw: f32, ph: f32, title: &str) -> String {
             y1 = y0 + span;
         }
         let px = |x: f32| l + (x - x0) / (x1 - x0) * (r - l);
-        let py = |y: f32| if p.equal_axes { t + (y - y0) / (y1 - y0) * (b - t) } else { b - (y - y0) / (y1 - y0) * (b - t) };
-        let _ = write!(s, r##"<rect x="{l}" y="{t}" width="{}" height="{}" fill="#fafbfc" stroke="#e3e6ea"/>"##, r - l, b - t);
-        let _ = write!(s, r##"<text x="{l}" y="{}" font-size="12" font-weight="600" fill="#333">{}</text>"##, t - 9.0, p.title);
+        let py = |y: f32| {
+            if p.equal_axes {
+                t + (y - y0) / (y1 - y0) * (b - t)
+            } else {
+                b - (y - y0) / (y1 - y0) * (b - t)
+            }
+        };
+        let _ = write!(
+            s,
+            r##"<rect x="{l}" y="{t}" width="{}" height="{}" fill="#fafbfc" stroke="#e3e6ea"/>"##,
+            r - l,
+            b - t
+        );
+        let _ = write!(
+            s,
+            r##"<text x="{l}" y="{}" font-size="12" font-weight="600" fill="#333">{}</text>"##,
+            t - 9.0,
+            p.title
+        );
         if !p.equal_axes {
             for v in [0.0f32, 1.0] {
                 if v >= y0 && v <= y1 {
-                    let _ = write!(s, r##"<line x1="{l}" x2="{r}" y1="{0}" y2="{0}" stroke="#d5d9de" stroke-dasharray="3 3"/><text x="{1}" y="{2}" font-size="9" fill="#888" text-anchor="end">{v}</text>"##, py(v), l - 4.0, py(v) + 3.0);
+                    let _ = write!(
+                        s,
+                        r##"<line x1="{l}" x2="{r}" y1="{0}" y2="{0}" stroke="#d5d9de" stroke-dasharray="3 3"/><text x="{1}" y="{2}" font-size="9" fill="#888" text-anchor="end">{v}</text>"##,
+                        py(v),
+                        l - 4.0,
+                        py(v) + 3.0
+                    );
                 }
             }
-            let _ = write!(s, r##"<text x="{r}" y="{}" font-size="9" fill="#888" text-anchor="end">{:.2} s</text>"##, b + 14.0, x1);
+            let _ = write!(
+                s,
+                r##"<text x="{r}" y="{}" font-size="9" fill="#888" text-anchor="end">{:.2} s</text>"##,
+                b + 14.0,
+                x1
+            );
         }
         for m in &p.marks {
-            let _ = write!(s, r##"<line x1="{0}" x2="{0}" y1="{t}" y2="{b}" stroke="{RED}" stroke-width="1" stroke-dasharray="2 3"/>"##, px(*m));
+            let _ = write!(
+                s,
+                r##"<line x1="{0}" x2="{0}" y1="{t}" y2="{b}" stroke="{RED}" stroke-width="1" stroke-dasharray="2 3"/>"##,
+                px(*m)
+            );
         }
         for (k, se) in p.series.iter().enumerate() {
             let mut d = String::new();
             for (j, &(x, y)) in se.points.iter().enumerate() {
-                let _ = write!(d, "{}{:.2},{:.2} ", if j == 0 { "M" } else { "L" }, px(x), py(y));
+                let _ = write!(
+                    d,
+                    "{}{:.2},{:.2} ",
+                    if j == 0 { "M" } else { "L" },
+                    px(x),
+                    py(y)
+                );
             }
-            let dash = if se.dashed { r#" stroke-dasharray="4 3""# } else { "" };
-            let _ = write!(s, r#"<path d="{d}" fill="none" stroke="{}" stroke-width="1.8"{dash}/>"#, se.color);
+            let dash = if se.dashed {
+                r#" stroke-dasharray="4 3""#
+            } else {
+                ""
+            };
+            let _ = write!(
+                s,
+                r#"<path d="{d}" fill="none" stroke="{}" stroke-width="1.8"{dash}/>"#,
+                se.color
+            );
             if !se.label.is_empty() {
                 let ly = t + 12.0 + k as f32 * 12.0;
-                let _ = write!(s, r#"<text x="{}" y="{ly}" font-size="9" fill="{}" text-anchor="end">{}</text>"#, r - 4.0, se.color, se.label);
+                let _ = write!(
+                    s,
+                    r#"<text x="{}" y="{ly}" font-size="9" fill="{}" text-anchor="end">{}</text>"#,
+                    r - 4.0,
+                    se.color,
+                    se.label
+                );
             }
         }
     }
@@ -101,8 +152,18 @@ fn spring_panel(name: &str, s: Spring, t_max: f32) -> Panel {
         x: (0.0, t_max),
         y: (-0.45, 1.25),
         series: vec![
-            Series { points: x, color: BLUE, dashed: false, label: "position" },
-            Series { points: normalized(v), color: ORANGE, dashed: true, label: "velocity (norm.)" },
+            Series {
+                points: x,
+                color: BLUE,
+                dashed: false,
+                label: "position",
+            },
+            Series {
+                points: normalized(v),
+                color: ORANGE,
+                dashed: true,
+                label: "velocity (norm.)",
+            },
         ],
         marks: vec![s.duration],
         equal_axes: false,
@@ -127,8 +188,18 @@ fn curve_panel(name: &str, anim: Anim, from: f32, to: f32, t_max: f32) -> Panel 
         x: (0.0, t_max),
         y: (-0.45, 1.25),
         series: vec![
-            Series { points: x, color: BLUE, dashed: false, label: "position" },
-            Series { points: normalized(v), color: ORANGE, dashed: true, label: "velocity (norm.)" },
+            Series {
+                points: x,
+                color: BLUE,
+                dashed: false,
+                label: "position",
+            },
+            Series {
+                points: normalized(v),
+                color: ORANGE,
+                dashed: true,
+                label: "velocity (norm.)",
+            },
         ],
         marks: vec![],
         equal_axes: false,
@@ -136,7 +207,9 @@ fn curve_panel(name: &str, anim: Anim, from: f32, to: f32, t_max: f32) -> Panel 
 }
 
 fn main() {
-    let out = std::env::args().nth(1).unwrap_or_else(|| concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/motion").into());
+    let out = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/motion").into());
     std::fs::create_dir_all(&out).unwrap();
     let write = |name: &str, s: String| {
         let path = format!("{out}/{name}");
@@ -150,7 +223,16 @@ fn main() {
         panels.push(spring_panel(name, pair.enter, 1.2));
         panels.push(spring_panel(&format!("{name} exit"), pair.exit, 1.2));
     }
-    write("tokens.svg", svg(&panels, 4, 300.0, 170.0, "Kit motion tokens: position (blue), velocity (orange), duration (red)"));
+    write(
+        "tokens.svg",
+        svg(
+            &panels,
+            4,
+            300.0,
+            170.0,
+            "Kit motion tokens: position (blue), velocity (orange), duration (red)",
+        ),
+    );
 
     let panels = vec![
         spring_panel(".smooth", Spring::SMOOTH, 1.5),
@@ -160,16 +242,59 @@ fn main() {
         spring_panel("interactive", Spring::interactive(), 1.5),
         spring_panel("very bouncy", Spring::new(0.5, 0.7), 1.5),
     ];
-    write("swiftui.svg", svg(&panels, 3, 300.0, 170.0, "SwiftUI springs"));
+    write(
+        "swiftui.svg",
+        svg(&panels, 3, 300.0, 170.0, "SwiftUI springs"),
+    );
 
     // 2. Other curves.
     let panels = vec![
-        curve_panel("CSS ease", Curve::tween(0.6, Easing::EASE).into(), 0.0, 1.0, 0.8),
-        curve_panel("Kit CSS enter 150 ms", motion::CSS_ENTER.into(), 0.0, 1.0, 0.3),
-        curve_panel("Kit CSS exit 110 ms", motion::CSS_EXIT.into(), 0.0, 1.0, 0.3),
-        curve_panel("overshoot bezier", Curve::tween(0.5, Easing::OVERSHOOT).into(), 0.0, 1.0, 0.7),
-        curve_panel("steps(4)", Curve::tween(0.6, Easing::Steps(4, rune_motion::StepPosition::End)).into(), 0.0, 1.0, 0.8),
-        curve_panel("linear() piecewise", Curve::tween(0.6, Easing::Piecewise(&[[0.0, 0.0], [0.3, 0.7], [0.6, 0.9], [1.0, 1.0]])).into(), 0.0, 1.0, 0.8),
+        curve_panel(
+            "CSS ease",
+            Curve::tween(0.6, Easing::EASE).into(),
+            0.0,
+            1.0,
+            0.8,
+        ),
+        curve_panel(
+            "Kit CSS enter 150 ms",
+            motion::CSS_ENTER.into(),
+            0.0,
+            1.0,
+            0.3,
+        ),
+        curve_panel(
+            "Kit CSS exit 110 ms",
+            motion::CSS_EXIT.into(),
+            0.0,
+            1.0,
+            0.3,
+        ),
+        curve_panel(
+            "overshoot bezier",
+            Curve::tween(0.5, Easing::OVERSHOOT).into(),
+            0.0,
+            1.0,
+            0.7,
+        ),
+        curve_panel(
+            "steps(4)",
+            Curve::tween(0.6, Easing::Steps(4, rune_motion::StepPosition::End)).into(),
+            0.0,
+            1.0,
+            0.8,
+        ),
+        curve_panel(
+            "linear() piecewise",
+            Curve::tween(
+                0.6,
+                Easing::Piecewise(&[[0.0, 0.0], [0.3, 0.7], [0.6, 0.9], [1.0, 1.0]]),
+            )
+            .into(),
+            0.0,
+            1.0,
+            0.8,
+        ),
         {
             const X: Prop<f32> = Prop::custom(64, PropClass::Gesture);
             let mut st = AnimationStore::new();
@@ -187,8 +312,18 @@ fn main() {
                 x: (0.0, 3.0),
                 y: (-0.1, 1.25),
                 series: vec![
-                    Series { points: x, color: BLUE, dashed: false, label: "position" },
-                    Series { points: normalized(v), color: ORANGE, dashed: true, label: "velocity" },
+                    Series {
+                        points: x,
+                        color: BLUE,
+                        dashed: false,
+                        label: "position",
+                    },
+                    Series {
+                        points: normalized(v),
+                        color: ORANGE,
+                        dashed: true,
+                        label: "velocity",
+                    },
                 ],
                 marks: vec![],
                 equal_axes: false,
@@ -198,7 +333,11 @@ fn main() {
             const X: Prop<f32> = Prop::custom(64, PropClass::Other);
             let mut st = AnimationStore::new();
             st.set(NodeId(1), X, 0.0);
-            let kf = Keyframes::new().linear(0.4, 0.15).cubic(1.1, 0.2).cubic(0.8, 0.15).spring(1.0, motion::POP);
+            let kf = Keyframes::new()
+                .linear(0.4, 0.15)
+                .cubic(1.1, 0.2)
+                .cubic(0.8, 0.15)
+                .spring(1.0, motion::POP);
             st.play_keyframes(NodeId(1), X, &kf);
             let (mut x, mut v) = (Vec::new(), Vec::new());
             for i in 0..=300 {
@@ -212,15 +351,28 @@ fn main() {
                 x: (0.0, 1.0),
                 y: (-0.45, 1.25),
                 series: vec![
-                    Series { points: x, color: BLUE, dashed: false, label: "position" },
-                    Series { points: normalized(v), color: ORANGE, dashed: true, label: "velocity" },
+                    Series {
+                        points: x,
+                        color: BLUE,
+                        dashed: false,
+                        label: "position",
+                    },
+                    Series {
+                        points: normalized(v),
+                        color: ORANGE,
+                        dashed: true,
+                        label: "velocity",
+                    },
                 ],
                 marks: vec![0.15, 0.35, 0.5],
                 equal_axes: false,
             }
         },
     ];
-    write("curves.svg", svg(&panels, 4, 300.0, 170.0, "Tweens, decay and keyframes"));
+    write(
+        "curves.svg",
+        svg(&panels, 4, 300.0, 170.0, "Tweens, decay and keyframes"),
+    );
 
     // 3. Retargeting mid-flight: merge (springs) and additive (tweens), with the naive restart.
     let retarget = |anim: Anim, naive: bool| {
@@ -249,8 +401,14 @@ fn main() {
     };
     let mut panels = Vec::new();
     for (name, anim) in [
-        ("spring merge (SwiftUI): keeps x and v", Anim::from(motion::REFLOW)),
-        ("tween additive (Core Animation)", Curve::ease_in_out(0.35).into()),
+        (
+            "spring merge (SwiftUI): keeps x and v",
+            Anim::from(motion::REFLOW),
+        ),
+        (
+            "tween additive (Core Animation)",
+            Curve::ease_in_out(0.35).into(),
+        ),
         ("spring, bounce .3", Anim::from(Spring::new(0.4, 0.3))),
     ] {
         let (x, v) = retarget(anim, false);
@@ -260,23 +418,57 @@ fn main() {
             x: (0.0, 1.2),
             y: (-1.1, 1.3),
             series: vec![
-                Series { points: nx, color: GREY, dashed: false, label: "naive restart (v = 0)" },
-                Series { points: nv, color: GREY, dashed: true, label: "" },
-                Series { points: x, color: BLUE, dashed: false, label: "position" },
-                Series { points: v, color: ORANGE, dashed: true, label: "velocity" },
+                Series {
+                    points: nx,
+                    color: GREY,
+                    dashed: false,
+                    label: "naive restart (v = 0)",
+                },
+                Series {
+                    points: nv,
+                    color: GREY,
+                    dashed: true,
+                    label: "",
+                },
+                Series {
+                    points: x,
+                    color: BLUE,
+                    dashed: false,
+                    label: "position",
+                },
+                Series {
+                    points: v,
+                    color: ORANGE,
+                    dashed: true,
+                    label: "velocity",
+                },
             ],
             marks: vec![0.15, 0.32, 0.55],
             equal_axes: false,
         });
     }
-    write("retarget.svg", svg(&panels, 3, 380.0, 220.0, "Retargeting at the red lines: position and velocity stay continuous"));
+    write(
+        "retarget.svg",
+        svg(
+            &panels,
+            3,
+            380.0,
+            220.0,
+            "Retargeting at the red lines: position and velocity stay continuous",
+        ),
+    );
 
     // 4. Presence: blur-replace enter, exit, revive mid-exit.
     let mut scene = Scene::new();
-    scene.insert(NodeId(9), NodeSpec::new(Rect::new(0.0, 0.0, 1.0, 1.0)), Mount::Initial);
+    scene.insert(
+        NodeId(9),
+        NodeSpec::new(Rect::new(0.0, 0.0, 1.0, 1.0)),
+        Mount::Initial,
+    );
     scene.frame_at(0.0);
     let id = NodeId(1);
-    let spec = NodeSpec::new(Rect::new(0.0, 0.0, 200.0, 40.0)).transition(Transition::blur_replace());
+    let spec =
+        NodeSpec::new(Rect::new(0.0, 0.0, 200.0, 40.0)).transition(Transition::blur_replace());
     scene.insert(id, spec, Mount::Animated);
     let (mut op, mut bl, mut sc) = (Vec::new(), Vec::new(), Vec::new());
     let mut last = None;
@@ -310,9 +502,24 @@ fn main() {
         x: (0.0, 2.0),
         y: (-0.1, 1.15),
         series: vec![
-            Series { points: op, color: BLUE, dashed: false, label: "opacity" },
-            Series { points: bl, color: PURPLE, dashed: false, label: "blur / 4 px" },
-            Series { points: sc, color: GREEN, dashed: true, label: "(scale − .96) / .04" },
+            Series {
+                points: op,
+                color: BLUE,
+                dashed: false,
+                label: "opacity",
+            },
+            Series {
+                points: bl,
+                color: PURPLE,
+                dashed: false,
+                label: "blur / 4 px",
+            },
+            Series {
+                points: sc,
+                color: GREEN,
+                dashed: true,
+                label: "(scale − .96) / .04",
+            },
         ],
         marks: vec![0.7, 220.0 / 240.0, 400.0 / 240.0],
         equal_axes: false,
@@ -322,12 +529,24 @@ fn main() {
     let path = |screen: bool| {
         let mut s = Scene::new();
         let (p, c) = (NodeId(10), NodeId(11));
-        s.insert(p, NodeSpec::new(Rect::new(0.0, 0.0, 400.0, 400.0)), Mount::Initial);
-        s.insert(c, NodeSpec::new(Rect::new(10.0, 10.0, 50.0, 50.0)).parent(p), Mount::Initial);
+        s.insert(
+            p,
+            NodeSpec::new(Rect::new(0.0, 0.0, 400.0, 400.0)),
+            Mount::Initial,
+        );
+        s.insert(
+            c,
+            NodeSpec::new(Rect::new(10.0, 10.0, 50.0, 50.0)).parent(p),
+            Mount::Initial,
+        );
         s.frame_at(0.0);
         s.set_frame(p, Rect::new(200.0, 100.0, 400.0, 400.0), motion::GLIDE);
         let la = LayoutAnim::new(motion::DRIFT);
-        s.set_frame(c, Rect::new(100.0, 200.0, 50.0, 50.0), if screen { la.screen() } else { la });
+        s.set_frame(
+            c,
+            Rect::new(100.0, 200.0, 50.0, 50.0),
+            if screen { la.screen() } else { la },
+        );
         let mut pts = Vec::new();
         for i in 0..=360 {
             let out = s.frame_at(i as f64 / 120.0);
@@ -342,11 +561,24 @@ fn main() {
         x: (0.0, 320.0),
         y: (0.0, 320.0),
         series: vec![
-            Series { points: path(false), color: GREY, dashed: false, label: "parent space: dog-leg" },
-            Series { points: path(true), color: BLUE, dashed: false, label: "Travel::Screen: straight" },
+            Series {
+                points: path(false),
+                color: GREY,
+                dashed: false,
+                label: "parent space: dog-leg",
+            },
+            Series {
+                points: path(true),
+                color: BLUE,
+                dashed: false,
+                label: "Travel::Screen: straight",
+            },
         ],
         marks: vec![],
         equal_axes: true,
     };
-    write("presence-and-paths.svg", svg(&[presence, paths], 2, 420.0, 330.0, "Presence and travel"));
+    write(
+        "presence-and-paths.svg",
+        svg(&[presence, paths], 2, 420.0, 330.0, "Presence and travel"),
+    );
 }

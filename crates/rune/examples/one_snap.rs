@@ -39,14 +39,25 @@ fn disc_shape(color: Color) -> Shape {
 fn view(s: &State, _: &mut Cx<State>) -> El {
     let accent = oklch(0.63, 0.22, 27.0);
     let inner = if s.swapped {
-        icon(&DISC_ICON, 16.0).key("disc").color(accent).absolute(0.0, 0.0)
+        icon(&DISC_ICON, 16.0)
+            .key("disc")
+            .color(accent)
+            .absolute(0.0, 0.0)
     } else {
-        canvas(disc_shape(accent)).key("disc").size(16.0, 16.0).absolute(0.0, 0.0)
+        canvas(disc_shape(accent))
+            .key("disc")
+            .size(16.0, 16.0)
+            .absolute(0.0, 0.0)
     };
     let badge = el()
         .key("badge")
         .size(16.0, 16.0)
-        .child(icon(&RING_ICON, 16.0).key("ring").color(Color::WHITE).absolute(0.0, 0.0))
+        .child(
+            icon(&RING_ICON, 16.0)
+                .key("ring")
+                .color(Color::WHITE)
+                .absolute(0.0, 0.0),
+        )
         .child(inner);
 
     let zoom = if s.zoomed { 1.6 } else { 1.0 };
@@ -100,7 +111,10 @@ fn main() {
     rune::run(AppSpec::new(
         "One snap",
         (360.0, 240.0),
-        || State { zoomed: false, swapped: false },
+        || State {
+            zoomed: false,
+            swapped: false,
+        },
         view,
     ));
 }

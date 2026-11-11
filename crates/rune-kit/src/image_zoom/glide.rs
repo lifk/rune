@@ -15,15 +15,23 @@ pub(super) struct Spring {
 }
 
 impl Spring {
-    fn at(value: f64) -> Spring { Spring { value, target: value, velocity: 0.0 } }
+    fn at(value: f64) -> Spring {
+        Spring { value, target: value, velocity: 0.0 }
+    }
 
-    fn resting(&self) -> bool { (self.value - self.target).abs() < 0.005 && self.velocity.abs() < 0.02 }
+    fn resting(&self) -> bool {
+        (self.value - self.target).abs() < 0.005 && self.velocity.abs() < 0.02
+    }
 
     fn step(&mut self, dt: f64) {
         let (x0, v0) = (self.value - self.target, self.velocity);
-        if x0 == 0.0 && v0 == 0.0 { return; }
+        if x0 == 0.0 && v0 == 0.0 {
+            return;
+        }
         let t = dt.clamp(0.0, 0.1);
-        if t == 0.0 { return; }
+        if t == 0.0 {
+            return;
+        }
         // Critically damped: omega = 2π / duration, zeta = 1.
         let w = std::f64::consts::TAU / DURATION;
         let e = (-w * t).exp();
@@ -48,7 +56,9 @@ pub(super) struct Glide {
 }
 
 impl Default for Glide {
-    fn default() -> Glide { Glide::snap(super::math::FIT_VIEW) }
+    fn default() -> Glide {
+        Glide::snap(super::math::FIT_VIEW)
+    }
 }
 
 impl Glide {
@@ -73,7 +83,9 @@ impl Glide {
 
     /// Steps `dt` seconds; true while any spring still moves.
     pub fn step(&mut self, dt: f64) -> bool {
-        for s in [&mut self.scale, &mut self.x, &mut self.y] { s.step(dt); }
+        for s in [&mut self.scale, &mut self.x, &mut self.y] {
+            s.step(dt);
+        }
         !(self.scale.resting() && self.x.resting() && self.y.resting())
     }
 }

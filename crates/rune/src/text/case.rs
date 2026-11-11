@@ -44,13 +44,27 @@ impl Source {
     /// The shown byte where source byte `b` starts. A byte inside a character rounds down to
     /// its start, or up to its end with `up` (for range ends).
     pub(crate) fn shown(&self, b: u32, up: bool) -> u32 {
-        let i = if up { self.bounds.partition_point(|&(s, _)| s < b) } else { self.bounds.partition_point(|&(s, _)| s <= b).saturating_sub(1) };
-        self.bounds.get(i).map_or(self.bounds.last().map_or(0, |b| b.1), |b| b.1)
+        let i = if up {
+            self.bounds.partition_point(|&(s, _)| s < b)
+        } else {
+            self.bounds
+                .partition_point(|&(s, _)| s <= b)
+                .saturating_sub(1)
+        };
+        self.bounds
+            .get(i)
+            .map_or(self.bounds.last().map_or(0, |b| b.1), |b| b.1)
     }
 
     /// The source byte of the character drawn at shown byte `b`, or the next one with `up`.
     pub(crate) fn source(&self, b: u32, up: bool) -> u32 {
-        let i = if up { self.bounds.partition_point(|&(_, s)| s < b) } else { self.bounds.partition_point(|&(_, s)| s <= b).saturating_sub(1) };
+        let i = if up {
+            self.bounds.partition_point(|&(_, s)| s < b)
+        } else {
+            self.bounds
+                .partition_point(|&(_, s)| s <= b)
+                .saturating_sub(1)
+        };
         self.bounds.get(i).map_or(self.text.len() as u32, |b| b.0)
     }
 }

@@ -3,7 +3,10 @@
 
 use std::borrow::Cow;
 
-use rune::{Anim, Color, Drag, El, GrowthSpec, Icon, Key, Phase, ScrollSpec, TextEdit, TextStyle, Tx, col, el, icon, row, text, text_input};
+use rune::{
+    Anim, Color, Drag, El, GrowthSpec, Icon, Key, Phase, ScrollSpec, TextEdit, TextStyle, Tx, col, el, icon, row, text,
+    text_input,
+};
 
 use super::reorder::Reorder;
 use crate::{ControlSize, IconButton, IconButtonVariant, Kit, Spinner};
@@ -130,7 +133,8 @@ impl Sidebar {
 
     pub fn build(self, k: &Kit) -> El {
         let inset = self.inset;
-        let list = col().key("sidebar-list").role("list").label(self.label).focus_group().focus_follows().w_full().px(inset);
+        let list =
+            col().key("sidebar-list").role("list").label(self.label).focus_group().focus_follows().w_full().px(inset);
         let list = match self.body {
             Body::Items(items) => list.pb(INSET).gap(self.row_gap).children(items.into_iter().map(|f| f(k))),
             Body::Virtual(rows) => rows(list.growth(GrowthSpec::default()), self.row_height),
@@ -138,7 +142,16 @@ impl Sidebar {
         let mut root = col().key("sidebar").w_full().h_full().min_h(0.0);
         if !self.header.is_empty() {
             let [top, bottom] = self.header_pad;
-            root = root.child(col().key("sidebar-header").w_full().px(inset).pt(top).pb(bottom).gap(self.header_gap).children(self.header));
+            root = root.child(
+                col()
+                    .key("sidebar-header")
+                    .w_full()
+                    .px(inset)
+                    .pt(top)
+                    .pb(bottom)
+                    .gap(self.header_gap)
+                    .children(self.header),
+            );
         }
         root = root.child(
             col()
@@ -151,7 +164,9 @@ impl Sidebar {
                 .child(list),
         );
         if !self.footer.is_empty() {
-            root = root.child(col().key("sidebar-footer").w_full().px(inset).py(INSET).gap(self.header_gap).children(self.footer));
+            root = root.child(
+                col().key("sidebar-footer").w_full().px(inset).py(INSET).gap(self.header_gap).children(self.footer),
+            );
         }
         root
     }
@@ -235,8 +250,12 @@ impl SidebarHeader {
         match self.toggle {
             // Pointer only: in the list's focus group the arrows step through rows, and with
             // selection following focus they would toggle the section as they passed.
-            Some(toggle) => k.interactive(toggle(header)).role("button").expanded(!self.collapsed.unwrap_or(false))
-                .hover_motion(Anim::INSTANT, Anim::INSTANT).focusable(false),
+            Some(toggle) => k
+                .interactive(toggle(header))
+                .role("button")
+                .expanded(!self.collapsed.unwrap_or(false))
+                .hover_motion(Anim::INSTANT, Anim::INSTANT)
+                .focusable(false),
             None => header.role("heading"),
         }
     }
@@ -290,7 +309,14 @@ impl SidebarSection {
 
     pub fn build(self, k: &Kit) -> El {
         let title = self.header.title.clone();
-        let mut s = col().key(self.key).role("group").label(title).w_full().gap(2.0).motion(k.motion.disclosure).child(self.header.build(k));
+        let mut s = col()
+            .key(self.key)
+            .role("group")
+            .label(title)
+            .w_full()
+            .gap(2.0)
+            .motion(k.motion.disclosure)
+            .child(self.header.build(k));
         if !self.collapsed {
             s = s.children(self.rows);
         }
@@ -547,7 +573,8 @@ impl SidebarRow {
             Some(RowStatus::Unread) => Some("Unread"),
             _ => None,
         };
-        let said: Vec<&str> = [self.detail.as_deref(), self.badge.as_deref(), status_words].into_iter().flatten().collect();
+        let said: Vec<&str> =
+            [self.detail.as_deref(), self.badge.as_deref(), status_words].into_iter().flatten().collect();
         let mut r = row()
             .label(name)
             .description(said.join(", "))
@@ -594,7 +621,13 @@ impl SidebarRow {
             // Two lines: the lead and the label, then the subtitle under the label.
             Some(sub) => {
                 let first = row().key("line1").w_full().gap(6.0).center_y().children(lead).child(label);
-                let second = text(sub).key("subtitle").font(sub_font).color(self.subtitle_color.unwrap_or(c.text_faint)).truncate().w_full().a11y_hidden();
+                let second = text(sub)
+                    .key("subtitle")
+                    .font(sub_font)
+                    .color(self.subtitle_color.unwrap_or(c.text_faint))
+                    .truncate()
+                    .w_full()
+                    .a11y_hidden();
                 let second = row().key("line2").w_full().pl(if has_lead { 16.0 + 6.0 } else { 0.0 }).child(second);
                 r.child(col().key("lines").grow(1.0).shrink().min_w(0.0).child(first).child(second))
             }
@@ -633,7 +666,11 @@ impl SidebarRow {
                 slot = slot.child(if self.close.is_some() { st.group_opacity(1.0, 0.0) } else { st });
             }
             if let Some(bind) = self.close {
-                let close = IconButton::new(k.glyph.close).control_size(ControlSize::Small).variant(IconButtonVariant::GhostMuted).label("Close").build(k);
+                let close = IconButton::new(k.glyph.close)
+                    .control_size(ControlSize::Small)
+                    .variant(IconButtonVariant::GhostMuted)
+                    .label("Close")
+                    .build(k);
                 // Pointer only, like the row's other hover controls: the list's arrows step rows.
                 slot = slot.child(bind(close).key("close").absolute(0.0, 0.0).group_opacity(0.0, 1.0).focusable(false));
             }
@@ -648,7 +685,10 @@ impl SidebarRow {
             if lifted {
                 // Follows the pointer exactly; the rest of the list springs around it.
                 // Opaque, on the window's deep background, so the rows it passes don't show through.
-                r = k.elevate(r.raise().offset_motion(Anim::INSTANT).fill(crate::over(c.pressed, c.bg_deep)), &k.elevation.raised);
+                r = k.elevate(
+                    r.raise().offset_motion(Anim::INSTANT).fill(crate::over(c.pressed, c.bg_deep)),
+                    &k.elevation.raised,
+                );
             }
             r = (re.bind)(r);
         }

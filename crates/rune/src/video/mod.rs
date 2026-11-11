@@ -39,10 +39,10 @@ mod unsupported;
 use unsupported as backend;
 
 use crate::native_surface::{ByteFrame, ColorInfo, Format, NativeSurface};
+use crate::time::Instant;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
-use crate::time::Instant;
 
 /// Set once a window event loop runs. Until then (headless runs, tests) no player is created.
 static PLAYBACK: AtomicBool = AtomicBool::new(false);
@@ -89,7 +89,10 @@ pub(crate) fn headless_reset() {
 
 /// Never panics, so destructors can ask (`None` while the thread's storage is torn down).
 pub(crate) fn headless_clock() -> Option<f64> {
-    HEADLESS.try_with(|h| h.try_borrow().ok().and_then(|h| h.clock)).ok().flatten()
+    HEADLESS
+        .try_with(|h| h.try_borrow().ok().and_then(|h| h.clock))
+        .ok()
+        .flatten()
 }
 
 /// Where media comes from. Strings containing `://` are URLs; anything else is a file path.
@@ -101,12 +104,20 @@ pub enum MediaSource {
 
 impl From<&str> for MediaSource {
     fn from(s: &str) -> Self {
-        if s.contains("://") { Self::Url(s.into()) } else { Self::File(s.into()) }
+        if s.contains("://") {
+            Self::Url(s.into())
+        } else {
+            Self::File(s.into())
+        }
     }
 }
 impl From<String> for MediaSource {
     fn from(s: String) -> Self {
-        if s.contains("://") { Self::Url(s) } else { Self::File(s.into()) }
+        if s.contains("://") {
+            Self::Url(s)
+        } else {
+            Self::File(s.into())
+        }
     }
 }
 impl From<PathBuf> for MediaSource {
@@ -141,7 +152,10 @@ pub struct MediaRequest {
 impl std::fmt::Debug for MediaRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let names: Vec<&str> = self.headers.iter().map(|(name, _)| name.as_str()).collect();
-        f.debug_struct("MediaRequest").field("url", &self.url).field("headers", &names).finish()
+        f.debug_struct("MediaRequest")
+            .field("url", &self.url)
+            .field("headers", &names)
+            .finish()
     }
 }
 
@@ -244,11 +258,17 @@ impl Player {
     /// A URL to open with request headers: `Player::request(url).header(name, value).audio()`
     /// (or `.video()`). See [`MediaRequest`].
     pub fn request(url: impl Into<String>) -> MediaRequest {
-        MediaRequest { url: url.into(), headers: Vec::new() }
+        MediaRequest {
+            url: url.into(),
+            headers: Vec::new(),
+        }
     }
 
     fn create(source: MediaSource, kind: Kind, headers: Vec<(String, String)>) -> Self {
-        let ctl = Control { muted: kind == Kind::Video, ..Control::default() };
+        let ctl = Control {
+            muted: kind == Kind::Video,
+            ..Control::default()
+        };
         let shared = Arc::new(Shared {
             source,
             headers,
@@ -263,7 +283,10 @@ impl Player {
         if kind == Kind::Audio && !playback_enabled() {
             HEADLESS.with_borrow_mut(|h| h.audio.push(Arc::downgrade(&shared)));
         }
-        Self { surface: NativeSurface::with_video(shared.clone()), shared }
+        Self {
+            surface: NativeSurface::with_video(shared.clone()),
+            shared,
+        }
     }
 
     pub fn source(&self) -> &MediaSource {
@@ -306,7 +329,11 @@ impl Player {
     }
     /// Jump to `seconds` (clamped to the clip). Keeps playing if it was playing.
     pub fn seek(&self, seconds: f64) {
-        let seconds = if seconds.is_finite() { seconds.max(0.0) } else { 0.0 };
+        let seconds = if seconds.is_finite() {
+            seconds.max(0.0)
+        } else {
+            0.0
+        };
         self.edit(|c| {
             let seconds = c.duration.map_or(seconds, |d| seconds.min(d));
             c.seek = Some(seconds);
@@ -386,7 +413,9 @@ impl Player {
     fn edit(&self, f: impl FnOnce(&mut Control)) {
         // Headless audio: fold in the time played up to now at the old rate, then restart the
         // clock from the edit.
-        let clock = (self.shared.kind == Kind::Audio && !playback_enabled()).then(headless_clock).flatten();
+        let clock = (self.shared.kind == Kind::Audio && !playback_enabled())
+            .then(headless_clock)
+            .flatten();
         if clock.is_some() {
             self.shared.open_now();
         }
@@ -427,14 +456,22 @@ pub(crate) struct Pulled {
 /// Folds one drawn video's `generation` into a frame's signature, which changes, re-running
 /// views, only when some video's state does. Order-free, so paint order doesn't count.
 pub(crate) fn fold(signature: u64, generation: u64, key: usize) -> u64 {
-    signature.wrapping_add((generation ^ (key as u64).rotate_left(32)).wrapping_mul(0x9e37_79b9_7f4a_7c15).rotate_left(31))
+    signature.wrapping_add(
+        (generation ^ (key as u64).rotate_left(32))
+            .wrapping_mul(0x9e37_79b9_7f4a_7c15)
+            .rotate_left(31),
+    )
 }
 
 /// [`fold`] for an element that isn't pulled this frame (out of sight, transparent): what it
 /// last heard, without pulling a frame. Nothing for a surface with no video.
 pub(crate) fn fold_unpulled(signature: u64, surface: &NativeSurface) -> u64 {
     match surface.video() {
-        Some(video) => fold(signature, video.ctl.lock().unwrap().generation, surface.key()),
+        Some(video) => fold(
+            signature,
+            video.ctl.lock().unwrap().generation,
+            surface.key(),
+        ),
         None => signature,
     }
 }
@@ -493,7 +530,13 @@ impl Shared {
 
     /// Redraw every window that has drawn this player. Safe from any thread.
     fn wake_windows(&self) {
-        let wakes: Vec<_> = self.wakes.lock().unwrap().iter().filter_map(Weak::upgrade).collect();
+        let wakes: Vec<_> = self
+            .wakes
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(Weak::upgrade)
+            .collect();
         for wake in wakes {
             wake.notify();
         }
@@ -521,7 +564,10 @@ impl Shared {
     fn register(&self, wake: &Arc<crate::live::Wake>) {
         let mut wakes = self.wakes.lock().unwrap();
         wakes.retain(|w| w.strong_count() > 0);
-        if !wakes.iter().any(|w| std::ptr::eq(w.as_ptr(), Arc::as_ptr(wake))) {
+        if !wakes
+            .iter()
+            .any(|w| std::ptr::eq(w.as_ptr(), Arc::as_ptr(wake)))
+        {
             wakes.push(Arc::downgrade(wake));
         }
     }
@@ -551,7 +597,12 @@ impl Shared {
     }
 
     /// Runs on the UI thread for each element that draws this player, once per frame.
-    pub(crate) fn pull(self: &Arc<Self>, surface: &NativeSurface, clock: Clock, wake: &Arc<crate::live::Wake>) -> Pulled {
+    pub(crate) fn pull(
+        self: &Arc<Self>,
+        surface: &NativeSurface,
+        clock: Clock,
+        wake: &Arc<crate::live::Wake>,
+    ) -> Pulled {
         self.register(wake);
         if self.kind == Kind::Audio {
             // Nothing to draw: the element only re-runs its view when the state changes.
@@ -559,7 +610,10 @@ impl Shared {
                 Clock::Virtual(_) => self.open_now(),
                 Clock::Display(_) => backend::drive(self),
             }
-            return Pulled { active: false, generation: self.ctl.lock().unwrap().generation };
+            return Pulled {
+                active: false,
+                generation: self.ctl.lock().unwrap().generation,
+            };
         }
         let active = match clock {
             Clock::Virtual(now) => self.pull_virtual(surface, now),
@@ -571,7 +625,10 @@ impl Shared {
                 c.placeholder = true;
                 push_placeholder(surface);
             }
-            Pulled { active: active && c.failed.is_none(), generation: c.generation }
+            Pulled {
+                active: active && c.failed.is_none(),
+                generation: c.generation,
+            }
         };
         self.settle(false);
         pulled
@@ -583,12 +640,19 @@ impl Shared {
         let mut native = self.native.lock().unwrap();
         let (meta, frame, shown) = {
             let mut c = self.ctl.lock().unwrap();
-            let Some(meta) = c.meta.filter(|_| c.failed.is_none()) else { return false };
+            let Some(meta) = c.meta.filter(|_| c.failed.is_none()) else {
+                return false;
+            };
             c.advance_virtual(now);
             (meta, meta.frame_index(c.time), c.shown)
         };
         if shown != Some(frame) {
-            let decoded = backend::decode(&mut native, &self.source, &self.headers, meta.frame_time(frame));
+            let decoded = backend::decode(
+                &mut native,
+                &self.source,
+                &self.headers,
+                meta.frame_time(frame),
+            );
             let mut c = self.ctl.lock().unwrap();
             c.shown = Some(frame);
             let id = c.next_frame_id();
@@ -760,7 +824,10 @@ fn push_placeholder(surface: &NativeSurface) {
         width: w as u32,
         height: h as u32,
         format: Format::Bgra,
-        color: ColorInfo { matrix: crate::native_surface::Matrix::Bt709, transfer: crate::native_surface::Transfer::Srgb },
+        color: ColorInfo {
+            matrix: crate::native_surface::Matrix::Bt709,
+            transfer: crate::native_surface::Transfer::Srgb,
+        },
         planes: [rgba, Vec::new()],
     };
     let _ = surface.push_bytes(frame, u64::MAX);

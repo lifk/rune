@@ -50,8 +50,10 @@ pub mod check;
 mod gate;
 
 pub use check::{Finding, RULES, Recording, Rule, Snap, Track, check, dump, rule, sheet, short};
-pub use gate::{Allow, AllowRow, Cell, Job, Report, allowed, gate, gate_rows, report, report_rows, run};
 pub(crate) use gate::evidence;
+pub use gate::{
+    Allow, AllowRow, Cell, Job, Report, allowed, gate, gate_rows, report, report_rows, run,
+};
 
 use std::sync::Arc;
 
@@ -82,8 +84,18 @@ impl Raster {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         bytemuck::cast_slice::<_, u8>(&rt.instances).hash(&mut hasher);
         let key = hasher.finish();
-        if let Some((k, g)) = &self.0 && *k == key { return g.clone(); }
-        let g = Arc::new(check::raster::rasterize_with(&rt.instances, size, rt.env.scale, &rt.icon_aprons, &rt.text.glyph_shifts()));
+        if let Some((k, g)) = &self.0
+            && *k == key
+        {
+            return g.clone();
+        }
+        let g = Arc::new(check::raster::rasterize_with(
+            &rt.instances,
+            size,
+            rt.env.scale,
+            &rt.icon_aprons,
+            &rt.text.glyph_shifts(),
+        ));
         self.0 = Some((key, g.clone()));
         g
     }
@@ -91,7 +103,12 @@ impl Raster {
 
 /// Samples a frame `rt` just took into `rec`: why it committed, its elements, what they paint
 /// and the composited window (`grid`, else the CPU raster).
-fn sample<S>(rt: &mut Runtime<S>, rec: &mut Recording, raster: &mut Raster, grid: Option<Arc<check::raster::Grid>>) {
+fn sample<S>(
+    rt: &mut Runtime<S>,
+    rec: &mut Recording,
+    raster: &mut Raster,
+    grid: Option<Arc<check::raster::Grid>>,
+) {
     let why = std::mem::take(&mut rt.commit_why);
     rec.commits(rt.scrolling(), why);
     let els: Vec<ElementInfo> = rt.elements();
@@ -114,7 +131,10 @@ pub struct Sampler {
 impl Sampler {
     pub fn new<S>(rt: &mut Runtime<S>, hz: f64) -> Self {
         rt.paint_rank = Some(Vec::new());
-        Sampler { rec: Recording::new(rt.viewport, hz), raster: Raster::default() }
+        Sampler {
+            rec: Recording::new(rt.viewport, hz),
+            raster: Raster::default(),
+        }
     }
 
     /// An input on the next frame.
@@ -142,7 +162,13 @@ impl<S: 'static> Run<S> {
         rt.paint_rank = Some(Vec::new());
         rt.frame(0.0);
         let rec = Recording::new(rt.viewport, hz);
-        Run { rt, rec, dt: 1.0 / hz, draw: None, raster: Raster::default() }
+        Run {
+            rt,
+            rec,
+            dt: 1.0 / hz,
+            draw: None,
+            raster: Raster::default(),
+        }
     }
 
     /// Reads each recorded frame's pixels with `draw` (a GPU render of the runtime) for the
@@ -165,10 +191,15 @@ impl<S: 'static> Run<S> {
         self.rt.commit_why = 0;
         let played = self.rt.played_keys();
         let awake = self.rt.frame(self.dt);
-        if self.rt.played_keys() > played { self.rec.input("a story step's key"); }
+        if self.rt.played_keys() > played {
+            self.rec.input("a story step's key");
+        }
         self.rec.awake.push(awake);
         let size = self.rec.size;
-        let drawn = self.draw.as_mut().and_then(|draw| draw(&mut self.rt))
+        let drawn = self
+            .draw
+            .as_mut()
+            .and_then(|draw| draw(&mut self.rt))
             .map(|(w, h, rgba)| Arc::new(check::raster::from_pixels(&rgba, w, h, size)));
         sample(&mut self.rt, &mut self.rec, &mut self.raster, drawn);
     }
@@ -213,10 +244,10 @@ impl<S: 'static> Run<S> {
 }
 
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod loop_tests;
 #[cfg(test)]
 mod paint_tests;
 #[cfg(test)]
 mod spring_none_tests;
+#[cfg(test)]
+mod tests;

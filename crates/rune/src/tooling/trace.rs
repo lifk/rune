@@ -23,7 +23,10 @@ pub(crate) struct Trace {
     /// Lines waiting for present times; `None` writes each frame at once.
     presents: Option<crate::frame::present_time::Presents>,
     /// The native surface's frame counts and `App::dev_stats`, printed when the trace closes.
-    surface: Option<(std::sync::Arc<std::sync::Mutex<crate::SurfaceStats>>, Option<fn() -> String>)>,
+    surface: Option<(
+        std::sync::Arc<std::sync::Mutex<crate::SurfaceStats>>,
+        Option<fn() -> String>,
+    )>,
 }
 
 /// A native frame's timing beyond its submission time.
@@ -46,37 +49,68 @@ impl Trace {
         Self::open_clock(path, size, fps, scale, "virtual")
     }
 
-    pub(crate) fn open_clock(path: &PathBuf, size: (f32, f32), fps: f64, scale: f32, clock: &str) -> Trace {
+    pub(crate) fn open_clock(
+        path: &PathBuf,
+        size: (f32, f32),
+        fps: f64,
+        scale: f32,
+        clock: &str,
+    ) -> Trace {
         if let Some(d) = path.parent() {
             let _ = std::fs::create_dir_all(d);
         }
-        let file = std::fs::File::create(path).unwrap_or_else(|e| die(&format!("{}: {e}", path.display())));
+        let file = std::fs::File::create(path)
+            .unwrap_or_else(|e| die(&format!("{}: {e}", path.display())));
         let mut out = std::io::BufWriter::new(file);
         let mut header = json!({
             "type": "header", "launch": "rune", "width": size.0, "height": size.1,
             "hz": fps, "scale": scale, "platform": "rune", "units": "pt", "clock": clock,
         });
-        if clock == "wall" { header["timestamp"] = "cpu-submit".into(); }
+        if clock == "wall" {
+            header["timestamp"] = "cpu-submit".into();
+        }
         let _ = writeln!(out, "{header}");
-        Trace { out, ids: HashMap::new(), described: HashMap::new(), states: HashMap::new(), scrolled: HashMap::new(), effects: HashMap::new(),
-            goals: HashMap::new(), channels: Default::default(), path: path.clone(), all: false, presents: None, surface: None }
+        Trace {
+            out,
+            ids: HashMap::new(),
+            described: HashMap::new(),
+            states: HashMap::new(),
+            scrolled: HashMap::new(),
+            effects: HashMap::new(),
+            goals: HashMap::new(),
+            channels: Default::default(),
+            path: path.clone(),
+            all: false,
+            presents: None,
+            surface: None,
+        }
     }
 
     /// Holds each frame's line until its present time arrives from `source`, then writes
     /// it with `present_ms` and `present_dt_ms`. `start` is the trace clock's zero.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-    pub(crate) fn record_presents(&mut self, source: std::sync::Arc<dyn crate::frame::present_time::Source>, start: Instant) {
+    pub(crate) fn record_presents(
+        &mut self,
+        source: std::sync::Arc<dyn crate::frame::present_time::Source>,
+        start: Instant,
+    ) {
         self.presents = Some(crate::frame::present_time::Presents::new(source, start));
     }
 
     /// Prints the surface's frame counts, and the app's own, when the trace closes.
-    pub(crate) fn record_surface(&mut self, stats: std::sync::Arc<std::sync::Mutex<crate::SurfaceStats>>, app: Option<fn() -> String>) {
+    pub(crate) fn record_surface(
+        &mut self,
+        stats: std::sync::Arc<std::sync::Mutex<crate::SurfaceStats>>,
+        app: Option<fn() -> String>,
+    ) {
         self.surface = Some((stats, app));
     }
 
     /// Waits up to `wait` for the last frames' present times, then writes every held line.
     pub(crate) fn settle_presents(&mut self, wait: std::time::Duration) {
-        let Some(presents) = self.presents.as_mut() else { return };
+        let Some(presents) = self.presents.as_mut() else {
+            return;
+        };
         let until = Instant::now() + wait;
         while presents.waiting() && Instant::now() < until {
             std::thread::sleep(std::time::Duration::from_millis(2));
@@ -93,7 +127,13 @@ impl Trace {
         self.frame_timed(rt, t_ms, cpu_ms, FrameTiming::default());
     }
 
-    pub(crate) fn frame_timed<S>(&mut self, rt: &mut Runtime<S>, t_ms: f64, cpu_ms: f64, timing: FrameTiming) {
+    pub(crate) fn frame_timed<S>(
+        &mut self,
+        rt: &mut Runtime<S>,
+        t_ms: f64,
+        cpu_ms: f64,
+        timing: FrameTiming,
+    ) {
         let els = rt.elements();
         let settled = rt.settled;
         let mut metas = Vec::new();
@@ -103,34 +143,49 @@ impl Trace {
         // A virtual list's invisible estimated extent changes when rows are measured or the
         // window rebases. Record the actual row surfaces, not that bookkeeping rectangle.
         let all = self.all;
-        let traced = |e: &crate::runtime::ElementInfo| (all || e.key.is_some() || e.trace_name.is_some()) && !e.virtual_extent;
+        let traced = |e: &crate::runtime::ElementInfo| {
+            (all || e.key.is_some() || e.trace_name.is_some()) && !e.virtual_extent
+        };
         let blank = rt.blank_leaves();
         for e in els.iter().filter(|e| traced(e)) {
             let id = self.id(&e.path);
             let name = e.trace_name.unwrap_or(&e.path);
             let (class, host) = e.trace_namespace.unwrap_or(("rune", "rune"));
             seen.insert(id);
-            if self.described.get(&id).is_none_or(|old| old.0 != name || old.1 != class || old.2 != host) {
+            if self
+                .described
+                .get(&id)
+                .is_none_or(|old| old.0 != name || old.1 != class || old.2 != host)
+            {
                 self.described.insert(id, (name.to_owned(), class, host));
-                let mut meta = json!({ "id": id, "cls": class, "nm": name, "host": host, "role": e.role });
+                let mut meta =
+                    json!({ "id": id, "cls": class, "nm": name, "host": host, "role": e.role });
                 if let Some(p) = e.parent.and_then(|p| els.get(p)).filter(|p| traced(p)) {
                     meta["pv"] = self.id(&p.path).into();
                 }
                 metas.push(meta);
             }
             let effects = [format!("{name}.scale"), format!("{name}.blur")];
-            for (name, value, unit) in [(&effects[0], e.scale, "ratio"), (&effects[1], e.blur, "pt")] {
+            for (name, value, unit) in
+                [(&effects[0], e.scale, "ratio"), (&effects[1], e.blur, "pt")]
+            {
                 self.channels.sample(name, "position", value);
                 self.channels.owner(name, id, unit);
             }
             if let Some(old) = self.effects.insert(id, effects.clone()) {
-                for name in old.iter().filter(|n| !effects.contains(n)) { self.channels.remove(name); }
+                for name in old.iter().filter(|n| !effects.contains(n)) {
+                    self.channels.remove(name);
+                }
             }
             let [x, y, w, h] = e.rect;
             // A settle commit is a deliberate cut (everything lands at once); a growth row reveals
             // its content by growing; reveals fade words in.
             use rune_motion::{Intent as I, flags as F};
-            let clipped = e.rect.iter().zip(e.visible.iter()).any(|(a, b)| (a - b).abs() > 0.5);
+            let clipped = e
+                .rect
+                .iter()
+                .zip(e.visible.iter())
+                .any(|(a, b)| (a - b).abs() > 0.5);
             let mut intent = e.live_intent;
             if settled {
                 intent |= I::POSITION | I::SIZE | I::TRANSITION | I::REVEAL;
@@ -146,11 +201,22 @@ impl Trace {
             if e.in_growing_row {
                 intent |= I::SIZE | I::REVEAL;
             }
-            let flags = if e.moving || e.in_growing_row { F::ANIMATED } else { 0 }
-                | if e.scrolling { F::SCROLLING } else { 0 }
+            let flags = if e.moving || e.in_growing_row {
+                F::ANIMATED
+            } else {
+                0
+            } | if e.scrolling { F::SCROLLING } else { 0 }
                 | if clipped { F::CLIPPED } else { 0 }
-                | if blank.contains(e.path.as_str()) { F::BLANK } else { 0 }
-                | if e.loop_phase.is_some() { F::LOOPING } else { 0 }
+                | if blank.contains(e.path.as_str()) {
+                    F::BLANK
+                } else {
+                    0
+                }
+                | if e.loop_phase.is_some() {
+                    F::LOOPING
+                } else {
+                    0
+                }
                 | intent << 8;
             let q = [
                 (f64::from(x) * 100.0).round() as i64,
@@ -163,7 +229,11 @@ impl Trace {
             let sc = e.scrolled.map(|v| (f64::from(v) * 100.0).round() as i64);
             if self.scrolled.get(&id).copied().unwrap_or_default() != sc {
                 scrolled.push(json!([id, r2(e.scrolled[0]), r2(e.scrolled[1])]));
-                if sc == [0; 2] { self.scrolled.remove(&id); } else { self.scrolled.insert(id, sc); }
+                if sc == [0; 2] {
+                    self.scrolled.remove(&id);
+                } else {
+                    self.scrolled.insert(id, sc);
+                }
             }
             let state = (q, flags, e.visible.map(|v| (v * 100.0).round() as i64));
             if self.states.get(&id) != Some(&state) {
@@ -184,19 +254,34 @@ impl Trace {
                 changed.push(Value::Array(row));
             }
         }
-        let gone: Vec<u32> = self.states.keys().copied().filter(|id| !seen.contains(id)).collect();
+        let gone: Vec<u32> = self
+            .states
+            .keys()
+            .copied()
+            .filter(|id| !seen.contains(id))
+            .collect();
         // A settle unmounts what it replaces at once: a cut (transition | opacity) at its last place.
         let mut cuts = Vec::new();
         for id in &gone {
             self.scrolled.remove(id);
             if let Some(names) = self.effects.remove(id) {
-                for name in names { self.channels.remove(&name); }
+                for name in names {
+                    self.channels.remove(&name);
+                }
             }
             if let Some((q, ..)) = self.states.remove(id)
                 && settled
             {
                 let [x, y, w, h] = [q[0], q[1], q[2], q[3]].map(|v| v as f64 / 100.0);
-                cuts.push(json!([id, x, y, w, h, rune_motion::Intent::TRANSITION | rune_motion::Intent::OPACITY, 0]));
+                cuts.push(json!([
+                    id,
+                    x,
+                    y,
+                    w,
+                    h,
+                    rune_motion::Intent::TRANSITION | rune_motion::Intent::OPACITY,
+                    0
+                ]));
             }
         }
 
@@ -205,18 +290,25 @@ impl Trace {
         // than a key. Keep this separate from input: it never excuses a jump or lost velocity.
         let mut goals = Vec::new();
         for (path, goal) in rt.trace_goals() {
-            let Some(&id) = self.ids.get(path) else { continue };
+            let Some(&id) = self.ids.get(path) else {
+                continue;
+            };
             let q = goal.map(|v| (f64::from(v) * 10000.0).round() as i64);
             if let Some(old) = self.goals.insert(id, q) {
                 let scale = u8::from(old[6] != q[6]) * 15;
                 let position = u8::from(old[0] != q[0] || old[4] != q[4])
                     | u8::from(old[1] != q[1] || old[5] != q[5]) * 2;
-                let own = position | scale | u8::from(old[2] != q[2]) * 4 | u8::from(old[3] != q[3]) * 8;
-                if own != 0 { goals.push(json!([id, own, position | scale])); }
+                let own =
+                    position | scale | u8::from(old[2] != q[2]) * 4 | u8::from(old[3] != q[3]) * 8;
+                if own != 0 {
+                    goals.push(json!([id, own, position | scale]));
+                }
             }
         }
         self.goals.retain(|id, _| seen.contains(id));
-        if !goals.is_empty() { line["retarget"] = goals.into(); }
+        if !goals.is_empty() {
+            line["retarget"] = goals.into();
+        }
         // motion-lint's touch count: motion under a held press follows the hand.
         if rt.pressing() {
             line["k"] = 1.into();
@@ -232,10 +324,17 @@ impl Trace {
         // What the motion store spent this frame on, by traced element id (or path when untraced).
         let touched = rt.touched_tracks();
         if !touched.is_empty() {
-            line["tk"] = touched.into_iter().map(|(path, prop, active)| {
-                let who = self.ids.get(&path).map_or_else(|| json!(path), |&id| json!(id));
-                json!([who, prop, u8::from(active)])
-            }).collect::<Vec<_>>().into();
+            line["tk"] = touched
+                .into_iter()
+                .map(|(path, prop, active)| {
+                    let who = self
+                        .ids
+                        .get(&path)
+                        .map_or_else(|| json!(path), |&id| json!(id));
+                    json!([who, prop, u8::from(active)])
+                })
+                .collect::<Vec<_>>()
+                .into();
         }
         let events = std::mem::take(&mut rt.events);
         if !events.is_empty() {
@@ -258,7 +357,9 @@ impl Trace {
             line["ai"] = cuts.into();
         }
         if let Some(channels) = &rt.trace_channels {
-            for (&name, &(kind, value)) in channels { self.channels.sample(name, kind, value); }
+            for (&name, &(kind, value)) in channels {
+                self.channels.sample(name, kind, value);
+            }
         }
         let mut line = line.to_string();
         line.pop(); // Append scalar fields to the same frame object.
@@ -278,13 +379,24 @@ impl Trace {
 impl Drop for Trace {
     fn drop(&mut self) {
         if let Some((stats, app)) = &self.surface {
-            eprintln!("rune: frames {}", crate::frame::surface_stats::read(stats).summary());
-            if let Some(app) = app { eprintln!("rune: app {}", app()); }
+            eprintln!(
+                "rune: frames {}",
+                crate::frame::surface_stats::read(stats).summary()
+            );
+            if let Some(app) = app {
+                eprintln!("rune: app {}", app());
+            }
         }
-        if self.presents.is_none() { return; }
+        if self.presents.is_none() {
+            return;
+        }
         self.settle_presents(crate::frame::present_time::SETTLE);
         let _ = self.out.flush();
-        if let Some(summary) = std::fs::read_to_string(&self.path).ok().as_deref().and_then(crate::frame::present_time::Summary::of_trace) {
+        if let Some(summary) = std::fs::read_to_string(&self.path)
+            .ok()
+            .as_deref()
+            .and_then(crate::frame::present_time::Summary::of_trace)
+        {
             eprintln!("{summary}");
         }
     }
@@ -338,7 +450,11 @@ pub(crate) fn tree_json<S>(rt: &Runtime<S>, real_t: f64) -> Value {
             if rt.element_is_secure(&e.path) {
                 v["secure"] = true.into();
             }
-            if e.rect.iter().zip(e.target.iter()).any(|(a, b)| (a - b).abs() > 0.01) {
+            if e.rect
+                .iter()
+                .zip(e.target.iter())
+                .any(|(a, b)| (a - b).abs() > 0.01)
+            {
                 v["target"] = e.target.map(r2).to_vec().into();
             }
             if e.moving {
@@ -374,10 +490,18 @@ pub(crate) fn tree_json<S>(rt: &Runtime<S>, real_t: f64) -> Value {
         "elements": els,
         "warnings": rt.key_warnings.as_deref().unwrap_or_default(),
     });
-    if let Some(menu) = rt.popup_json() { tree["popupMenu"] = menu; }
-    if let Some(dialog) = rt.file_dialog_json() { tree["fileDialog"] = dialog; }
-    if let Some(title) = rt.window_title.current() { tree["title"] = title.into(); }
-    if let Some((text, rect)) = rt.help_tooltip() { tree["tooltip"] = json!({ "text": text, "rect": rect.map(r2) }); }
+    if let Some(menu) = rt.popup_json() {
+        tree["popupMenu"] = menu;
+    }
+    if let Some(dialog) = rt.file_dialog_json() {
+        tree["fileDialog"] = dialog;
+    }
+    if let Some(title) = rt.window_title.current() {
+        tree["title"] = title.into();
+    }
+    if let Some((text, rect)) = rt.help_tooltip() {
+        tree["tooltip"] = json!({ "text": text, "rect": rect.map(r2) });
+    }
     tree["accessibility"] = crate::a11y::dump::json(&rt.accessibility_tree(), false);
     tree
 }
@@ -401,6 +525,8 @@ fn video_json(v: &crate::video::Snapshot) -> Value {
         "looping": v.looping,
         "muted": v.muted,
     });
-    if let Some(e) = error { out["error"] = e.into(); }
+    if let Some(e) = error {
+        out["error"] = e.into();
+    }
     out
 }

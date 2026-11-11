@@ -16,7 +16,10 @@ impl<'a> States<'a> {
     }
 
     pub(crate) fn two(app: &'a mut dyn Any, extra: &'a mut dyn Any) -> Self {
-        States { app, extra: Some(extra) }
+        States {
+            app,
+            extra: Some(extra),
+        }
     }
 
     /// None when neither is an `S`: a deferred callback whose stage the playground has dropped.
@@ -28,7 +31,10 @@ impl<'a> States<'a> {
     }
 
     pub(crate) fn reborrow(&mut self) -> States<'_> {
-        States { app: &mut *self.app, extra: self.extra.as_deref_mut() }
+        States {
+            app: &mut *self.app,
+            extra: self.extra.as_deref_mut(),
+        }
     }
 }
 
@@ -45,16 +51,22 @@ impl<'a> StatesRef<'a> {
     }
 
     pub(crate) fn two(app: &'a dyn Any, extra: &'a dyn Any) -> Self {
-        StatesRef { app, extra: Some(extra) }
+        StatesRef {
+            app,
+            extra: Some(extra),
+        }
     }
 
     pub(crate) fn cast<S: 'static>(self) -> Option<&'a S> {
-        self.app.downcast_ref().or_else(|| self.extra?.downcast_ref())
+        self.app
+            .downcast_ref()
+            .or_else(|| self.extra?.downcast_ref())
     }
 }
 
 pub(crate) fn downcast<S: 'static>(s: States<'_>) -> &mut S {
-    s.cast::<S>().expect("handler registered for a different state type than the app's")
+    s.cast::<S>()
+        .expect("handler registered for a different state type than the app's")
 }
 
 /// Pins an edit-access closure's signature, so Rust ties the returned borrow to the states.

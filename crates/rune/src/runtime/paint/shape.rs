@@ -4,11 +4,27 @@ use super::*;
 /// Instances for a vector shape whose origin sits at `origin` (device px), with `k` device px per
 /// coordinate unit on each axis and `k_px` device px per point for stroke widths.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn push_shape(out: &mut Vec<Instance>, shape: &Shape, origin: [f32; 2], k: [f32; 2], k_px: f32, opacity: f32, srgb: bool, clip: [f32; 4], fade: [f32; 4]) {
+pub(super) fn push_shape(
+    out: &mut Vec<Instance>,
+    shape: &Shape,
+    origin: [f32; 2],
+    k: [f32; 2],
+    k_px: f32,
+    opacity: f32,
+    srgb: bool,
+    clip: [f32; 4],
+    fade: [f32; 4],
+) {
     let at = |p: [f32; 2]| [origin[0] + p[0] * k[0], origin[1] + p[1] * k[1]];
     for op in &shape.ops {
         match op {
-            Op::Stroke { points, closed, width, cap, color } => {
+            Op::Stroke {
+                points,
+                closed,
+                width,
+                cap,
+                color,
+            } => {
                 let fill = premul(*color, opacity, srgb);
                 if fill[3] <= 0.0005 {
                     continue;
@@ -25,7 +41,12 @@ pub(super) fn push_shape(out: &mut Vec<Instance>, shape: &Shape, origin: [f32; 2
                         radii: [a[0], a[1], b[0], b[1]],
                         fill,
                         border: [0.0; 4],
-                        params: [hw, KIND_SEGMENT, if *cap == LineCap::Round { 1.0 } else { 0.0 }, 1.0],
+                        params: [
+                            hw,
+                            KIND_SEGMENT,
+                            if *cap == LineCap::Round { 1.0 } else { 0.0 },
+                            1.0,
+                        ],
                         uv: [0.0; 4],
                         clip,
                         fade: crate::render::pack_fade(fade, clip, clip),

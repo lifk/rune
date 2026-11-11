@@ -14,8 +14,12 @@ fn lists(s: &App, _: &mut Cx<App>) -> El {
     let k = kit();
     let mut picker = List::new().active(None);
     for (i, name) in ["Inbox", "Drafts", "Sent"].into_iter().enumerate() {
-        picker = picker.item(ListItem::new(name).group(if i < 2 { "Mail" } else { "Other" }).selected(s.picked == Some(i))
-            .on_select(move |s: &mut App, _| s.picked = Some(i)));
+        picker = picker.item(
+            ListItem::new(name)
+                .group(if i < 2 { "Mail" } else { "Other" })
+                .selected(s.picked == Some(i))
+                .on_select(move |s: &mut App, _| s.picked = Some(i)),
+        );
     }
     col()
         .gap(8.0)
@@ -98,7 +102,11 @@ fn a_table_reads_its_headers_rows_and_selection() {
     press_key(&mut rt, Key::Up);
     let tree = rt.accessibility_json();
     assert!(has(node(&tree, "f2"), "selected"));
-    assert_eq!(node(&tree, "table")["activeDescendant"], "f2", "focus stays on the table; a reader follows the cursor row");
+    assert_eq!(
+        node(&tree, "table")["activeDescendant"],
+        "f2",
+        "focus stays on the table; a reader follows the cursor row"
+    );
     press_key(&mut rt, Key::Enter);
     assert_eq!(rt.state.chosen.as_deref(), Some("f2"));
 }
@@ -119,7 +127,10 @@ fn a_card_is_a_group_named_by_its_title() {
     let tree = rt.accessibility_json();
     let card = node(&tree, "card");
     assert_eq!(said(card), ("group", "Build failed"));
-    assert!(find(card, "rule").is_none() && with_role(card, "image").is_empty(), "the accent rule and icon are decoration");
+    assert!(
+        find(card, "rule").is_none() && with_role(card, "image").is_empty(),
+        "the accent rule and icon are decoration"
+    );
     assert_eq!(said(node(card, "description")), ("label", "3 tests failed on Linux"));
     assert_eq!(named(card, "Retry")[0]["role"], "button");
     golden("card", &tree);
@@ -127,7 +138,11 @@ fn a_card_is_a_group_named_by_its_title() {
 
 fn diff(s: &App, _: &mut Cx<App>) -> El {
     let k = kit();
-    col().w_full().h(400.0).child(DiffView::new(|s: &App| &s.diff, |s: &mut App| &mut s.diff).build(s, &k)).child(text("end"))
+    col()
+        .w_full()
+        .h(400.0)
+        .child(DiffView::new(|s: &App| &s.diff, |s: &mut App| &mut s.diff).build(s, &k))
+        .child(text("end"))
 }
 
 #[test]
@@ -136,7 +151,9 @@ fn a_diff_reads_its_file_header_and_lines() {
     let new = "fn main() {\n    println!(\"hello\");\n}\n";
     let state = DiffState::new(vec![FileDiff::from_texts("src/main.rs", old, new)]);
     let mut rt = mount(App { diff: state, ..App::default() }, diff);
-    for _ in 0..30 { rt.frame(1.0 / 60.0); }
+    for _ in 0..30 {
+        rt.frame(1.0 / 60.0);
+    }
     let tree = rt.accessibility_json();
     let lines = with_role(&tree, "list");
     let list = lines.iter().find(|l| l["name"] == "Diff").expect("the diff's rows are a list");
@@ -146,7 +163,10 @@ fn a_diff_reads_its_file_header_and_lines() {
     assert!(has(toggle, "expanded") && can(toggle, "collapse"));
     let items = with_role(list, "list-item");
     assert!(!items.is_empty() && items.iter().all(|i| i["name"].as_str().is_some_and(|n| !n.is_empty())));
-    assert!(with_role(list, "button").iter().all(|b| b["name"].as_str().is_some_and(|n| !n.is_empty())), "no nameless buttons");
+    assert!(
+        with_role(list, "button").iter().all(|b| b["name"].as_str().is_some_and(|n| !n.is_empty())),
+        "no nameless buttons"
+    );
     golden("diff", &tree);
     assert!(rt.accessibility_action("toggle", Action::Collapse, None));
     settle(&mut rt);

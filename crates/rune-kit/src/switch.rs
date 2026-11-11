@@ -111,9 +111,9 @@ impl Switch {
             }
         }
         if let Some(d) = &self.description {
-            root = root
-                .description(d.clone())
-                .child(text(d.clone()).key("description").font(k.ty.text_xsmall.lh(15.6)).color(c.std_text).a11y_hidden());
+            root = root.description(d.clone()).child(
+                text(d.clone()).key("description").font(k.ty.text_xsmall.lh(15.6)).color(c.std_text).a11y_hidden(),
+            );
         }
         root = root.child(control.key("control").focus_ring(2.0, 1.0, c.border_focus).a11y_hidden());
         self.acts.apply(root.focusable(!disabled).disabled(disabled), !disabled)

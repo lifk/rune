@@ -5,7 +5,10 @@ mod support;
 
 use std::cell::Cell;
 
-use rune::{Color, Cursor, Cx, Drag, El, Env, Key, KeyEvent, Link, Mods, Runtime, TextEdit, TextStyle, col, rich, row, text, text_input};
+use rune::{
+    Color, Cursor, Cx, Drag, El, Env, Key, KeyEvent, Link, Mods, Runtime, TextEdit, TextStyle, col,
+    rich, row, text, text_input,
+};
 use support::{click, drag, find, glyphs, tick, wait};
 
 const ROW: &str = "open the project";
@@ -31,40 +34,95 @@ struct S {
 
 thread_local! { static VIEWS: Cell<u32> = const { Cell::new(0) }; }
 
-fn shade() -> Color { Color::WHITE.alpha(0.1) }
+fn shade() -> Color {
+    Color::WHITE.alpha(0.1)
+}
 
 fn view(s: &S, _: &mut Cx<S>) -> El {
     VIEWS.with(|v| v.set(v.get() + 1));
     let style = TextStyle::new(14.0, 400.0).lh(20.0);
     let docs = LINKED.find("docs").unwrap();
-    let mut root = col().w_full().h_full().padding(10.0).gap(10.0)
-        .child(row().key("row").w(300.0).h(30.0).hover(shade()).press(shade())
-            .on_press(|s: &mut S| s.row_presses += 1)
-            .on_double_press(|s: &mut S| s.row_doubles += 1)
-            .on_hover(|s: &mut S| s.row_hovers += 1)
-            .on_secondary_press(|s: &mut S, _, _| s.row_menus += 1)
-            .child(text(ROW).key("rowtext").font(style).selectable(true)))
-        .child(row().key("dragrow").w(300.0).h(30.0)
-            .on_drag(|s: &mut S, _: &mut Drag, _| s.drags += 1)
-            .child(text(DRAG).key("dragtext").font(style).selectable(true)))
-        .child(text(OWN).key("own").font(style).selectable(true).on_press(|s: &mut S| s.own_presses += 1))
-        .child(rich(LINKED, Vec::new()).key("linked").font(style).selectable(true)
-            .link(Link::new(docs..docs + 4, "docs")))
-        .child(text_input(&s.field, style).key("field").w(200.0).on_edit(|s: &mut S| &mut s.field))
-        .child(text(LINES).key("lines").font(style).w(200.0).selectable(true));
+    let mut root = col()
+        .w_full()
+        .h_full()
+        .padding(10.0)
+        .gap(10.0)
+        .child(
+            row()
+                .key("row")
+                .w(300.0)
+                .h(30.0)
+                .hover(shade())
+                .press(shade())
+                .on_press(|s: &mut S| s.row_presses += 1)
+                .on_double_press(|s: &mut S| s.row_doubles += 1)
+                .on_hover(|s: &mut S| s.row_hovers += 1)
+                .on_secondary_press(|s: &mut S, _, _| s.row_menus += 1)
+                .child(text(ROW).key("rowtext").font(style).selectable(true)),
+        )
+        .child(
+            row()
+                .key("dragrow")
+                .w(300.0)
+                .h(30.0)
+                .on_drag(|s: &mut S, _: &mut Drag, _| s.drags += 1)
+                .child(text(DRAG).key("dragtext").font(style).selectable(true)),
+        )
+        .child(
+            text(OWN)
+                .key("own")
+                .font(style)
+                .selectable(true)
+                .on_press(|s: &mut S| s.own_presses += 1),
+        )
+        .child(
+            rich(LINKED, Vec::new())
+                .key("linked")
+                .font(style)
+                .selectable(true)
+                .link(Link::new(docs..docs + 4, "docs")),
+        )
+        .child(
+            text_input(&s.field, style)
+                .key("field")
+                .w(200.0)
+                .on_edit(|s: &mut S| &mut s.field),
+        )
+        .child(
+            text(LINES)
+                .key("lines")
+                .font(style)
+                .w(200.0)
+                .selectable(true),
+        );
     if s.stale_shown {
-        root = root.child(text(s.stale.clone()).key("stale").font(style).w(200.0).selectable(s.stale_selectable));
+        root = root.child(
+            text(s.stale.clone())
+                .key("stale")
+                .font(style)
+                .w(200.0)
+                .selectable(s.stale_selectable),
+        );
     }
     root
 }
 
 fn runtime() -> Runtime<S> {
-    let s = S { field: TextEdit::new("field text"), stale: "— a".into(), stale_selectable: true, stale_shown: true, ..S::default() };
+    let s = S {
+        field: TextEdit::new("field text"),
+        stale: "— a".into(),
+        stale_selectable: true,
+        stale_shown: true,
+        ..S::default()
+    };
     let mut rt = Runtime::new(s, view, (500.0, 400.0), Env::new(true, 2.0));
     // The app sees every key first and takes all but plain Cmd+A and Cmd+C, which it leaves to
     // the selection.
     rt.on_key = Some(|s, ev, _| {
-        s.keys.push(format!("{:?} shift={} alt={}", ev.key, ev.mods.shift, ev.mods.alt));
+        s.keys.push(format!(
+            "{:?} shift={} alt={}",
+            ev.key, ev.mods.shift, ev.mods.alt
+        ));
         let m = ev.mods;
         !(matches!(ev.key, Key::Command('a' | 'c')) && !m.shift && !m.alt && !m.ctrl)
     });
@@ -73,7 +131,10 @@ fn runtime() -> Runtime<S> {
 }
 
 fn chord(rt: &mut Runtime<S>, c: char, mods: Mods) {
-    rt.key(KeyEvent { key: Key::Command(c), mods: Mods { cmd: true, ..mods } });
+    rt.key(KeyEvent {
+        key: Key::Command(c),
+        mods: Mods { cmd: true, ..mods },
+    });
     tick(rt);
 }
 
@@ -124,8 +185,16 @@ fn dragging_a_draggable_row_drags_it_and_clicks_still_select() {
     let mut rt = runtime();
     let g = glyphs(&rt, "dragtext");
     drag(&mut rt, g[0], (g[0].0 + 60.0, g[0].1 + 40.0));
-    assert!(rt.state.drags >= 3, "down, moves and up reach the row: {}", rt.state.drags);
-    assert_eq!(rt.selected_text(), None, "the drag moved the row, not a selection");
+    assert!(
+        rt.state.drags >= 3,
+        "down, moves and up reach the row: {}",
+        rt.state.drags
+    );
+    assert_eq!(
+        rt.selected_text(),
+        None,
+        "the drag moved the row, not a selection"
+    );
     wait(&mut rt);
     click(&mut rt, g[0]);
     click(&mut rt, g[0]);
@@ -153,7 +222,11 @@ fn pressing_plain_words_beside_a_link_neither_focuses_nor_rebuilds() {
     click(&mut rt, g[0]);
     click(&mut rt, g[0]);
     assert_eq!(rt.selected_text().as_deref(), Some("read"));
-    assert_eq!(VIEWS.with(Cell::get), before, "selecting never re-runs the view");
+    assert_eq!(
+        VIEWS.with(Cell::get),
+        before,
+        "selecting never re-runs the view"
+    );
     assert!(!find(&rt, "linked").focused);
     wait(&mut rt);
 
@@ -164,7 +237,10 @@ fn pressing_plain_words_beside_a_link_neither_focuses_nor_rebuilds() {
     wait(&mut rt);
     click(&mut rt, g[1]);
     assert!(!rt.state.field.focused, "the field lets go");
-    assert!(!find(&rt, "linked").focused, "and the text doesn't take focus");
+    assert!(
+        !find(&rt, "linked").focused,
+        "and the text doesn't take focus"
+    );
 }
 
 #[test]
@@ -178,13 +254,34 @@ fn only_the_plain_chords_belong_to_the_selection() {
     assert_eq!(rt.selected_text().as_deref(), Some("open"));
 
     // Shift or Option added: the app's shortcut, the selection untouched.
-    chord(&mut rt, 'c', Mods { shift: true, ..Mods::default() });
-    chord(&mut rt, 'a', Mods { alt: true, ..Mods::default() });
+    chord(
+        &mut rt,
+        'c',
+        Mods {
+            shift: true,
+            ..Mods::default()
+        },
+    );
+    chord(
+        &mut rt,
+        'a',
+        Mods {
+            alt: true,
+            ..Mods::default()
+        },
+    );
     assert_eq!(rt.state.keys.len(), 2, "{:?}", rt.state.keys);
     assert!(clipboard.text().is_none());
     assert_eq!(rt.selected_text().as_deref(), Some("open"));
     if cfg!(target_os = "macos") {
-        chord(&mut rt, 'a', Mods { ctrl: true, ..Mods::default() });
+        chord(
+            &mut rt,
+            'a',
+            Mods {
+                ctrl: true,
+                ..Mods::default()
+            },
+        );
         assert_eq!(rt.state.keys.len(), 3, "Cmd+Ctrl+A is the app's");
     }
     let app = rt.state.keys.len();
@@ -194,7 +291,10 @@ fn only_the_plain_chords_belong_to_the_selection() {
     // app passed on, selects all of it.
     click(&mut rt, g[5]);
     chord(&mut rt, 'c', Mods::default());
-    assert!(clipboard.text().is_none(), "an empty selection copies nothing");
+    assert!(
+        clipboard.text().is_none(),
+        "an empty selection copies nothing"
+    );
     chord(&mut rt, 'a', Mods::default());
     assert_eq!(rt.selected_text().as_deref(), Some(ROW));
     assert_eq!(rt.state.keys.len(), app + 2, "the app saw both first");
@@ -247,7 +347,11 @@ fn a_selection_drops_when_its_text_changes_or_goes() {
     }
     rt.pointer_up(e.rect[0] + 20.0, g[1].1);
     tick(&mut rt);
-    assert_eq!(rt.text_selection(), None, "a content change drops the selection");
+    assert_eq!(
+        rt.text_selection(),
+        None,
+        "a content change drops the selection"
+    );
     assert_eq!(rt.selected_text(), None);
     wait(&mut rt);
 

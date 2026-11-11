@@ -22,14 +22,7 @@ pub struct PopupItem {
 
 impl PopupItem {
     pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
-        Self {
-            id: id.into(),
-            label: label.into(),
-            description: None,
-            leading: None,
-            trailing: None,
-            disabled: false,
-        }
+        Self { id: id.into(), label: label.into(), description: None, leading: None, trailing: None, disabled: false }
     }
     /// Secondary muted text shown after the label on the same row.
     pub fn description(mut self, text: impl Into<String>) -> Self {
@@ -256,10 +249,34 @@ impl<S: 'static> PopupList<S> {
             }
             if let Some(desc) = option.description.as_deref().filter(|d| !d.is_empty()) {
                 item = item
-                    .child(text(&option.label).font(k.ty.ui_compact).color(k.c.text_base).shrink().truncate().a11y_hidden())
-                    .child(text(desc).key("description").font(k.ty.ui_compact).color(k.c.text_weak).grow(1.0).shrink().truncate().a11y_hidden());
+                    .child(
+                        text(&option.label)
+                            .font(k.ty.ui_compact)
+                            .color(k.c.text_base)
+                            .shrink()
+                            .truncate()
+                            .a11y_hidden(),
+                    )
+                    .child(
+                        text(desc)
+                            .key("description")
+                            .font(k.ty.ui_compact)
+                            .color(k.c.text_weak)
+                            .grow(1.0)
+                            .shrink()
+                            .truncate()
+                            .a11y_hidden(),
+                    );
             } else {
-                item = item.child(text(&option.label).font(k.ty.ui_compact).color(k.c.text_base).grow(1.0).shrink().truncate().a11y_hidden());
+                item = item.child(
+                    text(&option.label)
+                        .font(k.ty.ui_compact)
+                        .color(k.c.text_base)
+                        .grow(1.0)
+                        .shrink()
+                        .truncate()
+                        .a11y_hidden(),
+                );
             }
             if let Some(trailing) = &option.trailing {
                 item = item.child(trailing.clone());
@@ -305,7 +322,12 @@ impl<S: 'static> PopupList<S> {
             .w_full()
             .shrink()
             .min_h(0.0)
-            .child(crate::scroll_bar(k, &format!("{}-scroll-area", self.key), "viewport", viewport).w_full().shrink().min_h(0.0))
+            .child(
+                crate::scroll_bar(k, &format!("{}-scroll-area", self.key), "viewport", viewport)
+                    .w_full()
+                    .shrink()
+                    .min_h(0.0),
+            )
             .child(
                 el().key("empty")
                     .h(if empty { 28.0 } else { 0.0 })
@@ -334,13 +356,8 @@ impl<S: 'static> PopupList<S> {
         let padding = self.padding;
         let instant = !self.animate_filtering;
         let list = self.build_list(k);
-        let mut content = col()
-            .key(key)
-            .preserve_focus_on_press(true)
-            .w(width)
-            .padding(padding)
-            .on_press(|_: &mut S| {})
-            .child(list);
+        let mut content =
+            col().key(key).preserve_focus_on_press(true).w(width).padding(padding).on_press(|_: &mut S| {}).child(list);
         if instant {
             content = content.instant_changes();
         }

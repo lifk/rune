@@ -92,13 +92,22 @@ pub struct Shape {
 
 impl Shape {
     pub fn rounded(x: f32, y: f32, w: f32, h: f32, radius: f32) -> Shape {
-        Shape { rect: Rect::new(x, y, w, h), radius }
+        Shape {
+            rect: Rect::new(x, y, w, h),
+            radius,
+        }
     }
     pub fn capsule(x: f32, y: f32, w: f32, h: f32) -> Shape {
-        Shape { rect: Rect::new(x, y, w, h), radius: w.min(h) * 0.5 }
+        Shape {
+            rect: Rect::new(x, y, w, h),
+            radius: w.min(h) * 0.5,
+        }
     }
     pub fn circle(cx: f32, cy: f32, r: f32) -> Shape {
-        Shape { rect: Rect::new(cx - r, cy - r, 2.0 * r, 2.0 * r), radius: r }
+        Shape {
+            rect: Rect::new(cx - r, cy - r, 2.0 * r, 2.0 * r),
+            radius: r,
+        }
     }
 }
 
@@ -154,7 +163,11 @@ pub struct Heat {
 
 impl Heat {
     pub fn new(attack: f32, cool: f32) -> Heat {
-        Heat { attack, cool, last: (0.0, 0.0, false) }
+        Heat {
+            attack,
+            cool,
+            last: (0.0, 0.0, false),
+        }
     }
     pub fn set(&mut self, t: f32, on: bool) {
         if on != self.last.2 {
@@ -206,24 +219,45 @@ impl<T: Copy> OneShots<T> {
     pub const FADE: f32 = 0.16;
 
     pub fn new(cap: usize) -> Self {
-        OneShots { cap: cap.max(1), shots: Vec::new(), count: 0 }
+        OneShots {
+            cap: cap.max(1),
+            shots: Vec::new(),
+            count: 0,
+        }
     }
 
     pub fn trigger(&mut self, t: f32, data: T) {
-        self.shots.retain(|s| s.retired.is_none_or(|r| t - r < Self::FADE));
+        self.shots
+            .retain(|s| s.retired.is_none_or(|r| t - r < Self::FADE));
         let active = self.shots.iter().filter(|s| s.retired.is_none()).count();
         if active >= self.cap
-            && let Some(old) = self.shots.iter_mut().filter(|s| s.retired.is_none()).min_by(|a, b| a.t0.total_cmp(&b.t0))
+            && let Some(old) = self
+                .shots
+                .iter_mut()
+                .filter(|s| s.retired.is_none())
+                .min_by(|a, b| a.t0.total_cmp(&b.t0))
         {
             old.retired = Some(t);
         }
         // Retired instances are fading; under a storm of triggers drop the most faded first.
         while self.shots.len() >= self.cap * 2 {
-            let i = (0..self.shots.len()).min_by(|&a, &b| self.shots[a].retired.unwrap_or(f32::MAX).total_cmp(&self.shots[b].retired.unwrap_or(f32::MAX))).unwrap();
+            let i = (0..self.shots.len())
+                .min_by(|&a, &b| {
+                    self.shots[a]
+                        .retired
+                        .unwrap_or(f32::MAX)
+                        .total_cmp(&self.shots[b].retired.unwrap_or(f32::MAX))
+                })
+                .unwrap();
             self.shots.remove(i);
         }
         self.count = self.count.wrapping_add(1);
-        self.shots.push(OneShot { t0: t, data, seed: cpu::hu(self.count, 0x51ed), retired: None });
+        self.shots.push(OneShot {
+            t0: t,
+            data,
+            seed: cpu::hu(self.count, 0x51ed),
+            retired: None,
+        });
     }
 
     /// Instances alive at `t` (started less than `life` seconds ago) with their opacity.
@@ -242,7 +276,8 @@ impl<T: Copy> OneShots<T> {
 
     /// Drop instances that finished (older than `life`) or faded out.
     pub fn prune(&mut self, t: f32, life: f32) {
-        self.shots.retain(|s| t - s.t0 < life && s.retired.is_none_or(|r| t - r < Self::FADE));
+        self.shots
+            .retain(|s| t - s.t0 < life && s.retired.is_none_or(|r| t - r < Self::FADE));
     }
 
     pub fn is_animating(&self, t: f32, life: f32) -> bool {
@@ -253,7 +288,6 @@ impl<T: Copy> OneShots<T> {
         self.shots.clear();
     }
 }
-
 
 // ---------------------------------------------------------------- Fx / layers
 
@@ -332,12 +366,20 @@ impl FxBlend {
     /// Additional per-pixel cost of this blend mode on top of the effect's own `Fx::cost`.
     pub const fn cost(self) -> FxCost {
         match self {
-            Self::Normal | Self::Screen => {
-                FxCost { passes: 0, samples: 0, alu: 0, backdrop: false, source: false }
-            }
-            Self::Multiply | Self::Overlay | Self::SoftLight => {
-                FxCost { passes: 0, samples: 1, alu: 1, backdrop: true, source: false }
-            }
+            Self::Normal | Self::Screen => FxCost {
+                passes: 0,
+                samples: 0,
+                alu: 0,
+                backdrop: false,
+                source: false,
+            },
+            Self::Multiply | Self::Overlay | Self::SoftLight => FxCost {
+                passes: 0,
+                samples: 1,
+                alu: 1,
+                backdrop: true,
+                source: false,
+            },
         }
     }
 
@@ -365,7 +407,13 @@ pub struct FxSlot {
 
 impl Default for FxSlot {
     fn default() -> Self {
-        Self { scale: 0.0, clip: NO_CLIP, fade: [0; 4], backdrop_srgb: None, blend: FxBlend::Normal }
+        Self {
+            scale: 0.0,
+            clip: NO_CLIP,
+            fade: [0; 4],
+            backdrop_srgb: None,
+            blend: FxBlend::Normal,
+        }
     }
 }
 
@@ -373,9 +421,15 @@ impl FxSlot {
     /// Whether backdrop samples need software sRGB decoding. Default: `FxFrame::backdrop`
     /// samples are linear; per-slot copies use the frame's blend encoding. Set false for an
     /// `*Srgb` view (which hardware decodes) or a linear `Rgba16Float` input, even in sRGB mode.
-    pub fn backdrop_srgb(mut self, on: bool) -> Self { self.backdrop_srgb = Some(on); self }
+    pub fn backdrop_srgb(mut self, on: bool) -> Self {
+        self.backdrop_srgb = Some(on);
+        self
+    }
     /// Device pixels per point (`EffectSite::scale`); zero uses `FxFrame::scale`.
-    pub fn scale(mut self, scale: f32) -> Self { self.scale = scale; self }
+    pub fn scale(mut self, scale: f32) -> Self {
+        self.scale = scale;
+        self
+    }
     /// Window device-pixel clip and packed soft-edge / rounded-clip words.
     pub fn clip(mut self, clip: [f32; 4], fade: [u32; 4]) -> Self {
         self.clip = clip;
@@ -390,19 +444,43 @@ impl FxSlot {
 }
 
 impl Fx {
-    pub fn glow(p: GlowParams) -> Fx { Fx::Glow(p) }
-    pub fn pulse(p: PulseParams) -> Fx { Fx::Pulse(p) }
-    pub fn electric(p: ElectricParams) -> Fx { Fx::Electric(p) }
-    pub fn fire(p: FireParams) -> Fx { Fx::Fire(p) }
-    pub fn distort(p: DistortParams) -> Fx { Fx::Distort(p) }
-    pub fn lens(p: LensParams) -> Fx { Fx::Distort(DistortParams::Lens(p)) }
-    pub fn motion_blur(p: MotionBlurParams, s: MotionSamples) -> Fx { Fx::MotionBlur(p, s) }
-    pub fn shimmer(p: ShimmerParams) -> Fx { Fx::Shimmer(p) }
-    pub fn sparkles(p: SparkleParams) -> Fx { Fx::Sparkles(p) }
-    pub fn aurora(p: AuroraParams) -> Fx { Fx::Aurora(p) }
-    pub fn grain(p: GrainParams) -> Fx { Fx::Grain(p) }
+    pub fn glow(p: GlowParams) -> Fx {
+        Fx::Glow(p)
+    }
+    pub fn pulse(p: PulseParams) -> Fx {
+        Fx::Pulse(p)
+    }
+    pub fn electric(p: ElectricParams) -> Fx {
+        Fx::Electric(p)
+    }
+    pub fn fire(p: FireParams) -> Fx {
+        Fx::Fire(p)
+    }
+    pub fn distort(p: DistortParams) -> Fx {
+        Fx::Distort(p)
+    }
+    pub fn lens(p: LensParams) -> Fx {
+        Fx::Distort(DistortParams::Lens(p))
+    }
+    pub fn motion_blur(p: MotionBlurParams, s: MotionSamples) -> Fx {
+        Fx::MotionBlur(p, s)
+    }
+    pub fn shimmer(p: ShimmerParams) -> Fx {
+        Fx::Shimmer(p)
+    }
+    pub fn sparkles(p: SparkleParams) -> Fx {
+        Fx::Sparkles(p)
+    }
+    pub fn aurora(p: AuroraParams) -> Fx {
+        Fx::Aurora(p)
+    }
+    pub fn grain(p: GrainParams) -> Fx {
+        Fx::Grain(p)
+    }
     /// `Fx::fill(LiquidMetalParams::gold())`, `Fx::fill(DitherParams::bayer().border(3.0))`.
-    pub fn fill(p: impl Into<FillParams>) -> Fx { Fx::Fill(p.into()) }
+    pub fn fill(p: impl Into<FillParams>) -> Fx {
+        Fx::Fill(p.into())
+    }
 
     /// Attach to a node shape. Defaults: under the node for light that spills out (glow, pulse,
     /// fire), over it for things that replace or overlay pixels (distortion, motion blur, extras).
@@ -415,7 +493,16 @@ impl Fx {
             Fx::Electric(_) => Place::Over,
             _ => Place::Over,
         };
-        FxLayer { fx: self, shape, place, time: 0.0, seed: 1, reduced_motion: false, source: None, opacity: 1.0 }
+        FxLayer {
+            fx: self,
+            shape,
+            place,
+            time: 0.0,
+            seed: 1,
+            reduced_motion: false,
+            source: None,
+            opacity: 1.0,
+        }
     }
 
     pub fn needs_backdrop(&self) -> bool {
@@ -429,10 +516,20 @@ impl Fx {
     /// Static cost declaration per covered pixel: `samples` = texture taps + CPU-table reads,
     /// `alu` = gradient-noise evaluations.
     pub fn cost(&self) -> FxCost {
-        let c = |samples, alu| FxCost { passes: 1, samples, alu, backdrop: false, source: false };
+        let c = |samples, alu| FxCost {
+            passes: 1,
+            samples,
+            alu,
+            backdrop: false,
+            source: false,
+        };
         match self {
             Fx::Glow(p) => match p.style {
-                GlowStyle::Mask => FxCost { samples: 13, source: true, ..c(13, 0) },
+                GlowStyle::Mask => FxCost {
+                    samples: 13,
+                    source: true,
+                    ..c(13, 0)
+                },
                 GlowStyle::Aura => c(0, 1),
                 _ => c(0, 0),
             },
@@ -446,7 +543,14 @@ impl Fx {
                     ElectricStyle::Charged => c(1 + 6 + 5 * 6, 0),
                 }
             }
-            Fx::Fire(p) => c(p.embers.min(40) * 2, match p.style { FireStyle::Embers => 0, FireStyle::Border => 3, _ => 8 }),
+            Fx::Fire(p) => c(
+                p.embers.min(40) * 2,
+                match p.style {
+                    FireStyle::Embers => 0,
+                    FireStyle::Border => 3,
+                    _ => 8,
+                },
+            ),
             Fx::Distort(d) => {
                 let (s, a) = match d {
                     DistortParams::HeatHaze { .. } => (1, 6),
@@ -455,10 +559,25 @@ impl Fx {
                     DistortParams::Crt { .. } => (7, 0),
                     DistortParams::ChromaSplit { .. } => (3, 0),
                 };
-                FxCost { passes: 1, samples: s, alu: a, backdrop: true, source: false }
+                FxCost {
+                    passes: 1,
+                    samples: s,
+                    alu: a,
+                    backdrop: true,
+                    source: false,
+                }
             }
-            Fx::MotionBlur(_, s) => FxCost { passes: 1, samples: s.count, alu: 0, backdrop: false, source: true },
-            Fx::Shimmer(p) => FxCost { source: p.use_mask, ..c(p.use_mask as u32, 0) },
+            Fx::MotionBlur(_, s) => FxCost {
+                passes: 1,
+                samples: s.count,
+                alu: 0,
+                backdrop: false,
+                source: true,
+            },
+            Fx::Shimmer(p) => FxCost {
+                source: p.use_mask,
+                ..c(p.use_mask as u32, 0)
+            },
             Fx::Sparkles(p) => c(p.count.min(64) * 2, 0),
             Fx::Aurora(_) => c(12, 3),
             Fx::Grain(_) => c(0, 0),
@@ -476,4 +595,3 @@ pub struct FxCost {
     pub backdrop: bool,
     pub source: bool,
 }
-

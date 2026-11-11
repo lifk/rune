@@ -54,7 +54,11 @@ fn fades_the_rows_but_not_the_thumb(inside: bool) {
             .enumerate()
             .map(|(i, p)| Primitive::from_instance(p, i as u32 + 1, format!("scroll-bar/{i}")))
             .collect(),
-        atlas: Atlas { width: rune::text::ATLAS_SIZE, height: rune::text::ATLAS_SIZE, data: rt.text.atlas.data.clone() },
+        atlas: Atlas {
+            width: rune::text::ATLAS_SIZE,
+            height: rune::text::ATLAS_SIZE,
+            data: rt.text.atlas.data.clone(),
+        },
     };
     scene.validate().unwrap();
     let mut frame = Frame::new(W, H, false);

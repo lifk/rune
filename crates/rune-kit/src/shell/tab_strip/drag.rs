@@ -36,24 +36,48 @@ pub enum TabDragPhase {
     #[default]
     Idle,
     /// The primary button went down on tab `index` and hasn't travelled past the slop yet.
-    Pressed { index: usize, pinned: bool, tab_pitch: f32 },
+    Pressed {
+        index: usize,
+        pinned: bool,
+        tab_pitch: f32,
+    },
     Dragging(TabDragMode),
     /// A reorder drop, while the strip's `on_reorder` moves the tab. Back to `Idle` right after.
-    Dropping { from: usize, to: usize },
+    Dropping {
+        from: usize,
+        to: usize,
+    },
 }
 
 /// The gesture as the strip keeps it: [`TabDragPhase`] and what only each phase has.
 #[derive(Clone, Debug, PartialEq)]
 enum Gesture {
     /// `swallow_click`: a drag was released over its own tab, whose click that follows does nothing.
-    Idle { swallow_click: bool },
-    Pressed { index: usize, pinned: bool, tab_pitch: f32, grab: Grab },
-    Dragging { mode: TabDragMode, grab: Grab, lifted: Lifted },
-    Dropping { from: usize, to: usize, swallow_click: bool },
+    Idle {
+        swallow_click: bool,
+    },
+    Pressed {
+        index: usize,
+        pinned: bool,
+        tab_pitch: f32,
+        grab: Grab,
+    },
+    Dragging {
+        mode: TabDragMode,
+        grab: Grab,
+        lifted: Lifted,
+    },
+    Dropping {
+        from: usize,
+        to: usize,
+        swallow_click: bool,
+    },
 }
 
 impl Default for Gesture {
-    fn default() -> Self { Self::Idle { swallow_click: false } }
+    fn default() -> Self {
+        Self::Idle { swallow_click: false }
+    }
 }
 
 /// Where a press landed: in the tab, in its own points; how far the strip had scrolled along
@@ -127,8 +151,14 @@ pub(super) enum Release {
     None,
     /// A press that never became a drag.
     Click,
-    Reorder { from: usize, to: usize },
-    TearOut { from: usize, offset: [f32; 2] },
+    Reorder {
+        from: usize,
+        to: usize,
+    },
+    TearOut {
+        from: usize,
+        offset: [f32; 2],
+    },
 }
 
 impl TabDragState {
@@ -147,7 +177,9 @@ impl TabDragState {
     /// The tab lifted by a drag (reordering or torn out), by its index.
     pub fn dragging(&self) -> Option<usize> {
         match self.gesture {
-            Gesture::Dragging { mode: TabDragMode::Reorder { from, .. } | TabDragMode::TearOut { from, .. }, .. } => Some(from),
+            Gesture::Dragging {
+                mode: TabDragMode::Reorder { from, .. } | TabDragMode::TearOut { from, .. }, ..
+            } => Some(from),
             _ => None,
         }
     }
@@ -161,12 +193,16 @@ impl TabDragState {
     }
     /// Drops a gesture in flight (a layout switch, a rename starting): the tab springs back.
     pub fn cancel(&mut self) {
-        if !matches!(self.gesture, Gesture::Idle { .. }) { self.gesture = Gesture::default(); }
+        if !matches!(self.gesture, Gesture::Idle { .. }) {
+            self.gesture = Gesture::default();
+        }
     }
     /// The torn-out tab now shows in a window of its own that follows the pointer (on_tear_move):
     /// the strip stops drawing it until the gesture ends, or until it docks back into the strip.
     pub fn hand_off(&mut self) {
-        if let Gesture::Dragging { mode: TabDragMode::TearOut { .. }, lifted, .. } = &mut self.gesture { lifted.handed_off = true; }
+        if let Gesture::Dragging { mode: TabDragMode::TearOut { .. }, lifted, .. } = &mut self.gesture {
+            lifted.handed_off = true;
+        }
     }
     /// Whether the torn-out tab shows in a window of its own ([Self::hand_off]).
     pub fn handed_off(&self) -> bool {
@@ -181,7 +217,9 @@ impl TabDragState {
     }
     /// The strip's `on_reorder` moved the dropped tab: the gesture is over.
     pub(super) fn dropped(&mut self) {
-        if let Gesture::Dropping { swallow_click, .. } = self.gesture { self.gesture = Gesture::Idle { swallow_click }; }
+        if let Gesture::Dropping { swallow_click, .. } = self.gesture {
+            self.gesture = Gesture::Idle { swallow_click };
+        }
     }
     /// A tab dragged from another strip (another window's) is over this one at `point`, in this
     /// window's points, or has left it (`None`): the tabs past the slot it would land in step
@@ -228,7 +266,9 @@ impl TabDragState {
         self.width_lock = None;
     }
     pub(super) fn report_rect(&mut self, rect: [f32; 4]) {
-        if let Gesture::Dragging { mode: TabDragMode::TearOut { .. }, lifted, .. } = &mut self.gesture { lifted.rect = Some(rect); }
+        if let Gesture::Dragging { mode: TabDragMode::TearOut { .. }, lifted, .. } = &mut self.gesture {
+            lifted.rect = Some(rect);
+        }
     }
     /// The lifted tab's layout rect [x, y, w, h] in window points, once reported.
     pub(super) fn lifted_rect(&self) -> Option<[f32; 4]> {
@@ -278,8 +318,12 @@ impl TabDragState {
         // A torn-out tab docks again only back over the strip: near it across, and along it
         // within a tab of its ends, not anywhere level with it.
         let pitch = lane.pitch.max(1.0);
-        let over = (((lane.lo as f32 - lane.index as f32) - 1.0) * pitch..=((lane.hi as f32 - lane.index as f32) * pitch)).contains(&along);
-        let detach = lane.tear.is_some_and(|t| if torn { across.abs() > t.reattach_distance || !over } else { across.abs() >= t.detach_distance });
+        let over = (((lane.lo as f32 - lane.index as f32) - 1.0) * pitch
+            ..=((lane.hi as f32 - lane.index as f32) * pitch))
+            .contains(&along);
+        let detach = lane.tear.is_some_and(|t| {
+            if torn { across.abs() > t.reattach_distance || !over } else { across.abs() >= t.detach_distance }
+        });
         if detach {
             self.gesture = Gesture::Dragging { mode: TabDragMode::TearOut { from: lane.index, offset }, grab, lifted };
             return true;
@@ -305,10 +349,12 @@ impl TabDragState {
     pub(super) fn release(&mut self, cancelled: bool, on_tab: bool, swallow: bool) -> Release {
         let (gesture, release) = match std::mem::take(&mut self.gesture) {
             Gesture::Pressed { .. } => (Gesture::Idle { swallow_click: swallow }, Release::Click),
-            Gesture::Dragging { mode: TabDragMode::Reorder { from, to, .. }, .. } if !cancelled && from != to =>
-                (Gesture::Dropping { from, to, swallow_click: on_tab }, Release::Reorder { from, to }),
-            Gesture::Dragging { mode: TabDragMode::TearOut { from, offset }, .. } if !cancelled =>
-                (Gesture::Idle { swallow_click: on_tab }, Release::TearOut { from, offset }),
+            Gesture::Dragging { mode: TabDragMode::Reorder { from, to, .. }, .. } if !cancelled && from != to => {
+                (Gesture::Dropping { from, to, swallow_click: on_tab }, Release::Reorder { from, to })
+            }
+            Gesture::Dragging { mode: TabDragMode::TearOut { from, offset }, .. } if !cancelled => {
+                (Gesture::Idle { swallow_click: on_tab }, Release::TearOut { from, offset })
+            }
             Gesture::Dragging { .. } => (Gesture::Idle { swallow_click: on_tab }, Release::None),
             other => (other, Release::None),
         };

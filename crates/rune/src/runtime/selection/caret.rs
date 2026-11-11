@@ -8,16 +8,28 @@ impl<S: 'static> Runtime<S> {
     pub(super) fn stack_row_dy(&self, nodes: &[Node], i: usize) -> f32 {
         let mut dy = 0.0;
         let applied = std::ptr::eq(nodes, self.nodes.as_slice());
-        for r in std::iter::successors(Some(i), |&p| nodes[p].parent.filter(|_| nodes[p].above.is_none())) {
-            let Some(c) = nodes[r].parent.filter(|&c| nodes[c].growth.is_some()) else { continue };
-            let Some(stack) = self.stacks.get(&nodes[c].id) else { continue };
+        for r in std::iter::successors(Some(i), |&p| {
+            nodes[p].parent.filter(|_| nodes[p].above.is_none())
+        }) {
+            let Some(c) = nodes[r].parent.filter(|&c| nodes[c].growth.is_some()) else {
+                continue;
+            };
+            let Some(stack) = self.stacks.get(&nodes[c].id) else {
+                continue;
+            };
             if applied && let Some(&top) = stack.tops.get(&nodes[r].id) {
                 let mut count = 0usize;
-                let before_r: f32 = stack.order.iter()
+                let before_r: f32 = stack
+                    .order
+                    .iter()
                     .take_while(|&&id| id != nodes[r].id)
                     .filter_map(|id| self.grows.get(id))
-                    .map(|g| { count += 1; g.h })
-                    .sum::<f32>() + stack.gap * count as f32;
+                    .map(|g| {
+                        count += 1;
+                        g.h
+                    })
+                    .sum::<f32>()
+                    + stack.gap * count as f32;
                 dy += stack.pad_top + before_r - top;
             } else if stack.moving {
                 for j in (c + 1..r).filter(|&j| nodes[j].parent == Some(c)) {
@@ -35,7 +47,9 @@ impl<S: 'static> Runtime<S> {
     pub(super) fn caret_rect(&self, nodes: &[Node], i: usize) -> Option<[f32; 4]> {
         let n = &nodes[i];
         let (inp, spec, layout) = (n.input.as_ref()?, n.text.as_ref()?, n.text_layout.as_ref()?);
-        if !inp.edit.focused { return None; }
+        if !inp.edit.focused {
+            return None;
+        }
         let s = self.env.scale;
         let t = sticky::anchored_target(nodes, &self.scrolls, i, self.viewport);
         let y = t[1] + self.stack_row_dy(nodes, i);
@@ -46,32 +60,60 @@ impl<S: 'static> Runtime<S> {
             let prev = self.input_scroll.get(&n.path).copied().unwrap_or(0.0);
             x -= single_line_offset(prev, inp, &spec.content, layout, s, (x1 - x0) * s) / s;
         }
-        let cur = Cursor::from_byte_index(layout, caret_index(&inp.edit, &spec.content), Affinity::Downstream);
+        let cur = Cursor::from_byte_index(
+            layout,
+            caret_index(&inp.edit, &spec.content),
+            Affinity::Downstream,
+        );
         let bb = crate::text::cursor_geometry(&cur, layout, 1.5 * s);
-        let h = if bb.y1 > bb.y0 { (bb.y1 - bb.y0) as f32 / s } else { spec.style.line_px() };
-        Some([x + bb.x0 as f32 / s, y + n.inset[1] + bb.y0 as f32 / s, 1.5, h])
+        let h = if bb.y1 > bb.y0 {
+            (bb.y1 - bb.y0) as f32 / s
+        } else {
+            spec.style.line_px()
+        };
+        Some([
+            x + bb.x0 as f32 / s,
+            y + n.inset[1] + bb.y0 as f32 / s,
+            1.5,
+            h,
+        ])
     }
 
     /// After an edit, scrolls the focused field's nearest scroll viewport on each axis just far
     /// enough to show the caret line, as a browser does for a textarea, leaving the viewport's
     /// `El::scroll_margin` like CSS `scroll-padding`.
     pub(super) fn follow_caret(&mut self) {
-        let Some(i) = self.focused_index() else { return };
-        let Some(r) = self.caret_rect(&self.nodes, i) else { return };
+        let Some(i) = self.focused_index() else {
+            return;
+        };
+        let Some(r) = self.caret_rect(&self.nodes, i) else {
+            return;
+        };
         let mut scrolled = false;
         for horizontal in [false, true] {
-            let Some(v) = std::iter::successors(Some(i), |&p| self.nodes[p].parent.filter(|_| self.nodes[p].above.is_none()))
-                .skip(1)
-                .find(|&p| self.nodes[p].scroll.is_some() && self.nodes[p].scroll_axes.has(horizontal)) else { continue };
+            let Some(v) = std::iter::successors(Some(i), |&p| {
+                self.nodes[p]
+                    .parent
+                    .filter(|_| self.nodes[p].above.is_none())
+            })
+            .skip(1)
+            .find(|&p| self.nodes[p].scroll.is_some() && self.nodes[p].scroll_axes.has(horizontal)) else {
+                continue;
+            };
             let a = usize::from(!horizontal);
-            let start = scroll_offsets(&self.scrolls, &self.nodes, v).fold(self.nodes[v].target[a], |p, o| p - o[a]);
+            let start = scroll_offsets(&self.scrolls, &self.nodes, v)
+                .fold(self.nodes[v].target[a], |p, o| p - o[a]);
             let view = f64::from(self.nodes[v].target[a + 2] - self.nodes[v].target[a]);
             let (at, len) = (f64::from(r[a] - start), f64::from(r[a + 2]));
             let margin = f64::from(self.nodes[v].scroll_edges.margin);
             let delta = scroll_edge::reveal(0.0, at, len, view, margin);
-            if delta == 0.0 { continue; }
+            if delta == 0.0 {
+                continue;
+            }
             let stick = self.nodes[v].scroll.is_some_and(|s| s.stick_bottom);
-            let Some(st) = self.scrolls.get_mut(&self.nodes[v].id) else { continue };
+            let Some(st) = self.scrolls.get_mut(&self.nodes[v].id) else {
+                continue;
+            };
             if horizontal {
                 st.x.offset = (st.x.offset + st.x.toward(-delta)).clamp(0.0, st.x.max);
                 st.x.v = 0.0;
@@ -93,14 +135,18 @@ impl<S: 'static> Runtime<S> {
     /// Returns whether it moved.
     pub(super) fn caret_moved(&mut self, nodes: Option<&[Node]>) -> bool {
         let nodes = nodes.unwrap_or(&self.nodes);
-        let next = nodes.iter().position(|n| n.input.as_ref().is_some_and(|inp| inp.edit.focused))
+        let next = nodes
+            .iter()
+            .position(|n| n.input.as_ref().is_some_and(|inp| inp.edit.focused))
             .and_then(|i| Some((i, self.caret_rect(nodes, i)?)));
         let same = match (&self.caret, next) {
             (Some((path, rect)), Some((i, r))) => *path == nodes[i].path && *rect == r,
             (None, None) => true,
             _ => false,
         };
-        if same { return false; }
+        if same {
+            return false;
+        }
         self.caret = next.map(|(i, r)| (nodes[i].path.clone(), r));
         true
     }
@@ -108,7 +154,10 @@ impl<S: 'static> Runtime<S> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Cx, El, Env, GrowthSpec, Ime, Key, KeyEvent, Mods, Runtime, ScrollSpec, TextEdit, TextStyle, col, text_input};
+    use crate::{
+        Cx, El, Env, GrowthSpec, Ime, Key, KeyEvent, Mods, Runtime, ScrollSpec, TextEdit,
+        TextStyle, col, text_input,
+    };
 
     fn make_blocks(count: usize, focus_at: Option<usize>) -> Vec<TextEdit> {
         (0..count)
@@ -143,7 +192,9 @@ mod tests {
                 .key("viewport")
                 .w_full()
                 .grow(1.0)
-                .scroll(ScrollSpec { stick_bottom: false })
+                .scroll(ScrollSpec {
+                    stick_bottom: false,
+                })
                 .child(
                     col()
                         .key("rows")
@@ -158,10 +209,19 @@ mod tests {
 
     fn assert_caret_aligned(rt: &Runtime<Vec<TextEdit>>, key: &str, step: &str) {
         let els = rt.elements();
-        let viewport = els.iter().find(|e| e.key.as_deref() == Some("viewport")).expect("viewport").rect;
-        let field = els.iter().find(|e| e.key.as_deref() == Some(key)).unwrap_or_else(|| panic!("{step}: {key} not mounted"));
+        let viewport = els
+            .iter()
+            .find(|e| e.key.as_deref() == Some("viewport"))
+            .expect("viewport")
+            .rect;
+        let field = els
+            .iter()
+            .find(|e| e.key.as_deref() == Some(key))
+            .unwrap_or_else(|| panic!("{step}: {key} not mounted"));
         assert!(field.focused, "{step}: {key} should be focused");
-        let caret = field.caret.unwrap_or_else(|| panic!("{step}: {key} missing ElementInfo::caret"));
+        let caret = field
+            .caret
+            .unwrap_or_else(|| panic!("{step}: {key} missing ElementInfo::caret"));
         assert!(
             caret[0] >= field.rect[0] - 1.0
                 && caret[0] + caret[2] <= field.rect[0] + field.rect[2] + 2.0
@@ -174,7 +234,9 @@ mod tests {
             caret[1] >= viewport[1] - 1.0 && caret[1] + caret[3] <= viewport[1] + viewport[3] + 1.0,
             "{step}: caret {caret:?} outside viewport {viewport:?}"
         );
-        let ime = rt.ime_area.unwrap_or_else(|| panic!("{step}: missing ime_area"));
+        let ime = rt
+            .ime_area
+            .unwrap_or_else(|| panic!("{step}: missing ime_area"));
         assert!(
             (ime[0] - caret[0]).abs() <= 1.0 && (ime[1] - caret[1]).abs() <= 1.0,
             "{step}: ime_area {ime:?} disagrees with caret {caret:?}"
@@ -186,23 +248,59 @@ mod tests {
         // Cover both a plain growth column and a virtual window. Fixed row heights make
         // the expected painted spacing independent of text shaping and estimates.
         for virtualized in [false, true] {
-            let mut rt = Runtime::new(virtualized, |virtualized: &bool, _: &mut Cx<bool>| {
-                let mut rows = col().key("rows").w_full().gaps(7.0, 19.0)
-                    .growth(GrowthSpec::default())
-                    .children((0..100).map(|i| crate::el().key(format!("r{i}")).h(20.0).w_full()));
-                if *virtualized { rows = rows.virtualize(20.0); }
-                col().w_full().h_full().scroll(ScrollSpec { stick_bottom: false }).child(rows)
-            }, (300.0, 120.0), Env::new(true, 1.0));
+            let mut rt = Runtime::new(
+                virtualized,
+                |virtualized: &bool, _: &mut Cx<bool>| {
+                    let mut rows = col()
+                        .key("rows")
+                        .w_full()
+                        .gaps(7.0, 19.0)
+                        .growth(GrowthSpec::default())
+                        .children(
+                            (0..100).map(|i| crate::el().key(format!("r{i}")).h(20.0).w_full()),
+                        );
+                    if *virtualized {
+                        rows = rows.virtualize(20.0);
+                    }
+                    col()
+                        .w_full()
+                        .h_full()
+                        .scroll(ScrollSpec {
+                            stick_bottom: false,
+                        })
+                        .child(rows)
+                },
+                (300.0, 120.0),
+                Env::new(true, 1.0),
+            );
             rt.frame(0.0);
             let elements = rt.elements();
-            let a = elements.iter().find(|e| e.key.as_deref() == Some("r0")).unwrap();
-            let b = elements.iter().find(|e| e.key.as_deref() == Some("r1")).unwrap();
-            assert_eq!(b.rect[1] - a.rect[1] - a.rect[3], 7.0, "virtualized={virtualized}");
+            let a = elements
+                .iter()
+                .find(|e| e.key.as_deref() == Some("r0"))
+                .unwrap();
+            let b = elements
+                .iter()
+                .find(|e| e.key.as_deref() == Some("r1"))
+                .unwrap();
+            assert_eq!(
+                b.rect[1] - a.rect[1] - a.rect[3],
+                7.0,
+                "virtualized={virtualized}"
+            );
             assert!((rt.scrolls.values().next().unwrap().max - 2573.0).abs() < 0.01);
             rt.update(|_, tx| tx.scroll_into_view("r99"));
             rt.frame(0.0);
-            let end = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("r99")).unwrap();
-            assert!((end.rect[1] + end.rect[3] - 120.0).abs() < 0.01, "last row lands at bottom: {:?}", end.rect);
+            let end = rt
+                .elements()
+                .into_iter()
+                .find(|e| e.key.as_deref() == Some("r99"))
+                .unwrap();
+            assert!(
+                (end.rect[1] + end.rect[3] - 120.0).abs() < 0.01,
+                "last row lands at bottom: {:?}",
+                end.rect
+            );
             let commits = rt.stats.commits;
             rt.frame(0.0);
             assert_eq!(rt.stats.commits, commits, "an idle frame does not recommit");
@@ -215,28 +313,53 @@ mod tests {
         blocks[190].focused = true;
         let mut rt = Runtime::new(blocks, blocks_view, (640.0, 500.0), Env::new(true, 2.0));
         rt.frame(0.0);
-        assert!(rt.state[180].focused, "the first offscreen path wins simultaneous requests");
+        assert!(
+            rt.state[180].focused,
+            "the first offscreen path wins simultaneous requests"
+        );
         assert!(!rt.state[190].focused);
         rt.update(|s, _| s[180].focused = false);
         rt.frame(0.0);
-        assert!(rt.focus.path().is_none(), "explicitly blurred offscreen input stays blurred");
+        assert!(
+            rt.focus.path().is_none(),
+            "explicitly blurred offscreen input stays blurred"
+        );
         rt.update(|s, _| s[190].focused = true);
         rt.frame(0.0);
         assert!(rt.state[190].focused);
-        rt.update(|s, _| { s.truncate(100); });
+        rt.update(|s, _| {
+            s.truncate(100);
+        });
         rt.frame(0.0);
-        assert!(rt.focus.path().is_none(), "deleted offscreen input loses focus");
-        rt.update(|s, tx| { s.extend(make_blocks(140, None)); tx.scroll_into_view("b190"); });
+        assert!(
+            rt.focus.path().is_none(),
+            "deleted offscreen input loses focus"
+        );
+        rt.update(|s, tx| {
+            s.extend(make_blocks(140, None));
+            tx.scroll_into_view("b190");
+        });
         rt.frame(0.0);
-        assert!(!rt.state[190].focused, "reusing a deleted path must not restore focus");
+        assert!(
+            !rt.state[190].focused,
+            "reusing a deleted path must not restore focus"
+        );
     }
 
     #[test]
     fn virtual_growth_stack_scroll_into_view_keeps_focus_and_aligns_caret() {
         // Focus an initially offscreen far block before the first frame, then reveal and type.
-        let mut rt = Runtime::new(make_blocks(240, Some(150)), blocks_view, (640.0, 500.0), Env::new(true, 2.0));
+        let mut rt = Runtime::new(
+            make_blocks(240, Some(150)),
+            blocks_view,
+            (640.0, 500.0),
+            Env::new(true, 2.0),
+        );
         rt.frame(0.0);
-        assert!(rt.state[150].focused, "offscreen focused field keeps focus across initial commit");
+        assert!(
+            rt.state[150].focused,
+            "offscreen focused field keeps focus across initial commit"
+        );
         rt.update(|_, tx| tx.scroll_into_view("b150"));
         rt.frame(1.0 / 120.0);
         assert_caret_aligned(&rt, "b150", "revealed b150");
@@ -266,7 +389,12 @@ mod tests {
 
     #[test]
     fn virtual_growth_stack_scrolling_away_and_back_keeps_focus_and_caret_in_rect() {
-        let mut rt = Runtime::new(make_blocks(240, Some(180)), blocks_view, (640.0, 500.0), Env::new(true, 2.0));
+        let mut rt = Runtime::new(
+            make_blocks(240, Some(180)),
+            blocks_view,
+            (640.0, 500.0),
+            Env::new(true, 2.0),
+        );
         rt.frame(0.0);
         rt.update(|_, tx| tx.scroll_into_view("b180"));
         rt.frame(1.0 / 120.0);
@@ -282,27 +410,46 @@ mod tests {
         for step in 0..45 {
             rt.wheel(320.0, 250.0, 600.0);
             rt.frame(1.0 / 120.0);
-            assert!(rt.state[180].focused, "step {step}: b180 stays focused while scrolling away");
-            if let Some(el) = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("b180")) {
+            assert!(
+                rt.state[180].focused,
+                "step {step}: b180 stays focused while scrolling away"
+            );
+            if let Some(el) = rt
+                .elements()
+                .into_iter()
+                .find(|e| e.key.as_deref() == Some("b180"))
+            {
                 let caret = el.caret.expect("mounted b180 has caret");
                 assert!(
-                    caret[1] >= el.rect[1] - 1.0 && caret[1] + caret[3] <= el.rect[1] + el.rect[3] + 1.0,
+                    caret[1] >= el.rect[1] - 1.0
+                        && caret[1] + caret[3] <= el.rect[1] + el.rect[3] + 1.0,
                     "step {step} up: caret {caret:?} outside rect {:?}",
                     el.rect
                 );
             }
         }
-        assert!(rt.find("b180").is_none(), "b180 is culled when scrolled to the top");
+        assert!(
+            rt.find("b180").is_none(),
+            "b180 is culled when scrolled to the top"
+        );
 
         // Scroll back down in wheel steps until b180 is in the viewport again, checking caret alignment on every mounted frame.
         for step in 0..45 {
             rt.wheel(320.0, 250.0, -600.0);
             rt.frame(1.0 / 120.0);
-            assert!(rt.state[180].focused, "step {step} down: b180 stays focused while scrolling back");
-            if let Some(el) = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("b180")) {
+            assert!(
+                rt.state[180].focused,
+                "step {step} down: b180 stays focused while scrolling back"
+            );
+            if let Some(el) = rt
+                .elements()
+                .into_iter()
+                .find(|e| e.key.as_deref() == Some("b180"))
+            {
                 let caret = el.caret.expect("remounted b180 has caret");
                 assert!(
-                    caret[1] >= el.rect[1] - 1.0 && caret[1] + caret[3] <= el.rect[1] + el.rect[3] + 1.0,
+                    caret[1] >= el.rect[1] - 1.0
+                        && caret[1] + caret[3] <= el.rect[1] + el.rect[3] + 1.0,
                     "step {step} down: caret {caret:?} outside rect {:?}",
                     el.rect
                 );
@@ -332,7 +479,10 @@ mod tests {
     fn virtual_growth_stack_arrow_key_follow_caret_tracks_drawn_caret() {
         let mut blocks = make_blocks(220, None);
         blocks[160] = TextEdit::new(
-            &(0..16).map(|l| format!("tall block line {l}")).collect::<Vec<_>>().join("\n"),
+            &(0..16)
+                .map(|l| format!("tall block line {l}"))
+                .collect::<Vec<_>>()
+                .join("\n"),
         );
         blocks[160].focused = true;
         blocks[160].set_caret(0);
@@ -347,7 +497,10 @@ mod tests {
         assert_caret_aligned(&rt, "b160", "before arrow down");
 
         for step in 0..15 {
-            rt.key(KeyEvent { key: Key::Down, mods: Mods::default() });
+            rt.key(KeyEvent {
+                key: Key::Down,
+                mods: Mods::default(),
+            });
             rt.frame(1.0 / 120.0);
             assert_caret_aligned(&rt, "b160", &format!("down step {step}"));
         }
@@ -355,31 +508,82 @@ mod tests {
 
     #[test]
     fn follow_caret_leaves_the_scroll_margin_clear_until_the_content_ends() {
-        let mut edit = TextEdit::new((0..40).map(|l| format!("line {l}")).collect::<Vec<_>>().join("\n"));
+        let mut edit = TextEdit::new(
+            (0..40)
+                .map(|l| format!("line {l}"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
         edit.focused = true;
-        let mut rt = Runtime::new(edit, |e: &TextEdit, _: &mut Cx<TextEdit>| {
-            col().w_full().h_full().child(
-                col().key("viewport").w_full().h(160.0).scroll(ScrollSpec { stick_bottom: false }).scroll_margin(16.0)
-                    .child(text_input(e, TextStyle::new(13.0, 400.0).lh(20.0)).key("field").w_full().on_edit(|s: &mut TextEdit| s)),
-            )
-        }, (300.0, 400.0), Env::new(true, 2.0));
+        let mut rt = Runtime::new(
+            edit,
+            |e: &TextEdit, _: &mut Cx<TextEdit>| {
+                col().w_full().h_full().child(
+                    col()
+                        .key("viewport")
+                        .w_full()
+                        .h(160.0)
+                        .scroll(ScrollSpec {
+                            stick_bottom: false,
+                        })
+                        .scroll_margin(16.0)
+                        .child(
+                            text_input(e, TextStyle::new(13.0, 400.0).lh(20.0))
+                                .key("field")
+                                .w_full()
+                                .on_edit(|s: &mut TextEdit| s),
+                        ),
+                )
+            },
+            (300.0, 400.0),
+            Env::new(true, 2.0),
+        );
         rt.frame(0.0);
-        rt.key(KeyEvent { key: Key::Text("!".into()), mods: Mods::default() });
+        rt.key(KeyEvent {
+            key: Key::Text("!".into()),
+            mods: Mods::default(),
+        });
         rt.frame(1.0 / 120.0);
         let rects = |rt: &Runtime<TextEdit>| {
             let els = rt.elements();
-            let viewport = els.iter().find(|e| e.key.as_deref() == Some("viewport")).unwrap().rect;
-            let caret = els.iter().find(|e| e.key.as_deref() == Some("field")).unwrap().caret.unwrap();
-            (viewport[1], viewport[1] + viewport[3], caret[1], caret[1] + caret[3])
+            let viewport = els
+                .iter()
+                .find(|e| e.key.as_deref() == Some("viewport"))
+                .unwrap()
+                .rect;
+            let caret = els
+                .iter()
+                .find(|e| e.key.as_deref() == Some("field"))
+                .unwrap()
+                .caret
+                .unwrap();
+            (
+                viewport[1],
+                viewport[1] + viewport[3],
+                caret[1],
+                caret[1] + caret[3],
+            )
         };
         let (_, bottom, _, low) = rects(&rt);
-        assert!((low - bottom).abs() < 1.0, "the last line stops flush with the content's end: {low} vs {bottom}");
+        assert!(
+            (low - bottom).abs() < 1.0,
+            "the last line stops flush with the content's end: {low} vs {bottom}"
+        );
         for step in 0..20 {
-            rt.key(KeyEvent { key: Key::Up, mods: Mods::default() });
+            rt.key(KeyEvent {
+                key: Key::Up,
+                mods: Mods::default(),
+            });
             rt.frame(1.0 / 120.0);
             let (top, bottom, high, low) = rects(&rt);
-            assert!(high >= top + 16.0 - 0.5, "up {step}: caret top {high} leaves 16 pt under {top}");
-            assert!(low <= bottom + 0.5, "up {step}: caret bottom {low} inside {bottom}");
+            assert!(
+                high >= top + 16.0 - 0.5,
+                "up {step}: caret top {high} leaves 16 pt under {top}"
+            );
+            assert!(
+                low <= bottom + 0.5,
+                "up {step}: caret bottom {low} inside {bottom}"
+            );
         }
     }
 }

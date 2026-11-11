@@ -11,30 +11,36 @@ fn main() {}
 mod macos_support;
 
 #[cfg(target_os = "macos")]
-fn main() { mac::main() }
+fn main() {
+    mac::main()
+}
 
 #[cfg(target_os = "macos")]
 mod mac {
-    use std::process::Command;
-    use std::sync::Mutex;
-    use std::time::{Duration, Instant};
+    use crate::macos_support::{activate_helper, app_active, frontmost_pid, on_main, wait};
     use objc2::{class, msg_send, runtime::AnyObject};
     use objc2_foundation::NSString;
     use rune::*;
-    use crate::macos_support::{activate_helper, app_active, frontmost_pid, on_main, wait};
+    use std::process::Command;
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
 
     const HELPER: &str = "RUNE_OPEN_ACTIVATES_HELPER";
     const MAIN_TITLE: &str = "open activates main";
     const SETTINGS_TITLE: &str = "open activates settings";
 
-    fn view<S>(_: &S, _: &mut Cx<S>) -> El { text("open activates") }
+    fn view<S>(_: &S, _: &mut Cx<S>) -> El {
+        text("open activates")
+    }
 
     /// The key window's title, if this app has a key window.
     fn key_title() -> Option<String> {
         unsafe {
             let app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
             let window: *mut AnyObject = msg_send![app, keyWindow];
-            if window.is_null() { return None }
+            if window.is_null() {
+                return None;
+            }
             let title: *mut NSString = msg_send![window, title];
             (!title.is_null()).then(|| (*title).to_string())
         }
@@ -52,42 +58,87 @@ mod mac {
         let me = std::process::id() as i32;
         let start = Instant::now();
         loop {
-            let (active, front, key) = on_main(handle, || (app_active(), frontmost_pid(), key_title()));
-            if active && front == me && key.as_deref() == Some(title) { return }
-            assert!(start.elapsed() < Duration::from_secs(5),
-                "{what}: active={active}, frontmost={front} (this app {me}), key window {key:?}, want {title:?}");
+            let (active, front, key) =
+                on_main(handle, || (app_active(), frontmost_pid(), key_title()));
+            if active && front == me && key.as_deref() == Some(title) {
+                return;
+            }
+            assert!(
+                start.elapsed() < Duration::from_secs(5),
+                "{what}: active={active}, frontmost={front} (this app {me}), key window {key:?}, want {title:?}"
+            );
             std::thread::sleep(Duration::from_millis(20));
         }
     }
 
     fn helper() {
-        std::thread::spawn(|| { std::thread::sleep(Duration::from_secs(60)); std::process::exit(0) });
-        App::new(AppSpec::new("open activates helper", (240.0, 80.0), || (), view)).args(Vec::new()).run();
+        std::thread::spawn(|| {
+            std::thread::sleep(Duration::from_secs(60));
+            std::process::exit(0)
+        });
+        App::new(AppSpec::new(
+            "open activates helper",
+            (240.0, 80.0),
+            || (),
+            view,
+        ))
+        .args(Vec::new())
+        .run();
     }
 
     pub fn main() {
-        if std::env::var_os(HELPER).is_some() { return helper() }
+        if std::env::var_os(HELPER).is_some() {
+            return helper();
+        }
         if std::env::var_os("RUNE_GUI_TESTS").is_none() {
             println!("open_activates: skipped (set RUNE_GUI_TESTS=1 in a GUI session)");
             return;
         }
-        std::thread::spawn(|| { std::thread::sleep(Duration::from_secs(90)); eprintln!("timeout"); std::process::exit(2) });
-        let mut child = Command::new(std::env::current_exe().unwrap()).env(HELPER, "1").spawn().expect("helper");
+        std::thread::spawn(|| {
+            std::thread::sleep(Duration::from_secs(90));
+            eprintln!("timeout");
+            std::process::exit(2)
+        });
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .env(HELPER, "1")
+            .spawn()
+            .expect("helper");
         let pid = child.id() as i32;
-        let mut app = App::new(AppSpec::new(MAIN_TITLE, (240.0, 120.0), || (), view)).args(Vec::new())
-            .accessory().windowless();
+        let mut app = App::new(AppSpec::new(MAIN_TITLE, (240.0, 120.0), || (), view))
+            .args(Vec::new())
+            .accessory()
+            .windowless();
         let main = app.handle();
-        let (_, settings) = app.window(WindowSpec::new("settings", AppSpec::new(SETTINGS_TITLE, (240.0, 120.0), || (), view))
-            .options(WindowOptions { visible: false, ..Default::default() }));
-        let (_, launcher) = app.window(WindowSpec::new("launcher", AppSpec::new("open activates launcher", (240.0, 80.0), || (), view))
-            .configured_options(WindowOptions::launcher_panel()));
-        let overlay = app.overlay(OverlaySpec::new("open activates overlay", (200.0, 60.0), view), ());
+        let (_, settings) = app.window(
+            WindowSpec::new(
+                "settings",
+                AppSpec::new(SETTINGS_TITLE, (240.0, 120.0), || (), view),
+            )
+            .options(WindowOptions {
+                visible: false,
+                ..Default::default()
+            }),
+        );
+        let (_, launcher) = app.window(
+            WindowSpec::new(
+                "launcher",
+                AppSpec::new("open activates launcher", (240.0, 80.0), || (), view),
+            )
+            .configured_options(WindowOptions::launcher_panel()),
+        );
+        let overlay = app.overlay(
+            OverlaySpec::new("open activates overlay", (200.0, 60.0), view),
+            (),
+        );
         let result = std::sync::Arc::new(Mutex::new(None));
         let out = result.clone();
         std::thread::spawn(move || {
             let run = std::panic::catch_unwind(|| {
                 std::thread::sleep(Duration::from_millis(500));
-                assert!(!on_main(&main, app_active), "an accessory app doesn't activate at launch");
+                assert!(
+                    !on_main(&main, app_active),
+                    "an accessory app doesn't activate at launch"
+                );
                 activate_helper(&main, pid);
                 assert!(!main.is_visible(), "windowless starts without a window");
 

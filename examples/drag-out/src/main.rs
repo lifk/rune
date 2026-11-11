@@ -15,10 +15,26 @@ struct State {
     dragging: Option<&'static str>,
 }
 
-fn tile(s: &State, key: &'static str, title: &str, detail: String, item: fn(&State) -> DragItem) -> El {
+fn tile(
+    s: &State,
+    key: &'static str,
+    title: &str,
+    detail: String,
+    item: fn(&State) -> DragItem,
+) -> El {
     let t = tok::theme(true);
-    col().key(key).role("button").size(150.0, 92.0).padding(space::S3).gap(space::S1).radius(radius::LG)
-        .fill(t.card).border(1.0, t.card_border).hover(t.hover).press(t.press).cursor(Cursor::Grab)
+    col()
+        .key(key)
+        .role("button")
+        .size(150.0, 92.0)
+        .padding(space::S3)
+        .gap(space::S1)
+        .radius(radius::LG)
+        .fill(t.card)
+        .border(1.0, t.card_border)
+        .hover(t.hover)
+        .press(t.press)
+        .cursor(Cursor::Grab)
         .opacity(if s.dragging == Some(key) { 0.28 } else { 1.0 })
         .child(text(title).font(type_::TITLE).color(t.text))
         .child(text(detail).font(type_::LABEL).color(t.text_secondary))
@@ -32,7 +48,10 @@ fn tile(s: &State, key: &'static str, title: &str, detail: String, item: fn(&Sta
 }
 
 fn name(path: &std::path::Path) -> String {
-    path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned())
+    path.file_name().map_or_else(
+        || path.display().to_string(),
+        |n| n.to_string_lossy().into_owned(),
+    )
 }
 
 fn view(s: &State, _: &mut Cx<State>) -> El {
@@ -41,19 +60,50 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
         Some((key, outcome)) => format!("Last drag: {key}, {outcome:?}"),
         None => "Drag a tile out of the window".into(),
     };
-    col().w_full().h_full().center().gap(space::S6).fill(t.bg)
-        .child(row().gap(space::S3)
-            .child(tile(s, "file", "A file", name(&s.file), |s| DragItem::new().file(&s.file)))
-            .child(tile(s, "app", "An app", name(&s.app), |s| DragItem::new().file(&s.app)))
-            .child(tile(s, "text", "Some text", "Hello from Rune".into(), |_| DragItem::new().text("Hello from Rune"))))
-        .child(text(status).key("status").font(type_::BODY).color(t.text_secondary))
+    col()
+        .w_full()
+        .h_full()
+        .center()
+        .gap(space::S6)
+        .fill(t.bg)
+        .child(
+            row()
+                .gap(space::S3)
+                .child(tile(s, "file", "A file", name(&s.file), |s| {
+                    DragItem::new().file(&s.file)
+                }))
+                .child(tile(s, "app", "An app", name(&s.app), |s| {
+                    DragItem::new().file(&s.app)
+                }))
+                .child(tile(
+                    s,
+                    "text",
+                    "Some text",
+                    "Hello from Rune".into(),
+                    |_| DragItem::new().text("Hello from Rune"),
+                )),
+        )
+        .child(
+            text(status)
+                .key("status")
+                .font(type_::BODY)
+                .color(t.text_secondary),
+        )
 }
 
 fn initial() -> State {
     let file = std::env::temp_dir().join("Dragged out of Rune.txt");
     let _ = std::fs::write(&file, "This file was dragged out of a Rune window.\n");
-    let app = std::env::var_os("DRAG_OUT_APP").map_or_else(|| PathBuf::from("/System/Applications/Calculator.app"), PathBuf::from);
-    State { file, app, last: None, dragging: None }
+    let app = std::env::var_os("DRAG_OUT_APP").map_or_else(
+        || PathBuf::from("/System/Applications/Calculator.app"),
+        PathBuf::from,
+    );
+    State {
+        file,
+        app,
+        last: None,
+        dragging: None,
+    }
 }
 
 fn main() {
@@ -67,16 +117,38 @@ mod tests {
 
     #[test]
     fn dragging_a_tile_hands_its_file_to_the_system() {
-        let state = State { file: "/tmp/a.txt".into(), app: "/Applications/Example.app".into(), last: None, dragging: None };
-        let mut rt = Runtime::new(state, view, (520.0, 200.0), Env { system_dark: true, scale: 2.0 });
+        let state = State {
+            file: "/tmp/a.txt".into(),
+            app: "/Applications/Example.app".into(),
+            last: None,
+            dragging: None,
+        };
+        let mut rt = Runtime::new(
+            state,
+            view,
+            (520.0, 200.0),
+            Env {
+                system_dark: true,
+                scale: 2.0,
+            },
+        );
         rt.frame(0.0);
         let (x, y) = rt.find("app").unwrap();
         rt.pointer_move(x, y);
         rt.pointer_down(x, y);
         rt.pointer_move(x + 20.0, y);
-        assert!(rt.events.iter().any(|e| e.starts_with("drag-out ") && e.ends_with("app")), "{:?}", rt.events);
+        assert!(
+            rt.events
+                .iter()
+                .any(|e| e.starts_with("drag-out ") && e.ends_with("app")),
+            "{:?}",
+            rt.events
+        );
         rt.frame(0.0);
         // No system took the drag here, so it ends Cancelled in the same frame it started.
-        assert_eq!((rt.state.dragging, rt.state.last), (None, Some(("app", DragOutcome::Cancelled))));
+        assert_eq!(
+            (rt.state.dragging, rt.state.last),
+            (None, Some(("app", DragOutcome::Cancelled)))
+        );
     }
 }

@@ -178,7 +178,13 @@ impl Hash for DiagramStyle {
         ]
         .hash(state);
         self.font.hash(state);
-        let bits = if self.max_width == 0.0 { 0 } else if self.max_width.is_nan() { f32::NAN.to_bits() } else { self.max_width.to_bits() };
+        let bits = if self.max_width == 0.0 {
+            0
+        } else if self.max_width.is_nan() {
+            f32::NAN.to_bits()
+        } else {
+            self.max_width.to_bits()
+        };
         bits.hash(state);
         self.min_scale.to_bits().hash(state);
     }
@@ -222,7 +228,12 @@ pub fn render(src: &str, style: &DiagramStyle) -> Option<El> {
 /// [`render`], with `hover` lighting up in `color` while the pointer is over a flowchart, state
 /// or class diagram node; an edge, or its label, lights itself and its label whatever `hover` is
 /// short of [`Hover::Off`].
-pub fn render_with_hover(src: &str, style: &DiagramStyle, hover: Hover, color: Color) -> Option<El> {
+pub fn render_with_hover(
+    src: &str,
+    style: &DiagramStyle,
+    hover: Hover,
+    color: Color,
+) -> Option<El> {
     render_inner(src, style, hover, color, Mode::Still)
 }
 
@@ -251,9 +262,19 @@ enum Mode {
     Growing,
 }
 
-fn render_inner(src: &str, style: &DiagramStyle, hover: Hover, color: Color, mode: Mode) -> Option<El> {
+fn render_inner(
+    src: &str,
+    style: &DiagramStyle,
+    hover: Hover,
+    color: Color,
+    mode: Mode,
+) -> Option<El> {
     let hover = (hover != Hover::Off).then_some((hover, color));
-    let scene = if mode == Mode::Growing { scenes::growing(src, style, hover) } else { scenes::built(src, style, hover, None).0 };
+    let scene = if mode == Mode::Growing {
+        scenes::growing(src, style, hover)
+    } else {
+        scenes::built(src, style, hover, None).0
+    };
     scene.map(|s| s.el(style, mode != Mode::Still))
 }
 
@@ -298,20 +319,54 @@ pub(crate) const MAX_DEPTH: usize = 8;
 /// this crate draws.
 pub fn may_draw(src: &str) -> bool {
     let (_, mut lines) = cleaned(src);
-    lines.next().is_none_or(|(_, header)| KINDS.contains(&header.split_once(|c: char| c.is_whitespace() || c == ';').map_or(header, |h| h.0)))
+    lines.next().is_none_or(|(_, header)| {
+        KINDS.contains(
+            &header
+                .split_once(|c: char| c.is_whitespace() || c == ';')
+                .map_or(header, |h| h.0),
+        )
+    })
 }
 
 /// Every diagram type [`parse`] reads, by its header's first word.
 const KINDS: &[&str] = &[
-    "graph", "flowchart", "sequenceDiagram", "stateDiagram", "stateDiagram-v2", "classDiagram", "erDiagram", "gantt", "pie",
-    "mindmap", "timeline", "journey", "gitGraph", "gitGraph:", "quadrantChart", "xychart-beta", "xychart", "sankey-beta",
-    "sankey", "block-beta", "block", "requirementDiagram", "C4Context", "C4Container", "C4Component", "C4Dynamic",
+    "graph",
+    "flowchart",
+    "sequenceDiagram",
+    "stateDiagram",
+    "stateDiagram-v2",
+    "classDiagram",
+    "erDiagram",
+    "gantt",
+    "pie",
+    "mindmap",
+    "timeline",
+    "journey",
+    "gitGraph",
+    "gitGraph:",
+    "quadrantChart",
+    "xychart-beta",
+    "xychart",
+    "sankey-beta",
+    "sankey",
+    "block-beta",
+    "block",
+    "requirementDiagram",
+    "C4Context",
+    "C4Container",
+    "C4Component",
+    "C4Dynamic",
     "C4Deployment",
 ];
 
 /// `src`'s front-matter title, and its lines with their indents, without comments, directives
 /// and front matter.
-fn cleaned(src: &str) -> (Option<String>, std::iter::Peekable<std::vec::IntoIter<(usize, &str)>>) {
+fn cleaned(
+    src: &str,
+) -> (
+    Option<String>,
+    std::iter::Peekable<std::vec::IntoIter<(usize, &str)>>,
+) {
     let mut cleaned = Vec::new();
     let mut in_directive = false;
     for raw in src.lines() {
@@ -365,32 +420,59 @@ fn cleaned(src: &str) -> (Option<String>, std::iter::Peekable<std::vec::IntoIter
 pub(crate) fn parse(src: &str) -> Option<Parsed> {
     let (fm_title, mut lines) = cleaned(src);
     let (_, header) = lines.next()?;
-    let (kind, rest) = header.split_once(|c: char| c.is_whitespace() || c == ';').unwrap_or((header, ""));
+    let (kind, rest) = header
+        .split_once(|c: char| c.is_whitespace() || c == ';')
+        .unwrap_or((header, ""));
     let (indents, body): (Vec<usize>, Vec<&str>) = lines.unzip();
     let (body_title, diagram) = match kind {
-        "graph" | "flowchart" => flowchart::parse(rest, &body).map(|f| (f.title.clone(), Diagram::Flowchart(f)))?,
-        "sequenceDiagram" => sequence::parse(rest, &body).map(|s| (s.title.clone(), Diagram::Sequence(s)))?,
-        "stateDiagram" | "stateDiagram-v2" => state::parse(rest, &body).map(|s| (s.title.clone(), Diagram::State(s)))?,
-        "classDiagram" => class::parse(rest, &body).map(|c| (c.title.clone(), Diagram::Class(c)))?,
+        "graph" | "flowchart" => {
+            flowchart::parse(rest, &body).map(|f| (f.title.clone(), Diagram::Flowchart(f)))?
+        }
+        "sequenceDiagram" => {
+            sequence::parse(rest, &body).map(|s| (s.title.clone(), Diagram::Sequence(s)))?
+        }
+        "stateDiagram" | "stateDiagram-v2" => {
+            state::parse(rest, &body).map(|s| (s.title.clone(), Diagram::State(s)))?
+        }
+        "classDiagram" => {
+            class::parse(rest, &body).map(|c| (c.title.clone(), Diagram::Class(c)))?
+        }
         "erDiagram" => er::parse(rest, &body).map(|e| (e.title.clone(), Diagram::Er(e)))?,
         "gantt" => gantt::parse(rest, &body).map(|g| (g.title.clone(), Diagram::Gantt(g)))?,
         "pie" => pie::parse(rest, &body).map(|p| (p.title.clone(), Diagram::Pie(p)))?,
         "mindmap" => mindmap::parse(&body, &indents).map(|m| (None, Diagram::Mindmap(m)))?,
-        "timeline" => timeline::parse(rest, &body).map(|t| (t.title.clone(), Diagram::Timeline(t)))?,
+        "timeline" => {
+            timeline::parse(rest, &body).map(|t| (t.title.clone(), Diagram::Timeline(t)))?
+        }
         "journey" => journey::parse(&body).map(|j| (j.title.clone(), Diagram::Journey(j)))?,
         "gitGraph" | "gitGraph:" => git::parse(rest, &body).map(|g| (None, Diagram::Git(g)))?,
-        "quadrantChart" => quadrant::parse(&body).map(|q| (q.title.clone(), Diagram::Quadrant(q)))?,
-        "xychart-beta" | "xychart" => xychart::parse(rest, &body).map(|x| (x.title.clone(), Diagram::XyChart(x)))?,
+        "quadrantChart" => {
+            quadrant::parse(&body).map(|q| (q.title.clone(), Diagram::Quadrant(q)))?
+        }
+        "xychart-beta" | "xychart" => {
+            xychart::parse(rest, &body).map(|x| (x.title.clone(), Diagram::XyChart(x)))?
+        }
         "sankey-beta" | "sankey" => sankey::parse(&body).map(|s| (None, Diagram::Sankey(s)))?,
         "block-beta" | "block" => block::parse(&body).map(|b| (None, Diagram::Block(b)))?,
-        "requirementDiagram" => requirement::parse(&body).map(|r| (None, Diagram::Requirement(r)))?,
-        "C4Context" | "C4Container" | "C4Component" | "C4Dynamic" | "C4Deployment" => c4::parse(kind, &body).map(|c| (c.title.clone(), Diagram::C4(c)))?,
+        "requirementDiagram" => {
+            requirement::parse(&body).map(|r| (None, Diagram::Requirement(r)))?
+        }
+        "C4Context" | "C4Container" | "C4Component" | "C4Dynamic" | "C4Deployment" => {
+            c4::parse(kind, &body).map(|c| (c.title.clone(), Diagram::C4(c)))?
+        }
         _ => return None,
     };
-    Some(Parsed { title: body_title.or(fm_title), diagram })
+    Some(Parsed {
+        title: body_title.or(fm_title),
+        diagram,
+    })
 }
 
-pub(crate) fn scene(src: &str, paint: &DiagramStyle, hover: Option<(Hover, Color)>) -> Option<Scene> {
+pub(crate) fn scene(
+    src: &str,
+    paint: &DiagramStyle,
+    hover: Option<(Hover, Color)>,
+) -> Option<Scene> {
     let parsed = parse(src)?;
     let s = match &parsed.diagram {
         Diagram::Flowchart(f) => flowchart::draw(f, paint, hover),
@@ -426,7 +508,10 @@ pub(crate) fn clean_quoted(s: &str) -> String {
 /// Mermaid label markup to plain text: `<br>` and `\n` breaks, entity codes, markdown-string backticks.
 pub(crate) fn clean(s: &str) -> String {
     let s = s.trim();
-    let s = s.strip_prefix('`').and_then(|s| s.strip_suffix('`')).unwrap_or(s);
+    let s = s
+        .strip_prefix('`')
+        .and_then(|s| s.strip_suffix('`'))
+        .unwrap_or(s);
     let mut out = String::with_capacity(s.len());
     let mut rest = s;
     while let Some(i) = rest.find(['<', '#', '&', '\\']) {
@@ -487,8 +572,12 @@ impl NodeStyle {
     /// Resolves `(fill, border, text)` against `paint` in Oklab so light-mode Mermaid hex fills
     /// (like `fill:#dcf5dc`) read cleanly in both dark and light themes without washing out text.
     pub(crate) fn resolve(self, paint: &DiagramStyle) -> (Color, Color, Color) {
-        let fill = self.fill.map_or(paint.node_fill, |c| adapt_fill(paint.node_fill, c, 0.055, 0.035));
-        let border = self.stroke.or(self.fill).map_or(paint.node_border, |c| adapt_stroke(paint.node_border, c, paint.node_fill.to_oklab()[0] < 0.5));
+        let fill = self.fill.map_or(paint.node_fill, |c| {
+            adapt_fill(paint.node_fill, c, 0.055, 0.035)
+        });
+        let border = self.stroke.or(self.fill).map_or(paint.node_border, |c| {
+            adapt_stroke(paint.node_border, c, paint.node_fill.to_oklab()[0] < 0.5)
+        });
         let text = match self.color {
             Some(c) if (c.to_oklab()[0] - fill.to_oklab()[0]).abs() > 0.35 => c,
             _ => paint.text,
@@ -506,7 +595,10 @@ pub(crate) struct EdgeStyle {
 
 impl EdgeStyle {
     pub(crate) fn merge(self, over: EdgeStyle) -> EdgeStyle {
-        EdgeStyle { stroke: over.stroke.or(self.stroke), width: over.width.or(self.width) }
+        EdgeStyle {
+            stroke: over.stroke.or(self.stroke),
+            width: over.width.or(self.width),
+        }
     }
 }
 
@@ -530,7 +622,11 @@ impl StyleSheet {
 
     pub(crate) fn assign_classes(&mut self, rest: &str) -> Option<()> {
         let (targets, classes) = rest.trim().split_once(char::is_whitespace)?;
-        let cls_list: Vec<&str> = classes.split(',').map(str::trim).filter(|c| !c.is_empty()).collect();
+        let cls_list: Vec<&str> = classes
+            .split(',')
+            .map(str::trim)
+            .filter(|c| !c.is_empty())
+            .collect();
         for id in targets.split(',').map(str::trim).filter(|n| !n.is_empty()) {
             for &cls in &cls_list {
                 self.add_class(id, cls);
@@ -550,7 +646,10 @@ impl StyleSheet {
 
     pub(crate) fn add_class(&mut self, id: &str, class: &str) {
         if !id.is_empty() && !class.is_empty() {
-            self.classes.entry(id.to_owned()).or_default().push(class.to_owned());
+            self.classes
+                .entry(id.to_owned())
+                .or_default()
+                .push(class.to_owned());
         }
     }
 
@@ -602,7 +701,11 @@ pub(crate) fn adapt_fill(base: Color, c: Color, dark_lift: f32, light_drop: f32)
         return oklab_mix(base, c, 0.2);
     }
     let scale = (chroma * 0.9).clamp(0.032, 0.075) / chroma;
-    let l = if dark { (base_l + dark_lift).min(0.42) } else { (base_l - light_drop).max(0.82) };
+    let l = if dark {
+        (base_l + dark_lift).min(0.42)
+    } else {
+        (base_l - light_drop).max(0.82)
+    };
     Color::from_oklab([l, a * scale, b * scale, base.a])
 }
 
@@ -618,13 +721,21 @@ pub(crate) fn adapt_stroke(base: Color, c: Color, dark: bool) -> Color {
 
 pub(crate) fn oklab_mix(a: Color, b: Color, t: f32) -> Color {
     let (a, b) = (a.to_oklab(), b.to_oklab());
-    Color::from_oklab([0, 1, 2, 3].map(|i| if i == 3 { a[3] } else { a[i] + (b[i] - a[i]) * t }))
+    Color::from_oklab([0, 1, 2, 3].map(|i| {
+        if i == 3 {
+            a[3]
+        } else {
+            a[i] + (b[i] - a[i]) * t
+        }
+    }))
 }
 
 pub(crate) fn parse_style_props(props: &str) -> NodeStyle {
     let mut out = NodeStyle::default();
     for part in props.split([',', ';']) {
-        let Some((k, v)) = part.split_once(':') else { continue };
+        let Some((k, v)) = part.split_once(':') else {
+            continue;
+        };
         let v = v.trim().trim_end_matches("!important").trim();
         match k.trim() {
             "fill" => out.fill = parse_color_spec(v),
@@ -639,11 +750,20 @@ pub(crate) fn parse_style_props(props: &str) -> NodeStyle {
 pub(crate) fn parse_edge_style_props(props: &str) -> EdgeStyle {
     let mut out = EdgeStyle::default();
     for part in props.split([',', ';']) {
-        let Some((k, v)) = part.split_once(':') else { continue };
+        let Some((k, v)) = part.split_once(':') else {
+            continue;
+        };
         let v = v.trim().trim_end_matches("!important").trim();
         match k.trim() {
             "stroke" => out.stroke = parse_color_spec(v),
-            "stroke-width" => out.width = v.trim_end_matches("px").trim().parse::<f32>().ok().map(|w| w.clamp(0.75, 5.0)),
+            "stroke-width" => {
+                out.width = v
+                    .trim_end_matches("px")
+                    .trim()
+                    .parse::<f32>()
+                    .ok()
+                    .map(|w| w.clamp(0.75, 5.0))
+            }
             _ => {}
         }
     }
@@ -657,10 +777,18 @@ pub(crate) fn parse_color_spec(s: &str) -> Option<Color> {
         return Some(c);
     }
     let lower = s.to_ascii_lowercase();
-    if let Some(inner) = lower.strip_prefix("rgb(").or_else(|| lower.strip_prefix("rgba(")).and_then(|r| r.strip_suffix(')')) {
-        let nums: Vec<f32> = inner.split(',').filter_map(|p| p.trim().parse::<f32>().ok()).collect();
+    if let Some(inner) = lower
+        .strip_prefix("rgb(")
+        .or_else(|| lower.strip_prefix("rgba("))
+        .and_then(|r| r.strip_suffix(')'))
+    {
+        let nums: Vec<f32> = inner
+            .split(',')
+            .filter_map(|p| p.trim().parse::<f32>().ok())
+            .collect();
         if nums.len() >= 3 {
-            let [r, g, b] = [nums[0], nums[1], nums[2]].map(|v| rune::color::srgb_decode((v / 255.0).clamp(0.0, 1.0)));
+            let [r, g, b] = [nums[0], nums[1], nums[2]]
+                .map(|v| rune::color::srgb_decode((v / 255.0).clamp(0.0, 1.0)));
             let a = nums.get(3).copied().unwrap_or(1.0).clamp(0.0, 1.0);
             return Some(Color { r, g, b, a });
         }
@@ -680,7 +808,9 @@ pub(crate) fn parse_color_spec(s: &str) -> Option<Color> {
 
 /// What follows keyword `w` and a space, trimmed.
 pub(crate) fn word<'a>(l: &'a str, w: &str) -> Option<&'a str> {
-    l.strip_prefix(w).filter(|r| r.is_empty() || r.starts_with(char::is_whitespace)).map(str::trim)
+    l.strip_prefix(w)
+        .filter(|r| r.is_empty() || r.starts_with(char::is_whitespace))
+        .map(str::trim)
 }
 
 /// A line split at `;` outside quotes and brackets (and never at an HTML entity's `;`).
@@ -712,7 +842,10 @@ pub(crate) fn statements(line: &str) -> Vec<&str> {
         }
     }
     out.push(&line[start..]);
-    out.into_iter().map(str::trim).filter(|s| !s.is_empty() && !s.starts_with("%%")).collect()
+    out.into_iter()
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && !s.starts_with("%%"))
+        .collect()
 }
 
 /// A byte cursor over one statement.

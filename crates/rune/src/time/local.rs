@@ -78,17 +78,27 @@ fn offset_at(secs: i64) -> Option<i32> {
 fn offset_at(secs: i64) -> Option<i32> {
     use windows_sys::Win32::Foundation::{FILETIME, SYSTEMTIME};
     use windows_sys::Win32::System::Time::{
-        DYNAMIC_TIME_ZONE_INFORMATION, FileTimeToSystemTime, GetDynamicTimeZoneInformation, SystemTimeToFileTime,
-        SystemTimeToTzSpecificLocalTimeEx, TIME_ZONE_ID_INVALID,
+        DYNAMIC_TIME_ZONE_INFORMATION, FileTimeToSystemTime, GetDynamicTimeZoneInformation,
+        SystemTimeToFileTime, SystemTimeToTzSpecificLocalTimeEx, TIME_ZONE_ID_INVALID,
     };
 
     // FILETIME counts 100 ns ticks from 1601-01-01 UTC; it has no ticks before that.
     const EPOCH_TICKS: i64 = 116_444_736_000_000_000;
-    let utc_ticks = secs.checked_mul(10_000_000).and_then(|t| t.checked_add(EPOCH_TICKS)).filter(|&t| t >= 0)?;
-    let utc_file = FILETIME { dwLowDateTime: utc_ticks as u32, dwHighDateTime: (utc_ticks >> 32) as u32 };
+    let utc_ticks = secs
+        .checked_mul(10_000_000)
+        .and_then(|t| t.checked_add(EPOCH_TICKS))
+        .filter(|&t| t >= 0)?;
+    let utc_file = FILETIME {
+        dwLowDateTime: utc_ticks as u32,
+        dwHighDateTime: (utc_ticks >> 32) as u32,
+    };
     // SAFETY: plain C structs where all-zero bytes are valid.
-    let (mut utc, mut wall, mut zone, mut wall_file): (SYSTEMTIME, SYSTEMTIME, DYNAMIC_TIME_ZONE_INFORMATION, FILETIME) =
-        unsafe { std::mem::zeroed() };
+    let (mut utc, mut wall, mut zone, mut wall_file): (
+        SYSTEMTIME,
+        SYSTEMTIME,
+        DYNAMIC_TIME_ZONE_INFORMATION,
+        FILETIME,
+    ) = unsafe { std::mem::zeroed() };
     // SAFETY: each call reads and writes only the structs passed to it, which outlive the calls.
     // FileTimeToSystemTime fails past year 30827, so `wall_file` stays well inside i64.
     let ok = unsafe {
@@ -97,7 +107,8 @@ fn offset_at(secs: i64) -> Option<i32> {
             && SystemTimeToTzSpecificLocalTimeEx(&zone, &utc, &mut wall) != 0
             && SystemTimeToFileTime(&wall, &mut wall_file) != 0
     };
-    let wall_ticks = ((u64::from(wall_file.dwHighDateTime) << 32) | u64::from(wall_file.dwLowDateTime)) as i64;
+    let wall_ticks =
+        ((u64::from(wall_file.dwHighDateTime) << 32) | u64::from(wall_file.dwLowDateTime)) as i64;
     ok.then(|| ((wall_ticks - utc_ticks) / 10_000_000) as i32)
 }
 
@@ -107,7 +118,9 @@ fn offset_at(secs: i64) -> Option<i32> {
     // `Date` holds ±8.64e15 ms; past that, its offset is NaN.
     let date = js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(secs as f64 * 1000.0));
     let minutes_west = date.get_timezone_offset();
-    minutes_west.is_finite().then(|| (-minutes_west * 60.0) as i32)
+    minutes_west
+        .is_finite()
+        .then(|| (-minutes_west * 60.0) as i32)
 }
 
 #[cfg(not(any(unix, windows, target_arch = "wasm32")))]

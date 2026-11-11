@@ -9,7 +9,11 @@ fn backdrop(gpu: &Gpu) -> wgpu::TextureView {
     gpu.device
         .create_texture(&wgpu::TextureDescriptor {
             label: None,
-            size: wgpu::Extent3d { width: 96, height: 96, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: 96,
+                height: 96,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -20,15 +24,35 @@ fn backdrop(gpu: &Gpu) -> wgpu::TextureView {
         .create_view(&Default::default())
 }
 
-fn frame(gpu: &Gpu, fx: &mut FxRenderer, layers: &[FxLayer], backdrop: &wgpu::TextureView, slot_backdrop: Option<&wgpu::TextureView>) -> Vec<Option<wgpu::BindGroup>> {
-    fx.prepare(&gpu.device, &gpu.queue, &FxFrame { viewport: [96, 96], scale: 1.0, layers, backdrop: Some(backdrop), sources: &[] });
+fn frame(
+    gpu: &Gpu,
+    fx: &mut FxRenderer,
+    layers: &[FxLayer],
+    backdrop: &wgpu::TextureView,
+    slot_backdrop: Option<&wgpu::TextureView>,
+) -> Vec<Option<wgpu::BindGroup>> {
+    fx.prepare(
+        &gpu.device,
+        &gpu.queue,
+        &FxFrame {
+            viewport: [96, 96],
+            scale: 1.0,
+            layers,
+            backdrop: Some(backdrop),
+            sources: &[],
+        },
+    );
     let mut enc = gpu.device.create_command_encoder(&Default::default());
     if let Some(b) = slot_backdrop {
         fx.blur_backdrop(&gpu.device, &gpu.queue, &mut enc, b, 1);
     }
     gpu.queue.submit([enc.finish()]);
-    gpu.device.poll(wgpu::PollType::wait_indefinitely()).expect("poll");
-    (0..layers.len()).map(|i| fx.layer_bind_group(i).cloned()).collect()
+    gpu.device
+        .poll(wgpu::PollType::wait_indefinitely())
+        .expect("poll");
+    (0..layers.len())
+        .map(|i| fx.layer_bind_group(i).cloned())
+        .collect()
 }
 
 #[test]
@@ -38,8 +62,19 @@ fn a_steady_frame_reuses_its_bind_groups() {
     let bd = backdrop(&gpu);
     let slot = backdrop(&gpu);
     let layers = [
-        Fx::glow(GlowParams { radius: 10.0, intensity: 0.8, ..Default::default() }).on(Shape::rounded(16.0, 16.0, 32.0, 32.0, 8.0)).at(0.5),
-        Fx::lens(LensParams { frost: 0.6, ..Default::default() }).on(Shape::rounded(40.0, 40.0, 40.0, 40.0, 12.0)).at(0.5),
+        Fx::glow(GlowParams {
+            radius: 10.0,
+            intensity: 0.8,
+            ..Default::default()
+        })
+        .on(Shape::rounded(16.0, 16.0, 32.0, 32.0, 8.0))
+        .at(0.5),
+        Fx::lens(LensParams {
+            frost: 0.6,
+            ..Default::default()
+        })
+        .on(Shape::rounded(40.0, 40.0, 40.0, 40.0, 12.0))
+        .at(0.5),
     ];
     let first = frame(&gpu, &mut fx, &layers, &bd, None);
     let second = frame(&gpu, &mut fx, &layers, &bd, None);

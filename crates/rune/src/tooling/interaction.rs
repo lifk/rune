@@ -48,7 +48,14 @@ const ROLLUP_EVERY: Duration = Duration::from_secs(60);
 const SLOW_PER_SECOND: u32 = 10;
 
 /// The `update` span's attribute for each [`Phase`].
-pub(crate) const PHASE_NAMES: [&str; PHASES] = ["rune.view_ms", "rune.commit_ms", "rune.layout_ms", "rune.text_ms", "rune.paint_ms", "rune.apply_ms"];
+pub(crate) const PHASE_NAMES: [&str; PHASES] = [
+    "rune.view_ms",
+    "rune.commit_ms",
+    "rune.layout_ms",
+    "rune.text_ms",
+    "rune.paint_ms",
+    "rune.apply_ms",
+];
 
 thread_local! {
     /// A timed frame is underway on this thread: phases time themselves into `TIMES`.
@@ -58,11 +65,15 @@ thread_local! {
 
 /// Whether timing is on in this process.
 #[inline(always)]
-pub(crate) fn on() -> bool { gate::on() }
+pub(crate) fn on() -> bool {
+    gate::on()
+}
 
 /// Whether a timed frame is underway on this thread, so phases should time themselves.
 #[inline(always)]
-pub(crate) fn active() -> bool { ACTIVE.get() }
+pub(crate) fn active() -> bool {
+    ACTIVE.get()
+}
 
 /// Phase `phase` of the timed frame took `ms`.
 pub(crate) fn add(phase: Phase, ms: f64) {
@@ -73,7 +84,13 @@ pub(crate) fn add(phase: Phase, ms: f64) {
 
 fn slow_ms() -> f64 {
     static MS: OnceLock<f64> = OnceLock::new();
-    *MS.get_or_init(|| std::env::var("RUNE_PERF_SLOW_MS").ok().and_then(|v| v.trim().parse().ok()).filter(|ms: &f64| *ms > 0.0).unwrap_or(SLOW_MS))
+    *MS.get_or_init(|| {
+        std::env::var("RUNE_PERF_SLOW_MS")
+            .ok()
+            .and_then(|v| v.trim().parse().ok())
+            .filter(|ms: &f64| *ms > 0.0)
+            .unwrap_or(SLOW_MS)
+    })
 }
 
 /// What one input action was, before the frame it lands in is built.
@@ -153,7 +170,6 @@ pub(crate) struct Tracker {
     sent: (Option<Instant>, u32),
 }
 
-
 /// What finishing a timed frame decided.
 pub(crate) struct Finished {
     pub timed: Timed,
@@ -172,11 +188,22 @@ impl Tracker {
     /// A frame starts; `queued` when input waits for it. A built frame no host presented
     /// (a bare `Runtime`, a window that skipped drawing) ends at its build.
     pub(crate) fn frame_begins(&mut self, queued: bool) -> Option<Finished> {
-        let left = self.timed.as_ref().and_then(|t| t.built).map(|(built, ..)| built);
+        let left = self
+            .timed
+            .as_ref()
+            .and_then(|t| t.built)
+            .map(|(built, ..)| built);
         let finished = left.and_then(|built| self.finish(built, None));
         let now = Instant::now();
         self.frame_start = queued.then_some(now);
-        self.began = Some((now, if queued { crate::frame::profile::cpu_ms() } else { None }));
+        self.began = Some((
+            now,
+            if queued {
+                crate::frame::profile::cpu_ms()
+            } else {
+                None
+            },
+        ));
         self.frame_why = 0;
         watchdog::arm();
         finished
@@ -184,23 +211,44 @@ impl Tracker {
 
     /// Whether `note`'s signature was slow before, so its frame should be sampled sooner.
     pub(crate) fn breached(&self, note: &Note) -> bool {
-        !self.breached.is_empty() && self.breached.contains(&rollup::signature(&note.route, &note.control, note.action))
+        !self.breached.is_empty()
+            && self
+                .breached
+                .contains(&rollup::signature(&note.route, &note.control, note.action))
     }
 
     /// An input action ran its handlers: `at` is when its input arrived, `handler` how long
     /// they took from `started`.
-    pub(crate) fn noted(&mut self, note: Note, at: Option<Instant>, started: Instant, handler: Duration) {
+    pub(crate) fn noted(
+        &mut self,
+        note: Note,
+        at: Option<Instant>,
+        started: Instant,
+        handler: Duration,
+    ) {
         let frame_start = *self.frame_start.get_or_insert(started);
         let arrived = at.unwrap_or(frame_start).min(frame_start);
         match &mut self.timed {
             Some(t) if t.built.is_none() => {
                 t.arrived = t.arrived.min(arrived);
                 t.handler_ms += handler.as_secs_f64() * 1000.0;
-                if note.rank > t.note.rank { t.note = note; }
+                if note.rank > t.note.rank {
+                    t.note = note;
+                }
             }
             _ => {
                 let cpu = (self.began.and_then(|b| b.1), None);
-                self.timed = Some(Timed { arrived, frame_start, handler_ms: handler.as_secs_f64() * 1000.0, note, why: 0, commits: 0, built: None, cpu, stacks: None });
+                self.timed = Some(Timed {
+                    arrived,
+                    frame_start,
+                    handler_ms: handler.as_secs_f64() * 1000.0,
+                    note,
+                    why: 0,
+                    commits: 0,
+                    built: None,
+                    cpu,
+                    stacks: None,
+                });
                 TIMES.set([0.0; PHASES]);
                 ACTIVE.set(true);
             }
@@ -228,10 +276,21 @@ impl Tracker {
             let built = Instant::now();
             let work = built.saturating_duration_since(start).as_secs_f64() * 1000.0;
             let cause = cause::cause(work, slow_ms(), None, Some(&stacks), overloaded());
-            return (work > slow_ms()).then_some(SlowFrame { start, built, why, nodes, cause, stacks });
+            return (work > slow_ms()).then_some(SlowFrame {
+                start,
+                built,
+                why,
+                nodes,
+                cause,
+                stacks,
+            });
         };
         t.built = Some((Instant::now(), TIMES.replace([0.0; PHASES]), shaped));
-        t.cpu.1 = t.cpu.0.zip(crate::frame::profile::cpu_ms()).map(|(from, to)| to - from);
+        t.cpu.1 = t
+            .cpu
+            .0
+            .zip(crate::frame::profile::cpu_ms())
+            .map(|(from, to)| to - from);
         t.stacks = stacks;
         ACTIVE.set(false);
         None
@@ -239,22 +298,59 @@ impl Tracker {
 
     /// The built frame was submitted at `submitted`, to show at `presents_at` when a display
     /// link paced it. Counts it, and says whether to send it as slow.
-    pub(crate) fn finish(&mut self, submitted: Instant, presents_at: Option<Instant>) -> Option<Finished> {
+    pub(crate) fn finish(
+        &mut self,
+        submitted: Instant,
+        presents_at: Option<Instant>,
+    ) -> Option<Finished> {
         let timed = self.timed.take_if(|t| t.built.is_some())?;
         let (built, phases, shaped) = timed.built?;
         let submitted = submitted.max(built);
         let present = presents_at.map_or(submitted, |p| p.max(submitted));
-        let total = present.saturating_duration_since(timed.arrived).as_secs_f64() * 1000.0;
-        let work = submitted.saturating_duration_since(timed.frame_start).as_secs_f64() * 1000.0;
+        let total = present
+            .saturating_duration_since(timed.arrived)
+            .as_secs_f64()
+            * 1000.0;
+        let work = submitted
+            .saturating_duration_since(timed.frame_start)
+            .as_secs_f64()
+            * 1000.0;
         let over = total > slow_ms() || work > slow_ms();
-        let cause = over.then(|| cause::cause(work, slow_ms(), timed.cpu.1, timed.stacks.as_ref(), overloaded()));
+        let cause = over.then(|| {
+            cause::cause(
+                work,
+                slow_ms(),
+                timed.cpu.1,
+                timed.stacks.as_ref(),
+                overloaded(),
+            )
+        });
         let contended = cause == Some(Cause::SchedulerWait);
         let note = &timed.note;
-        self.rollup.add(&note.route, &note.control, note.action, total, over && !contended, contended);
-        if over && !contended { self.breached.insert(rollup::signature(&note.route, &note.control, note.action)); }
+        self.rollup.add(
+            &note.route,
+            &note.control,
+            note.action,
+            total,
+            over && !contended,
+            contended,
+        );
+        if over && !contended {
+            self.breached
+                .insert(rollup::signature(&note.route, &note.control, note.action));
+        }
         let slow = over && self.allow(present);
         self.rolled_since.get_or_insert(timed.arrived);
-        Some(Finished { timed, built, phases, shaped, submitted, present, cause, slow })
+        Some(Finished {
+            timed,
+            built,
+            phases,
+            shaped,
+            submitted,
+            present,
+            cause,
+            slow,
+        })
     }
 
     fn allow(&mut self, now: Instant) -> bool {
@@ -272,10 +368,18 @@ impl Tracker {
 
     /// Sends the histograms when a minute has passed since the last, or `now` regardless.
     pub(crate) fn roll(&mut self, force: bool) {
-        let Some(from) = self.rolled_since else { return };
+        let Some(from) = self.rolled_since else {
+            return;
+        };
         let to = Instant::now();
-        if self.rollup.is_empty() || (!force && to.saturating_duration_since(from) < ROLLUP_EVERY) { return; }
-        export::send(export::Message::Rollup { rolls: self.rollup.take(), from, to });
+        if self.rollup.is_empty() || (!force && to.saturating_duration_since(from) < ROLLUP_EVERY) {
+            return;
+        }
+        export::send(export::Message::Rollup {
+            rolls: self.rollup.take(),
+            from,
+            to,
+        });
         self.rolled_since = None;
     }
 }
@@ -286,7 +390,9 @@ impl Drop for Tracker {
     /// macOS runs a main thread that just slept on a slower core for its next frames. The app's
     /// event loop [`flush`]es once, as it exits.
     fn drop(&mut self) {
-        if self.rolled_since.is_none() { return; }
+        if self.rolled_since.is_none() {
+            return;
+        }
         self.roll(true);
     }
 }
@@ -318,12 +424,14 @@ pub(crate) fn send(slow: Slow) {
 /// Waits up to a second for everything queued to reach the collector, before the process exits.
 /// Returns at once when nothing was ever sent.
 pub(crate) fn flush() {
-    if on() { export::flush(Duration::from_secs(1)); }
+    if on() {
+        export::flush(Duration::from_secs(1));
+    }
 }
 
 #[cfg(test)]
-#[path = "interaction/tests.rs"]
-mod tests;
-#[cfg(test)]
 #[path = "interaction/sampler_tests.rs"]
 mod sampler_tests;
+#[cfg(test)]
+#[path = "interaction/tests.rs"]
+mod tests;

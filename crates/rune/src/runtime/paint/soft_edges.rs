@@ -3,9 +3,18 @@
 // Carry the declaring edge with the inherited width. Descendant clipping must not restart
 // its ramp; an inner fade takes over once the ancestor's ramp is fully opaque there. Widths
 // compare by size: a negative one is a linear ramp (`El::clip_fade_linear`).
-pub(super) fn inherit_fade(width: &mut [f32; 4], origin: &mut [f32; 4], rect: [f32; 4], own: [f32; 4]) {
+pub(super) fn inherit_fade(
+    width: &mut [f32; 4],
+    origin: &mut [f32; 4],
+    rect: [f32; 4],
+    own: [f32; 4],
+) {
     for edge in 0..4 {
-        let inset = if edge < 2 { rect[edge] - origin[edge] } else { origin[edge] - rect[edge] };
+        let inset = if edge < 2 {
+            rect[edge] - origin[edge]
+        } else {
+            origin[edge] - rect[edge]
+        };
         let (o, w) = (own[edge].abs(), width[edge].abs());
         if o > 0.0 && (o >= w || inset >= w) {
             width[edge] = own[edge];

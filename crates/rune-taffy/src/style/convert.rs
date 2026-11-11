@@ -152,8 +152,10 @@ impl CompactStyle {
         self.extra.as_ref().map_or(0, |s| {
             type Ident = <Style as CoreStyle>::CustomIdent;
             core::mem::size_of::<Style>()
-                + s.grid_template_rows.capacity() * core::mem::size_of::<taffy::GridTemplateComponent<Ident>>()
-                + s.grid_template_columns.capacity() * core::mem::size_of::<taffy::GridTemplateComponent<Ident>>()
+                + s.grid_template_rows.capacity()
+                    * core::mem::size_of::<taffy::GridTemplateComponent<Ident>>()
+                + s.grid_template_columns.capacity()
+                    * core::mem::size_of::<taffy::GridTemplateComponent<Ident>>()
         })
     }
 
@@ -164,7 +166,13 @@ impl CompactStyle {
         }
         self.display() == other.display
             && self.position() == other.position
-            && self.box_flags == pack_box_flags(other.flex_direction, other.flex_wrap, other.overflow.x, other.overflow.y)
+            && self.box_flags
+                == pack_box_flags(
+                    other.flex_direction,
+                    other.flex_wrap,
+                    other.overflow.x,
+                    other.overflow.y,
+                )
             && self.align_items_u8 == pack_align_items(other.align_items)
             && self.align_self_u8 == pack_align_self(other.align_self)
             && self.justify_content_u8 == pack_align_content(other.justify_content)

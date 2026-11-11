@@ -31,7 +31,10 @@ const ASPECT: f32 = 1.5;
 pub enum Load {
     Fixed(usize),
     /// Each level for `hold` seconds, the first from [`START`].
-    Ramp { levels: Vec<usize>, hold: f64 },
+    Ramp {
+        levels: Vec<usize>,
+        hold: f64,
+    },
 }
 
 impl Load {
@@ -49,8 +52,14 @@ impl Load {
 
     /// `A:B`, as `--ramp` takes it.
     pub fn parse_ramp(spec: &str, hold: f64) -> Result<Load, String> {
-        let (a, b) = spec.split_once(':').ok_or_else(|| format!("--ramp wants FROM:TO, got {spec}"))?;
-        let n = |s: &str| s.trim().parse::<usize>().map_err(|_| format!("--ramp: not a count: {s}"));
+        let (a, b) = spec
+            .split_once(':')
+            .ok_or_else(|| format!("--ramp wants FROM:TO, got {spec}"))?;
+        let n = |s: &str| {
+            s.trim()
+                .parse::<usize>()
+                .map_err(|_| format!("--ramp: not a count: {s}"))
+        };
         let (a, b) = (n(a)?, n(b)?);
         if a == 0 || b < a {
             return Err(format!("--ramp wants 0 < FROM ≤ TO, got {spec}"));
@@ -69,7 +78,9 @@ impl Load {
     pub fn step_at(&self, t: f64) -> usize {
         match self {
             Load::Fixed(_) => 0,
-            Load::Ramp { levels, hold } => (((t - START).max(0.0) / hold) as usize).min(levels.len() - 1),
+            Load::Ramp { levels, hold } => {
+                (((t - START).max(0.0) / hold) as usize).min(levels.len() - 1)
+            }
         }
     }
 
@@ -89,7 +100,12 @@ impl Load {
 /// The wall's rectangle in window points, below the header.
 pub fn area() -> [f32; 4] {
     let y = grid::PAD - 8.0 + HEADER + grid::GAP;
-    [grid::PAD, y, grid::WIDTH - 2.0 * grid::PAD, grid::HEIGHT - grid::PAD - y]
+    [
+        grid::PAD,
+        y,
+        grid::WIDTH - 2.0 * grid::PAD,
+        grid::HEIGHT - grid::PAD - y,
+    ]
 }
 
 /// A control's accent, its bars' top and bottom.
@@ -201,7 +217,10 @@ impl Metrics {
 }
 
 fn mix(seed: u64, id: u32, salt: u32, epoch: u64) -> u64 {
-    let mut z = seed ^ (id as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ ((salt as u64) << 40) ^ epoch.wrapping_mul(0xd6e8_feb8_6659_fd93);
+    let mut z = seed
+        ^ (id as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)
+        ^ ((salt as u64) << 40)
+        ^ epoch.wrapping_mul(0xd6e8_feb8_6659_fd93);
     z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
     z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
     z ^ (z >> 31)
@@ -255,7 +274,18 @@ impl Wall {
         self.cells.truncate(n);
         while self.cells.len() < n {
             let id = self.cells.len() as u32;
-            self.cells.push(Cell { id, rect: [0.0; 4], wide: false, hue: 0.0, on: false, hot: false, bars: [0.0; BARS], progress: 0.0, status: "", reading: 0.0 });
+            self.cells.push(Cell {
+                id,
+                rect: [0.0; 4],
+                wide: false,
+                hue: 0.0,
+                on: false,
+                hot: false,
+                bars: [0.0; BARS],
+                progress: 0.0,
+                status: "",
+                reading: 0.0,
+            });
         }
         let e = epoch(t, SHUFFLE, 0.5);
         if self.order_epoch != Some((e, n)) {
@@ -288,7 +318,8 @@ impl Wall {
             c.on = unit(mix(seed, id, 5, epoch(t, 0.7 + 1.2 * h(6) as f64, h(7)))) < 0.5;
             c.hue = HUES[(mix(seed, id, 8, epoch(t, 3.0, h(9))) % HUES.len() as u64) as usize];
             c.progress = ((t * (0.05 + 0.25 * h(10) as f64) + h(11) as f64).fract()) as f32;
-            c.status = STATUS[(mix(seed, id, 12, epoch(t, 1.1, h(13))) % STATUS.len() as u64) as usize];
+            c.status =
+                STATUS[(mix(seed, id, 12, epoch(t, 1.1, h(13))) % STATUS.len() as u64) as usize];
             c.reading = 20.0 + 980.0 * h(14) as f64 + t * (1.5 + 30.0 * h(15) as f64);
             c.wide = self.wide[id as usize];
         }
@@ -313,7 +344,12 @@ impl Wall {
         for &id in &self.order {
             let c = &mut self.cells[id as usize];
             let span = if c.wide && col + 2 <= cols { 2 } else { 1 };
-            c.rect = [ax + col as f32 * (cw + gap), ay + row as f32 * (ch + gap), span as f32 * cw + (span - 1) as f32 * gap, ch];
+            c.rect = [
+                ax + col as f32 * (cw + gap),
+                ay + row as f32 * (ch + gap),
+                span as f32 * cw + (span - 1) as f32 * gap,
+                ch,
+            ];
             col += span;
             if col >= cols {
                 col = 0;
@@ -351,7 +387,14 @@ mod tests {
             assert_eq!(a.cells(), b.cells(), "{n} controls");
             for c in a.cells() {
                 let [x, y, w, h] = c.rect;
-                assert!(x >= ax - 0.01 && y >= ay - 0.01 && x + w <= ax + aw + 0.01 && y + h <= ay + ah + 0.01, "{n}: {:?}", c.rect);
+                assert!(
+                    x >= ax - 0.01
+                        && y >= ay - 0.01
+                        && x + w <= ax + aw + 0.01
+                        && y + h <= ay + ah + 0.01,
+                    "{n}: {:?}",
+                    c.rect
+                );
             }
             assert_eq!(a.cells().iter().filter(|c| c.wide).count(), n / WIDE_SHARE);
         }
@@ -363,6 +406,11 @@ mod tests {
         w.update(1.0, 32);
         let before: Vec<String> = w.cells().iter().map(Cell::reading).collect();
         w.update(1.0 + 1.0 / 120.0, 32);
-        assert!(w.cells().iter().zip(&before).all(|(c, b)| c.reading() != *b));
+        assert!(
+            w.cells()
+                .iter()
+                .zip(&before)
+                .all(|(c, b)| c.reading() != *b)
+        );
     }
 }

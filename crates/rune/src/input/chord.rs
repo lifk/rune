@@ -3,7 +3,11 @@
 //! `alt`, `shift` and `super` name keys. Both sides of a match resolve to the keys held on
 //! the platform, so "mod+b" and "ctrl+b" are the same chord on Windows and Linux, and
 //! different ones (⌘B and ⌃B) on macOS. `Keybind` adds alternatives and per-platform chords.
-use std::{fmt, hash::{Hash, Hasher}, str::FromStr};
+use std::{
+    fmt,
+    hash::{Hash, Hasher},
+    str::FromStr,
+};
 
 use super::chord_label::{char_named, key_named_word, modifier_named, named};
 use crate::{Key, KeyEvent, Mods, PhysicalKeyCode};
@@ -30,8 +34,12 @@ impl KeyPlatform {
     /// The platform this build runs on.
     #[cfg(not(target_arch = "wasm32"))]
     pub const fn current() -> Self {
-        if cfg!(any(target_os = "macos", target_os = "ios")) { return Self::Mac; }
-        if cfg!(target_os = "windows") { return Self::Windows; }
+        if cfg!(any(target_os = "macos", target_os = "ios")) {
+            return Self::Mac;
+        }
+        if cfg!(target_os = "windows") {
+            return Self::Windows;
+        }
         Self::Linux
     }
 
@@ -43,12 +51,23 @@ impl KeyPlatform {
         *PLATFORM.get_or_init(|| {
             let platform = js_sys::Reflect::get(&js_sys::global(), &"navigator".into())
                 .and_then(|navigator| js_sys::Reflect::get(&navigator, &"platform".into()))
-                .ok().and_then(|p| p.as_string()).unwrap_or_default();
-            if ["Mac", "iPod", "iPhone", "iPad"].iter().any(|apple| platform.contains(apple)) { Self::Mac } else { Self::Linux }
+                .ok()
+                .and_then(|p| p.as_string())
+                .unwrap_or_default();
+            if ["Mac", "iPod", "iPhone", "iPad"]
+                .iter()
+                .any(|apple| platform.contains(apple))
+            {
+                Self::Mac
+            } else {
+                Self::Linux
+            }
         })
     }
 
-    pub(super) fn mac(self) -> bool { matches!(self, Self::Mac) }
+    pub(super) fn mac(self) -> bool {
+        matches!(self, Self::Mac)
+    }
 }
 
 /// One modifier as a chord names it.
@@ -67,7 +86,13 @@ pub enum ChordMod {
 
 impl ChordMod {
     pub(super) const fn bit(self) -> u8 {
-        match self { Self::Primary => PRIMARY, Self::Ctrl => CTRL, Self::Alt => ALT, Self::Shift => SHIFT, Self::Super => SUPER }
+        match self {
+            Self::Primary => PRIMARY,
+            Self::Ctrl => CTRL,
+            Self::Alt => ALT,
+            Self::Shift => SHIFT,
+            Self::Super => SUPER,
+        }
     }
 }
 
@@ -121,7 +146,9 @@ pub struct Chord {
 pub struct ChordError(String);
 
 impl fmt::Display for ChordError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "invalid key chord: {}", self.0) }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "invalid key chord: {}", self.0)
+    }
 }
 
 impl std::error::Error for ChordError {}
@@ -140,41 +167,68 @@ impl Chord {
             ChordKey::Char('\u{8}') => (0, ChordKey::Backspace),
             ChordKey::Char('\u{7f}') => (0, ChordKey::Delete),
             ChordKey::Char(c) => (0, ChordKey::Char(c.to_ascii_lowercase())),
-            ChordKey::Function(n) => (0, ChordKey::Function(if n < 1 { 1 } else if n > 24 { 24 } else { n })),
+            ChordKey::Function(n) => (
+                0,
+                ChordKey::Function(if n < 1 {
+                    1
+                } else if n > 24 {
+                    24
+                } else {
+                    n
+                }),
+            ),
             key => (0, key),
         };
         Self { mods, key }
     }
 
     /// This chord with `m` held too.
-    pub const fn with(self, m: ChordMod) -> Self { Self { mods: self.mods | m.bit(), key: self.key } }
+    pub const fn with(self, m: ChordMod) -> Self {
+        Self {
+            mods: self.mods | m.bit(),
+            key: self.key,
+        }
+    }
 
-    pub fn parse(s: &str) -> Result<Self, ChordError> { s.parse() }
+    pub fn parse(s: &str) -> Result<Self, ChordError> {
+        s.parse()
+    }
 
     /// The key, a character lowercased.
     pub fn key(&self) -> ChordKey {
-        match self.key { ChordKey::Char(c) => ChordKey::Char(lower(c)), key => key }
+        match self.key {
+            ChordKey::Char(c) => ChordKey::Char(lower(c)),
+            key => key,
+        }
     }
 
     /// Whether the chord names `m`, as written (before platform resolution).
-    pub fn has(&self, m: ChordMod) -> bool { self.mods & m.bit() != 0 }
+    pub fn has(&self, m: ChordMod) -> bool {
+        self.mods & m.bit() != 0
+    }
 
     /// Whether `ev` is this chord on this platform: the same keys held, no more and no fewer,
     /// and the same key. Letters match either case. A shifted character also matches the key
     /// that types it unshifted on a US layout ('{' for "shift+["); use `matches_tx` in a key
     /// handler to follow the user's layout instead.
-    pub fn matches(&self, ev: &KeyEvent) -> bool { self.matches_on(ev, KeyPlatform::current()) }
+    pub fn matches(&self, ev: &KeyEvent) -> bool {
+        self.matches_on(ev, KeyPlatform::current())
+    }
 
     /// `matches`, also comparing a character chord with `tx.key_base()`, the character the
     /// key types with no modifiers under the current layout (⌥B types "∫" on a Mac, ⇧[ types
     /// "{"), so the binding follows the layout as the menu bar's does. Where neither that
     /// character nor the typed one is ASCII (a Cyrillic or Greek layout, "ü" on German) an
     /// ASCII chord falls back to `tx.physical_key()`, the key in that place on a US layout.
-    pub fn matches_tx(&self, ev: &KeyEvent, tx: &crate::Tx) -> bool { self.matches_tx_on(ev, tx, KeyPlatform::current()) }
+    pub fn matches_tx(&self, ev: &KeyEvent, tx: &crate::Tx) -> bool {
+        self.matches_tx_on(ev, tx, KeyPlatform::current())
+    }
 
     /// `matches`, resolving the chord with `platform`'s conventions: for tests, or an app that
     /// lets the user pick a keymap. `ev.mods` reads as this build reports them.
-    pub fn matches_on(&self, ev: &KeyEvent, platform: KeyPlatform) -> bool { self.matches_with(ev, None, None, platform) }
+    pub fn matches_on(&self, ev: &KeyEvent, platform: KeyPlatform) -> bool {
+        self.matches_with(ev, None, None, platform)
+    }
 
     /// `matches_tx` with `platform`'s conventions; see `matches_on`.
     pub fn matches_tx_on(&self, ev: &KeyEvent, tx: &crate::Tx, platform: KeyPlatform) -> bool {
@@ -192,27 +246,52 @@ impl Chord {
     pub fn mods_on(&self, platform: KeyPlatform) -> Vec<ChordMod> {
         let bits = fold(self.mods, platform);
         let order = if platform.mac() {
-            [ChordMod::Ctrl, ChordMod::Alt, ChordMod::Shift, ChordMod::Primary]
+            [
+                ChordMod::Ctrl,
+                ChordMod::Alt,
+                ChordMod::Shift,
+                ChordMod::Primary,
+            ]
         } else {
-            [ChordMod::Primary, ChordMod::Alt, ChordMod::Shift, ChordMod::Super]
+            [
+                ChordMod::Primary,
+                ChordMod::Alt,
+                ChordMod::Shift,
+                ChordMod::Super,
+            ]
         };
         order.into_iter().filter(|m| bits & m.bit() != 0).collect()
     }
 
-    fn matches_with(&self, ev: &KeyEvent, base: Option<char>, physical: Option<PhysicalKeyCode>, platform: KeyPlatform) -> bool {
+    fn matches_with(
+        &self,
+        ev: &KeyEvent,
+        base: Option<char>,
+        physical: Option<PhysicalKeyCode>,
+        platform: KeyPlatform,
+    ) -> bool {
         let (want, held) = (fold(self.mods, platform), held(ev.mods, platform));
-        let ChordKey::Char(c) = self.key() else { return want == held && named(&ev.key) == Some(self.key) };
-        let Some(typed) = typed(&ev.key) else { return false };
+        let ChordKey::Char(c) = self.key() else {
+            return want == held && named(&ev.key) == Some(self.key);
+        };
+        let Some(typed) = typed(&ev.key) else {
+            return false;
+        };
         let base = base.map(lower);
         // Past the typed character, the key's own: its unmodified character when the layout
         // gives one, else the US key that types it shifted, and past a non-Latin character
         // the US key in its place, as browsers' shortcut handling falls back to `code`.
-        let us = || c.is_ascii() && !typed.is_ascii() && physical.and_then(crate::shortcuts::us_char) == Some(c);
+        let us = || {
+            c.is_ascii()
+                && !typed.is_ascii()
+                && physical.and_then(crate::shortcuts::us_char) == Some(c)
+        };
         if want == held {
-            return typed == c || match base {
-                Some(b) => b == c || (!b.is_ascii() && us()),
-                None => (ev.mods.shift && us_unshifted(typed) == Some(c)) || us(),
-            };
+            return typed == c
+                || match base {
+                    Some(b) => b == c || (!b.is_ascii() && us()),
+                    None => (ev.mods.shift && us_unshifted(typed) == Some(c)) || us(),
+                };
         }
         // A chord on a shifted character ("mod+plus") is that character with or without the
         // Shift that types it: Ctrl+Shift+= on a US layout, Ctrl++ on a German one.
@@ -221,7 +300,9 @@ impl Chord {
 }
 
 impl PartialEq for Chord {
-    fn eq(&self, other: &Self) -> bool { self.mods == other.mods && self.key() == other.key() }
+    fn eq(&self, other: &Self) -> bool {
+        self.mods == other.mods && self.key() == other.key()
+    }
 }
 
 impl Eq for Chord {}
@@ -242,22 +323,31 @@ impl FromStr for Chord {
         let plus = parts.len() >= 2 && parts[parts.len() - 2..].iter().all(|p| p.is_empty());
         if plus {
             parts.truncate(parts.len() - 2);
-            if parts == [""] { parts.clear(); }
+            if parts == [""] {
+                parts.clear();
+            }
         }
         let mut mods = 0;
         let mut key = plus.then_some(ChordKey::Char('+'));
         for part in parts {
             let part = part.to_lowercase();
             if let Some(m) = modifier_named(&part) {
-                if key.is_some() || mods & m.bit() != 0 { return Err(invalid()); }
+                if key.is_some() || mods & m.bit() != 0 {
+                    return Err(invalid());
+                }
                 mods |= m.bit();
                 continue;
             }
-            if key.is_some() { return Err(invalid()); }
+            if key.is_some() {
+                return Err(invalid());
+            }
             key = Some(key_named(&part).ok_or_else(invalid)?);
         }
         let chord = Self::new(key.ok_or_else(invalid)?);
-        Ok(Self { mods: mods | chord.mods, key: chord.key })
+        Ok(Self {
+            mods: mods | chord.mods,
+            key: chord.key,
+        })
     }
 }
 
@@ -281,7 +371,10 @@ impl Keybind {
     /// These chords instead on `platform`. Panics if `spec` doesn't parse, as `new` does.
     #[track_caller]
     pub fn on(self, platform: KeyPlatform, spec: &str) -> Self {
-        self.on_chords(platform, &parse_list(spec).unwrap_or_else(|e| panic!("{e}")))
+        self.on_chords(
+            platform,
+            &parse_list(spec).unwrap_or_else(|e| panic!("{e}")),
+        )
     }
 
     /// `chords` instead on `platform`: `on` for chords built as data.
@@ -293,68 +386,109 @@ impl Keybind {
 
     /// The chords that apply on `platform`.
     pub fn chords_on(&self, platform: KeyPlatform) -> &[Chord] {
-        self.platforms.iter().find(|(p, _)| *p == platform).map_or(&self.chords, |(_, c)| c)
+        self.platforms
+            .iter()
+            .find(|(p, _)| *p == platform)
+            .map_or(&self.chords, |(_, c)| c)
     }
 
     /// The chords that apply here.
-    pub fn chords(&self) -> &[Chord] { self.chords_on(KeyPlatform::current()) }
+    pub fn chords(&self) -> &[Chord] {
+        self.chords_on(KeyPlatform::current())
+    }
 
     /// Whether `ev` is any of this platform's chords; see `Chord::matches`.
-    pub fn matches(&self, ev: &KeyEvent) -> bool { self.matches_on(ev, KeyPlatform::current()) }
+    pub fn matches(&self, ev: &KeyEvent) -> bool {
+        self.matches_on(ev, KeyPlatform::current())
+    }
 
     /// Whether `ev` is any of this platform's chords; see `Chord::matches_tx`.
-    pub fn matches_tx(&self, ev: &KeyEvent, tx: &crate::Tx) -> bool { self.matches_tx_on(ev, tx, KeyPlatform::current()) }
+    pub fn matches_tx(&self, ev: &KeyEvent, tx: &crate::Tx) -> bool {
+        self.matches_tx_on(ev, tx, KeyPlatform::current())
+    }
 
     /// Whether `ev` is any of `platform`'s chords; see `Chord::matches_on`.
     pub fn matches_on(&self, ev: &KeyEvent, platform: KeyPlatform) -> bool {
-        self.chords_on(platform).iter().any(|c| c.matches_on(ev, platform))
+        self.chords_on(platform)
+            .iter()
+            .any(|c| c.matches_on(ev, platform))
     }
 
     /// Whether `ev` is any of `platform`'s chords; see `Chord::matches_tx_on`.
     pub fn matches_tx_on(&self, ev: &KeyEvent, tx: &crate::Tx, platform: KeyPlatform) -> bool {
-        self.chords_on(platform).iter().any(|c| c.matches_tx_on(ev, tx, platform))
+        self.chords_on(platform)
+            .iter()
+            .any(|c| c.matches_tx_on(ev, tx, platform))
     }
 
     /// The first chord's label here ("⇧⌘T", "Ctrl+Shift+T"), or "" when nothing is bound.
-    pub fn label(&self) -> String { self.label_on(KeyPlatform::current()) }
+    pub fn label(&self) -> String {
+        self.label_on(KeyPlatform::current())
+    }
 
     /// The first chord's label on `platform`, or "" when nothing is bound there.
     pub fn label_on(&self, platform: KeyPlatform) -> String {
-        self.chords_on(platform).first().map(|c| c.label_on(platform)).unwrap_or_default()
+        self.chords_on(platform)
+            .first()
+            .map(|c| c.label_on(platform))
+            .unwrap_or_default()
     }
 
     /// The string `parse` reads back as `platform`'s chords: "mod+t, mod+n", or "none".
     pub fn spec_on(&self, platform: KeyPlatform) -> String {
         let chords = self.chords_on(platform);
-        if chords.is_empty() { return "none".into(); }
-        chords.iter().map(Chord::to_string).collect::<Vec<_>>().join(", ")
+        if chords.is_empty() {
+            return "none".into();
+        }
+        chords
+            .iter()
+            .map(Chord::to_string)
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 }
 
 impl From<Chord> for Keybind {
-    fn from(chord: Chord) -> Self { Self { chords: vec![chord], platforms: Vec::new() } }
+    fn from(chord: Chord) -> Self {
+        Self {
+            chords: vec![chord],
+            platforms: Vec::new(),
+        }
+    }
 }
 
 impl From<&[Chord]> for Keybind {
-    fn from(chords: &[Chord]) -> Self { Self { chords: chords.to_vec(), platforms: Vec::new() } }
+    fn from(chords: &[Chord]) -> Self {
+        Self {
+            chords: chords.to_vec(),
+            platforms: Vec::new(),
+        }
+    }
 }
 
 impl FromStr for Keybind {
     type Err = ChordError;
     fn from_str(spec: &str) -> Result<Self, Self::Err> {
-        Ok(Self { chords: parse_list(spec)?, platforms: Vec::new() })
+        Ok(Self {
+            chords: parse_list(spec)?,
+            platforms: Vec::new(),
+        })
     }
 }
 
 /// The chords that apply here, comma-separated (`spec_on` the current platform), so a
 /// settings file written here reads back as what this platform binds.
 impl fmt::Display for Keybind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { f.write_str(&self.spec_on(KeyPlatform::current())) }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.spec_on(KeyPlatform::current()))
+    }
 }
 
 fn parse_list(spec: &str) -> Result<Vec<Chord>, ChordError> {
     let spec = spec.trim();
-    if spec.is_empty() || spec.eq_ignore_ascii_case("none") { return Ok(Vec::new()); }
+    if spec.is_empty() || spec.eq_ignore_ascii_case("none") {
+        return Ok(Vec::new());
+    }
     spec.split(',').map(str::parse).collect()
 }
 
@@ -369,7 +503,11 @@ pub(crate) fn primary_alone(m: Mods) -> bool {
 /// off macOS, the logo key into it on macOS.
 fn fold(bits: u8, platform: KeyPlatform) -> u8 {
     let same = if platform.mac() { SUPER } else { CTRL };
-    if bits & same != 0 { bits & !same | PRIMARY } else { bits }
+    if bits & same != 0 {
+        bits & !same | PRIMARY
+    } else {
+        bits
+    }
 }
 
 /// The keys `m` says are held, as chord bits for `platform`. `cmd` repeats the key this build
@@ -384,19 +522,42 @@ fn held(m: Mods, platform: KeyPlatform) -> u8 {
     } else {
         (m.ctrl || m.cmd, m.logo)
     };
-    let (ctrl_bit, logo_bit) = if platform.mac() { (CTRL, PRIMARY) } else { (PRIMARY, SUPER) };
-    [(bare, PRIMARY), (ctrl, ctrl_bit), (logo, logo_bit), (m.alt, ALT), (m.shift, SHIFT)]
-        .into_iter().filter(|(on, _)| *on).fold(0, |bits, (_, bit)| bits | bit)
+    let (ctrl_bit, logo_bit) = if platform.mac() {
+        (CTRL, PRIMARY)
+    } else {
+        (PRIMARY, SUPER)
+    };
+    [
+        (bare, PRIMARY),
+        (ctrl, ctrl_bit),
+        (logo, logo_bit),
+        (m.alt, ALT),
+        (m.shift, SHIFT),
+    ]
+    .into_iter()
+    .filter(|(on, _)| *on)
+    .fold(0, |bits, (_, bit)| bits | bit)
 }
 
 fn key_named(name: &str) -> Option<ChordKey> {
-    if let Some(key) = key_named_word(name) { return Some(key); }
-    if let Some(c) = char_named(name) { return Some(ChordKey::Char(c)); }
-    if let Some(n) = name.strip_prefix('f').filter(|n| !n.starts_with(['0', '+'])).and_then(|n| n.parse::<u8>().ok()) {
+    if let Some(key) = key_named_word(name) {
+        return Some(key);
+    }
+    if let Some(c) = char_named(name) {
+        return Some(ChordKey::Char(c));
+    }
+    if let Some(n) = name
+        .strip_prefix('f')
+        .filter(|n| !n.starts_with(['0', '+']))
+        .and_then(|n| n.parse::<u8>().ok())
+    {
         return (1..=24).contains(&n).then_some(ChordKey::Function(n));
     }
     let mut chars = name.chars();
-    match (chars.next(), chars.next()) { (Some(c), None) => Some(ChordKey::Char(lower(c))), _ => None }
+    match (chars.next(), chars.next()) {
+        (Some(c), None) => Some(ChordKey::Char(lower(c))),
+        _ => None,
+    }
 }
 
 /// The one character `key` types, lowercased.
@@ -405,7 +566,10 @@ fn typed(key: &Key) -> Option<char> {
         Key::Command(c) => Some(lower(*c)),
         Key::Text(t) => {
             let mut chars = t.chars();
-            match (chars.next(), chars.next()) { (Some(c), None) => Some(lower(c)), _ => None }
+            match (chars.next(), chars.next()) {
+                (Some(c), None) => Some(lower(c)),
+                _ => None,
+            }
         }
         _ => None,
     }
@@ -414,11 +578,17 @@ fn typed(key: &Key) -> Option<char> {
 /// `c` lowercased when that is one character.
 pub(super) fn lower(c: char) -> char {
     let mut l = c.to_lowercase();
-    match (l.next(), l.next()) { (Some(l), None) => l, _ => c }
+    match (l.next(), l.next()) {
+        (Some(l), None) => l,
+        _ => c,
+    }
 }
 
 /// The key that types `c` with Shift on a US layout.
 fn us_unshifted(c: char) -> Option<char> {
     let (shifted, plain) = ("~!@#$%^&*()_+{}|:\"<>?", "`1234567890-=[]\\;',./");
-    shifted.chars().position(|s| s == c).and_then(|i| plain.chars().nth(i))
+    shifted
+        .chars()
+        .position(|s| s == c)
+        .and_then(|i| plain.chars().nth(i))
 }

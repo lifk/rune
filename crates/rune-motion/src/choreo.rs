@@ -33,7 +33,12 @@ pub struct Stagger {
 
 impl Stagger {
     pub fn new(gap: f32) -> Stagger {
-        Stagger { gap, from: StaggerFrom::First, start: 0.0, ease: None }
+        Stagger {
+            gap,
+            from: StaggerFrom::First,
+            start: 0.0,
+            ease: None,
+        }
     }
     pub fn from(mut self, from: StaggerFrom) -> Stagger {
         self.from = from;
@@ -58,7 +63,9 @@ impl Stagger {
             StaggerFrom::Index(i) => i.min(count - 1) as f32,
         };
         let distance = (index as f32 - origin).abs();
-        let max = (0..count).map(|i| (i as f32 - origin).abs()).fold(0.0, f32::max);
+        let max = (0..count)
+            .map(|i| (i as f32 - origin).abs())
+            .fold(0.0, f32::max);
         let d = match self.ease {
             Some(e) if max > 0.0 => e.eval(distance / max) * max,
             _ => distance,
@@ -98,20 +105,36 @@ pub struct Cue {
 impl Cue {
     /// As soon as the choreography starts.
     pub fn now() -> Cue {
-        Cue { after: None, delay: 0.0, not_before: 0.0 }
+        Cue {
+            after: None,
+            delay: 0.0,
+            not_before: 0.0,
+        }
     }
     /// `t` seconds after the choreography starts.
     pub fn at(t: f32) -> Cue {
-        Cue { delay: t, ..Cue::now() }
+        Cue {
+            delay: t,
+            ..Cue::now()
+        }
     }
     pub fn started(step: StepId) -> Cue {
-        Cue { after: Some((step, When::Started)), ..Cue::now() }
+        Cue {
+            after: Some((step, When::Started)),
+            ..Cue::now()
+        }
     }
     pub fn arrived(step: StepId) -> Cue {
-        Cue { after: Some((step, When::Arrived)), ..Cue::now() }
+        Cue {
+            after: Some((step, When::Arrived)),
+            ..Cue::now()
+        }
     }
     pub fn settled(step: StepId) -> Cue {
-        Cue { after: Some((step, When::Settled)), ..Cue::now() }
+        Cue {
+            after: Some((step, When::Settled)),
+            ..Cue::now()
+        }
     }
     /// Wait a further `seconds` after the cue.
     pub fn after(mut self, seconds: f32) -> Cue {
@@ -145,15 +168,34 @@ pub struct Ops {
 impl Ops {
     /// Animate `prop` of `node` to `target`. (If the property has never been set, it is set:
     /// set starting values with `store.set` first.)
-    pub fn animate<T: Animatable>(&mut self, node: NodeId, prop: Prop<T>, target: T, anim: impl Into<Anim>) -> &mut Self {
+    pub fn animate<T: Animatable>(
+        &mut self,
+        node: NodeId,
+        prop: Prop<T>,
+        target: T,
+        anim: impl Into<Anim>,
+    ) -> &mut Self {
         let l = lanes(&target);
         let first = self.targets.len() as u32;
         self.targets.extend_from_slice(&l[..T::LANES]);
-        self.ops.push(Op { node, prop: prop.id, class: prop.class, first, lanes: T::LANES as u8, anim: anim.into() });
+        self.ops.push(Op {
+            node,
+            prop: prop.id,
+            class: prop.class,
+            first,
+            lanes: T::LANES as u8,
+            anim: anim.into(),
+        });
         self
     }
 
-    fn apply(&self, store: &mut AnimationStore, delay: f32, set: bool, out: &mut Vec<(TrackId, u32)>) {
+    fn apply(
+        &self,
+        store: &mut AnimationStore,
+        delay: f32,
+        set: bool,
+        out: &mut Vec<(TrackId, u32)>,
+    ) {
         for op in &self.ops {
             let tg = &self.targets[op.first as usize..op.first as usize + op.lanes as usize];
             let t = store.ensure(op.node, op.prop, op.class, tg) as usize;
@@ -163,7 +205,10 @@ impl Ops {
                 // `delay` is store time; the op's node may run on a scaled clock.
                 let k = store.node_time_scale(op.node);
                 let delay = if k > 0.0 { delay * k } else { delay };
-                let anim = Anim { delay: op.anim.delay + delay, ..op.anim };
+                let anim = Anim {
+                    delay: op.anim.delay + delay,
+                    ..op.anim
+                };
                 store.animate_raw(t, tg, anim, None);
             }
             let id = store.id_of(t);
@@ -176,7 +221,11 @@ impl Ops {
 enum State {
     Waiting,
     /// Started (possibly with a scheduled delay) at absolute `start`; its tracks are `tracks`.
-    Running { start: f64, first: u32, count: u32 },
+    Running {
+        start: f64,
+        first: u32,
+        count: u32,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -204,12 +253,22 @@ impl Choreography {
     pub fn step(&mut self, cue: Cue, build: impl FnOnce(&mut Ops)) -> StepId {
         let mut ops = Ops::default();
         build(&mut ops);
-        self.steps.push(Step { cue, ops, state: State::Waiting });
+        self.steps.push(Step {
+            cue,
+            ops,
+            state: State::Waiting,
+        });
         StepId((self.steps.len() - 1) as u32)
     }
 
     /// A ripple: one step per item, each `stagger.delay(i, n)` after `cue`. Returns the steps.
-    pub fn stagger<I>(&mut self, cue: Cue, stagger: Stagger, items: I, mut each: impl FnMut(&mut Ops, I::Item)) -> Vec<StepId>
+    pub fn stagger<I>(
+        &mut self,
+        cue: Cue,
+        stagger: Stagger,
+        items: I,
+        mut each: impl FnMut(&mut Ops, I::Item),
+    ) -> Vec<StepId>
     where
         I: IntoIterator,
         I::IntoIter: ExactSizeIterator,
@@ -234,7 +293,9 @@ impl Choreography {
 
     /// Every step started and every track it animated has settled.
     pub fn is_done(&self, store: &AnimationStore) -> bool {
-        self.steps.iter().all(|s| matches!(s.state, State::Running { .. }))
+        self.steps
+            .iter()
+            .all(|s| matches!(s.state, State::Running { .. }))
             && all_settled(store, &self.tracks)
     }
 
@@ -257,9 +318,15 @@ impl Choreography {
                 let at = (base + cue.delay as f64).max(t0 + cue.not_before as f64);
                 let delay = (at - now).max(0.0) as f32;
                 let first = self.tracks.len() as u32;
-                self.steps[k].ops.apply(store, delay, false, &mut self.tracks);
+                self.steps[k]
+                    .ops
+                    .apply(store, delay, false, &mut self.tracks);
                 let count = self.tracks.len() as u32 - first;
-                self.steps[k].state = State::Running { start: now + delay as f64, first, count };
+                self.steps[k].state = State::Running {
+                    start: now + delay as f64,
+                    first,
+                    count,
+                };
                 progressed = true;
             }
             if !progressed {
@@ -269,7 +336,14 @@ impl Choreography {
     }
 
     fn cue_time(&self, store: &AnimationStore, s: StepId, when: When, now: f64) -> Option<f64> {
-        let State::Running { start, first, count } = self.steps.get(s.0 as usize)?.state else { return None };
+        let State::Running {
+            start,
+            first,
+            count,
+        } = self.steps.get(s.0 as usize)?.state
+        else {
+            return None;
+        };
         let tracks = &self.tracks[first as usize..(first + count) as usize];
         match when {
             When::Started => Some(start),
@@ -282,12 +356,17 @@ impl Choreography {
 
 /// Every track is at rest, or was taken over (its epoch moved on).
 fn all_settled(store: &AnimationStore, tracks: &[(TrackId, u32)]) -> bool {
-    tracks.iter().all(|&(t, epoch)| store.is_settled(t) || store.epoch(t) != Some(epoch))
+    tracks
+        .iter()
+        .all(|&(t, epoch)| store.is_settled(t) || store.epoch(t) != Some(epoch))
 }
 
 /// The latest logical end among `tracks`, and never before `from`.
 fn arrival(store: &AnimationStore, tracks: &[(TrackId, u32)], from: f64) -> f64 {
-    tracks.iter().filter_map(|&(t, _)| store.logical_end(t)).fold(from, f64::max)
+    tracks
+        .iter()
+        .filter_map(|&(t, _)| store.logical_end(t))
+        .fold(from, f64::max)
 }
 
 /// SwiftUI `PhaseAnimator`: cycles through phases, animating each from wherever the last one is,
@@ -386,7 +465,9 @@ impl PhaseAnimator {
         self.tracks.clear();
         self.phases[self.current].apply(store, 0.0, false, &mut self.tracks);
         self.next_at = match self.advance {
-            When::Arrived | When::Started => Some(arrival(store, &self.tracks, now) + self.hold as f64),
+            When::Arrived | When::Started => {
+                Some(arrival(store, &self.tracks, now) + self.hold as f64)
+            }
             When::Settled => None,
         };
     }

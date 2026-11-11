@@ -4,8 +4,17 @@ use winit::keyboard::{Key as WKey, ModifiersState, NamedKey};
 use crate::edit::{Key, KeyEvent, Mods};
 
 pub(crate) fn map_mods(m: ModifiersState) -> Mods {
-    Mods { shift: m.shift_key(), cmd: if cfg!(target_os = "macos") { m.super_key() } else { m.control_key() },
-        alt: m.alt_key(), ctrl: m.control_key(), logo: m.super_key() }
+    Mods {
+        shift: m.shift_key(),
+        cmd: if cfg!(target_os = "macos") {
+            m.super_key()
+        } else {
+            m.control_key()
+        },
+        alt: m.alt_key(),
+        ctrl: m.control_key(),
+        logo: m.super_key(),
+    }
 }
 
 pub(crate) fn map_key(key: &WKey, m: ModifiersState) -> Option<KeyEvent> {
@@ -60,7 +69,9 @@ pub(crate) fn map_key(key: &WKey, m: ModifiersState) -> Option<KeyEvent> {
         // Windows treats Left Ctrl + Left Alt as AltGr: a character typed with both is text
         // ("@" on a German layout's Q), not a chord. A chord that types nothing comes through
         // `map_key_event`'s fallback instead.
-        WKey::Character(c) if mods.cmd && !(cfg!(target_os = "windows") && mods.ctrl && mods.alt) => {
+        WKey::Character(c)
+            if mods.cmd && !(cfg!(target_os = "windows") && mods.ctrl && mods.alt) =>
+        {
             Key::Command(c.chars().next()?.to_ascii_lowercase())
         }
         WKey::Character(c) => Key::Text(c.to_string()),
@@ -90,11 +101,19 @@ pub(crate) fn map_key_event(event: &winit::event::KeyEvent, m: ModifiersState) -
 }
 
 fn unidentified(event: &winit::event::KeyEvent, m: ModifiersState) -> Option<KeyEvent> {
-    let WKey::Unidentified(_) = event.logical_key else { return None };
+    let WKey::Unidentified(_) = event.logical_key else {
+        return None;
+    };
     let mods = map_mods(m);
-    if !(mods.cmd || mods.ctrl) { return None; }
+    if !(mods.cmd || mods.ctrl) {
+        return None;
+    }
     let c = key_base(event).filter(|c| !c.is_control() && *c != ' ')?;
-    let key = if mods.cmd { Key::Command(c.to_ascii_lowercase()) } else { Key::Text(c.to_string()) };
+    let key = if mods.cmd {
+        Key::Command(c.to_ascii_lowercase())
+    } else {
+        Key::Text(c.to_string())
+    };
     Some(KeyEvent { key, mods })
 }
 
@@ -105,13 +124,19 @@ pub(crate) fn key_base(event: &winit::event::KeyEvent) -> Option<char> {
     {
         use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
         match event.key_without_modifiers() {
-            WKey::Character(s) => { let mut c = s.chars(); c.next().filter(|_| c.next().is_none()) }
+            WKey::Character(s) => {
+                let mut c = s.chars();
+                c.next().filter(|_| c.next().is_none())
+            }
             WKey::Named(NamedKey::Space) => Some(' '),
             _ => None,
         }
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-    { let _ = event; None }
+    {
+        let _ = event;
+        None
+    }
 }
 
 #[cfg(test)]
@@ -125,10 +150,16 @@ mod tests {
     #[test]
     fn keys_that_type_nothing_reach_handlers() {
         for (named, key) in [
-            (NamedKey::ScrollLock, Key::ScrollLock), (NamedKey::Pause, Key::Pause), (NamedKey::ContextMenu, Key::ContextMenu),
-            (NamedKey::PrintScreen, Key::PrintScreen), (NamedKey::Insert, Key::Insert),
+            (NamedKey::ScrollLock, Key::ScrollLock),
+            (NamedKey::Pause, Key::Pause),
+            (NamedKey::ContextMenu, Key::ContextMenu),
+            (NamedKey::PrintScreen, Key::PrintScreen),
+            (NamedKey::Insert, Key::Insert),
         ] {
-            assert_eq!(map_key(&WKey::Named(named), ModifiersState::empty()).map(|ev| ev.key.clone()), Some(key));
+            assert_eq!(
+                map_key(&WKey::Named(named), ModifiersState::empty()).map(|ev| ev.key.clone()),
+                Some(key)
+            );
         }
     }
 }

@@ -41,16 +41,25 @@ impl ImageCache {
         let need = (size_pt * scale).ceil();
         let mut sorted = sources.to_vec();
         sorted.sort_by_key(|s| s.1);
-        let Some(&(url, width)) = sorted.iter().find(|s| s.1 as f32 >= need).or(sorted.last()) else {
+        let Some(&(url, width)) = sorted.iter().find(|s| s.1 as f32 >= need).or(sorted.last())
+        else {
             return self.url("", size_pt, scale);
         };
-        let srcset: String = sorted.iter().map(|(u, w)| format!("{u} {w}w")).collect::<Vec<_>>().join(", ");
+        let srcset: String = sorted
+            .iter()
+            .map(|(u, w)| format!("{u} {w}w"))
+            .collect::<Vec<_>>()
+            .join(", ");
         let mut hash = blake3::Hasher::new();
         hash.update(b"rune-url-set\0");
         hash.update(url.as_bytes());
         hash.update(&[0]);
         hash.update(srcset.as_bytes());
-        self.request_set(*hash.finalize().as_bytes(), Input::Url(url.to_owned(), width.max(1)), Some(srcset.into()))
+        self.request_set(
+            *hash.finalize().as_bytes(),
+            Input::Url(url.to_owned(), width.max(1)),
+            Some(srcset.into()),
+        )
     }
 }
 
@@ -68,7 +77,9 @@ pub(super) enum Fetched {
 pub(super) fn land(url: &str, fetched: Fetched, px: u32) -> Result<Decoded, ImageError> {
     match fetched {
         Fetched::Rgba(w, h, bytes) => mip_chain(w, h, &bytes),
-        Fetched::Svg(bytes) => svg_rgba(&bytes, px).and_then(|(w, h, bytes)| mip_chain(w, h, &bytes)),
+        Fetched::Svg(bytes) => {
+            svg_rgba(&bytes, px).and_then(|(w, h, bytes)| mip_chain(w, h, &bytes))
+        }
     }
     .map_err(|e| ImageError(format!("{url}: {e}")))
 }
@@ -76,7 +87,11 @@ pub(super) fn land(url: &str, fetched: Fetched, px: u32) -> Result<Decoded, Imag
 /// [`land`] on the browser's main thread, where frames draw too: the mips are built a slice at
 /// a time with a task between slices, so no slice holds a frame or input up for long.
 #[cfg(target_arch = "wasm32")]
-pub(super) async fn land_in_slices(url: &str, fetched: Fetched, px: u32) -> Result<Decoded, ImageError> {
+pub(super) async fn land_in_slices(
+    url: &str,
+    fetched: Fetched,
+    px: u32,
+) -> Result<Decoded, ImageError> {
     /// About a few milliseconds of mip work on a phone.
     const SLICE: usize = 1 << 15;
     let named = |e: ImageError| ImageError(format!("{url}: {e}"));
@@ -86,7 +101,8 @@ pub(super) async fn land_in_slices(url: &str, fetched: Fetched, px: u32) -> Resu
     };
     let mut steps = super::mips::MipSteps::new(w, h, &bytes).map_err(named)?;
     while !steps.step(SLICE) {
-        let _ = wasm_bindgen_futures::JsFuture::from(crate::platform::web::platform::next_task()).await;
+        let _ =
+            wasm_bindgen_futures::JsFuture::from(crate::platform::web::platform::next_task()).await;
     }
     Ok(steps.finish())
 }
@@ -95,49 +111,85 @@ pub(super) async fn land_in_slices(url: &str, fetched: Fetched, px: u32) -> Resu
 /// are a separate piece of main-thread work.
 #[cfg(target_arch = "wasm32")]
 pub(super) async fn fetch(url: &str) -> Result<Fetched, ImageError> {
-    browser_reply(url, crate::platform::web::platform::fetch_image(url, MAX_SIDE)).await
+    browser_reply(
+        url,
+        crate::platform::web::platform::fetch_image(url, MAX_SIDE),
+    )
+    .await
 }
 
 /// Encoded image bytes decoded by the browser's own codecs, off the main thread, so a web build
 /// carries no JPEG decoder of its own.
 #[cfg(target_arch = "wasm32")]
 pub(super) async fn decode_in_browser(bytes: &[u8]) -> Result<Fetched, ImageError> {
-    browser_reply("image", crate::platform::web::platform::decode_image(bytes, MAX_SIDE)).await
+    browser_reply(
+        "image",
+        crate::platform::web::platform::decode_image(bytes, MAX_SIDE),
+    )
+    .await
 }
 
 #[cfg(target_arch = "wasm32")]
 async fn browser_reply(url: &str, promise: js_sys::Promise) -> Result<Fetched, ImageError> {
     use wasm_bindgen::JsCast;
-    let reply = wasm_bindgen_futures::JsFuture::from(promise).await.map_err(|e| {
-        let why = e.dyn_ref::<js_sys::Error>().map_or_else(|| format!("{e:?}"), |e| String::from(e.message()));
-        ImageError(format!("{url}: {why}"))
-    })?;
+    let reply = wasm_bindgen_futures::JsFuture::from(promise)
+        .await
+        .map_err(|e| {
+            let why = e
+                .dyn_ref::<js_sys::Error>()
+                .map_or_else(|| format!("{e:?}"), |e| String::from(e.message()));
+            ImageError(format!("{url}: {why}"))
+        })?;
     let reply: js_sys::Array = reply.unchecked_into();
     let side = |i| reply.get(i).as_f64().unwrap_or(0.0) as u32;
     let bytes = reply.get(2).unchecked_into::<js_sys::Uint8Array>().to_vec();
-    Ok(if side(0) == 0 { Fetched::Svg(bytes) } else { Fetched::Rgba(side(0), side(1), bytes) })
+    Ok(if side(0) == 0 {
+        Fetched::Svg(bytes)
+    } else {
+        Fetched::Rgba(side(0), side(1), bytes)
+    })
 }
 
 /// The file a native `url` names: a path with no scheme, or a `file:` URL.
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 pub(super) fn file_path(url: &str) -> Result<std::path::PathBuf, ImageError> {
-    let scheme = url.split_once(':').map(|(s, _)| s)
+    let scheme = url
+        .split_once(':')
+        .map(|(s, _)| s)
         // A one-letter "scheme" is a Windows drive.
-        .filter(|s| s.len() > 1 && s.starts_with(|c: char| c.is_ascii_alphabetic())
-            && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.')));
-    let Some(scheme) = scheme else { return Ok(url.into()) };
-    let unsupported = || ImageError(format!("{url}: only web fetches URLs; on native fetch the bytes and call ImageCache::load"));
-    if !scheme.eq_ignore_ascii_case("file") { return Err(unsupported()); }
+        .filter(|s| {
+            s.len() > 1
+                && s.starts_with(|c: char| c.is_ascii_alphabetic())
+                && s.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+        });
+    let Some(scheme) = scheme else {
+        return Ok(url.into());
+    };
+    let unsupported = || {
+        ImageError(format!(
+            "{url}: only web fetches URLs; on native fetch the bytes and call ImageCache::load"
+        ))
+    };
+    if !scheme.eq_ignore_ascii_case("file") {
+        return Err(unsupported());
+    }
     let rest = &url[scheme.len() + 1..];
     let path = match rest.strip_prefix("//") {
         Some(rest) => rest.strip_prefix("localhost").unwrap_or(rest),
         None => rest,
     };
-    if !path.starts_with('/') { return Err(unsupported()); }
-    let path = percent_decode(path).ok_or_else(|| ImageError(format!("{url}: not a valid file URL")))?;
+    if !path.starts_with('/') {
+        return Err(unsupported());
+    }
+    let path =
+        percent_decode(path).ok_or_else(|| ImageError(format!("{url}: not a valid file URL")))?;
     // `file:///C:/x` names `C:/x` on Windows.
     #[cfg(windows)]
-    let path = match path.as_bytes() { [b'/', d, b':', ..] if d.is_ascii_alphabetic() => path[1..].to_owned(), _ => path };
+    let path = match path.as_bytes() {
+        [b'/', d, b':', ..] if d.is_ascii_alphabetic() => path[1..].to_owned(),
+        _ => path,
+    };
     Ok(path.into())
 }
 
@@ -152,7 +204,10 @@ fn percent_decode(s: &str) -> Option<String> {
     let mut out = Vec::with_capacity(s.len());
     let mut bytes = s.bytes();
     while let Some(b) = bytes.next() {
-        if b != b'%' { out.push(b); continue; }
+        if b != b'%' {
+            out.push(b);
+            continue;
+        }
         let digit = |b: Option<u8>| (b? as char).to_digit(16);
         out.push((digit(bytes.next())? * 16 + digit(bytes.next())?) as u8);
     }

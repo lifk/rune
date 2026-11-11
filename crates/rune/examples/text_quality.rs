@@ -132,8 +132,12 @@ fn main() {
                     tracking: 0.0,
                     ..TextStyle::new(size, 400.0)
                 };
-                if std::env::var("RUNE_TEXT_OPSZ").as_deref() == Ok("point") { style = style.optical_size(size); }
-                if std::env::var("RUNE_TEXT_OPSZ").as_deref() == Ok("legacy") { style = style.optical_sizing(rune::OpticalSize::FontDefault); }
+                if std::env::var("RUNE_TEXT_OPSZ").as_deref() == Ok("point") {
+                    style = style.optical_size(size);
+                }
+                if std::env::var("RUNE_TEXT_OPSZ").as_deref() == Ok("legacy") {
+                    style = style.optical_sizing(rune::OpticalSize::FontDefault);
+                }
                 let layout = text.layout_rich(string, &[], style, scale, None);
                 if let Some((hint, embolden)) = experiment {
                     experimental(
@@ -224,8 +228,7 @@ fn main() {
                     if dx >= w || dy >= h {
                         continue;
                     }
-                    let v = data
-                        [((uv[1] as u32 + y) * ATLAS_SIZE + uv[0] as u32 + x) as usize];
+                    let v = data[((uv[1] as u32 + y) * ATLAS_SIZE + uv[0] as u32 + x) as usize];
                     let p = ((dy * w + dx) * 4) as usize;
                     for c in 0..3 {
                         raw[p + c] = v;

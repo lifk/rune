@@ -12,10 +12,10 @@ mod idle;
 pub(crate) mod launch;
 pub(crate) mod runq;
 
+pub(crate) use commits::CommitMeter;
 #[cfg(debug_assertions)]
 pub(crate) use idle::Drawn;
 pub(crate) use idle::IdleMeter;
-pub(crate) use commits::CommitMeter;
 
 /// A window's commit watch: what the commit underway is for (`RUNE_COMMIT_BUDGET_MS` prints
 /// it), and the commit warnings' meters.
@@ -29,7 +29,11 @@ pub(crate) struct Watch {
 }
 
 #[cfg(debug_assertions)]
-use std::{collections::HashSet, sync::{Mutex, OnceLock}, time::Instant};
+use std::{
+    collections::HashSet,
+    sync::{Mutex, OnceLock},
+    time::Instant,
+};
 
 /// Blocked wall time (ms; time waiting for a core doesn't count) a callback may take before it warns, and how many times its CPU time
 /// that wall time must also be. A callback that computes for 50 ms is slow but not blocked.
@@ -56,8 +60,13 @@ fn warn_once(site: String, message: impl FnOnce() -> String) {
     static WARNED: Mutex<Option<HashSet<String>>> = Mutex::new(None);
     #[cfg(test)]
     let site = format!("{:?} {site}", std::thread::current().id());
-    if !enabled() || !WARNED.lock().unwrap().get_or_insert_default().insert(site) { return }
-    let message = format!("rune: {}. (debug builds only; RUNE_PERF_WARN=0 silences)", message());
+    if !enabled() || !WARNED.lock().unwrap().get_or_insert_default().insert(site) {
+        return;
+    }
+    let message = format!(
+        "rune: {}. (debug builds only; RUNE_PERF_WARN=0 silences)",
+        message()
+    );
     #[cfg(test)]
     LOG.with_borrow_mut(|log| log.push(message.clone()));
     eprintln!("{message}");
@@ -70,28 +79,43 @@ thread_local! {
 
 /// The warnings this thread printed since the last call.
 #[cfg(all(test, debug_assertions))]
-pub(crate) fn take_log() -> Vec<String> { LOG.take() }
+pub(crate) fn take_log() -> Vec<String> {
+    LOG.take()
+}
 
 /// A `virtualize` list at `path`, set up at `site`, was handed `built` rows and mounts
 /// `mounted` of them.
 #[cfg(debug_assertions)]
-pub(crate) fn overbuilt(path: &str, site: Option<&std::panic::Location>, built: usize, mounted: usize) {
-    if built <= OVERBUILD_ROWS || built <= OVERBUILD_RATIO * mounted { return }
+pub(crate) fn overbuilt(
+    path: &str,
+    site: Option<&std::panic::Location>,
+    built: usize,
+    mounted: usize,
+) {
+    if built <= OVERBUILD_ROWS || built <= OVERBUILD_RATIO * mounted {
+        return;
+    }
     let site = site.map_or_else(String::new, |s| format!(" (.virtualize at {s})"));
-    warn_once(format!("overbuild {path}"), || format!(
-        "virtualized list {path:?}{site} built {built} rows to mount {mounted}: build only the \
+    warn_once(format!("overbuild {path}"), || {
+        format!(
+            "virtualized list {path:?}{site} built {built} rows to mount {mounted}: build only the \
          mounted rows with `.virtual_rows(count, estimated_row_height, key, build)`"
-    ));
+        )
+    });
 }
 
 /// `memo(id, ..)`, called at `site`, built a root already keyed `existing` and renamed it `id`.
 #[cfg(debug_assertions)]
 pub(crate) fn memo_key_replaced(id: &str, existing: &str, site: &std::panic::Location) {
-    if existing == id { return }
-    warn_once(format!("memo key {site}"), || format!(
-        "`memo({id:?}, ..)` at {site} replaced its root's key {existing:?} with {id:?}: look it up \
+    if existing == id {
+        return;
+    }
+    warn_once(format!("memo key {site}"), || {
+        format!(
+            "`memo({id:?}, ..)` at {site} replaced its root's key {existing:?} with {id:?}: look it up \
          by {id:?}, or key the memo with the id you want"
-    ));
+        )
+    });
 }
 
 /// Times one app callback on the main thread: [`Stall::end`] warns when it spent most of its
@@ -106,7 +130,11 @@ impl Stall {
     pub(crate) fn start() -> Self {
         Stall {
             #[cfg(debug_assertions)]
-            start: if enabled() { crate::frame::profile::cpu_ms().map(|cpu| (Instant::now(), cpu, runq::wait_ms())) } else { None },
+            start: if enabled() {
+                crate::frame::profile::cpu_ms().map(|cpu| (Instant::now(), cpu, runq::wait_ms()))
+            } else {
+                None
+            },
         }
     }
 
@@ -118,13 +146,21 @@ impl Stall {
         #[cfg(debug_assertions)]
         if let Some((wall, cpu, wait)) = self.start {
             let wall = wall.elapsed().as_secs_f64() * 1000.0;
-            if wall <= STALL_MS { return }
+            if wall <= STALL_MS {
+                return;
+            }
             let cpu = crate::frame::profile::cpu_ms().map_or(0.0, |now| now - cpu);
             let waited = wait.and_then(|start| runq::wait_ms().map(|now| now - start));
-            let Some(blocked) = runq::blocked_ms(wall, cpu, waited, waited.is_none() && runq::overloaded()) else { return };
+            let Some(blocked) =
+                runq::blocked_ms(wall, cpu, waited, waited.is_none() && runq::overloaded())
+            else {
+                return;
+            };
             let (site, name) = what();
             warn_once(format!("stall {site}"), || {
-                let queued = waited.filter(|w| *w >= 1.0).map_or_else(String::new, |w| format!(", waited {w:.0} ms for a core"));
+                let queued = waited
+                    .filter(|w| *w >= 1.0)
+                    .map_or_else(String::new, |w| format!(", waited {w:.0} ms for a core"));
                 format!(
                     "{name} blocked {blocked:.0} ms (CPU {cpu:.0} ms{queued}) on the main thread: move IO off it \
                      with `rune::Latest` or a thread"
@@ -139,7 +175,16 @@ impl Stall {
 pub(crate) fn timed<T>(name: &'static str, f: impl FnOnce() -> T) -> T {
     let stall = Stall::start();
     let out = f();
-    stall.end(|| (name.to_owned(), if name.contains(' ') { name.to_owned() } else { format!("`{name}`") }));
+    stall.end(|| {
+        (
+            name.to_owned(),
+            if name.contains(' ') {
+                name.to_owned()
+            } else {
+                format!("`{name}`")
+            },
+        )
+    });
     out
 }
 
@@ -147,7 +192,12 @@ pub(crate) fn timed<T>(name: &'static str, f: impl FnOnce() -> T) -> T {
 /// one list share it.
 #[cfg(debug_assertions)]
 pub(crate) fn handler_site(name: &str, path: &str) -> String {
-    format!("{name} {}", path.chars().filter(|c| !c.is_ascii_digit()).collect::<String>())
+    format!(
+        "{name} {}",
+        path.chars()
+            .filter(|c| !c.is_ascii_digit())
+            .collect::<String>()
+    )
 }
 
 #[cfg(all(test, debug_assertions))]

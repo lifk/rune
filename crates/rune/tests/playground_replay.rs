@@ -18,9 +18,14 @@ fn runtime() -> Runtime<Real> {
     let story = Story::new("Motion/Count", Count::default, count)
         .trigger('r', "Replay", |c: &mut Count, _| c.n += 1)
         .trigger('s', "Step", |c: &mut Count, _| c.n += 100);
-    App::new(AppSpec::new("replay", (400.0, 300.0), Real::default, |_: &Real, _: &mut Cx<Real>| text("app")))
-        .playground(Playground::<Real>::new().story(story))
-        .headless_runtime((400.0, 300.0), Env::new(false, 1.0))
+    App::new(AppSpec::new(
+        "replay",
+        (400.0, 300.0),
+        Real::default,
+        |_: &Real, _: &mut Cx<Real>| text("app"),
+    ))
+    .playground(Playground::<Real>::new().story(story))
+    .headless_runtime((400.0, 300.0), Env::new(false, 1.0))
 }
 
 fn n(rt: &Runtime<Real>) -> Option<u32> {
@@ -41,7 +46,11 @@ fn a_handler_triggers_and_replays_the_open_story() {
     handler(&mut rt, |tx| tx.playground_trigger('s'));
     assert_eq!(n(&rt), Some(101));
     handler(&mut rt, |tx| tx.replay_playground());
-    assert_eq!(n(&rt), Some(1), "replay makes the stage again, then runs 'r'");
+    assert_eq!(
+        n(&rt),
+        Some(1),
+        "replay makes the stage again, then runs 'r'"
+    );
     handler(&mut rt, |tx| tx.playground_trigger('S'));
     handler(&mut rt, |tx| tx.playground_trigger('R'));
     assert_eq!(n(&rt), Some(1), "'r' is replay");
@@ -57,12 +66,19 @@ fn a_link_opens_then_replays_in_one_handler() {
         tx.playground_trigger('s');
         tx.replay_playground();
     });
-    assert_eq!(n(&rt), Some(1), "the replay applies to the story the link opened");
+    assert_eq!(
+        n(&rt),
+        Some(1),
+        "the replay applies to the story the link opened"
+    );
 }
 
 #[test]
 fn closed_it_does_nothing() {
     let mut rt = runtime();
-    handler(&mut rt, |tx| { tx.replay_playground(); tx.playground_trigger('s'); });
+    handler(&mut rt, |tx| {
+        tx.replay_playground();
+        tx.playground_trigger('s');
+    });
     assert_eq!(n(&rt), None);
 }

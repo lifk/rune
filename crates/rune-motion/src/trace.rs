@@ -29,28 +29,50 @@ struct Channel {
 impl TraceChannels {
     /// `kind` is motion-lint's `position`, `level`, or `phase`. Non-finite samples are ignored.
     pub fn sample(&mut self, name: &str, kind: &str, value: f32) {
-        if !value.is_finite() { return; }
-        assert!(matches!(kind, "position" | "level" | "phase"), "unknown trace channel kind");
-        let i = if let Some(&i) = self.ids.get(name) { i } else {
+        if !value.is_finite() {
+            return;
+        }
+        assert!(
+            matches!(kind, "position" | "level" | "phase"),
+            "unknown trace channel kind"
+        );
+        let i = if let Some(&i) = self.ids.get(name) {
+            i
+        } else {
             let i = self.channels.len();
             self.ids.insert(name.to_owned(), i);
-            self.channels.push(Channel { name: name.to_owned(), kind: kind.to_owned(), value: None, previous: None, described: false, owner: None });
+            self.channels.push(Channel {
+                name: name.to_owned(),
+                kind: kind.to_owned(),
+                value: None,
+                previous: None,
+                described: false,
+                owner: None,
+            });
             i
         };
         let channel = &mut self.channels[i];
-        if channel.kind != kind { channel.kind = kind.to_owned(); channel.described = false; }
+        if channel.kind != kind {
+            channel.kind = kind.to_owned();
+            channel.described = false;
+        }
         channel.value = Some((f64::from(value) * 1e4).round() / 1e4);
     }
 
     pub fn remove(&mut self, name: &str) {
-        if let Some(&i) = self.ids.get(name) { self.channels[i].value = None; }
+        if let Some(&i) = self.ids.get(name) {
+            self.channels[i].value = None;
+        }
     }
 
     /// Associates an effect channel with its element for visibility gating.
     pub fn owner(&mut self, name: &str, owner: u32, unit: &'static str) {
         if let Some(&i) = self.ids.get(name) {
             let channel = &mut self.channels[i];
-            if channel.owner != Some((owner, unit)) { channel.owner = Some((owner, unit)); channel.described = false; }
+            if channel.owner != Some((owner, unit)) {
+                channel.owner = Some((owner, unit));
+                channel.described = false;
+            }
         }
     }
 
@@ -63,24 +85,39 @@ impl TraceChannels {
             let id = i + 1;
             if let Some(value) = channel.value {
                 if !channel.described {
-                    if !metas.is_empty() { metas.push(','); }
-                    let _ = write!(metas, r#"{{"id":{id},"name":{},"kind":{}"#, json_str(&channel.name), json_str(&channel.kind));
-                    if let Some((owner, unit)) = channel.owner { let _ = write!(metas, r#", "owner":{owner},"unit":{}"#, json_str(unit)); }
+                    if !metas.is_empty() {
+                        metas.push(',');
+                    }
+                    let _ = write!(
+                        metas,
+                        r#"{{"id":{id},"name":{},"kind":{}"#,
+                        json_str(&channel.name),
+                        json_str(&channel.kind)
+                    );
+                    if let Some((owner, unit)) = channel.owner {
+                        let _ = write!(metas, r#", "owner":{owner},"unit":{}"#, json_str(unit));
+                    }
                     metas.push('}');
                     channel.described = true;
                 }
                 if channel.previous != Some(value) {
-                    if !values.is_empty() { values.push(','); }
+                    if !values.is_empty() {
+                        values.push(',');
+                    }
                     let _ = write!(values, "[{id},{value}]");
                 }
             } else if channel.previous.is_some() {
-                if !gone.is_empty() { gone.push(','); }
+                if !gone.is_empty() {
+                    gone.push(',');
+                }
                 let _ = write!(gone, "{id}");
             }
             channel.previous = channel.value;
         }
         for (key, values) in [("cm", metas), ("c", values), ("cg", gone)] {
-            if !values.is_empty() { let _ = write!(line, r#",{key:?}:[{values}]"#); }
+            if !values.is_empty() {
+                let _ = write!(line, r#",{key:?}:[{values}]"#);
+            }
         }
     }
 }
@@ -116,7 +153,9 @@ impl Intent {
     pub fn for_prop(p: PropId) -> u32 {
         match p {
             x if x == prop::FRAME.id || x == prop::TRAVEL.id => Self::POSITION | Self::SIZE,
-            x if x == prop::OFFSET.id || x == prop::ROTATION.id || x == prop::SCROLL.id => Self::POSITION,
+            x if x == prop::OFFSET.id || x == prop::ROTATION.id || x == prop::SCROLL.id => {
+                Self::POSITION
+            }
             x if x == prop::OPACITY.id => Self::OPACITY,
             x if x == prop::SCALE.id => Self::SIZE | Self::TRANSITION,
             x if x == prop::BLUR.id => Self::TRANSITION,
@@ -218,7 +257,10 @@ impl MotionTrace {
     /// An in-memory trace and a handle to read it back.
     pub fn in_memory(header: &TraceHeader) -> (MotionTrace, SharedBuffer) {
         let buf = SharedBuffer::default();
-        (MotionTrace::new(buf.clone(), header).expect("in-memory write"), buf)
+        (
+            MotionTrace::new(buf.clone(), header).expect("in-memory write"),
+            buf,
+        )
     }
 
     /// The clock's time scale, written as `sc` so motion-lint counts the app's own frames.
@@ -240,25 +282,39 @@ impl MotionTrace {
     }
 
     /// Overrides this node's class and host; None restores the writer's defaults.
-    pub fn namespace(&mut self, node: NodeId, namespace: Option<(&'static str, &'static str)>) -> bool {
-        if let Some(namespace) = namespace { self.namespaces.insert(node.0, namespace) != Some(namespace) }
-        else { self.namespaces.remove(&node.0).is_some() }
+    pub fn namespace(
+        &mut self,
+        node: NodeId,
+        namespace: Option<(&'static str, &'static str)>,
+    ) -> bool {
+        if let Some(namespace) = namespace {
+            self.namespaces.insert(node.0, namespace) != Some(namespace)
+        } else {
+            self.namespaces.remove(&node.0).is_some()
+        }
     }
 
     /// Stable display name, independent of reconciliation identity. None restores the NodeId.
     pub fn name(&mut self, node: NodeId, name: Option<&'static str>) -> bool {
-        if let Some(name) = name { self.names.insert(node.0, name) != Some(name) }
-        else { self.names.remove(&node.0).is_some() }
+        if let Some(name) = name {
+            self.names.insert(node.0, name) != Some(name)
+        } else {
+            self.names.remove(&node.0).is_some()
+        }
     }
 
     pub fn channel(&mut self, name: &str, kind: &str, value: f32) {
         self.channels.sample(name, kind, value);
     }
 
-    pub fn remove_channel(&mut self, name: &str) { self.channels.remove(name); }
+    pub fn remove_channel(&mut self, name: &str) {
+        self.channels.remove(name);
+    }
 
     /// Recorded once, on the next frame. `format_args!` avoids eager string allocation.
-    pub fn event(&mut self, event: impl std::fmt::Display) { self.events.push(event.to_string()); }
+    pub fn event(&mut self, event: impl std::fmt::Display) {
+        self.events.push(event.to_string());
+    }
 
     fn id(&mut self, node: NodeId) -> u32 {
         let next = self.ids.len() as u32 + 1;
@@ -275,11 +331,19 @@ impl MotionTrace {
         intents: &[(NodeId, u32, f32)],
     ) {
         let t_ms = t * 1000.0;
-        let n = self.last_t.map_or(1, |last| (((t_ms - last) / (1000.0 / self.hz)).round().max(1.0)) as u64);
+        let n = self.last_t.map_or(1, |last| {
+            (((t_ms - last) / (1000.0 / self.hz)).round().max(1.0)) as u64
+        });
         self.last_t = Some(t_ms);
         let mut line = std::mem::take(&mut self.line);
         line.clear();
-        let _ = write!(line, r#"{{"t":{},"n":{},"sc":{}"#, r3(t_ms), n, self.time_scale);
+        let _ = write!(
+            line,
+            r#"{{"t":{},"n":{},"sc":{}"#,
+            r3(t_ms),
+            n,
+            self.time_scale
+        );
         if !events.is_empty() || !self.events.is_empty() {
             line.push_str(r#","ev":["#);
             for (k, e) in events.iter().enumerate() {
@@ -287,15 +351,24 @@ impl MotionTrace {
                     line.push(',');
                 }
                 let s = match *e {
-                    MotionEvent::Settled { node, prop, .. } => format!("settled {}:{}", node.0, prop.0),
-                    MotionEvent::Completed { token, finished, .. } => {
-                        format!("completed #{token}{}", if finished { "" } else { " (replaced)" })
+                    MotionEvent::Settled { node, prop, .. } => {
+                        format!("settled {}:{}", node.0, prop.0)
+                    }
+                    MotionEvent::Completed {
+                        token, finished, ..
+                    } => {
+                        format!(
+                            "completed #{token}{}",
+                            if finished { "" } else { " (replaced)" }
+                        )
                     }
                 };
                 line.push_str(&json_str(&s));
             }
             for (k, event) in self.events.drain(..).enumerate() {
-                if k > 0 || !events.is_empty() { line.push(','); }
+                if k > 0 || !events.is_empty() {
+                    line.push(',');
+                }
                 line.push_str(&json_str(&event));
             }
             line.push(']');
@@ -312,7 +385,13 @@ impl MotionTrace {
                 }
                 let name = name.map_or_else(|| p.node.0.to_string(), str::to_owned);
                 let (class, host) = namespace.unwrap_or((&self.class, &self.host));
-                let _ = write!(metas, r#"{{"id":{id},"cls":{},"nm":{},"host":{}"#, json_str(class), json_str(&name), json_str(host));
+                let _ = write!(
+                    metas,
+                    r#"{{"id":{id},"cls":{},"nm":{},"host":{}"#,
+                    json_str(class),
+                    json_str(&name),
+                    json_str(host)
+                );
                 if let Some(parent) = p.parent {
                     let pv = self.id(parent);
                     let _ = write!(metas, r#","pv":{pv}"#);
@@ -321,14 +400,33 @@ impl MotionTrace {
             }
             let r = p.rect;
             let ins = p.mask.inset.0;
-            let mut s = [r.x, r.y, r.w, r.h, p.opacity, p.radius.0[0], p.flags as f32, f32::NAN, 0.0, 0.0, 0.0, 0.0];
+            let mut s = [
+                r.x,
+                r.y,
+                r.w,
+                r.h,
+                p.opacity,
+                p.radius.0[0],
+                p.flags as f32,
+                f32::NAN,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ];
             if ins.iter().any(|&v| v > 0.25) {
                 s[7] = r.x + ins[0];
                 s[8] = r.y + ins[1];
                 s[9] = (r.w - ins[0] - ins[2]).max(0.0);
                 s[10] = (r.h - ins[1] - ins[3]).max(0.0);
             }
-            let rounded = s.map(|v| if v.is_nan() { v } else { (v * 100.0).round() / 100.0 });
+            let rounded = s.map(|v| {
+                if v.is_nan() {
+                    v
+                } else {
+                    (v * 100.0).round() / 100.0
+                }
+            });
             if self.states.get(&id).is_some_and(|old| same(old, &rounded)) {
                 continue;
             }
@@ -348,7 +446,14 @@ impl MotionTrace {
                 p.flags
             );
             if !s[7].is_nan() {
-                let _ = write!(elems, ",{},{},{},{}", r2(s[7]), r2(s[8]), r2(s[9]), r2(s[10]));
+                let _ = write!(
+                    elems,
+                    ",{},{},{},{}",
+                    r2(s[7]),
+                    r2(s[8]),
+                    r2(s[9]),
+                    r2(s[10])
+                );
             }
             elems.push(']');
         }
@@ -356,7 +461,11 @@ impl MotionTrace {
             line.push_str(r#","ai":["#);
             for (k, &(node, bits, secs)) in intents.iter().enumerate() {
                 let id = self.id(node);
-                let rect = presented.iter().find(|p| p.node == node).map(|p| p.rect).unwrap_or_default();
+                let rect = presented
+                    .iter()
+                    .find(|p| p.node == node)
+                    .map(|p| p.rect)
+                    .unwrap_or_default();
                 if k > 0 {
                     line.push(',');
                 }
@@ -408,7 +517,9 @@ impl Drop for MotionTrace {
 }
 
 fn same(a: &[f32; 12], b: &[f32; 12]) -> bool {
-    a.iter().zip(b).all(|(x, y)| x == y || (x.is_nan() && y.is_nan()))
+    a.iter()
+        .zip(b)
+        .all(|(x, y)| x == y || (x.is_nan() && y.is_nan()))
 }
 
 fn r2(v: f32) -> f64 {

@@ -26,8 +26,14 @@ pub struct HostNode {
 }
 
 impl HostNode {
-    pub fn new(name: impl Into<String>, build: impl Fn(&mut NodeArgs) -> Result<El, String> + 'static) -> Self {
-        HostNode { name: name.into(), build: Rc::new(build) }
+    pub fn new(
+        name: impl Into<String>,
+        build: impl Fn(&mut NodeArgs) -> Result<El, String> + 'static,
+    ) -> Self {
+        HostNode {
+            name: name.into(),
+            build: Rc::new(build),
+        }
     }
 }
 
@@ -171,7 +177,11 @@ impl NodeArgs {
     /// later, such as the rows of a virtual list it makes.
     pub fn press_later(&self, name: &str) -> Option<Press> {
         let key = self.key();
-        self.handler(name).map(|h| Press { cb: h.0, attach: self.attach, key })
+        self.handler(name).map(|h| Press {
+            cb: h.0,
+            attach: self.attach,
+            key,
+        })
     }
 
     /// Runs the script function in prop `name` as the pointer enters and leaves `el`.
@@ -188,14 +198,19 @@ impl NodeArgs {
 pub(crate) unsafe extern "C-unwind" fn ui_host(state: *mut ffi::lua_State) -> c_int {
     // SAFETY: reads this C function's arguments and upvalue.
     unsafe {
-        let index = ffi::lua_tointegerx(state, ffi::lua_upvalueindex(1), std::ptr::null_mut()) as usize;
+        let index =
+            ffi::lua_tointegerx(state, ffi::lua_upvalueindex(1), std::ptr::null_mut()) as usize;
         let lead = ffi::lua_type(state, 1) == ffi::LUA_TSTRING;
         let content = lead.then(|| match props::read(state, 1) {
             Value::Str(s) => s.to_owned(),
             _ => String::new(),
         });
         let first = if lead { 2 } else { 1 };
-        let props_at = if ffi::lua_type(state, first) == ffi::LUA_TTABLE { first } else { 0 };
+        let props_at = if ffi::lua_type(state, first) == ffi::LUA_TTABLE {
+            first
+        } else {
+            0
+        };
         let next = first + 1;
         let children_at = match ffi::lua_type(state, next) {
             ffi::LUA_TTABLE | ffi::LUA_TLIGHTUSERDATA => next,
@@ -203,16 +218,31 @@ pub(crate) unsafe extern "C-unwind" fn ui_host(state: *mut ffi::lua_State) -> c_
         };
         guard(state, || {
             let args = top(|frame| -> Result<NodeArgs, String> {
-                let props = if props_at > 0 { host_props(state, props_at, frame)? } else { Vec::new() };
+                let props = if props_at > 0 {
+                    host_props(state, props_at, frame)?
+                } else {
+                    Vec::new()
+                };
                 let children = match children_at {
                     0 => Vec::new(),
-                    at if ffi::lua_type(state, at) == ffi::LUA_TLIGHTUSERDATA => vec![frame.take(ffi::lua_tolightuserdata(state, at))?],
+                    at if ffi::lua_type(state, at) == ffi::LUA_TLIGHTUSERDATA => {
+                        vec![frame.take(ffi::lua_tolightuserdata(state, at))?]
+                    }
                     at => take_children(state, at, frame)?,
                 };
-                Ok(NodeArgs { content, props, children, attach: frame.attach, env: frame.env.clone(), used: RefCell::default() })
+                Ok(NodeArgs {
+                    content,
+                    props,
+                    children,
+                    attach: frame.attach,
+                    env: frame.env.clone(),
+                    used: RefCell::default(),
+                })
             });
             let mut args = args.ok_or("ui nodes can only be built while rendering")??;
-            let node = top(|frame| frame.env.nodes.get(index).cloned()).flatten().ok_or("unknown host node")?;
+            let node = top(|frame| frame.env.nodes.get(index).cloned())
+                .flatten()
+                .ok_or("unknown host node")?;
             let el = (node.build)(&mut args).map_err(|e| format!("ui.{}: {e}", node.name))?;
             // Standard layout props still apply, after the host's own.
             build_from(state, el, props_at, &args.used.borrow())
@@ -220,7 +250,12 @@ pub(crate) unsafe extern "C-unwind" fn ui_host(state: *mut ffi::lua_State) -> c_
     }
 }
 
-unsafe fn build_from(state: *mut ffi::lua_State, el: El, props_at: c_int, used: &[String]) -> Result<c_int, String> {
+unsafe fn build_from(
+    state: *mut ffi::lua_State,
+    el: El,
+    props_at: c_int,
+    used: &[String],
+) -> Result<c_int, String> {
     top(|frame| {
         let Frame { arena, attach, env } = frame;
         let slot = arena.alloc(el)?;
@@ -253,7 +288,11 @@ unsafe fn build_from(state: *mut ffi::lua_State, el: El, props_at: c_int, used: 
     .unwrap_or_else(|| Err("ui nodes can only be built while rendering".into()))
 }
 
-unsafe fn host_props(state: *mut ffi::lua_State, idx: c_int, frame: &Frame) -> Result<Vec<(String, Prop)>, String> {
+unsafe fn host_props(
+    state: *mut ffi::lua_State,
+    idx: c_int,
+    frame: &Frame,
+) -> Result<Vec<(String, Prop)>, String> {
     let mut out = Vec::new();
     // SAFETY: walks the table at `idx`, popping each value.
     unsafe {

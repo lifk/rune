@@ -21,7 +21,11 @@ impl<S: 'static> Live<S> {
     /// `"Sidebar/Filter buttons"`.
     pub(super) fn groups_of(&self, i: usize) -> Vec<&'static str> {
         let group = self.group(i);
-        group.match_indices('/').map(|(at, _)| &group[..at]).chain(std::iter::once(group)).collect()
+        group
+            .match_indices('/')
+            .map(|(at, _)| &group[..at])
+            .chain(std::iter::once(group))
+            .collect()
     }
 
     /// Stories in list order: each group gathered where its first story is, at every level, and
@@ -29,8 +33,13 @@ impl<S: 'static> Live<S> {
     /// top-level groups `first` names come first, in its order ([`Playground::group_order`]).
     pub(super) fn tree_order(&self, listed: &[usize], first: &[&'static str]) -> Vec<usize> {
         if cfg!(debug_assertions) {
-            for name in first.iter().filter(|&&name| !listed.iter().any(|&i| self.groups_of(i)[0] == name)) {
-                eprintln!("rune: Playground::group_order names {name:?}, which isn't a group in the list");
+            for name in first
+                .iter()
+                .filter(|&&name| !listed.iter().any(|&i| self.groups_of(i)[0] == name))
+            {
+                eprintln!(
+                    "rune: Playground::group_order names {name:?}, which isn't a group in the list"
+                );
             }
         }
         let mut out = Vec::with_capacity(listed.len());
@@ -50,7 +59,12 @@ impl<S: 'static> Live<S> {
                 None => runs.push((None, vec![i])),
             }
         }
-        if depth == 0 { runs.sort_by_key(|(g, _)| g.and_then(|g| first.iter().position(|&f| f == g)).unwrap_or(usize::MAX)); }
+        if depth == 0 {
+            runs.sort_by_key(|(g, _)| {
+                g.and_then(|g| first.iter().position(|&f| f == g))
+                    .unwrap_or(usize::MAX)
+            });
+        }
         for (group, inside) in runs {
             match group {
                 Some(_) => self.gather(&inside, depth + 1, first, out),
@@ -66,14 +80,18 @@ impl<S: 'static> Live<S> {
 
     /// Empties the filter field; true when it held something.
     pub(crate) fn clear_filter(&mut self) -> bool {
-        if self.controls.filter.text.is_empty() { return false; }
+        if self.controls.filter.text.is_empty() {
+            return false;
+        }
         self.controls.filter.replace_text(String::new());
         true
     }
 
     /// The first story the filter keeps, unless the selected one is among them.
     pub(crate) fn first_match(&self) -> Option<usize> {
-        if self.header.is_none() && self.selected < self.count() && self.matches(self.selected) { return None; }
+        if self.header.is_none() && self.selected < self.count() && self.matches(self.selected) {
+            return None;
+        }
         self.order.iter().copied().find(|&i| self.matches(i))
     }
 
@@ -88,9 +106,14 @@ impl<S: 'static> Live<S> {
     /// Whether story `i` matches the filter: each word somewhere in its path, ignoring case.
     pub(super) fn matches(&self, i: usize) -> bool {
         let query = self.query();
-        if query.is_empty() { return true; }
+        if query.is_empty() {
+            return true;
+        }
         let path = self.path(i).to_lowercase();
-        query.to_lowercase().split_whitespace().all(|word| path.contains(word))
+        query
+            .to_lowercase()
+            .split_whitespace()
+            .all(|word| path.contains(word))
     }
 
     /// Whether `group` is folded, as the list shows it: a filter shows every match.
@@ -101,17 +124,27 @@ impl<S: 'static> Live<S> {
     /// Whether story `i` is in `group`, directly or in a group inside it.
     pub(super) fn is_in(&self, i: usize, group: &str) -> bool {
         let own = self.group(i);
-        own == group || own.strip_prefix(group).is_some_and(|rest| rest.starts_with('/'))
+        own == group
+            || own
+                .strip_prefix(group)
+                .is_some_and(|rest| rest.starts_with('/'))
     }
 
     /// The stories in `group` that the filter keeps, which its header counts.
     pub(super) fn count_in(&self, group: &str) -> usize {
-        self.order.iter().filter(|&&i| self.is_in(i, group) && self.matches(i)).count()
+        self.order
+            .iter()
+            .filter(|&&i| self.is_in(i, group) && self.matches(i))
+            .count()
     }
 
     /// The first story in `group`, filter or not, which keys its header.
     fn first_in(&self, group: &str) -> usize {
-        self.order.iter().copied().find(|&i| self.is_in(i, group)).unwrap_or(0)
+        self.order
+            .iter()
+            .copied()
+            .find(|&i| self.is_in(i, group))
+            .unwrap_or(0)
     }
 
     /// The group around `group`, if it's not at the top.
@@ -129,10 +162,18 @@ impl<S: 'static> Live<S> {
             let same = open.iter().zip(&groups).take_while(|(a, b)| a == b).count();
             open.truncate(same);
             for depth in same..groups.len() {
-                if !groups[..depth].iter().any(|g| self.is_folded(g)) { rows.push(Row::Header(groups[depth], self.first_in(groups[depth]), depth)); }
+                if !groups[..depth].iter().any(|g| self.is_folded(g)) {
+                    rows.push(Row::Header(
+                        groups[depth],
+                        self.first_in(groups[depth]),
+                        depth,
+                    ));
+                }
                 open.push(groups[depth]);
             }
-            if !groups.iter().any(|g| self.is_folded(g)) { rows.push(Row::Story(i, groups.len())); }
+            if !groups.iter().any(|g| self.is_folded(g)) {
+                rows.push(Row::Story(i, groups.len()));
+            }
         }
         rows
     }
@@ -144,17 +185,22 @@ impl<S: 'static> Live<S> {
 
     /// After folds change: a selection whose row a fold hid moves to the header that hides it.
     pub(super) fn settle(&mut self) {
-        if !self.open { return; }
+        if !self.open {
+            return;
+        }
         let hider = match self.header {
             Some(h) => {
-                let mut around: Vec<&'static str> = std::iter::successors(Self::parent(h), |g| Self::parent(g)).collect();
+                let mut around: Vec<&'static str> =
+                    std::iter::successors(Self::parent(h), |g| Self::parent(g)).collect();
                 around.reverse();
                 self.hidden_by(&around)
             }
             None if self.selected < self.count() => self.hidden_by(&self.groups_of(self.selected)),
             None => None,
         };
-        if let Some(g) = hider { self.header = Some(g); }
+        if let Some(g) = hider {
+            self.header = Some(g);
+        }
     }
 
     /// Every group in the list, outermost first, as folds name them.
@@ -162,7 +208,9 @@ impl<S: 'static> Live<S> {
         let mut out: Vec<&'static str> = Vec::new();
         for &i in &self.order {
             for g in self.groups_of(i) {
-                if !out.contains(&g) { out.push(g); }
+                if !out.contains(&g) {
+                    out.push(g);
+                }
             }
         }
         out
@@ -180,6 +228,10 @@ pub(super) enum Row {
 impl Row {
     /// A header's element key: by its first story, with its depth below the top.
     pub(super) fn header_key(first: usize, depth: usize) -> String {
-        if depth == 0 { format!("playground-group-{first}") } else { format!("playground-group-{first}-{depth}") }
+        if depth == 0 {
+            format!("playground-group-{first}")
+        } else {
+            format!("playground-group-{first}-{depth}")
+        }
     }
 }

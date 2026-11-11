@@ -45,7 +45,10 @@ use std::ops::Range;
 use std::rc::Rc;
 
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
-use rune::{Align, Color, Cursor, El, Family, Link, LinkPaint, Span, TextHighlight, TextStyle, Tx, col, el, icon, rich, row, text};
+use rune::{
+    Align, Color, Cursor, El, Family, Link, LinkPaint, Span, TextHighlight, TextStyle, Tx, col, el, icon, rich, row,
+    text,
+};
 
 use crate::Kit;
 
@@ -66,21 +69,22 @@ mod table;
 
 pub use find::{Case, find};
 pub use image::ImageFrame;
+#[cfg(feature = "mermaid")]
+pub(crate) use style::DiagramPaint;
 pub use style::MarkdownStyle;
-#[cfg(feature = "mermaid")] pub(crate) use style::DiagramPaint;
 
 use crate::budget::Budget;
-use crate::syntax::{Highlighter, SyntaxTheme};
 pub use crate::syntax::Syntax;
-use links::{LinkHelp, LinkLook, LinkRing, LinkWire};
+use crate::syntax::{Highlighter, SyntaxTheme};
 pub use cache::parse_cached;
 pub use highlight::{Highlight, HighlightItem};
+use links::{LinkHelp, LinkLook, LinkRing, LinkWire};
 pub use parser::parse;
 
 use autolink::autolink_inline;
-use cache::{doc_cached, stream_cached};
 #[cfg(test)]
 use cache::{CACHE, PARSES};
+use cache::{doc_cached, stream_cached};
 use parser::{BlockMap, Cut, PAD, ParsedDoc, Source, SpanMap, parse_doc};
 use render::{Renderer, hash_of, rendered_keys, source_copy};
 use stream::parse_streaming;
@@ -113,7 +117,10 @@ pub enum Block {
     Para(Inline),
     Heading(u8, Inline),
     Code(String),
-    List { start: Option<u64>, items: Vec<Vec<Block>> },
+    List {
+        start: Option<u64>,
+        items: Vec<Vec<Block>>,
+    },
     Quote(Vec<Block>),
     Rule,
     /// A GFM table.
@@ -125,7 +132,11 @@ pub enum Block {
     /// An image (`![alt](src "title")`) that stands as a block of its own, as `markdown.css`'s
     /// `img { display: block }` sets one: a paragraph around it splits into the text before
     /// and after it. An image inside a link or emphasis stays its alt text in the line.
-    Image { src: String, alt: String, title: String },
+    Image {
+        src: String,
+        alt: String,
+        title: String,
+    },
 }
 
 /// A GFM table. Rows may have fewer cells than there are columns.
@@ -217,10 +228,33 @@ thread_local! {
 
 impl Markdown {
     pub fn new(src: impl Into<String>) -> Markdown {
-        Markdown { src: src.into(), style: None, block_keys: Vec::new(), highlights: Vec::new(), autolink: true, reveal: -1.0, streaming: false, on_link: None, on_link_secondary: None, link_look: None, link_help: None, link_ring: None,
-            on_task: None, tasks_read_only: false, selectable: false, copy_source: false, scroll_wide: false, highlighter: Highlighter::builtin(),
+        Markdown {
+            src: src.into(),
+            style: None,
+            block_keys: Vec::new(),
+            highlights: Vec::new(),
+            autolink: true,
+            reveal: -1.0,
+            streaming: false,
+            on_link: None,
+            on_link_secondary: None,
+            link_look: None,
+            link_help: None,
+            link_ring: None,
+            on_task: None,
+            tasks_read_only: false,
+            selectable: false,
+            copy_source: false,
+            scroll_wide: false,
+            highlighter: Highlighter::builtin(),
             #[cfg(feature = "mermaid")]
-            diagram_frame: None, code_frame: None, quote_frame: None, link_favicon: None, images: None, on_image: None }
+            diagram_frame: None,
+            code_frame: None,
+            quote_frame: None,
+            link_favicon: None,
+            images: None,
+            on_image: None,
+        }
     }
     /// Highlight UTF-8 byte ranges of the Markdown source string (see [`find`]).
     ///
@@ -452,22 +486,57 @@ impl Markdown {
             (true, false) => doc_cached(&self.src),
             (true, true) => stream_cached(&self.src),
             (false, streaming) => {
-                let (b, s, t, _, st, m) = if streaming { parse_streaming(&self.src, false) } else { parse_doc(&self.src, false) };
+                let (b, s, t, _, st, m) =
+                    if streaming { parse_streaming(&self.src, false) } else { parse_doc(&self.src, false) };
                 (Rc::new(b), s.into(), t.into(), st.into(), m.into())
             }
         };
-        let keys = if self.block_keys.is_empty() { Vec::new() } else {
-            starts.iter().map(|at| self.block_keys.iter().find(|(offset, _)| offset == at)
-                .map_or_else(String::new, |(_, key)| key.clone())).collect::<Vec<_>>()
+        let keys = if self.block_keys.is_empty() {
+            Vec::new()
+        } else {
+            starts
+                .iter()
+                .map(|at| {
+                    self.block_keys
+                        .iter()
+                        .find(|(offset, _)| offset == at)
+                        .map_or_else(String::new, |(_, key)| key.clone())
+                })
+                .collect::<Vec<_>>()
         };
-        let r = Renderer { s: style.clone(), highlights: self.highlights, reveal: self.reveal, streaming: self.streaming, on_link: self.on_link, on_link_secondary: self.on_link_secondary, link_look: self.link_look, link_help: self.link_help, link_ring: self.link_ring,
-            on_task: self.on_task, tasks_read_only: self.tasks_read_only, selectable: self.selectable, scroll_wide: self.scroll_wide,
-            highlighter: self.highlighter, sources, next_source: Cell::new(0), tasks, next_task: Cell::new(0),
+        let r = Renderer {
+            s: style.clone(),
+            highlights: self.highlights,
+            reveal: self.reveal,
+            streaming: self.streaming,
+            on_link: self.on_link,
+            on_link_secondary: self.on_link_secondary,
+            link_look: self.link_look,
+            link_help: self.link_help,
+            link_ring: self.link_ring,
+            on_task: self.on_task,
+            tasks_read_only: self.tasks_read_only,
+            selectable: self.selectable,
+            scroll_wide: self.scroll_wide,
+            highlighter: self.highlighter,
+            sources,
+            next_source: Cell::new(0),
+            tasks,
+            next_task: Cell::new(0),
             current_block_key: RefCell::new("b0".into()),
             #[cfg(feature = "mermaid")]
-            diagram_frame: self.diagram_frame, code_frame: self.code_frame, quote_frame: self.quote_frame, link_favicon: self.link_favicon, images: self.images, on_image: self.on_image, flow: Cell::default() };
+            diagram_frame: self.diagram_frame,
+            code_frame: self.code_frame,
+            quote_frame: self.quote_frame,
+            link_favicon: self.link_favicon,
+            images: self.images,
+            on_image: self.on_image,
+            flow: Cell::default(),
+        };
         let root = r.blocks(&blocks, &maps, &keys, true).selection_group(self.selectable);
-        if !(self.selectable && self.copy_source) { return root; }
+        if !(self.selectable && self.copy_source) {
+            return root;
+        }
         let names: Rc<[String]> = rendered_keys(blocks.len(), &keys).into();
         let src: Rc<str> = self.src.into();
         root.selection_copy(move |sel| source_copy(&src, &starts, &names, sel))

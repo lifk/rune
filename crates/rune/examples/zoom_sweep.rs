@@ -40,10 +40,16 @@ impl State {
             .map(|i| CardData {
                 key: format!("card-{i:02}"),
                 title: format!("Canvas Node #{i:02}"),
-                badge: if i % 2 == 0 { "LIVE".into() } else { "CRISP".into() },
+                badge: if i % 2 == 0 {
+                    "LIVE".into()
+                } else {
+                    "CRISP".into()
+                },
                 version: format!("v2.{}.{}", i % 9, (i * 3) % 14),
                 line1: format!("Logarithmic quarter-octave buckets bound atlas pressure ({i:02})."),
-                line2: format!("Two-page ping-pong shelf recycling preserves 120 Hz pacing ({i} shards)."),
+                line2: format!(
+                    "Two-page ping-pong shelf recycling preserves 120 Hz pacing ({i} shards)."
+                ),
                 footer: format!("layer-{} · scale-settle 100ms · 120 Hz", (i % 4) + 1),
             })
             .collect();
@@ -55,12 +61,42 @@ impl State {
     }
 }
 
-const BG: Color = Color { r: 0.012, g: 0.014, b: 0.018, a: 1.0 };
-const CARD_BG: Color = Color { r: 0.032, g: 0.036, b: 0.046, a: 1.0 };
-const BORDER: Color = Color { r: 0.12, g: 0.14, b: 0.18, a: 1.0 };
-const TEXT: Color = Color { r: 0.88, g: 0.90, b: 0.94, a: 1.0 };
-const BODY: Color = Color { r: 0.58, g: 0.62, b: 0.68, a: 1.0 };
-const MUTED: Color = Color { r: 0.36, g: 0.40, b: 0.46, a: 1.0 };
+const BG: Color = Color {
+    r: 0.012,
+    g: 0.014,
+    b: 0.018,
+    a: 1.0,
+};
+const CARD_BG: Color = Color {
+    r: 0.032,
+    g: 0.036,
+    b: 0.046,
+    a: 1.0,
+};
+const BORDER: Color = Color {
+    r: 0.12,
+    g: 0.14,
+    b: 0.18,
+    a: 1.0,
+};
+const TEXT: Color = Color {
+    r: 0.88,
+    g: 0.90,
+    b: 0.94,
+    a: 1.0,
+};
+const BODY: Color = Color {
+    r: 0.58,
+    g: 0.62,
+    b: 0.68,
+    a: 1.0,
+};
+const MUTED: Color = Color {
+    r: 0.36,
+    g: 0.40,
+    b: 0.46,
+    a: 1.0,
+};
 
 fn card_view(c: &CardData, k: f32) -> El {
     col()
@@ -76,13 +112,38 @@ fn card_view(c: &CardData, k: f32) -> El {
                 .w_full()
                 .gap(6.0)
                 .center_y()
-                .child(text(c.badge.clone()).font(TextStyle::new(10.0 * k, 600.0)).color(TEXT))
-                .child(text(c.title.clone()).font(TextStyle::new(13.0 * k, 600.0)).color(TEXT).grow(1.0))
-                .child(text(c.version.clone()).font(TextStyle::new(11.0 * k, 500.0)).color(MUTED)),
+                .child(
+                    text(c.badge.clone())
+                        .font(TextStyle::new(10.0 * k, 600.0))
+                        .color(TEXT),
+                )
+                .child(
+                    text(c.title.clone())
+                        .font(TextStyle::new(13.0 * k, 600.0))
+                        .color(TEXT)
+                        .grow(1.0),
+                )
+                .child(
+                    text(c.version.clone())
+                        .font(TextStyle::new(11.0 * k, 500.0))
+                        .color(MUTED),
+                ),
         )
-        .child(text(c.line1.clone()).font(TextStyle::new(11.0 * k, 400.0)).color(BODY))
-        .child(text(c.line2.clone()).font(TextStyle::new(11.0 * k, 400.0)).color(BODY))
-        .child(text(c.footer.clone()).font(TextStyle::new(10.0 * k, 500.0)).color(MUTED))
+        .child(
+            text(c.line1.clone())
+                .font(TextStyle::new(11.0 * k, 400.0))
+                .color(BODY),
+        )
+        .child(
+            text(c.line2.clone())
+                .font(TextStyle::new(11.0 * k, 400.0))
+                .color(BODY),
+        )
+        .child(
+            text(c.footer.clone())
+                .font(TextStyle::new(10.0 * k, 500.0))
+                .color(MUTED),
+        )
 }
 
 fn view(s: &State, _: &mut Cx<State>) -> El {
@@ -94,16 +155,12 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
         }
         grid = grid.child(line);
     }
-    el().w_full()
-        .h_full()
-        .fill(BG)
-        .padding(32.0)
-        .child(
-            el().key("canvas")
-                .size(1200.0, 740.0)
-                .live_scale(&s.zoom)
-                .child(grid),
-        )
+    el().w_full().h_full().fill(BG).padding(32.0).child(
+        el().key("canvas")
+            .size(1200.0, 740.0)
+            .live_scale(&s.zoom)
+            .child(grid),
+    )
 }
 
 fn percentile(v: &mut [f64], p: f64) -> f64 {
@@ -114,7 +171,13 @@ fn percentile(v: &mut [f64], p: f64) -> f64 {
 fn run_case(gpu: &Gpu, out: &Offscreen, case: &str) {
     let mut text = TextSystem::default();
     for sz in [10.0, 11.0, 13.0] {
-        text.layout_rich("Warm benchmark fonts 0123456789", &[], TextStyle::new(sz, 400.0), 2.0, None);
+        text.layout_rich(
+            "Warm benchmark fonts 0123456789",
+            &[],
+            TextStyle::new(sz, 400.0),
+            2.0,
+            None,
+        );
     }
     let state = State::new();
     let zoom = state.zoom.clone();
@@ -128,7 +191,13 @@ fn run_case(gpu: &Gpu, out: &Offscreen, case: &str) {
             break;
         }
     }
-    renderer.prepare(&gpu.device, &gpu.queue, &mut rt.text.atlas, &rt.instances, (out.width, out.height));
+    renderer.prepare(
+        &gpu.device,
+        &gpu.queue,
+        &mut rt.text.atlas,
+        &rt.instances,
+        (out.width, out.height),
+    );
     {
         let mut enc = gpu.device.create_command_encoder(&Default::default());
         renderer.draw(&mut enc, &out.view, rt.clear_color());
@@ -157,7 +226,13 @@ fn run_case(gpu: &Gpu, out: &Offscreen, case: &str) {
         let b_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
         let e0 = Instant::now();
-        renderer.prepare(&gpu.device, &gpu.queue, &mut rt.text.atlas, &rt.instances, (out.width, out.height));
+        renderer.prepare(
+            &gpu.device,
+            &gpu.queue,
+            &mut rt.text.atlas,
+            &rt.instances,
+            (out.width, out.height),
+        );
         let mut enc = gpu.device.create_command_encoder(&Default::default());
         renderer.draw(&mut enc, &out.view, rt.clear_color());
         renderer.submit(&gpu.queue, enc);
@@ -182,15 +257,25 @@ fn run_case(gpu: &Gpu, out: &Offscreen, case: &str) {
             rt.frame(1.0 / 120.0);
         }
         assert!(
-            rt.instances.iter().filter(|i| i.params[1] == KIND_GLYPH).all(|i| i.uv[2] == 0.0),
+            rt.instances
+                .iter()
+                .filter(|i| i.params[1] == KIND_GLYPH)
+                .all(|i| i.uv[2] == 0.0),
             "settled live_scale must re-rasterize crisp 1:1 glyphs"
         );
     } else {
         rt.state.font_scale = 1.0;
         rt.invalidate();
         rt.frame(1.0 / 120.0);
-        let glyphs = rt.instances.iter().filter(|i| i.params[1] == KIND_GLYPH).count();
-        assert!(glyphs >= 1000, "all glyphs present at scale 1 after 1,200-scale sweep (got {glyphs})");
+        let glyphs = rt
+            .instances
+            .iter()
+            .filter(|i| i.params[1] == KIND_GLYPH)
+            .count();
+        assert!(
+            glyphs >= 1000,
+            "all glyphs present at scale 1 after 1,200-scale sweep (got {glyphs})"
+        );
     }
 
     for (name, mut samples) in [
@@ -202,9 +287,13 @@ fn run_case(gpu: &Gpu, out: &Offscreen, case: &str) {
         let p95 = percentile(&mut samples, 0.95);
         println!("METRIC case={case} metric={name} median={med:.4} p95={p95:.4} n={FRAMES_10S}");
     }
-    println!("METRIC case={case} metric=rasterized_10s median={sweep_rasterized} p95={sweep_rasterized} n=1");
+    println!(
+        "METRIC case={case} metric=rasterized_10s median={sweep_rasterized} p95={sweep_rasterized} n=1"
+    );
     println!("METRIC case={case} metric=sizes_10s median={sizes_10s:.0} p95={sizes_10s:.0} n=1");
-    println!("METRIC case={case} metric=resets_per_min median={resets_per_min:.1} p95={resets_per_min:.1} n=1");
+    println!(
+        "METRIC case={case} metric=resets_per_min median={resets_per_min:.1} p95={resets_per_min:.1} n=1"
+    );
     println!("METRIC case={case} metric=atlas_pages median={pages:.0} p95={pages:.0} n=1");
 }
 

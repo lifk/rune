@@ -72,12 +72,14 @@ impl SegmentedControl {
         let c = &k.c;
         let n = self.labels.len().max(1);
         let font = TextStyle { line_height: 13.0, ..k.ty.ui };
-        let mut root =
-            row().role("radiogroup").focus_group().h(28.0).center_y().radius(6.0).fill(c.layer_01).box_shadow(rune::Shadow {
-                spread: 0.5,
-                color: c.border_base,
-                ..Default::default()
-            });
+        let mut root = row()
+            .role("radiogroup")
+            .focus_group()
+            .h(28.0)
+            .center_y()
+            .radius(6.0)
+            .fill(c.layer_01)
+            .box_shadow(rune::Shadow { spread: 0.5, color: c.border_base, ..Default::default() });
         if let Some(l) = self.label {
             root = root.label(l);
         }
@@ -118,7 +120,9 @@ impl SegmentedControl {
             let mut seg = row()
                 .key(format!("segment{i}"))
                 .role("radio")
-                .focusable(st != State::Disabled).focus_selected(on).focus_ring(2.0, 1.0, c.border_focus)
+                .focusable(st != State::Disabled)
+                .focus_selected(on)
+                .focus_ring(2.0, 1.0, c.border_focus)
                 .disabled(st == State::Disabled)
                 .label(l.clone())
                 .position_in_set(i + 1, n)

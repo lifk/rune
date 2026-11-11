@@ -51,18 +51,26 @@ pub(crate) struct Layer {
 const MAX_SETTLE: f64 = 120.0;
 
 impl Layer {
-    pub const REST: Layer =
-        Layer { t0: 0.0, end: f64::NEG_INFINITY, c: [0.0; 6], kind: Kind::Rest, easing: Easing::Linear };
+    pub const REST: Layer = Layer {
+        t0: 0.0,
+        end: f64::NEG_INFINITY,
+        c: [0.0; 6],
+        kind: Kind::Rest,
+        easing: Easing::Linear,
+    };
 
     /// A layer for `curve` that starts at `t0` with `offset` (= position − target) and `velocity`.
     pub fn start(curve: &Curve, t0: f64, offset: f32, velocity: f32, eps: Eps) -> Layer {
         match *curve {
             Curve::Spring(s) => Layer::spring(s, t0, offset, velocity, eps),
-            Curve::Tween { duration, easing } => Layer::tween(duration, easing, t0, offset, velocity),
-            Curve::Decay(d) => Layer::decay(d.k(), t0, velocity, eps),
-            Curve::Hermite { duration, end_velocity } => {
-                Layer::hermite(duration, t0, offset, velocity, end_velocity)
+            Curve::Tween { duration, easing } => {
+                Layer::tween(duration, easing, t0, offset, velocity)
             }
+            Curve::Decay(d) => Layer::decay(d.k(), t0, velocity, eps),
+            Curve::Hermite {
+                duration,
+                end_velocity,
+            } => Layer::hermite(duration, t0, offset, velocity, end_velocity),
             Curve::Instant => Layer::REST,
         }
     }
@@ -85,12 +93,18 @@ impl Layer {
         let a = offset;
         let (kind, c) = if (zeta - 1.0).abs() < 1e-4 {
             let b = v0 + omega * a;
-            (Kind::Critical, [a, b, b - omega * a, -omega * b, omega, 0.0])
+            (
+                Kind::Critical,
+                [a, b, b - omega * a, -omega * b, omega, 0.0],
+            )
         } else if zeta < 1.0 {
             let sigma = zeta * omega;
             let wd = omega * (1.0 - zeta * zeta).sqrt();
             let b = (v0 + sigma * a) / wd;
-            (Kind::Under, [a, b, b * wd - sigma * a, -a * wd - sigma * b, sigma, wd])
+            (
+                Kind::Under,
+                [a, b, b * wd - sigma * a, -a * wd - sigma * b, sigma, wd],
+            )
         } else {
             let root = (zeta * zeta - 1.0).sqrt();
             let r1 = -omega * (zeta - root);
@@ -98,7 +112,13 @@ impl Layer {
             let c1 = (v0 - r2 * a) / (r1 - r2);
             (Kind::Over, [c1, a - c1, r1, r2, 0.0, 0.0])
         };
-        Layer { t0, end: f64::INFINITY, c, kind, easing: Easing::Linear }
+        Layer {
+            t0,
+            end: f64::INFINITY,
+            c,
+            kind,
+            easing: Easing::Linear,
+        }
     }
 
     /// `velocity` is the motion carried in from before the tween; it fades out by the end.
@@ -122,7 +142,13 @@ impl Layer {
             return Layer::REST;
         }
         let a = -v0 / k;
-        let mut layer = Layer { t0, end: 0.0, c: [a, k, 0.0, 0.0, 0.0, 0.0], kind: Kind::Decay, easing: Easing::Linear };
+        let mut layer = Layer {
+            t0,
+            end: 0.0,
+            c: [a, k, 0.0, 0.0, 0.0, 0.0],
+            kind: Kind::Decay,
+            easing: Easing::Linear,
+        };
         let tp = ((a.abs() / eps.pos) as f64).ln();
         let tv = ((v0.abs() / eps.vel) as f64).ln();
         layer.end = t0 + (tp.max(tv) / k as f64).clamp(0.0, MAX_SETTLE);
@@ -139,7 +165,13 @@ impl Layer {
         let b = v0;
         let cc = (-3.0 * a - (2.0 * b + v1) * d) / (d * d);
         let dd = (2.0 * a + (v1 + b) * d) / (d * d * d);
-        Layer { t0, end: t0 + d as f64, c: [a, b, cc, dd, d, 0.0], kind: Kind::Poly, easing: Easing::Linear }
+        Layer {
+            t0,
+            end: t0 + d as f64,
+            c: [a, b, cc, dd, d, 0.0],
+            kind: Kind::Poly,
+            easing: Easing::Linear,
+        }
     }
 
     /// `(offset, velocity)` at absolute time `now`. Physics layers return exactly `(0, 0)` once
@@ -185,7 +217,10 @@ impl Layer {
             Kind::Poly => {
                 let tau = tau.min(c[4]);
                 let (a, b, cc, d) = (c[0], c[1], c[2], c[3]);
-                (a + tau * (b + tau * (cc + tau * d)), b + tau * (2.0 * cc + tau * 3.0 * d))
+                (
+                    a + tau * (b + tau * (cc + tau * d)),
+                    b + tau * (2.0 * cc + tau * 3.0 * d),
+                )
             }
             Kind::Rest => (0.0, 0.0),
         }
@@ -224,7 +259,11 @@ impl Layer {
             }
             _ => 0.0,
         };
-        if t.is_finite() { t.clamp(0.0, MAX_SETTLE) } else { MAX_SETTLE }
+        if t.is_finite() {
+            t.clamp(0.0, MAX_SETTLE)
+        } else {
+            MAX_SETTLE
+        }
     }
 }
 
@@ -262,9 +301,23 @@ mod bench {
     #[ignore]
     fn bench_layer_kinds() {
         let n = 100_000;
-        for (name, s) in [("under", Spring::new(3.0, 0.3)), ("critical", Spring::new(3.0, 0.0))] {
+        for (name, s) in [
+            ("under", Spring::new(3.0, 0.3)),
+            ("critical", Spring::new(3.0, 0.0)),
+        ] {
             let layers: Vec<Layer> = (0..n)
-                .map(|i| Layer::spring(s, 0.0, -100.0 - (i % 13) as f32, 0.0, Eps { pos: 1e-3, vel: 1e-2 }))
+                .map(|i| {
+                    Layer::spring(
+                        s,
+                        0.0,
+                        -100.0 - (i % 13) as f32,
+                        0.0,
+                        Eps {
+                            pos: 1e-3,
+                            vel: 1e-2,
+                        },
+                    )
+                })
                 .collect();
             let mut out = vec![0.0f32; n];
             let t0 = Instant::now();
@@ -276,7 +329,10 @@ mod bench {
                 }
                 black_box(&out);
             }
-            println!("{name}: {:.2} ns/lane", t0.elapsed().as_nanos() as f64 / (120 * n) as f64);
+            println!(
+                "{name}: {:.2} ns/lane",
+                t0.elapsed().as_nanos() as f64 / (120 * n) as f64
+            );
         }
         let xs: Vec<f32> = (0..n).map(|i| -(i as f32) * 1e-4).collect();
         let t0 = Instant::now();
@@ -287,7 +343,10 @@ mod bench {
             }
         }
         black_box(acc);
-        println!("exp: {:.2} ns", t0.elapsed().as_nanos() as f64 / (120 * n) as f64);
+        println!(
+            "exp: {:.2} ns",
+            t0.elapsed().as_nanos() as f64 / (120 * n) as f64
+        );
         let t0 = Instant::now();
         for _ in 0..120 {
             for &x in &xs {
@@ -296,6 +355,9 @@ mod bench {
             }
         }
         black_box(acc);
-        println!("sin_cos: {:.2} ns", t0.elapsed().as_nanos() as f64 / (120 * n) as f64);
+        println!(
+            "sin_cos: {:.2} ns",
+            t0.elapsed().as_nanos() as f64 / (120 * n) as f64
+        );
     }
 }

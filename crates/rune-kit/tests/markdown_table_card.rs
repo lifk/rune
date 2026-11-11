@@ -18,7 +18,11 @@ struct Doc {
 
 fn view(d: &Doc, _: &mut Cx<Doc>) -> El {
     let k = Kit::neutral(true);
-    let md = Markdown::new(d.src.clone()).streaming(d.streaming).scroll_wide(d.scroll_wide).selectable(true).copy_source(true);
+    let md = Markdown::new(d.src.clone())
+        .streaming(d.streaming)
+        .scroll_wide(d.scroll_wide)
+        .selectable(true)
+        .copy_source(true);
     col().w_full().child(col().w(d.width).child(md.render(&(d.style)(&k)).key("note")))
 }
 
@@ -150,10 +154,19 @@ fn full_width_fills_the_text_and_shares_the_room_in_proportion() {
 #[test]
 fn full_width_scrolling_fills_the_viewport_and_scrolls_a_wide_table_at_its_natural_width() {
     let long = "| Term | Meaning |\n|---|---|\n| cache | a sentence much too long for one line of a narrow column, so it wraps |\n";
-    let narrow = run_with(Doc { src: "| a | b |\n|---|---|\n| 1 | 2 |\n".into(), style: card, width: 400.0, streaming: false, scroll_wide: true });
+    let narrow = run_with(Doc {
+        src: "| a | b |\n|---|---|\n| 1 | 2 |\n".into(),
+        style: card,
+        width: 400.0,
+        streaming: false,
+        scroll_wide: true,
+    });
     assert_eq!(parent(&narrow, "th").rect[2], 400.0);
     let rt = run_with(Doc { src: long.into(), style: card, width: 300.0, streaming: false, scroll_wide: true });
-    let (term, meaning) = (text(&rt, "cache"), rt.elements().into_iter().find(|e| e.text.as_deref().is_some_and(|t| t.starts_with("a sentence"))).unwrap());
+    let (term, meaning) = (
+        text(&rt, "cache"),
+        rt.elements().into_iter().find(|e| e.text.as_deref().is_some_and(|t| t.starts_with("a sentence"))).unwrap(),
+    );
     assert_eq!(meaning.rect[3], term.rect[3], "one line: {meaning:?}");
     let frame = parent(&rt, "th");
     assert!(frame.rect[2] > 300.0, "the frame runs past the viewport");
@@ -231,7 +244,10 @@ fn narrow_columns_stop_at_the_card() {
     assert_eq!(frame.rect[2], 220.0);
     assert_eq!(tb.rect[2], 216.0);
     let last = cell(&rt, "r0", 2).rect;
-    assert!(last[0] + last[2] > tb.rect[0] + tb.rect[2], "the columns at their minimum overflow, clipped by the card: {last:?}");
+    assert!(
+        last[0] + last[2] > tb.rect[0] + tb.rect[2],
+        "the columns at their minimum overflow, clipped by the card: {last:?}"
+    );
     let head = cell(&rt, "th", 2).rect;
     assert_eq!((head[0], head[2]), (last[0], last[2]), "the header's columns match the body's");
 }

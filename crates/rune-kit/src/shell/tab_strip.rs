@@ -52,7 +52,8 @@ pub enum TabOverflow {
 
 impl TabOverflow {
     /// OpenCode's titlebar tabs: 28 to 224 points, pinned 36, 24 point fades.
-    pub const HORIZONTAL_DEFAULT: Self = Self::ShrinkThenScroll { min_width: 28.0, max_width: 224.0, pinned_width: 36.0, fade_width: 24.0 };
+    pub const HORIZONTAL_DEFAULT: Self =
+        Self::ShrinkThenScroll { min_width: 28.0, max_width: 224.0, pinned_width: 36.0, fade_width: 24.0 };
     /// OpenCode's side tabs: 16 point fades.
     pub const VERTICAL_DEFAULT: Self = Self::Scroll { fade_width: 16.0 };
 
@@ -344,7 +345,15 @@ impl<'a, S: 'static> TabStrip<'a, S> {
             close_tab_stop: false,
             busy: busy_ring,
             label: "Tabs".into(),
-            handlers: Handlers { select: None, close: None, double: None, hover: None, reorder: None, tear_out: None, tear_move: None },
+            handlers: Handlers {
+                select: None,
+                close: None,
+                double: None,
+                hover: None,
+                reorder: None,
+                tear_out: None,
+                tear_move: None,
+            },
         }
     }
     pub fn tabs(mut self, tabs: impl IntoIterator<Item = TabItem<'a, S>>) -> Self {
@@ -496,7 +505,11 @@ impl<'a, S: 'static> TabStrip<'a, S> {
 
     fn assemble(self, k: &Kit, mut layer: Option<&mut Vec<El>>) -> El {
         let vertical = self.orientation == TabOrientation::Vertical;
-        let overflow = self.overflow.unwrap_or(if vertical { TabOverflow::VERTICAL_DEFAULT } else { TabOverflow::HORIZONTAL_DEFAULT });
+        let overflow = self.overflow.unwrap_or(if vertical {
+            TabOverflow::VERTICAL_DEFAULT
+        } else {
+            TabOverflow::HORIZONTAL_DEFAULT
+        });
         let gap = self.gap.unwrap_or(if vertical { 3.0 } else { 6.0 });
         let count = self.items.len();
         let pinned = self.items.iter().filter(|t| t.pinned).count();
@@ -507,7 +520,9 @@ impl<'a, S: 'static> TabStrip<'a, S> {
         let incoming = usize::from(drag.incoming().is_some());
         let (tab_w, pinned_w) = match overflow {
             TabOverflow::ShrinkThenScroll { max_width, pinned_width, min_width, .. } => {
-                let w = self.viewport.map_or(max_width, |v| overflow.tab_width(v - trailing, count - pinned + incoming, pinned, gap));
+                let w = self
+                    .viewport
+                    .map_or(max_width, |v| overflow.tab_width(v - trailing, count - pinned + incoming, pinned, gap));
                 (drag.width_lock.map_or(w, |l| l.max(min_width)), pinned_width)
             }
             TabOverflow::Scroll { .. } => (f32::INFINITY, f32::INFINITY),
@@ -566,7 +581,11 @@ impl<'a, S: 'static> TabStrip<'a, S> {
                     index: i,
                     lane: drag::Lane { index: i, lo, hi, pitch: pitches[i], pinned: pin, tear },
                     width,
-                    density: if pin { TabDensity::IconOnly } else { width.map_or(TabDensity::Full, TabOverflow::density_for) },
+                    density: if pin {
+                        TabDensity::IconOnly
+                    } else {
+                        width.map_or(TabDensity::Full, TabOverflow::density_for)
+                    },
                     active: active == Some(ids[i].as_str()),
                     separator: !vertical && i > 0 && !quiet(i) && !quiet(i - 1),
                 };
@@ -586,7 +605,14 @@ impl<'a, S: 'static> TabStrip<'a, S> {
         }
         let fade = overflow.fade();
         let mut root = if vertical {
-            let list = col().key(st.list_key.clone()).role("tablist").label(self.label).focus_group().w_full().pb(fade).children(tabs);
+            let list = col()
+                .key(st.list_key.clone())
+                .role("tablist")
+                .label(self.label)
+                .focus_group()
+                .w_full()
+                .pb(fade)
+                .children(tabs);
             let scroll = col()
                 .key(st.scroll_key.clone())
                 .w_full()
@@ -599,8 +625,22 @@ impl<'a, S: 'static> TabStrip<'a, S> {
             let scroll = auto_scroll::watch(scroll, &st.auto);
             col().key(self.key).w_full().grow(1.0).min_h(0.0).child(scroll).children(self.trailing)
         } else {
-            let list = row().key(st.list_key.clone()).role("tablist").label(self.label).focus_group().gap(gap).center_y().children(tabs);
-            let scroll = row().key(st.scroll_key.clone()).h(st.row_height).shrink().min_w(0.0).scroll_x().scroll_fade(ScrollFade::strength(fade).linear().full_at(0.1)).child(list);
+            let list = row()
+                .key(st.list_key.clone())
+                .role("tablist")
+                .label(self.label)
+                .focus_group()
+                .gap(gap)
+                .center_y()
+                .children(tabs);
+            let scroll = row()
+                .key(st.scroll_key.clone())
+                .h(st.row_height)
+                .shrink()
+                .min_w(0.0)
+                .scroll_x()
+                .scroll_fade(ScrollFade::strength(fade).linear().full_at(0.1))
+                .child(list);
             let scroll = auto_scroll::watch(scroll, &st.auto);
             // It grows into the space it's given, so its width is what the tabs may share.
             row().key(self.key).grow(1.0).shrink().min_w(0.0).gap(gap).center_y().child(scroll).children(self.trailing)
@@ -619,7 +659,14 @@ impl<'a, S: 'static> TabStrip<'a, S> {
 /// The slot a tab dragged in from another strip lands in at `point` (window points): after each
 /// unpinned tab whose middle the point has passed, measured with each tab's own length (`pitches`)
 /// from where the strip's viewport drew and how far it has scrolled.
-fn landing_slot(pitches: &[f32], pinned: usize, point: [f32; 2], auto: &auto_scroll::View, vertical: bool, zoom: f32) -> usize {
+fn landing_slot(
+    pitches: &[f32],
+    pinned: usize,
+    point: [f32; 2],
+    auto: &auto_scroll::View,
+    vertical: bool,
+    zoom: f32,
+) -> usize {
     let a = usize::from(vertical);
     let along = (point[a] - auto_scroll::rect(auto)[a]) / zoom + auto_scroll::offset(auto, vertical);
     let mut start = 0.0;

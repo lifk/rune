@@ -15,7 +15,11 @@ use super::store::Store;
 use super::{Obj, send_sync};
 
 /// The stages a pipeline binds resources for: vertex and fragment for render pipelines, then compute.
-pub(super) const STAGES: [wgpu::ShaderStages; 3] = [wgpu::ShaderStages::VERTEX, wgpu::ShaderStages::FRAGMENT, wgpu::ShaderStages::COMPUTE];
+pub(super) const STAGES: [wgpu::ShaderStages; 3] = [
+    wgpu::ShaderStages::VERTEX,
+    wgpu::ShaderStages::FRAGMENT,
+    wgpu::ShaderStages::COMPUTE,
+];
 
 /// The compute stage's index in `STAGES`.
 pub(super) const COMPUTE: usize = 2;
@@ -52,7 +56,11 @@ pub(crate) struct LayoutRaw {
 impl LayoutRaw {
     /// Group `index`'s layout, as a pipeline made with this layout hands it out.
     pub(super) fn group(&self, index: u32) -> DispatchBindGroupLayout {
-        let entries = self.groups.get(index as usize).unwrap_or_else(|| panic!("no bind group {index} in the pipeline's layout")).clone();
+        let entries = self
+            .groups
+            .get(index as usize)
+            .unwrap_or_else(|| panic!("no bind group {index} in the pipeline's layout"))
+            .clone();
         DispatchBindGroupLayout::custom(BindGroupLayout { entries })
     }
 }
@@ -124,8 +132,12 @@ impl BindGroupLayout {
     pub(crate) fn new(desc: &wgpu::BindGroupLayoutDescriptor<'_>) -> Self {
         let mut entries = desc.entries.to_vec();
         entries.sort_by_key(|e| e.binding);
-        if entries.iter().any(|e| e.count.is_some()) { super::unsupported!("binding arrays") }
-        BindGroupLayout { entries: entries.into() }
+        if entries.iter().any(|e| e.count.is_some()) {
+            super::unsupported!("binding arrays")
+        }
+        BindGroupLayout {
+            entries: entries.into(),
+        }
     }
 }
 
@@ -133,8 +145,15 @@ impl BindGroupLayoutInterface for BindGroupLayout {}
 
 impl PipelineLayout {
     pub(crate) fn new(desc: &wgpu::PipelineLayoutDescriptor<'_>) -> Self {
-        let groups: Vec<_> = desc.bind_group_layouts.iter()
-            .map(|layout| layout.map(|l| l.as_custom::<BindGroupLayout>().expect("a Metal bind group layout")))
+        let groups: Vec<_> = desc
+            .bind_group_layouts
+            .iter()
+            .map(|layout| {
+                layout.map(|l| {
+                    l.as_custom::<BindGroupLayout>()
+                        .expect("a Metal bind group layout")
+                })
+            })
             .collect();
         Self::from_groups(&groups, desc.immediate_size)
     }
@@ -156,18 +175,40 @@ impl PipelineLayout {
             entries.push(layout.map_or_else(|| Arc::from([]), |l| l.entries.clone()));
             let Some(layout) = layout else { continue };
             for entry in layout.entries.iter() {
-                let binding = naga::ResourceBinding { group: group as u32, binding: entry.binding };
+                let binding = naga::ResourceBinding {
+                    group: group as u32,
+                    binding: entry.binding,
+                };
                 for (s, stage) in STAGES.iter().enumerate() {
-                    if !entry.visibility.contains(*stage) { continue }
-                    storage[s] |= matches!(entry.ty, wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { .. }, .. });
-                    stages[s].resources.insert(binding, target(&entry.ty, &mut counts[s]));
+                    if !entry.visibility.contains(*stage) {
+                        continue;
+                    }
+                    storage[s] |= matches!(
+                        entry.ty,
+                        wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { .. },
+                            ..
+                        }
+                    );
+                    stages[s]
+                        .resources
+                        .insert(binding, target(&entry.ty, &mut counts[s]));
                 }
             }
         }
         for s in 0..3 {
-            if storage[s] { stages[s].sizes_buffer = Some(counts[s].buffers); }
+            if storage[s] {
+                stages[s].sizes_buffer = Some(counts[s].buffers);
+            }
         }
-        PipelineLayout { raw: Arc::new(LayoutRaw { bases, stages, immediates: immediate_size, groups: entries }) }
+        PipelineLayout {
+            raw: Arc::new(LayoutRaw {
+                bases,
+                stages,
+                immediates: immediate_size,
+                groups: entries,
+            }),
+        }
     }
 }
 
@@ -175,44 +216,103 @@ impl PipelineLayoutInterface for PipelineLayout {}
 
 impl BindGroup {
     pub(crate) fn new(desc: &wgpu::BindGroupDescriptor<'_>, live: Live) -> Self {
-        let layout = desc.layout.as_custom::<BindGroupLayout>().expect("a Metal bind group layout");
-        let mut group = GroupRaw { live: Some(live), ..GroupRaw::default() };
+        let layout = desc
+            .layout
+            .as_custom::<BindGroupLayout>()
+            .expect("a Metal bind group layout");
+        let mut group = GroupRaw {
+            live: Some(live),
+            ..GroupRaw::default()
+        };
         let mut counts = [Counts::default(); 3];
         let mut dynamic = 0;
         for entry in layout.entries.iter() {
-            let resource = &desc.entries.iter().find(|e| e.binding == entry.binding).expect("a bind group entry for every layout entry").resource;
+            let resource = &desc
+                .entries
+                .iter()
+                .find(|e| e.binding == entry.binding)
+                .expect("a bind group entry for every layout entry")
+                .resource;
             let dynamic_index = match entry.ty {
-                wgpu::BindingType::Buffer { has_dynamic_offset: true, .. } => { dynamic += 1; Some(dynamic - 1) }
+                wgpu::BindingType::Buffer {
+                    has_dynamic_offset: true,
+                    ..
+                } => {
+                    dynamic += 1;
+                    Some(dynamic - 1)
+                }
                 _ => None,
             };
-            if let (wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { .. }, .. }, wgpu::BindingResource::Buffer(b)) = (&entry.ty, resource) {
-                let size = b.size.map_or_else(|| b.buffer.size() - b.offset, |s| s.get());
-                group.sizes.push((entry.binding, u32::try_from(size).unwrap_or(u32::MAX)));
+            if let (
+                wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { .. },
+                    ..
+                },
+                wgpu::BindingResource::Buffer(b),
+            ) = (&entry.ty, resource)
+            {
+                let size = b
+                    .size
+                    .map_or_else(|| b.buffer.size() - b.offset, |s| s.get());
+                group
+                    .sizes
+                    .push((entry.binding, u32::try_from(size).unwrap_or(u32::MAX)));
             }
             for (s, stage) in STAGES.iter().enumerate() {
-                if !entry.visibility.contains(*stage) { continue }
+                if !entry.visibility.contains(*stage) {
+                    continue;
+                }
                 let slot = target(&entry.ty, &mut counts[s]);
                 let binds = &mut group.stages[s];
                 match resource {
                     wgpu::BindingResource::Buffer(b) => {
-                        let store = b.buffer.as_custom::<MetalBuffer>().expect("a Metal buffer").store.clone();
-                        if slot.mutable { store.gpu_write(); }
-                        binds.buffers.push(BufferBind { slot: slot.buffer.unwrap(), store, offset: b.offset, dynamic: dynamic_index });
+                        let store = b
+                            .buffer
+                            .as_custom::<MetalBuffer>()
+                            .expect("a Metal buffer")
+                            .store
+                            .clone();
+                        if slot.mutable {
+                            store.gpu_write();
+                        }
+                        binds.buffers.push(BufferBind {
+                            slot: slot.buffer.unwrap(),
+                            store,
+                            offset: b.offset,
+                            dynamic: dynamic_index,
+                        });
                     }
                     wgpu::BindingResource::TextureView(v) => {
-                        let view = &v.as_custom::<MetalView>().expect("a Metal texture view").raw;
-                        binds.textures.push((slot.texture.unwrap(), view.raw.clone()));
+                        let view = &v
+                            .as_custom::<MetalView>()
+                            .expect("a Metal texture view")
+                            .raw;
+                        binds
+                            .textures
+                            .push((slot.texture.unwrap(), view.raw.clone()));
                         group.owners.extend(view.owner.clone());
                     }
                     wgpu::BindingResource::Sampler(sampler) => {
-                        let Some(msl::BindSamplerTarget::Resource(at)) = slot.sampler else { unreachable!() };
-                        binds.samplers.push((at, sampler.as_custom::<MetalSampler>().expect("a Metal sampler").raw.0.clone()));
+                        let Some(msl::BindSamplerTarget::Resource(at)) = slot.sampler else {
+                            unreachable!()
+                        };
+                        binds.samplers.push((
+                            at,
+                            sampler
+                                .as_custom::<MetalSampler>()
+                                .expect("a Metal sampler")
+                                .raw
+                                .0
+                                .clone(),
+                        ));
                     }
                     other => super::unsupported!("bind group resource {other:?}"),
                 }
             }
         }
-        BindGroup { raw: Arc::new(group) }
+        BindGroup {
+            raw: Arc::new(group),
+        }
     }
 }
 

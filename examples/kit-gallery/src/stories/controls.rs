@@ -32,9 +32,9 @@ pub(super) fn button_sizes(_: &G, k: &Kit, _: &mut Vec<El>) -> El {
 }
 
 pub(super) fn button_icon(_: &G, k: &Kit, _: &mut Vec<El>) -> El {
-    flex(12.0)
-        .child(Button::new("Regular").icon(&ic::PLUS).build(k))
-        .child(Button::new("Large").variant(ButtonVariant::Contrast).control_size(ControlSize::Large).icon(&ic::PLUS).build(k))
+    flex(12.0).child(Button::new("Regular").icon(&ic::PLUS).build(k)).child(
+        Button::new("Large").variant(ButtonVariant::Contrast).control_size(ControlSize::Large).icon(&ic::PLUS).build(k),
+    )
 }
 
 pub(super) fn button_all_states(_: &G, k: &Kit, _: &mut Vec<El>) -> El {
@@ -92,7 +92,9 @@ pub(super) fn icon_button_all_states(_: &G, k: &Kit, _: &mut Vec<El>) -> El {
     for (name, v) in variants {
         let mut r = row().gap(8.0).flex_wrap();
         for (state, st) in STATES {
-            r = r.child(IconButton::new(&ic::PLUS).label("Add").variant(v).state(st).build(k).key(format!("{name}-{state}")));
+            r = r.child(
+                IconButton::new(&ic::PLUS).label("Add").variant(v).state(st).build(k).key(format!("{name}-{state}")),
+            );
         }
         c = c.child(col().gap(8.0).child(caption(k, &title_case(name))).child(r));
     }
@@ -127,14 +129,28 @@ pub(super) fn switch_states(s: &G, k: &Kit, _: &mut Vec<El>) -> El {
 
 /// Every control size off, on, hovered and pressed.
 pub(super) fn switch_sizes(s: &G, k: &Kit, _: &mut Vec<El>) -> El {
-    let sizes = [("Mini", ControlSize::Mini), ("Small", ControlSize::Small), ("Regular", ControlSize::Regular),
-        ("Large", ControlSize::Large), ("Extra large", ControlSize::ExtraLarge)];
+    let sizes = [
+        ("Mini", ControlSize::Mini),
+        ("Small", ControlSize::Small),
+        ("Regular", ControlSize::Regular),
+        ("Large", ControlSize::Large),
+        ("Extra large", ControlSize::ExtraLarge),
+    ];
     col().gap(12.0).children(sizes.into_iter().map(|(name, size)| {
         let key = format!("size-{name}");
         let sw = |on: bool, st: State| Switch::new(on).control_size(size).state(st).build(k);
-        row().gap(12.0).center_y()
+        row()
+            .gap(12.0)
+            .center_y()
             .child(caption(k, name).w(80.0))
-            .child(Switch::new(s.is(&key)).control_size(size).label(name).hide_label().on_toggle(move |s: &mut G| s.flip(&key)).build(k))
+            .child(
+                Switch::new(s.is(&key))
+                    .control_size(size)
+                    .label(name)
+                    .hide_label()
+                    .on_toggle(move |s: &mut G| s.flip(&key))
+                    .build(k),
+            )
             .child(sw(true, State::Rest))
             .child(sw(false, State::Hover))
             .child(sw(true, State::Pressed))
@@ -144,12 +160,21 @@ pub(super) fn switch_sizes(s: &G, k: &Kit, _: &mut Vec<El>) -> El {
 /// The compact switch as the web draws it (`Switch::web`): off and on, at rest, hovered,
 /// keyboard-focused and disabled.
 pub(super) fn switch_web(s: &G, k: &Kit, _: &mut Vec<El>) -> El {
-    let states = [("Rest", State::Rest), ("Hover", State::Hover), ("Focus", State::Focus), ("Disabled", State::Disabled)];
-    col().gap(12.0)
-        .child(row().gap(12.0).center_y().child(caption(k, "Live").w(80.0))
-            .child(Switch::new(s.is("web")).web().label("Web").hide_label().on_toggle(flip("web")).build(k)))
+    let states =
+        [("Rest", State::Rest), ("Hover", State::Hover), ("Focus", State::Focus), ("Disabled", State::Disabled)];
+    col()
+        .gap(12.0)
+        .child(
+            row()
+                .gap(12.0)
+                .center_y()
+                .child(caption(k, "Live").w(80.0))
+                .child(Switch::new(s.is("web")).web().label("Web").hide_label().on_toggle(flip("web")).build(k)),
+        )
         .children(states.into_iter().map(|(name, st)| {
-            row().gap(16.0).center_y()
+            row()
+                .gap(16.0)
+                .center_y()
                 .child(caption(k, name).w(80.0))
                 .child(Switch::new(false).web().state(st).build(k))
                 .child(Switch::new(true).web().state(st).build(k))

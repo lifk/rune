@@ -2,12 +2,27 @@ use super::Resample;
 
 /// A window's drawables: presents number them, Metal reports them on screen later.
 #[derive(Default)]
-struct Sim { state: Resample, acquired: u64, on_screen: u64, resamples: usize }
+struct Sim {
+    state: Resample,
+    acquired: u64,
+    on_screen: u64,
+    resamples: usize,
+}
 
 impl Sim {
-    fn present(&mut self) -> u64 { self.acquired += 1; self.state.presented(self.acquired); self.acquired }
-    fn land(&mut self, n: u64) { self.on_screen = self.on_screen.max(n); }
-    fn turn(&mut self) { if self.state.turn(self.on_screen) { self.resamples += 1; } }
+    fn present(&mut self) -> u64 {
+        self.acquired += 1;
+        self.state.presented(self.acquired);
+        self.acquired
+    }
+    fn land(&mut self, n: u64) {
+        self.on_screen = self.on_screen.max(n);
+    }
+    fn turn(&mut self) {
+        if self.state.turn(self.on_screen) {
+            self.resamples += 1;
+        }
+    }
     /// Present a frame, let a turn pass before it lands, then land it and turn again.
     fn frame(&mut self) {
         let n = self.present();
@@ -25,7 +40,10 @@ fn first_show_resamples_once_its_first_frame_is_on_screen() {
     assert_eq!(sim.resamples, 0, "nothing presented yet");
     let n = sim.present();
     sim.turn();
-    assert_eq!(sim.resamples, 0, "presented but not on screen: the old pixels would be sampled");
+    assert_eq!(
+        sim.resamples, 0,
+        "presented but not on screen: the old pixels would be sampled"
+    );
     sim.land(n);
     sim.turn();
     assert_eq!(sim.resamples, 1);
@@ -36,13 +54,20 @@ fn first_show_resamples_once_its_first_frame_is_on_screen() {
 #[test]
 fn ordinary_frames_never_resample() {
     let mut sim = Sim::default();
-    for _ in 0..20 { sim.frame(); }
+    for _ in 0..20 {
+        sim.frame();
+    }
     assert_eq!(sim.resamples, 0);
     sim.state.shown(sim.acquired);
     sim.turn();
     assert_eq!(sim.resamples, 1);
-    for _ in 0..20 { sim.frame(); }
-    assert_eq!(sim.resamples, 1, "frames after the resample don't repeat it");
+    for _ in 0..20 {
+        sim.frame();
+    }
+    assert_eq!(
+        sim.resamples, 1,
+        "frames after the resample don't repeat it"
+    );
 }
 
 #[test]
@@ -57,7 +82,10 @@ fn resize_and_scale_wait_for_a_frame_drawn_after_them() {
         sim.state.redraw();
         sim.land(stale);
         sim.turn();
-        assert_eq!(sim.resamples, 1, "{change}: a frame presented before it is the old shape");
+        assert_eq!(
+            sim.resamples, 1,
+            "{change}: a frame presented before it is the old shape"
+        );
         sim.frame();
         assert_eq!(sim.resamples, 2, "{change}: the first frame after it");
         sim.frame();
@@ -77,7 +105,10 @@ fn a_live_resize_resamples_after_it_settles() {
         sim.land(n);
         sim.turn();
     }
-    assert_eq!(sim.resamples, 0, "each frame was already stale when it landed");
+    assert_eq!(
+        sim.resamples, 0,
+        "each frame was already stale when it landed"
+    );
     sim.frame();
     assert_eq!(sim.resamples, 1);
 }

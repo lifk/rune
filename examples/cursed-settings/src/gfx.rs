@@ -28,7 +28,11 @@ struct Tex {
 fn tex(device: &wgpu::Device, label: &str, size: (u32, u32), usage: wgpu::TextureUsages) -> Tex {
     let tex = device.create_texture(&wgpu::TextureDescriptor {
         label: Some(label),
-        size: wgpu::Extent3d { width: size.0, height: size.1, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width: size.0,
+            height: size.1,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -96,7 +100,13 @@ struct Fullscreen {
     bgl: wgpu::BindGroupLayout,
 }
 
-fn fullscreen(device: &wgpu::Device, module: &wgpu::ShaderModule, entry: &str, format: wgpu::TextureFormat, blend: Option<wgpu::BlendState>) -> Fullscreen {
+fn fullscreen(
+    device: &wgpu::Device,
+    module: &wgpu::ShaderModule,
+    entry: &str,
+    format: wgpu::TextureFormat,
+    blend: Option<wgpu::BlendState>,
+) -> Fullscreen {
     let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some(entry),
         entries: &[
@@ -113,16 +123,29 @@ fn fullscreen(device: &wgpu::Device, module: &wgpu::ShaderModule, entry: &str, f
             wgpu::BindGroupLayoutEntry {
                 binding: 1,
                 visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
                 count: None,
             },
         ],
     });
-    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some(entry), bind_group_layouts: &[Some(&bgl)], immediate_size: 0 });
+    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some(entry),
+        bind_group_layouts: &[Some(&bgl)],
+        immediate_size: 0,
+    });
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some(entry),
         layout: Some(&layout),
-        vertex: wgpu::VertexState { module, entry_point: Some("vs"), compilation_options: Default::default(), buffers: &[] },
+        vertex: wgpu::VertexState {
+            module,
+            entry_point: Some("vs"),
+            compilation_options: Default::default(),
+            buffers: &[],
+        },
         primitive: Default::default(),
         depth_stencil: None,
         multisample: Default::default(),
@@ -130,7 +153,11 @@ fn fullscreen(device: &wgpu::Device, module: &wgpu::ShaderModule, entry: &str, f
             module,
             entry_point: Some(entry),
             compilation_options: Default::default(),
-            targets: &[Some(wgpu::ColorTargetState { format, blend, write_mask: wgpu::ColorWrites::ALL })],
+            targets: &[Some(wgpu::ColorTargetState {
+                format,
+                blend,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
         }),
         multiview_mask: None,
         cache: None,
@@ -155,11 +182,35 @@ impl Timer {
         if !device.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
             return None;
         }
-        let qs = device.create_query_set(&wgpu::QuerySetDescriptor { label: Some("cursed ts"), ty: wgpu::QueryType::Timestamp, count: 2 });
-        let buf = |label, usage| device.create_buffer(&wgpu::BufferDescriptor { label: Some(label), size: 16, usage, mapped_at_creation: false });
-        let resolve = buf("cursed ts resolve", wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC);
-        let read = buf("cursed ts read", wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ);
-        Some(Timer { qs, resolve, read, state: Arc::new(AtomicU8::new(0)), period: queue.get_timestamp_period(), recording: false })
+        let qs = device.create_query_set(&wgpu::QuerySetDescriptor {
+            label: Some("cursed ts"),
+            ty: wgpu::QueryType::Timestamp,
+            count: 2,
+        });
+        let buf = |label, usage| {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size: 16,
+                usage,
+                mapped_at_creation: false,
+            })
+        };
+        let resolve = buf(
+            "cursed ts resolve",
+            wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
+        );
+        let read = buf(
+            "cursed ts read",
+            wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        );
+        Some(Timer {
+            qs,
+            resolve,
+            read,
+            state: Arc::new(AtomicU8::new(0)),
+            period: queue.get_timestamp_period(),
+            recording: false,
+        })
     }
 
     /// Collects a finished reading (ms) and decides whether this frame records one. Last frame's queries are
@@ -176,7 +227,11 @@ impl Timer {
             1 => {
                 self.state.store(2, Ordering::Release);
                 let st = self.state.clone();
-                self.read.slice(..).map_async(wgpu::MapMode::Read, move |r| st.store(if r.is_ok() { 3 } else { 0 }, Ordering::Release));
+                self.read
+                    .slice(..)
+                    .map_async(wgpu::MapMode::Read, move |r| {
+                        st.store(if r.is_ok() { 3 } else { 0 }, Ordering::Release)
+                    });
             }
             3 => {
                 if let Ok(data) = self.read.slice(..).get_mapped_range() {
@@ -225,19 +280,49 @@ struct Res {
 }
 
 impl Res {
-    fn new(device: &wgpu::Device, queue: &wgpu::Queue, size: (u32, u32), format: wgpu::TextureFormat, ui: &mut rune::render::Renderer) -> Res {
+    fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        size: (u32, u32),
+        format: wgpu::TextureFormat,
+        ui: &mut rune::render::Renderer,
+    ) -> Res {
         use wgpu::TextureUsages as U;
         ui.add_format(device, HDR);
         let rt = U::RENDER_ATTACHMENT | U::TEXTURE_BINDING;
         let scene = tex(device, "cursed scene", size, rt | U::COPY_SRC);
-        let backdrop = tex(device, "cursed backdrop", size, U::TEXTURE_BINDING | U::COPY_DST);
+        let backdrop = tex(
+            device,
+            "cursed backdrop",
+            size,
+            U::TEXTURE_BINDING | U::COPY_DST,
+        );
         let node = tex(device, "cursed node layer", size, rt);
         let base = tex(device, "cursed base", size, rt);
         let text = tex(device, "cursed text", size, rt);
         let lit = tex(device, "cursed lit", size, rt);
-        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("cursed"), source: wgpu::ShaderSource::Wgsl(SHADERS.into()) });
-        let resolve = fullscreen(device, &module, if format.is_srgb() { "fs_resolve_srgb" } else { "fs_resolve_unorm" }, format, None);
-        let blit = fullscreen(device, &module, "fs_blit", HDR, Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING));
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("cursed"),
+            source: wgpu::ShaderSource::Wgsl(SHADERS.into()),
+        });
+        let resolve = fullscreen(
+            device,
+            &module,
+            if format.is_srgb() {
+                "fs_resolve_srgb"
+            } else {
+                "fs_resolve_unorm"
+            },
+            format,
+            None,
+        );
+        let blit = fullscreen(
+            device,
+            &module,
+            "fs_blit",
+            HDR,
+            Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+        );
         let blit_alpha = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("cursed blit alpha"),
             size: 16,
@@ -249,8 +334,14 @@ impl Res {
                 label: None,
                 layout: &f.bgl,
                 entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(v) },
-                    wgpu::BindGroupEntry { binding: 1, resource: blit_alpha.as_entire_binding() },
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(v),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: blit_alpha.as_entire_binding(),
+                    },
                 ],
             })
         };
@@ -283,14 +374,24 @@ fn pass<'e>(
     clear: Option<[f32; 4]>,
     timestamp_writes: Option<wgpu::RenderPassTimestampWrites<'e>>,
 ) -> wgpu::RenderPass<'e> {
-    let load = clear.map_or(wgpu::LoadOp::Load, |c| wgpu::LoadOp::Clear(wgpu::Color { r: c[0] as f64, g: c[1] as f64, b: c[2] as f64, a: c[3] as f64 }));
+    let load = clear.map_or(wgpu::LoadOp::Load, |c| {
+        wgpu::LoadOp::Clear(wgpu::Color {
+            r: c[0] as f64,
+            g: c[1] as f64,
+            b: c[2] as f64,
+            a: c[3] as f64,
+        })
+    });
     enc.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("cursed"),
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
             view,
             depth_slice: None,
             resolve_target: None,
-            ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
+            ops: wgpu::Operations {
+                load,
+                store: wgpu::StoreOp::Store,
+            },
         })],
         depth_stencil_attachment: None,
         timestamp_writes,
@@ -319,10 +420,18 @@ fn prim(ins: &Instance, material: u8, s: f32) -> Option<Prim> {
         return None;
     }
     let a = ins.fill[3].max(1e-4);
-    let p = Prim::from_rune(ins.rect, ins.radii).albedo([ins.fill[0] / a, ins.fill[1] / a, ins.fill[2] / a]);
+    let p = Prim::from_rune(ins.rect, ins.radii).albedo([
+        ins.fill[0] / a,
+        ins.fill[1] / a,
+        ins.fill[2] / a,
+    ]);
     Some(match material {
         mat::CARD => p.raised(5.0 * s).bevel(5.0 * s, 1.5 * s).gloss(0.45, 0.45),
-        mat::CONTROL => p.on(5.0 * s).raised(2.5 * s).bevel(4.0 * s, 1.2 * s).gloss(0.6, 0.35),
+        mat::CONTROL => p
+            .on(5.0 * s)
+            .raised(2.5 * s)
+            .bevel(4.0 * s, 1.2 * s)
+            .gloss(0.6, 0.35),
         mat::SEL => p.raised(1.5 * s).bevel(4.0 * s, 0.8 * s).gloss(0.5, 0.4),
         _ => return None,
     })
@@ -339,12 +448,26 @@ impl Compositor<Cursed> for Gfx {
 
     fn summary(&mut self, _device: &wgpu::Device) -> Option<String> {
         let (sum, n) = self.total_gpu;
-        let gpu = if n > 0 { format!("gpu frame mean {:.3} ms over {n} timed frames", sum / n as f64) } else { "no GPU timestamps".to_owned() };
-        Some(format!("cursed-settings: {gpu}; {} frames, {} lit, at most {} effect layers", self.frames, self.lit_frames, self.max_layers))
+        let gpu = if n > 0 {
+            format!(
+                "gpu frame mean {:.3} ms over {n} timed frames",
+                sum / n as f64
+            )
+        } else {
+            "no GPU timestamps".to_owned()
+        };
+        Some(format!(
+            "cursed-settings: {gpu}; {} frames, {} lit, at most {} effect layers",
+            self.frames, self.lit_frames, self.max_layers
+        ))
     }
 
     fn render(&mut self, f: &mut Frame<'_, Cursed>) {
-        if self.res.as_ref().is_none_or(|r| r.size != f.size || r.format != f.format) {
+        if self
+            .res
+            .as_ref()
+            .is_none_or(|r| r.size != f.size || r.format != f.format)
+        {
             self.res = Some(Res::new(f.device, f.queue, f.size, f.format, f.ui));
         }
         self.view_pending = false;
@@ -384,7 +507,11 @@ impl Compositor<Cursed> for Gfx {
         }
 
         // ---- the gags
-        let rect = |k: &str| rt.presented(k).filter(|(r, _)| r[2] > 0.0 && r[3] > 0.0).map(|(r, a)| (Rect::new(r[0], r[1], r[2], r[3]), a));
+        let rect = |k: &str| {
+            rt.presented(k)
+                .filter(|(r, _)| r[2] > 0.0 && r[3] > 0.0)
+                .map(|(r, a)| (Rect::new(r[0], r[1], r[2], r[3]), a))
+        };
         let targets = Targets {
             fast: rect("fast-switch"),
             search: rect("search"),
@@ -418,7 +545,8 @@ impl Compositor<Cursed> for Gfx {
         let inst = &rt.instances;
         let marks = &rt.marks;
         let mut main: Vec<Instance> = Vec::with_capacity(inst.len());
-        let (mut base, mut text, mut nodel, mut top) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        let (mut base, mut text, mut nodel, mut top) =
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new());
         let mut prims: Vec<Prim> = Vec::new();
         let mut first: HashMap<u16, usize> = HashMap::new();
         let mut last: HashMap<u16, usize> = HashMap::new();
@@ -462,8 +590,14 @@ impl Compositor<Cursed> for Gfx {
         }
         let mut lays = out.lays;
         if let Some((p, samples, rest)) = out.flush {
-            let layer = Fx::motion_blur(p, samples).on(Shape::rounded(rest.x, rest.y, rest.w, rest.h, 8.0)).source(SRC_NODE, vp).at(t);
-            lays.push(crate::gags::Lay { layer, anchor: Anchor::Over(node::CACHE) });
+            let layer = Fx::motion_blur(p, samples)
+                .on(Shape::rounded(rest.x, rest.y, rest.w, rest.h, 8.0))
+                .source(SRC_NODE, vp)
+                .at(t);
+            lays.push(crate::gags::Lay {
+                layer,
+                anchor: Anchor::Over(node::CACHE),
+            });
         }
         let mut layers: Vec<FxLayer> = Vec::new();
         let mut needs_bd: Vec<bool> = Vec::new();
@@ -486,19 +620,37 @@ impl Compositor<Cursed> for Gfx {
 
         // ---- upload and draw
         let clear = rt.clear_color();
-        let ranges = f.ui.prepare_lists(f.device, f.queue, &mut rt.text.atlas, &[&main, &base, &text, &nodel, &top], f.size);
+        let ranges = f.ui.prepare_lists(
+            f.device,
+            f.queue,
+            &mut rt.text.atlas,
+            &[&main, &base, &text, &nodel, &top],
+            f.size,
+        );
         let sources = [&res.node.view];
-        res.fx.prepare(f.device, f.queue, &FxFrame { viewport: [w, h], scale, layers: &layers, backdrop: Some(&res.backdrop.view), sources: &sources });
+        res.fx.prepare(
+            f.device,
+            f.queue,
+            &FxFrame {
+                viewport: [w, h],
+                scale,
+                layers: &layers,
+                backdrop: Some(&res.backdrop.view),
+                sources: &sources,
+            },
+        );
         let enc = &mut *f.encoder;
         let tq = res.timer.as_ref().and_then(Timer::query);
         let mut began = false;
         let mut stamp = |end: bool| {
             let first = !std::mem::replace(&mut began, true);
-            tq.as_ref().filter(|_| first || end).map(|q| wgpu::RenderPassTimestampWrites {
-                query_set: q,
-                beginning_of_pass_write_index: first.then_some(0),
-                end_of_pass_write_index: end.then_some(1),
-            })
+            tq.as_ref()
+                .filter(|_| first || end)
+                .map(|q| wgpu::RenderPassTimestampWrites {
+                    query_set: q,
+                    beginning_of_pass_write_index: first.then_some(0),
+                    end_of_pass_write_index: end.then_some(1),
+                })
         };
         if !nodel.is_empty() {
             let mut p = pass(enc, &res.node.view, Some([0.0; 4]), stamp(false));
@@ -508,7 +660,12 @@ impl Compositor<Cursed> for Gfx {
         if lit_on {
             let a = clear[3].max(1e-4);
             {
-                let mut p = pass(enc, &res.base.view, Some([clear[0] / a, clear[1] / a, clear[2] / a, 1.0]), stamp(false));
+                let mut p = pass(
+                    enc,
+                    &res.base.view,
+                    Some([clear[0] / a, clear[1] / a, clear[2] / a, 1.0]),
+                    stamp(false),
+                );
                 f.ui.draw_range(&mut p, HDR, ranges[1].clone());
             }
             {
@@ -522,9 +679,28 @@ impl Compositor<Cursed> for Gfx {
             }
             let mut st = out.settings;
             st.time = t;
-            let light = res.light.get_or_insert_with(|| LightRenderer::new(f.device, f.queue, w, h, HDR));
-            lit_drawn = light.render(f.device, f.queue, enc, &LightScene { prims: &prims, lights: &lights, settings: st, emission: None }, &res.base.view, &res.text.view, &res.lit.view);
-            f.queue.write_buffer(&res.blit_alpha, 0, bytemuck::cast_slice(&[out.lit, 0.0, 0.0, 0.0]));
+            let light = res
+                .light
+                .get_or_insert_with(|| LightRenderer::new(f.device, f.queue, w, h, HDR));
+            lit_drawn = light.render(
+                f.device,
+                f.queue,
+                enc,
+                &LightScene {
+                    prims: &prims,
+                    lights: &lights,
+                    settings: st,
+                    emission: None,
+                },
+                &res.base.view,
+                &res.text.view,
+                &res.lit.view,
+            );
+            f.queue.write_buffer(
+                &res.blit_alpha,
+                0,
+                bytemuck::cast_slice(&[out.lit, 0.0, 0.0, 0.0]),
+            );
             self.lit_frames += 1;
         }
         let mut cursor = 0usize;
@@ -532,7 +708,11 @@ impl Compositor<Cursed> for Gfx {
         let main_range = ranges[0].clone();
         for (pos, op) in ops {
             if pos > cursor {
-                f.ui.draw_range(&mut rp, HDR, main_range.start + cursor as u32..main_range.start + pos as u32);
+                f.ui.draw_range(
+                    &mut rp,
+                    HDR,
+                    main_range.start + cursor as u32..main_range.start + pos as u32,
+                );
                 cursor = pos;
             }
             match op {
@@ -547,9 +727,23 @@ impl Compositor<Cursed> for Gfx {
                     if needs_bd[i] {
                         drop(rp);
                         enc.copy_texture_to_texture(
-                            wgpu::TexelCopyTextureInfo { texture: &res.scene.tex, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
-                            wgpu::TexelCopyTextureInfo { texture: &res.backdrop.tex, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
-                            wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+                            wgpu::TexelCopyTextureInfo {
+                                texture: &res.scene.tex,
+                                mip_level: 0,
+                                origin: wgpu::Origin3d::ZERO,
+                                aspect: wgpu::TextureAspect::All,
+                            },
+                            wgpu::TexelCopyTextureInfo {
+                                texture: &res.backdrop.tex,
+                                mip_level: 0,
+                                origin: wgpu::Origin3d::ZERO,
+                                aspect: wgpu::TextureAspect::All,
+                            },
+                            wgpu::Extent3d {
+                                width: w,
+                                height: h,
+                                depth_or_array_layers: 1,
+                            },
                         );
                         rp = pass(enc, &res.scene.view, None, None).forget_lifetime();
                     }
@@ -558,7 +752,11 @@ impl Compositor<Cursed> for Gfx {
             }
         }
         if cursor < end {
-            f.ui.draw_range(&mut rp, HDR, main_range.start + cursor as u32..main_range.end);
+            f.ui.draw_range(
+                &mut rp,
+                HDR,
+                main_range.start + cursor as u32..main_range.end,
+            );
         }
         f.ui.draw_range(&mut rp, HDR, ranges[4].clone());
         drop(rp);

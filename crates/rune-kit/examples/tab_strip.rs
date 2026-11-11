@@ -9,11 +9,14 @@
 //! with forty tabs, so the titlebar strip scrolls with feathered edges and the side tabs do too.
 //! Stills: `-- --snap tabs.png --theme dark --size 1280x800`.
 use rune::{AppSpec, Color, Cx, El, Tx, col, row, text};
-use rune_kit::shell::{TabDragState, TabItem, TabItemStatus, TabOrientation, TabReorder, TabStrip, TabTearOut, TearOutSpec, WindowTitlebar};
+use rune_kit::shell::{
+    TabDragState, TabItem, TabItemStatus, TabOrientation, TabReorder, TabStrip, TabTearOut, TearOutSpec, WindowTitlebar,
+};
 use rune_kit::{Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, Kit};
 use rune_theme_opencode::icons as ic;
 
-const PROJECTS: [(&str, &str); 5] = [("acme-web", "gray"), ("tally", "orange"), ("notes", "blue"), ("rune", "green"), ("site", "purple")];
+const PROJECTS: [(&str, &str); 5] =
+    [("acme-web", "gray"), ("tally", "orange"), ("notes", "blue"), ("rune", "green"), ("site", "purple")];
 const TITLES: [&str; 12] = [
     "Formatting tour",
     "Fix price formatting",
@@ -57,7 +60,14 @@ fn tab(i: usize) -> Tab {
         6 => Some(TabItemStatus::Failed),
         _ => None,
     };
-    Tab { id: format!("s{i}"), title: TITLES[i % TITLES.len()].into(), project: i % PROJECTS.len(), status, draft: false, pinned: false }
+    Tab {
+        id: format!("s{i}"),
+        title: TITLES[i % TITLES.len()].into(),
+        project: i % PROJECTS.len(),
+        status,
+        draft: false,
+        pinned: false,
+    }
 }
 
 fn with_tabs(n: usize, active: usize) -> App {
@@ -109,7 +119,14 @@ fn tear_out(s: &mut App, t: TabTearOut, _: &mut Tx) {
 fn new_tab(s: &mut App) {
     let id = format!("d{}", s.next);
     s.next += 1;
-    s.tabs.push(Tab { id: id.clone(), title: "New session".into(), project: 0, status: None, draft: true, pinned: false });
+    s.tabs.push(Tab {
+        id: id.clone(),
+        title: "New session".into(),
+        project: 0,
+        status: None,
+        draft: true,
+        pinned: false,
+    });
     s.active = Some(id);
 }
 
@@ -125,7 +142,11 @@ fn avatar(name: &str, variant: &str, k: &Kit) -> El {
         .fill(t.color(&format!("v2-avatar-bg-{variant}")))
         .gradient(t.color("v2-alpha-light-16"), Color::TRANSPARENT)
         .border(0.5, t.color(&format!("v2-avatar-border-{variant}")))
-        .child(text(initial).font(rune::TextStyle { size: 11.0, weight: 530.0, line_height: 11.0, tracking: 0.05, ..k.ty.small }).color(t.color("v2-avatar-fg")))
+        .child(
+            text(initial)
+                .font(rune::TextStyle { size: 11.0, weight: 530.0, line_height: 11.0, tracking: 0.05, ..k.ty.small })
+                .color(t.color("v2-avatar-fg")),
+        )
 }
 
 fn items<'a>(s: &'a App, k: &Kit, two_line: bool) -> Vec<TabItem<'a, App>> {
@@ -144,7 +165,14 @@ fn items<'a>(s: &'a App, k: &Kit, two_line: bool) -> Vec<TabItem<'a, App>> {
 }
 
 fn titlebar(s: &App, cx: &mut Cx<App>, k: &Kit, layer: &mut Vec<El>) -> El {
-    let nav = |glyph, label: &str| IconButton::new(glyph).control_size(ControlSize::Large).variant(IconButtonVariant::GhostMuted).label(label).build(k).w(36.0);
+    let nav = |glyph, label: &str| {
+        IconButton::new(glyph)
+            .control_size(ControlSize::Large)
+            .variant(IconButtonVariant::GhostMuted)
+            .label(label)
+            .build(k)
+            .w(36.0)
+    };
     let plus = IconButton::new(&ic::PLUS)
         .control_size(ControlSize::Large)
         .variant(IconButtonVariant::GhostMuted)
@@ -166,7 +194,14 @@ fn titlebar(s: &App, cx: &mut Cx<App>, k: &Kit, layer: &mut Vec<El>) -> El {
         .on_tear_out(tear_out)
         .build_layered(k, layer);
     WindowTitlebar::from_insets(cx.chrome_insets(), 1.0)
-        .leading(row().key("nav").gap(2.0).center_y().child(nav(&ic::GRID_PLUS, "Home")).child(nav(&ic::MAGNIFYING_GLASS, "Search sessions")))
+        .leading(
+            row()
+                .key("nav")
+                .gap(2.0)
+                .center_y()
+                .child(nav(&ic::GRID_PLUS, "Home"))
+                .child(nav(&ic::MAGNIFYING_GLASS, "Search sessions")),
+        )
         .tabs(strip)
         .build(k)
 }
@@ -210,14 +245,17 @@ fn card(s: &App, k: &Kit) -> El {
     let title = s.tabs.iter().find(|t| Some(&t.id) == s.active.as_ref()).map_or("No tab", |t| t.title.as_str());
     let more = Button::new("Add 12 tabs")
         .variant(ButtonVariant::Neutral)
-        .on_press(|s: &mut App| (0..12).for_each(|_| {
-            let t = tab(s.next);
-            s.next += 1;
-            s.tabs.push(Tab { id: format!("x{}", s.next), ..t });
-        }))
+        .on_press(|s: &mut App| {
+            (0..12).for_each(|_| {
+                let t = tab(s.next);
+                s.next += 1;
+                s.tabs.push(Tab { id: format!("x{}", s.next), ..t });
+            })
+        })
         .build(k)
         .key("add-many");
-    let reset = Button::new("Reset").variant(ButtonVariant::Ghost).on_press(|s: &mut App| *s = init()).build(k).key("reset");
+    let reset =
+        Button::new("Reset").variant(ButtonVariant::Ghost).on_press(|s: &mut App| *s = init()).build(k).key("reset");
     col()
         .key("card")
         .grow(1.0)
@@ -231,8 +269,20 @@ fn card(s: &App, k: &Kit) -> El {
         .fill(c.bg_base)
         .padding(24.0)
         .gap(20.0)
-        .child(text(title.to_owned()).key("heading").font(k.ty.body_medium).color(c.text_base).motion_intent(rune::MotionIntent::CUT))
-        .child(row().gap(8.0).child(more).child(reset).child(text(s.note.clone()).key("note").font(k.ty.ui).color(c.text_muted)))
+        .child(
+            text(title.to_owned())
+                .key("heading")
+                .font(k.ty.body_medium)
+                .color(c.text_base)
+                .motion_intent(rune::MotionIntent::CUT),
+        )
+        .child(
+            row()
+                .gap(8.0)
+                .child(more)
+                .child(reset)
+                .child(text(s.note.clone()).key("note").font(k.ty.ui).color(c.text_muted)),
+        )
         .child(sample(s, k, 0, 720.0, "Full (over 64 points)"))
         .child(sample(s, k, 1, 470.0, "Compact (44 to 64 points)"))
         .child(sample(s, k, 2, 290.0, "Icon only (44 points or less)"))
@@ -243,7 +293,13 @@ fn view(s: &App, cx: &mut Cx<App>) -> El {
     let mut layer = Vec::new();
     let bar = titlebar(s, cx, k, &mut layer);
     rune_kit::root(
-        col().key("window").w_full().h_full().fill(k.c.bg_deep).child(bar).child(row().key("body").w_full().grow(1.0).min_h(0.0).child(sidebar(s, k)).child(card(s, k))),
+        col()
+            .key("window")
+            .w_full()
+            .h_full()
+            .fill(k.c.bg_deep)
+            .child(bar)
+            .child(row().key("body").w_full().grow(1.0).min_h(0.0).child(sidebar(s, k)).child(card(s, k))),
         layer,
     )
 }
@@ -252,7 +308,11 @@ fn main() {
     rune::App::new(AppSpec {
         fonts: rune_theme_opencode::FONTS,
         families: rune_theme_opencode::FAMILIES,
-        scenes: &[("tabs", |s: &mut App| *s = init()), ("overflow", |s: &mut App| *s = with_tabs(40, 2)), ("single", |s: &mut App| *s = with_tabs(1, 0))],
+        scenes: &[
+            ("tabs", |s: &mut App| *s = init()),
+            ("overflow", |s: &mut App| *s = with_tabs(40, 2)),
+            ("single", |s: &mut App| *s = with_tabs(1, 0)),
+        ],
         ..AppSpec::new("Tab strip", (1280.0, 800.0), init, view)
     })
     .titlebar(rune::Titlebar::new(44.0))

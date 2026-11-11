@@ -18,7 +18,10 @@
 use std::collections::BTreeSet;
 use std::fmt::Write;
 
-use wasmparser::{BlockType, DataKind, ElementItems, ElementKind, ExternalKind, FunctionBody, Operator, Parser, Payload, TypeRef, ValType};
+use wasmparser::{
+    BlockType, DataKind, ElementItems, ElementKind, ExternalKind, FunctionBody, Operator, Parser,
+    Payload, TypeRef, ValType,
+};
 
 /// The Rust source for `wasm`: `mod generated` with `Wasm` (`Wasm::new()` and one method per
 /// exported function, in snake case).
@@ -43,17 +46,30 @@ pub fn translate(wasm: &[u8]) -> Result<String, String> {
     out.push_str("        }\n    }\n");
     for (name, f) in &m.exports {
         let sig = m.sig_of(*f);
-        let _ = writeln!(out, "\n    pub fn {}(&mut self{}){} {{\n        f{f}(self{})\n    }}", snake(name), params(&sig.params, ""), ret(&sig.results)?, args(sig.params.len()));
+        let _ = writeln!(
+            out,
+            "\n    pub fn {}(&mut self{}){} {{\n        f{f}(self{})\n    }}",
+            snake(name),
+            params(&sig.params, ""),
+            ret(&sig.results)?,
+            args(sig.params.len())
+        );
     }
     out.push_str("}\n\n");
     let mut indirect = BTreeSet::new();
     for (k, body) in m.bodies.iter().enumerate() {
         let index = m.imports.len() as u32 + k as u32;
-        Func::emit(&mut out, &m, index, body, &mut indirect).map_err(|e| format!("function {index}: {e}"))?;
+        Func::emit(&mut out, &m, index, body, &mut indirect)
+            .map_err(|e| format!("function {index}: {e}"))?;
     }
     for t in indirect {
         let sig = &m.types[t as usize];
-        let _ = writeln!(out, "fn call_indirect_{t}(m: &mut Wasm, at: i32{}){} {{\n    match at {{", params(&sig.params, ""), ret(&sig.results)?);
+        let _ = writeln!(
+            out,
+            "fn call_indirect_{t}(m: &mut Wasm, at: i32{}){} {{\n    match at {{",
+            params(&sig.params, ""),
+            ret(&sig.results)?
+        );
         for (i, f) in m.table.iter().enumerate() {
             if let Some(f) = f
                 && m.sig_of(*f) == sig
@@ -130,21 +146,41 @@ struct Module<'a> {
 
 impl<'a> Module<'a> {
     fn read(wasm: &'a [u8]) -> Result<Module<'a>, String> {
-        let mut m = Module { types: vec![], imports: vec![], funcs: vec![], globals: vec![], exports: vec![], table: vec![], pages: 0, data: vec![], bodies: vec![] };
+        let mut m = Module {
+            types: vec![],
+            imports: vec![],
+            funcs: vec![],
+            globals: vec![],
+            exports: vec![],
+            table: vec![],
+            pages: 0,
+            data: vec![],
+            bodies: vec![],
+        };
         for payload in Parser::new(0).parse_all(wasm) {
             match payload.map_err(|e| e.to_string())? {
                 Payload::TypeSection(r) => {
                     for t in r.into_iter_err_on_gc_types() {
                         let t = t.map_err(|e| e.to_string())?;
-                        let params = t.params().iter().map(|&v| Ty::of(v)).collect::<Result<_, _>>()?;
-                        let results = t.results().iter().map(|&v| Ty::of(v)).collect::<Result<_, _>>()?;
+                        let params = t
+                            .params()
+                            .iter()
+                            .map(|&v| Ty::of(v))
+                            .collect::<Result<_, _>>()?;
+                        let results = t
+                            .results()
+                            .iter()
+                            .map(|&v| Ty::of(v))
+                            .collect::<Result<_, _>>()?;
                         m.types.push(Sig { params, results });
                     }
                 }
                 Payload::ImportSection(r) => {
                     for i in r.into_imports() {
                         let i = i.map_err(|e| e.to_string())?;
-                        let TypeRef::Func(t) = i.ty else { return Err(format!("unsupported import {}", i.name)) };
+                        let TypeRef::Func(t) = i.ty else {
+                            return Err(format!("unsupported import {}", i.name));
+                        };
                         m.imports.push((i.name.to_string(), t));
                     }
                 }
@@ -161,10 +197,17 @@ impl<'a> Module<'a> {
                 Payload::GlobalSection(r) => {
                     for g in r {
                         let g = g.map_err(|e| e.to_string())?;
-                        let init = match g.init_expr.get_operators_reader().read().map_err(|e| e.to_string())? {
+                        let init = match g
+                            .init_expr
+                            .get_operators_reader()
+                            .read()
+                            .map_err(|e| e.to_string())?
+                        {
                             Operator::I32Const { value } => format!("{value}i32"),
                             Operator::I64Const { value } => format!("{value}i64"),
-                            other => return Err(format!("unsupported global initializer {other:?}")),
+                            other => {
+                                return Err(format!("unsupported global initializer {other:?}"));
+                            }
                         };
                         m.globals.push((Ty::of(g.ty.content_type)?, init));
                     }
@@ -180,9 +223,17 @@ impl<'a> Module<'a> {
                 Payload::ElementSection(r) => {
                     for e in r {
                         let e = e.map_err(|e| e.to_string())?;
-                        let ElementKind::Active { offset_expr, .. } = e.kind else { return Err("passive element segment".into()) };
-                        let Ok(Operator::I32Const { value }) = offset_expr.get_operators_reader().read() else { return Err("element offset".into()) };
-                        let ElementItems::Functions(items) = e.items else { return Err("element expressions".into()) };
+                        let ElementKind::Active { offset_expr, .. } = e.kind else {
+                            return Err("passive element segment".into());
+                        };
+                        let Ok(Operator::I32Const { value }) =
+                            offset_expr.get_operators_reader().read()
+                        else {
+                            return Err("element offset".into());
+                        };
+                        let ElementItems::Functions(items) = e.items else {
+                            return Err("element expressions".into());
+                        };
                         for (k, f) in items.into_iter().enumerate() {
                             let at = value as usize + k;
                             if m.table.len() <= at {
@@ -195,8 +246,14 @@ impl<'a> Module<'a> {
                 Payload::DataSection(r) => {
                     for d in r {
                         let d = d.map_err(|e| e.to_string())?;
-                        let DataKind::Active { offset_expr, .. } = d.kind else { return Err("passive data segment".into()) };
-                        let Ok(Operator::I32Const { value }) = offset_expr.get_operators_reader().read() else { return Err("data offset".into()) };
+                        let DataKind::Active { offset_expr, .. } = d.kind else {
+                            return Err("passive data segment".into());
+                        };
+                        let Ok(Operator::I32Const { value }) =
+                            offset_expr.get_operators_reader().read()
+                        else {
+                            return Err("data offset".into());
+                        };
                         m.data.push((value as u32, d.data));
                     }
                 }
@@ -209,7 +266,11 @@ impl<'a> Module<'a> {
 
     fn sig_of(&self, f: u32) -> &Sig {
         let n = self.imports.len() as u32;
-        let t = if f < n { self.imports[f as usize].1 } else { self.funcs[(f - n) as usize] };
+        let t = if f < n {
+            self.imports[f as usize].1
+        } else {
+            self.funcs[(f - n) as usize]
+        };
         &self.types[t as usize]
     }
 }
@@ -230,7 +291,10 @@ fn escape(bytes: &[u8]) -> String {
 }
 
 fn params(tys: &[Ty], prefix: &str) -> String {
-    tys.iter().enumerate().map(|(i, t)| format!(", {prefix}a{i}: {}", t.rust())).collect()
+    tys.iter()
+        .enumerate()
+        .map(|(i, t)| format!(", {prefix}a{i}: {}", t.rust()))
+        .collect()
 }
 
 fn args(n: usize) -> String {
@@ -246,7 +310,15 @@ fn ret(results: &[Ty]) -> Result<String, String> {
 }
 
 fn snake(name: &str) -> String {
-    name.chars().flat_map(|c| if c.is_ascii_uppercase() { vec!['_', c.to_ascii_lowercase()] } else { vec![c] }).collect()
+    name.chars()
+        .flat_map(|c| {
+            if c.is_ascii_uppercase() {
+                vec!['_', c.to_ascii_lowercase()]
+            } else {
+                vec![c]
+            }
+        })
+        .collect()
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -280,7 +352,13 @@ struct Func<'m> {
 }
 
 impl<'m> Func<'m> {
-    fn emit(out: &mut String, m: &'m Module<'m>, index: u32, body: &FunctionBody, indirect: &mut BTreeSet<u32>) -> Result<(), String> {
+    fn emit(
+        out: &mut String,
+        m: &'m Module<'m>,
+        index: u32,
+        body: &FunctionBody,
+        indirect: &mut BTreeSet<u32>,
+    ) -> Result<(), String> {
         let sig = m.sig_of(index);
         let mut locals = sig.params.clone();
         let mut lr = body.get_locals_reader().map_err(|e| e.to_string())?;
@@ -288,8 +366,23 @@ impl<'m> Func<'m> {
             let (n, t) = lr.read().map_err(|e| e.to_string())?;
             locals.extend(std::iter::repeat_n(Ty::of(t)?, n as usize));
         }
-        let mut f = Func { m, locals, body: String::new(), stack: vec![], labels: vec![], slots: BTreeSet::new(), next_label: 1, indent: 1 };
-        f.labels.push(Label { kind: Kind::Func, id: 0, height: 0, params: vec![], results: sig.results.clone() });
+        let mut f = Func {
+            m,
+            locals,
+            body: String::new(),
+            stack: vec![],
+            labels: vec![],
+            slots: BTreeSet::new(),
+            next_label: 1,
+            indent: 1,
+        };
+        f.labels.push(Label {
+            kind: Kind::Func,
+            id: 0,
+            height: 0,
+            params: vec![],
+            results: sig.results.clone(),
+        });
         f.line("'l0: {".into());
         f.indent += 1;
         let mut ops = body.get_operators_reader().map_err(|e| e.to_string())?;
@@ -299,7 +392,9 @@ impl<'m> Func<'m> {
             let op = ops.read().map_err(|e| e.to_string())?;
             if let Some(depth) = dead.as_mut() {
                 match op {
-                    Operator::Block { .. } | Operator::Loop { .. } | Operator::If { .. } => *depth += 1,
+                    Operator::Block { .. } | Operator::Loop { .. } | Operator::If { .. } => {
+                        *depth += 1
+                    }
                     Operator::End | Operator::Else if *depth > 0 => {
                         if matches!(op, Operator::End) {
                             *depth -= 1;
@@ -316,7 +411,12 @@ impl<'m> Func<'m> {
                 dead = Some(0);
             }
         }
-        let _ = writeln!(out, "fn f{index}(m: &mut Wasm{}){} {{", params(&sig.params, "mut "), ret(&sig.results)?);
+        let _ = writeln!(
+            out,
+            "fn f{index}(m: &mut Wasm{}){} {{",
+            params(&sig.params, "mut "),
+            ret(&sig.results)?
+        );
         for (i, t) in f.locals.iter().enumerate() {
             if i < sig.params.len() {
                 let _ = writeln!(out, "    let mut l{i} = a{i};");
@@ -325,7 +425,13 @@ impl<'m> Func<'m> {
             }
         }
         for (d, t) in &f.slots {
-            let _ = writeln!(out, "    let mut s{d}{}: {} = {};", t.suffix(), t.rust(), t.zero());
+            let _ = writeln!(
+                out,
+                "    let mut s{d}{}: {} = {};",
+                t.suffix(),
+                t.rust(),
+                t.zero()
+            );
         }
         out.push_str(&f.body);
         out.push_str("}\n\n");
@@ -356,7 +462,11 @@ impl<'m> Func<'m> {
     }
 
     fn top(&self, n: usize) -> Result<Ty, String> {
-        self.stack.len().checked_sub(n + 1).map(|i| self.stack[i]).ok_or_else(|| "stack underflow".into())
+        self.stack
+            .len()
+            .checked_sub(n + 1)
+            .map(|i| self.stack[i])
+            .ok_or_else(|| "stack underflow".into())
     }
 
     /// `r = f(a)`: pops one value, pushes a `t`.
@@ -397,10 +507,23 @@ impl<'m> Func<'m> {
     /// A jump to the label `depth` blocks out: the values it keeps moved into its slots, then
     /// `break`, `continue` or `return`.
     fn branch(&mut self, depth: u32) -> Result<String, String> {
-        let l = self.labels.len().checked_sub(depth as usize + 1).map(|i| &self.labels[i]).ok_or("branch depth")?;
+        let l = self
+            .labels
+            .len()
+            .checked_sub(depth as usize + 1)
+            .map(|i| &self.labels[i])
+            .ok_or("branch depth")?;
         let (kind, id, height) = (l.kind, l.id, l.height);
-        let keep = if kind == Kind::Loop { l.params.clone() } else { l.results.clone() };
-        let from = self.stack.len().checked_sub(keep.len()).ok_or("stack underflow")?;
+        let keep = if kind == Kind::Loop {
+            l.params.clone()
+        } else {
+            l.results.clone()
+        };
+        let from = self
+            .stack
+            .len()
+            .checked_sub(keep.len())
+            .ok_or("stack underflow")?;
         let mut s = String::new();
         for (i, &t) in keep.iter().enumerate() {
             if from + i != height + i {
@@ -436,8 +559,18 @@ impl<'m> Func<'m> {
         };
         let id = self.next_label;
         self.next_label += 1;
-        let height = self.stack.len().checked_sub(params.len()).ok_or("stack underflow")?;
-        self.labels.push(Label { kind, id, height, params, results });
+        let height = self
+            .stack
+            .len()
+            .checked_sub(params.len())
+            .ok_or("stack underflow")?;
+        self.labels.push(Label {
+            kind,
+            id,
+            height,
+            params,
+            results,
+        });
         Ok(id)
     }
 
@@ -570,7 +703,12 @@ impl<'m> Func<'m> {
                 self.line(format!("l{local_index} = {a};"));
             }
             O::GlobalGet { global_index } => {
-                let t = self.m.globals.get(global_index as usize).ok_or("global index")?.0;
+                let t = self
+                    .m
+                    .globals
+                    .get(global_index as usize)
+                    .ok_or("global index")?
+                    .0;
                 let r = self.push(t);
                 self.line(format!("{r} = m.g{global_index};"));
             }
@@ -578,13 +716,29 @@ impl<'m> Func<'m> {
                 let a = self.pop()?;
                 self.line(format!("m.g{global_index} = {a};"));
             }
-            O::I32Load { memarg } => self.unop(Ty::I32, |a| format!("m.ld32({a}, {})", memarg.offset))?,
-            O::I64Load { memarg } => self.unop(Ty::I64, |a| format!("m.ld64({a}, {})", memarg.offset))?,
-            O::V128Load { memarg } => self.unop(Ty::V128, |a| format!("m.ld128({a}, {})", memarg.offset))?,
-            O::I32Load8U { memarg } => self.unop(Ty::I32, |a| format!("m.ld8u({a}, {})", memarg.offset))?,
-            O::I32Load16U { memarg } => self.unop(Ty::I32, |a| format!("m.ld16u({a}, {})", memarg.offset))?,
-            O::I32Load16S { memarg } => self.unop(Ty::I32, |a| format!("m.ld16s({a}, {})", memarg.offset))?,
-            O::I32Store { memarg } | O::I64Store { memarg } | O::V128Store { memarg } | O::I32Store8 { memarg } | O::I32Store16 { memarg } => {
+            O::I32Load { memarg } => {
+                self.unop(Ty::I32, |a| format!("m.ld32({a}, {})", memarg.offset))?
+            }
+            O::I64Load { memarg } => {
+                self.unop(Ty::I64, |a| format!("m.ld64({a}, {})", memarg.offset))?
+            }
+            O::V128Load { memarg } => {
+                self.unop(Ty::V128, |a| format!("m.ld128({a}, {})", memarg.offset))?
+            }
+            O::I32Load8U { memarg } => {
+                self.unop(Ty::I32, |a| format!("m.ld8u({a}, {})", memarg.offset))?
+            }
+            O::I32Load16U { memarg } => {
+                self.unop(Ty::I32, |a| format!("m.ld16u({a}, {})", memarg.offset))?
+            }
+            O::I32Load16S { memarg } => {
+                self.unop(Ty::I32, |a| format!("m.ld16s({a}, {})", memarg.offset))?
+            }
+            O::I32Store { memarg }
+            | O::I64Store { memarg }
+            | O::V128Store { memarg }
+            | O::I32Store8 { memarg }
+            | O::I32Store16 { memarg } => {
                 let name = match op {
                     O::I32Store { .. } => "st32",
                     O::I64Store { .. } => "st64",
@@ -605,7 +759,11 @@ impl<'m> Func<'m> {
                 let n = self.pop()?;
                 let b = self.pop()?;
                 let a = self.pop()?;
-                let name = if matches!(op, O::MemoryCopy { .. }) { "copy" } else { "fill" };
+                let name = if matches!(op, O::MemoryCopy { .. }) {
+                    "copy"
+                } else {
+                    "fill"
+                };
                 self.line(format!("m.{name}({a}, {b}, {n});"));
             }
             O::I32Const { value } => {
@@ -625,34 +783,66 @@ impl<'m> Func<'m> {
             O::I32Eq | O::I64Eq => self.binop(Ty::I32, |a, b| format!("({a} == {b}) as i32"))?,
             O::I32Ne | O::I64Ne => self.binop(Ty::I32, |a, b| format!("({a} != {b}) as i32"))?,
             O::I32LtS => self.binop(Ty::I32, |a, b| format!("({a} < {b}) as i32"))?,
-            O::I32LtU => self.binop(Ty::I32, |a, b| format!("(({a} as u32) < ({b} as u32)) as i32"))?,
+            O::I32LtU => self.binop(Ty::I32, |a, b| {
+                format!("(({a} as u32) < ({b} as u32)) as i32")
+            })?,
             O::I32GtS => self.binop(Ty::I32, |a, b| format!("({a} > {b}) as i32"))?,
-            O::I32GtU => self.binop(Ty::I32, |a, b| format!("(({a} as u32) > ({b} as u32)) as i32"))?,
+            O::I32GtU => self.binop(Ty::I32, |a, b| {
+                format!("(({a} as u32) > ({b} as u32)) as i32")
+            })?,
             O::I32LeS => self.binop(Ty::I32, |a, b| format!("({a} <= {b}) as i32"))?,
-            O::I32LeU => self.binop(Ty::I32, |a, b| format!("(({a} as u32) <= ({b} as u32)) as i32"))?,
+            O::I32LeU => self.binop(Ty::I32, |a, b| {
+                format!("(({a} as u32) <= ({b} as u32)) as i32")
+            })?,
             O::I32GeS => self.binop(Ty::I32, |a, b| format!("({a} >= {b}) as i32"))?,
-            O::I32GeU => self.binop(Ty::I32, |a, b| format!("(({a} as u32) >= ({b} as u32)) as i32"))?,
-            O::I32Add | O::I64Add => self.binop(self.top(0)?, |a, b| format!("{a}.wrapping_add({b})"))?,
-            O::I32Sub | O::I64Sub => self.binop(self.top(0)?, |a, b| format!("{a}.wrapping_sub({b})"))?,
-            O::I32Mul | O::I64Mul => self.binop(self.top(0)?, |a, b| format!("{a}.wrapping_mul({b})"))?,
+            O::I32GeU => self.binop(Ty::I32, |a, b| {
+                format!("(({a} as u32) >= ({b} as u32)) as i32")
+            })?,
+            O::I32Add | O::I64Add => {
+                self.binop(self.top(0)?, |a, b| format!("{a}.wrapping_add({b})"))?
+            }
+            O::I32Sub | O::I64Sub => {
+                self.binop(self.top(0)?, |a, b| format!("{a}.wrapping_sub({b})"))?
+            }
+            O::I32Mul | O::I64Mul => {
+                self.binop(self.top(0)?, |a, b| format!("{a}.wrapping_mul({b})"))?
+            }
             O::I32And | O::I64And => self.binop(self.top(0)?, |a, b| format!("{a} & {b}"))?,
             O::I32Or | O::I64Or => self.binop(self.top(0)?, |a, b| format!("{a} | {b}"))?,
             O::I32Xor | O::I64Xor => self.binop(self.top(0)?, |a, b| format!("{a} ^ {b}"))?,
-            O::I32Shl | O::I64Shl => self.binop(self.top(0)?, |a, b| format!("{a}.wrapping_shl({b} as u32)"))?,
+            O::I32Shl | O::I64Shl => {
+                self.binop(self.top(0)?, |a, b| format!("{a}.wrapping_shl({b} as u32)"))?
+            }
             O::I32ShrS => self.binop(Ty::I32, |a, b| format!("{a}.wrapping_shr({b} as u32)"))?,
-            O::I32ShrU => self.binop(Ty::I32, |a, b| format!("({a} as u32).wrapping_shr({b} as u32) as i32"))?,
-            O::I64ShrU => self.binop(Ty::I64, |a, b| format!("({a} as u64).wrapping_shr({b} as u32) as i64"))?,
-            O::I32Rotl => self.binop(Ty::I32, |a, b| format!("({a} as u32).rotate_left({b} as u32) as i32"))?,
-            O::I64Rotl => self.binop(Ty::I64, |a, b| format!("({a} as u64).rotate_left({b} as u32) as i64"))?,
+            O::I32ShrU => self.binop(Ty::I32, |a, b| {
+                format!("({a} as u32).wrapping_shr({b} as u32) as i32")
+            })?,
+            O::I64ShrU => self.binop(Ty::I64, |a, b| {
+                format!("({a} as u64).wrapping_shr({b} as u32) as i64")
+            })?,
+            O::I32Rotl => self.binop(Ty::I32, |a, b| {
+                format!("({a} as u32).rotate_left({b} as u32) as i32")
+            })?,
+            O::I64Rotl => self.binop(Ty::I64, |a, b| {
+                format!("({a} as u64).rotate_left({b} as u32) as i64")
+            })?,
             O::I8x16Splat => self.unop(Ty::V128, |a| format!("[{a} as u8; 16]"))?,
             O::I8x16Bitmask => self.unop(Ty::I32, |a| format!("bitmask({a})"))?,
             O::V128AnyTrue => self.unop(Ty::I32, |a| format!("({a} != [0u8; 16]) as i32"))?,
             O::I8x16Eq => self.binop(Ty::V128, |a, b| format!("lanes({a}, {b}, |x, y| x == y)"))?,
             O::I8x16Ne => self.binop(Ty::V128, |a, b| format!("lanes({a}, {b}, |x, y| x != y)"))?,
-            O::I8x16LeU => self.binop(Ty::V128, |a, b| format!("lanes({a}, {b}, |x, y| x <= y)"))?,
-            O::I8x16GeU => self.binop(Ty::V128, |a, b| format!("lanes({a}, {b}, |x, y| x >= y)"))?,
-            O::I8x16GtS => self.binop(Ty::V128, |a, b| format!("lanes({a}, {b}, |x, y| x as i8 > y as i8)"))?,
-            O::I8x16Sub => self.binop(Ty::V128, |a, b| format!("map2({a}, {b}, u8::wrapping_sub)"))?,
+            O::I8x16LeU => {
+                self.binop(Ty::V128, |a, b| format!("lanes({a}, {b}, |x, y| x <= y)"))?
+            }
+            O::I8x16GeU => {
+                self.binop(Ty::V128, |a, b| format!("lanes({a}, {b}, |x, y| x >= y)"))?
+            }
+            O::I8x16GtS => self.binop(Ty::V128, |a, b| {
+                format!("lanes({a}, {b}, |x, y| x as i8 > y as i8)")
+            })?,
+            O::I8x16Sub => {
+                self.binop(Ty::V128, |a, b| format!("map2({a}, {b}, u8::wrapping_sub)"))?
+            }
             O::V128And => self.binop(Ty::V128, |a, b| format!("map2({a}, {b}, |x, y| x & y)"))?,
             O::V128Or => self.binop(Ty::V128, |a, b| format!("map2({a}, {b}, |x, y| x | y)"))?,
             O::V128Xor => self.binop(Ty::V128, |a, b| format!("map2({a}, {b}, |x, y| x ^ y)"))?,

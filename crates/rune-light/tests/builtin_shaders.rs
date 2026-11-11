@@ -10,7 +10,14 @@ mod builtin;
 fn every_builtin_pipeline_is_precompiled() {
     let gpu = rune::render::Gpu::headless();
     builtin::build_every_pipeline(&gpu);
-    if std::env::var_os("RUNE_METAL_CAPTURE").is_some() { return }
-    let Some(misses) = rune::render::precompiled_misses(&gpu.device) else { return };
-    assert_eq!(misses, 0, "{misses} built-in pipelines compiled at runtime; run scripts/precompile-metal-shaders.sh");
+    if std::env::var_os("RUNE_METAL_CAPTURE").is_some() {
+        return;
+    }
+    let Some(misses) = rune::render::precompiled_misses(&gpu.device) else {
+        return;
+    };
+    assert_eq!(
+        misses, 0,
+        "{misses} built-in pipelines compiled at runtime; run scripts/precompile-metal-shaders.sh"
+    );
 }

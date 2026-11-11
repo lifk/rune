@@ -69,7 +69,8 @@ pub fn settle(rt: &mut Runtime<App>) {
 
 /// The node keyed `key`; panics with the whole tree when there is none.
 pub fn node<'a>(tree: &'a Value, key: &str) -> &'a Value {
-    find(tree, key).unwrap_or_else(|| panic!("no node keyed {key:?} in {}", serde_json::to_string_pretty(tree).unwrap()))
+    find(tree, key)
+        .unwrap_or_else(|| panic!("no node keyed {key:?} in {}", serde_json::to_string_pretty(tree).unwrap()))
 }
 
 pub fn find<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
@@ -82,14 +83,22 @@ pub fn find<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
 /// Every node with `role`, in reading order.
 pub fn with_role<'a>(v: &'a Value, role: &str) -> Vec<&'a Value> {
     let mut out = Vec::new();
-    walk(v, &mut |n| if n["role"] == role { out.push(n) });
+    walk(v, &mut |n| {
+        if n["role"] == role {
+            out.push(n)
+        }
+    });
     out
 }
 
 /// Every node named `name`.
 pub fn named<'a>(v: &'a Value, name: &str) -> Vec<&'a Value> {
     let mut out = Vec::new();
-    walk(v, &mut |n| if n["name"] == name { out.push(n) });
+    walk(v, &mut |n| {
+        if n["name"] == name {
+            out.push(n)
+        }
+    });
     out
 }
 
@@ -131,7 +140,10 @@ pub fn act(rt: &mut Runtime<App>, key: &str, action: Action) -> bool {
 /// A pointer press and release at the middle of the node keyed `key`, where the tree says it is.
 pub fn tap(rt: &mut Runtime<App>, key: &str) {
     let tree = rt.accessibility_json();
-    let b = node(&tree, key)["bounds"].as_array().map(|b| b.iter().map(|v| v.as_f64().unwrap() as f32).collect::<Vec<_>>()).unwrap();
+    let b = node(&tree, key)["bounds"]
+        .as_array()
+        .map(|b| b.iter().map(|v| v.as_f64().unwrap() as f32).collect::<Vec<_>>())
+        .unwrap();
     let (x, y) = (b[0] + b[2] / 2.0, b[1] + b[3] / 2.0);
     rt.pointer_move(x, y);
     rt.pointer_down(x, y);
@@ -147,7 +159,11 @@ pub fn press_key(rt: &mut Runtime<App>, key: Key) {
 /// The key of the node holding keyboard focus.
 pub fn focused(tree: &Value) -> Option<String> {
     let mut out = None;
-    walk(tree, &mut |n| if has(n, "focused") { out = n["key"].as_str().map(str::to_owned) });
+    walk(tree, &mut |n| {
+        if has(n, "focused") {
+            out = n["key"].as_str().map(str::to_owned)
+        }
+    });
     out
 }
 
@@ -176,12 +192,17 @@ pub fn golden(name: &str, tree: &Value) {
         std::fs::write(&path, &actual).unwrap();
         return;
     }
-    let want = std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("missing golden {name}; run with RUNE_BLESS=1"));
+    let want =
+        std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("missing golden {name}; run with RUNE_BLESS=1"));
     let want = want.replace("\r\n", "\n");
     if want != actual {
         let fresh = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("a11y-{name}.json"));
         std::fs::write(&fresh, &actual).unwrap();
-        let line = want.lines().zip(actual.lines()).position(|(a, b)| a != b).unwrap_or(want.lines().count().min(actual.lines().count()));
+        let line = want
+            .lines()
+            .zip(actual.lines())
+            .position(|(a, b)| a != b)
+            .unwrap_or(want.lines().count().min(actual.lines().count()));
         panic!(
             "accessibility golden differs: {name} (first difference at line {})\n  golden: {}\n  fresh:  {}\n  accept with RUNE_BLESS=1 after review",
             line + 1,

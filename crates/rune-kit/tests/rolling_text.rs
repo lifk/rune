@@ -167,7 +167,8 @@ fn pair(text: &str, font: TextStyle) -> Runtime<Pair> {
     const INTER: &[u8] = include_bytes!("../../../themes/opencode/assets/fonts/InterVariable.ttf");
     const PLEX: &[u8] = include_bytes!("../../../themes/opencode/assets/fonts/IBMPlexMono-Regular.ttf");
     let fonts = TextSystem::new(&[INTER, PLEX], ("Inter", "IBM Plex Mono"));
-    let mut rt = Runtime::with_text(Pair { text: text.into(), font }, pair_view, (600.0, 120.0), Env::new(true, 2.0), fonts);
+    let mut rt =
+        Runtime::with_text(Pair { text: text.into(), font }, pair_view, (600.0, 120.0), Env::new(true, 2.0), fonts);
     rt.frame(0.0);
     rt
 }
@@ -237,7 +238,9 @@ fn reduced_motion_crossfades_in_place() {
 #[test]
 fn the_label_reads_as_text_in_lookups() {
     let mut rt = runtime("lookup", "Import 3 items", false, false);
-    let by_text = |rt: &Runtime<S>, text: &str| rt.elements().into_iter().find(|e| e.text.as_deref() == Some(text)).and_then(|e| e.key);
+    let by_text = |rt: &Runtime<S>, text: &str| {
+        rt.elements().into_iter().find(|e| e.text.as_deref() == Some(text)).and_then(|e| e.key)
+    };
     assert_eq!(by_text(&rt, "Import 3 items").as_deref(), Some("lookup"));
     retext(&mut rt, "Importing…");
     rt.frame(0.0);
@@ -245,7 +248,9 @@ fn the_label_reads_as_text_in_lookups() {
     assert_eq!(by_text(&rt, "Import 3 items"), None);
 
     // A labelled element that isn't text still has none.
-    fn button(_: &(), _: &mut Cx<()>) -> El { rune_kit::Button::new("Save").build(&Kit::neutral(true)).key("save") }
+    fn button(_: &(), _: &mut Cx<()>) -> El {
+        rune_kit::Button::new("Save").build(&Kit::neutral(true)).key("save")
+    }
     let mut rt = Runtime::new((), button, (200.0, 60.0), Env::new(true, 2.0));
     rt.frame(0.0);
     let save = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("save")).unwrap();
@@ -257,32 +262,46 @@ fn inside_a_growth_row_its_width_springs_under_animate_layout() {
     fn view(s: &(String, bool, bool), _cx: &mut Cx<(String, bool, bool)>) -> El {
         let k = Kit::neutral(true);
         let row_of = |key: &str, label: &str| {
-            let mut row = rune::row().key("trigger").h(28.0)
+            let mut row = rune::row()
+                .key("trigger")
+                .h(28.0)
                 .child(RollingText::new(key, label.to_owned()).font(k.ty.body).build(&k))
                 .child(rune::el().key(format!("{key}-chevron")).size(14.0, 14.0));
-            if s.1 { row = row.animate_layout(); }
+            if s.1 {
+                row = row.animate_layout();
+            }
             row
         };
-        let mut stack = rune::col().w_full().growth(rune::GrowthSpec::default())
+        let mut stack = rune::col()
+            .w_full()
+            .growth(rune::GrowthSpec::default())
             .child(rune::col().key("r0").w_full().child(row_of("count", &s.0)));
         if s.2 {
             stack = stack.child(rune::col().key("r1").w_full().child(row_of("fresh", "Used 1 tool")));
         }
         stack
     }
-    let chevron_x = |rt: &Runtime<(String, bool, bool)>| rt.elements().into_iter()
-        .find(|e| e.key.as_deref() == Some("count-chevron")).unwrap().rect[0];
+    let chevron_x = |rt: &Runtime<(String, bool, bool)>| {
+        rt.elements().into_iter().find(|e| e.key.as_deref() == Some("count-chevron")).unwrap().rect[0]
+    };
     for animate in [false, true] {
-        let mut rt = Runtime::new(("Used 1 tool".to_string(), animate, false), view, (400.0, 100.0), Env::new(true, 2.0));
+        let mut rt =
+            Runtime::new(("Used 1 tool".to_string(), animate, false), view, (400.0, 100.0), Env::new(true, 2.0));
         rt.frame(0.0);
         let from = chevron_x(&rt);
-        rt.update(|s, _| { s.0 = "Used 12 tools".into(); s.2 = true; });
+        rt.update(|s, _| {
+            s.0 = "Used 12 tools".into();
+            s.2 = true;
+        });
         let mut xs = Vec::new();
         for f in 0..120 {
             rt.frame(1.0 / 120.0);
             if f == 0 {
                 assert!(
-                    rt.elements().into_iter().filter(|e| e.key.as_deref().is_some_and(|k| k.starts_with("fresh."))).all(|e| e.opacity == 1.0),
+                    rt.elements()
+                        .into_iter()
+                        .filter(|e| e.key.as_deref().is_some_and(|k| k.starts_with("fresh.")))
+                        .all(|e| e.opacity == 1.0),
                     "a newly mounted growth row's initial glyphs ride the row instead of rolling in"
                 );
             }
@@ -309,32 +328,59 @@ fn a_digit_changing_soon_after_the_label_fades_in_rolls_in() {
         if s.1 {
             let mut count = RollingText::new("count", s.0.clone()).font(k.ty.body).build(&k);
             if s.3 {
-                count = count.transition(rune::Transition::opacity().springs(
-                    rune::SpringPair::new(rune::Spring::new(0.22, 0.0), rune::Spring::new(0.18, 0.0)),
-                ));
+                count = count.transition(
+                    rune::Transition::opacity()
+                        .springs(rune::SpringPair::new(rune::Spring::new(0.22, 0.0), rune::Spring::new(0.18, 0.0))),
+                );
             }
             row = row.child(count);
         }
         row = row.child(rune::el().key("chevron").size(14.0, 14.0));
-        if !s.2 { return rune::col().w_full().child(row); }
-        rune::col().w_full().growth(rune::GrowthSpec::default())
+        if !s.2 {
+            return rune::col().w_full().child(row);
+        }
+        rune::col()
+            .w_full()
+            .growth(rune::GrowthSpec::default())
             .child(rune::col().key("r0").w_full().child(row.animate_layout()))
     }
     for (growth, explicit_fade) in [(false, false), (true, false), (false, true)] {
         for wait in [0.5_f32, 1.0, 2.0] {
-            let mut rt = Runtime::new(("Used 1".to_string(), false, growth, explicit_fade), view, (400.0, 100.0), Env::new(true, 2.0));
+            let mut rt = Runtime::new(
+                ("Used 1".to_string(), false, growth, explicit_fade),
+                view,
+                (400.0, 100.0),
+                Env::new(true, 2.0),
+            );
             rt.frame(0.0);
             rt.update(|s, _| s.1 = true);
-            for _ in 0..(wait * 120.0) as usize { rt.frame(1.0 / 120.0); }
+            for _ in 0..(wait * 120.0) as usize {
+                rt.frame(1.0 / 120.0);
+            }
             let (_, label) = rt.presented("count").unwrap();
             assert!(label > 0.99, "wait {wait}s: the label has faded in: {label}");
             rt.update(|s, _| s.0 = "Used 2".into());
             rt.frame(1.0 / 120.0);
-            let two = rt.elements().into_iter()
-                .find(|e| !e.inert && e.text.as_deref() == Some("2") && e.key.as_deref().is_some_and(|k| k.starts_with("count.")))
+            let two = rt
+                .elements()
+                .into_iter()
+                .find(|e| {
+                    !e.inert
+                        && e.text.as_deref() == Some("2")
+                        && e.key.as_deref().is_some_and(|k| k.starts_with("count."))
+                })
                 .unwrap();
-            assert!(two.opacity < 0.5, "growth {growth} explicit {explicit_fade} wait {wait}s: the new digit fades in: op {}", two.opacity);
-            assert!((two.rect[1] - two.target[1]).abs() > 1.0, "growth {growth} explicit {explicit_fade} wait {wait}s: the new digit rolls in: {:?} -> {:?}", two.rect, two.target);
+            assert!(
+                two.opacity < 0.5,
+                "growth {growth} explicit {explicit_fade} wait {wait}s: the new digit fades in: op {}",
+                two.opacity
+            );
+            assert!(
+                (two.rect[1] - two.target[1]).abs() > 1.0,
+                "growth {growth} explicit {explicit_fade} wait {wait}s: the new digit rolls in: {:?} -> {:?}",
+                two.rect,
+                two.target
+            );
         }
     }
 }
@@ -351,9 +397,19 @@ fn a_value_picks_the_roll_direction() {
     for (text, value, below) in [("9", 9.0, true), ("8", 8.0, false), ("9", 9.0, true)] {
         rt.update(|s, _| *s = (text.into(), value));
         rt.frame(1.0 / 120.0);
-        let e = rt.elements().into_iter().find(|e| !e.inert && e.text.as_deref() == Some(text) && e.key.as_deref().is_some_and(|k| k.starts_with("dir."))).unwrap();
+        let e = rt
+            .elements()
+            .into_iter()
+            .find(|e| {
+                !e.inert && e.text.as_deref() == Some(text) && e.key.as_deref().is_some_and(|k| k.starts_with("dir."))
+            })
+            .unwrap();
         let dy = e.rect[1] - e.target[1];
-        assert!(if below { dy > 1.0 } else { dy < -1.0 }, "{text}: enters from {}: dy {dy}", if below { "below" } else { "above" });
+        assert!(
+            if below { dy > 1.0 } else { dy < -1.0 },
+            "{text}: enters from {}: dy {dy}",
+            if below { "below" } else { "above" }
+        );
         for _ in 0..120 {
             rt.frame(1.0 / 120.0);
         }
@@ -367,7 +423,8 @@ fn a_value_picks_the_roll_direction() {
 fn a_trailing_label_rolls_new_digits_in_their_columns() {
     fn view(s: &(String, bool), _cx: &mut Cx<(String, bool)>) -> El {
         let k = Kit::neutral(true);
-        let label = RollingText::new("t", s.0.clone()).value(s.0.trim_end_matches('s').parse().unwrap()).font(k.ty.mono);
+        let label =
+            RollingText::new("t", s.0.clone()).value(s.0.trim_end_matches('s').parse().unwrap()).font(k.ty.mono);
         let label = if s.1 { label.trailing() } else { label };
         rune::row().w(200.0).padding(20.0).justify_end().child(label.build(&k))
     }
@@ -376,7 +433,12 @@ fn a_trailing_label_rolls_new_digits_in_their_columns() {
         rt.frame(0.0);
         rt.update(|s, _| s.0 = "10s".into());
         let x = |rt: &Runtime<(String, bool)>, text: &str| {
-            rt.elements().into_iter().find(|e| !e.inert && e.text.as_deref() == Some(text) && e.key.as_deref().is_some_and(|k| k.starts_with("t."))).map(|e| (e.rect[0], e.target[0]))
+            rt.elements()
+                .into_iter()
+                .find(|e| {
+                    !e.inert && e.text.as_deref() == Some(text) && e.key.as_deref().is_some_and(|k| k.starts_with("t."))
+                })
+                .map(|e| (e.rect[0], e.target[0]))
         };
         let (mut new, mut s) = (0.0f32, 0.0f32);
         let s0 = x(&rt, "s").unwrap().0;
@@ -406,7 +468,12 @@ fn a_value_under_reduced_motion_swaps_in_place_and_a_reversal_mid_roll_retargets
         rune::row().padding(20.0).child(RollingText::new("n", format!("{}", s.0)).value(s.0).font(k.ty.mono).build(&k))
     }
     let glyph = |rt: &Runtime<(f64, bool)>, text: &str| {
-        rt.elements().into_iter().find(|e| !e.inert && e.text.as_deref() == Some(text) && e.key.as_deref().is_some_and(|k| k.starts_with("n."))).map(|e| (e.rect, e.target))
+        rt.elements()
+            .into_iter()
+            .find(|e| {
+                !e.inert && e.text.as_deref() == Some(text) && e.key.as_deref().is_some_and(|k| k.starts_with("n."))
+            })
+            .map(|e| (e.rect, e.target))
     };
 
     let mut rt = Runtime::new((9.0, true), view, (400.0, 120.0), Env::new(true, 2.0));
@@ -449,7 +516,14 @@ fn seconds(s: &(String, bool), _cx: &mut Cx<(String, bool)>) -> El {
 
 /// The drawn rect of the glyph showing `text` under key `t`: leaving (`exiting`) or staying.
 fn cell<S>(rt: &Runtime<S>, text: &str, exiting: bool) -> Option<[f32; 4]> {
-    rt.elements().into_iter().find(|e| e.exiting == exiting && e.text.as_deref() == Some(text) && e.key.as_deref().is_some_and(|k| k.starts_with("t."))).map(|e| e.rect)
+    rt.elements()
+        .into_iter()
+        .find(|e| {
+            e.exiting == exiting
+                && e.text.as_deref() == Some(text)
+                && e.key.as_deref().is_some_and(|k| k.starts_with("t."))
+        })
+        .map(|e| e.rect)
 }
 
 /// The leaving glyph's y each frame while it's drawn.
@@ -472,7 +546,10 @@ fn leaving_glyphs_roll_the_way_this_change_moves() {
     rt.frame(0.0);
     rt.update(|s, _| s.0 = "8s".into());
     let ys = exit_path(&mut rt, "9");
-    assert!(ys.len() > 4 && ys.windows(2).all(|w| w[1] >= w[0] - 0.01) && ys[ys.len() - 1] > ys[0] + 2.0, "a first count down rolls the 9 out downward: {ys:?}");
+    assert!(
+        ys.len() > 4 && ys.windows(2).all(|w| w[1] >= w[0] - 0.01) && ys[ys.len() - 1] > ys[0] + 2.0,
+        "a first count down rolls the 9 out downward: {ys:?}"
+    );
 
     rt.update(|s, _| s.0 = "9s".into());
     for _ in 0..8 {
@@ -482,11 +559,17 @@ fn leaving_glyphs_roll_the_way_this_change_moves() {
     let ys = exit_path(&mut rt, "9");
     // It was rising; the spring carries that on for a moment before it turns, under a point.
     let back = ys[0] - ys.iter().cloned().fold(f32::MAX, f32::min);
-    assert!(ys.len() > 2 && back < 1.0 && ys[ys.len() - 1] > ys[0] + 2.0, "turning back mid-roll, the 9 leaves downward: {ys:?}");
+    assert!(
+        ys.len() > 2 && back < 1.0 && ys[ys.len() - 1] > ys[0] + 2.0,
+        "turning back mid-roll, the 9 leaves downward: {ys:?}"
+    );
 
     rt.update(|s, _| s.0 = "9s".into());
     let ys = exit_path(&mut rt, "8");
-    assert!(ys.len() > 4 && ys.windows(2).all(|w| w[1] <= w[0] + 0.01), "counting up again, the 8 leaves upward: {ys:?}");
+    assert!(
+        ys.len() > 4 && ys.windows(2).all(|w| w[1] <= w[0] + 0.01),
+        "counting up again, the 8 leaves upward: {ys:?}"
+    );
 }
 
 /// In a trailing label every glyph holds its column while the edge moves: the leaving ones where
@@ -507,7 +590,15 @@ fn a_trailing_label_holds_leaving_and_entering_glyphs_in_their_columns() {
                 }
             }
             for c in came {
-                let e = rt.elements().into_iter().find(|e| !e.exiting && e.text.as_deref() == Some(*c) && e.key.as_deref().is_some_and(|k| k.starts_with("t."))).unwrap();
+                let e = rt
+                    .elements()
+                    .into_iter()
+                    .find(|e| {
+                        !e.exiting
+                            && e.text.as_deref() == Some(*c)
+                            && e.key.as_deref().is_some_and(|k| k.starts_with("t."))
+                    })
+                    .unwrap();
                 worst = worst.max((e.rect[0] - e.target[0]).abs());
             }
         }
@@ -543,7 +634,8 @@ fn usage_view(s: &Usage, _: &mut Cx<Usage>) -> El {
     let k = Kit::neutral(true);
     let spring = rune::Spring::new(0.3, 0.0);
     let font = TextStyle::new(12.0, 440.0).lh(16.0).features("'tnum' 1");
-    let label = |key: &str, t: String, v: f64| RollingText::new(key, t).value(v).font(font).spring(spring).trailing().build(&k);
+    let label =
+        |key: &str, t: String, v: f64| RollingText::new(key, t).value(v).font(font).spring(spring).trailing().build(&k);
     let tokens = if s.tokens >= 1_000 { format!("{:.1}K", s.tokens as f64 / 1e3) } else { s.tokens.to_string() };
     let mut usage = rune::row().key("usage").gap(6.0).center_y().motion(spring);
     if s.leads {
@@ -556,7 +648,13 @@ fn usage_view(s: &Usage, _: &mut Cx<Usage>) -> El {
         .px(10.0)
         .gap(8.0)
         .center_y()
-        .child(rune::row().center_y().shrink().child(rune::text("Refactor the session list so pinned rows keep their place").font(TextStyle::new(13.0, 530.0)).truncate()))
+        .child(
+            rune::row().center_y().shrink().child(
+                rune::text("Refactor the session list so pinned rows keep their place")
+                    .font(TextStyle::new(13.0, 530.0))
+                    .truncate(),
+            ),
+        )
         .child(rune::spacer())
         .child(
             usage
@@ -602,7 +700,8 @@ fn wrong_way(xs: &[f32]) -> f32 {
 #[test]
 fn trailing_labels_in_a_sliding_row_never_reverse() {
     for leads in [true, false] {
-        let mut rt = Runtime::new(Usage { cents: 42, tokens: 12_345, leads }, usage_view, (400.0, 80.0), Env::new(true, 2.0));
+        let mut rt =
+            Runtime::new(Usage { cents: 42, tokens: 12_345, leads }, usage_view, (400.0, 80.0), Env::new(true, 2.0));
         rt.frame(0.0);
         let cost_left = |rt: &Runtime<Usage>| rt.presented("cost").unwrap().0[0];
         let before = cost_left(&rt);
@@ -613,7 +712,11 @@ fn trailing_labels_in_a_sliding_row_never_reverse() {
             });
             for (key, text, xs) in glyph_paths(&mut rt, secs) {
                 let w = wrong_way(&xs);
-                assert!(w < 0.5, "leads {leads}, step {step}: {key} ({text:?}) goes {w:.2} pt the wrong way: {:?}", &xs[..xs.len().min(40)]);
+                assert!(
+                    w < 0.5,
+                    "leads {leads}, step {step}: {key} ({text:?}) goes {w:.2} pt the wrong way: {:?}",
+                    &xs[..xs.len().min(40)]
+                );
             }
         }
         let after = cost_left(&rt);

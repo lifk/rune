@@ -38,7 +38,11 @@ pub(crate) struct OsCursor {
 
 impl OsCursor {
     pub(crate) fn new(event_loop: &ActiveEventLoop) -> Self {
-        OsCursor { applied: (false, Cursor::Default), scale: 0.0, transparent: transparent(event_loop) }
+        OsCursor {
+            applied: (false, Cursor::Default),
+            scale: 0.0,
+            transparent: transparent(event_loop),
+        }
     }
 
     /// Applies `want` while the host is `active` (the pointer is over its window or its hit
@@ -47,13 +51,17 @@ impl OsCursor {
     /// the pointer.
     pub(crate) fn apply(&mut self, window: &Arc<Window>, want: Cursor, active: bool) {
         let scale = image_scale(window);
-        let rescaled = active && matches!(want, Cursor::Image(_)) && std::mem::replace(&mut self.scale, scale) != scale;
+        let rescaled = active
+            && matches!(want, Cursor::Image(_))
+            && std::mem::replace(&mut self.scale, scale) != scale;
         let Some(next) = next(&mut self.applied, want, active).or(rescaled.then_some(want)) else {
             self.reassert();
             return;
         };
         #[cfg(target_os = "macos")]
-        let Some(next) = crate::platform::macos::cursor::window_cursor(window, next) else { return };
+        let Some(next) = crate::platform::macos::cursor::window_cursor(window, next) else {
+            return;
+        };
         #[cfg(not(target_os = "macos"))]
         images::forget(window);
         match next {
@@ -72,7 +80,9 @@ impl OsCursor {
     /// Sets the image cursor again, if one holds the pointer.
     pub(crate) fn reassert(&self) {
         #[cfg(target_os = "macos")]
-        if let (true, Cursor::Image(image)) = self.applied { crate::platform::macos::cursor::reassert(image); }
+        if let (true, Cursor::Image(image)) = self.applied {
+            crate::platform::macos::cursor::reassert(image);
+        }
     }
 }
 
@@ -81,7 +91,8 @@ impl OsCursor {
 /// closure, as a web app unmounted just after it mounts would.
 fn transparent(event_loop: &ActiveEventLoop) -> CustomCursor {
     let make = || {
-        let source = CustomCursor::from_rgba(vec![0u8; 4], 1, 1, 0, 0).expect("a 1x1 cursor image is valid");
+        let source =
+            CustomCursor::from_rgba(vec![0u8; 4], 1, 1, 0, 0).expect("a 1x1 cursor image is valid");
         event_loop.create_custom_cursor(source)
     };
     #[cfg(target_arch = "wasm32")]
@@ -99,7 +110,11 @@ fn holds_image(applied: (bool, Cursor)) -> bool {
 
 /// Pixels per point in the OS cursors made for `window`.
 fn image_scale(window: &Window) -> f32 {
-    if cfg!(any(target_os = "macos", target_arch = "wasm32")) { crate::cursor::image::SOURCE_SCALE } else { window.scale_factor() as f32 }
+    if cfg!(any(target_os = "macos", target_arch = "wasm32")) {
+        crate::cursor::image::SOURCE_SCALE
+    } else {
+        window.scale_factor() as f32
+    }
 }
 
 /// Makes the image cursors windows asked for since the loop last slept, and sets them.
@@ -140,18 +155,31 @@ mod images {
 
     /// Drops a cursor `window` asked for and no longer wants.
     pub(super) fn forget(window: &Arc<Window>) {
-        PENDING.with(|p| p.borrow_mut().retain(|(w, ..)| !std::ptr::eq(w.as_ptr(), Arc::as_ptr(window))));
+        PENDING.with(|p| {
+            p.borrow_mut()
+                .retain(|(w, ..)| !std::ptr::eq(w.as_ptr(), Arc::as_ptr(window)))
+        });
     }
 
     pub(super) fn make_pending(event_loop: &ActiveEventLoop) {
         for (window, image, scale) in PENDING.with(|p| std::mem::take(&mut *p.borrow_mut())) {
-            let Some(window) = window.upgrade() else { continue };
-            let cursor = CURSORS.with(|c| c.borrow_mut().get(image, scale, |d| {
-                let side = |n: u32| u16::try_from(n).map_err(|_| format!("{n} px is too big"));
-                let source = CustomCursor::from_rgba(d.rgba.clone(), side(d.width)?, side(d.height)?, d.hot[0] as u16, d.hot[1] as u16)
+            let Some(window) = window.upgrade() else {
+                continue;
+            };
+            let cursor = CURSORS.with(|c| {
+                c.borrow_mut().get(image, scale, |d| {
+                    let side = |n: u32| u16::try_from(n).map_err(|_| format!("{n} px is too big"));
+                    let source = CustomCursor::from_rgba(
+                        d.rgba.clone(),
+                        side(d.width)?,
+                        side(d.height)?,
+                        d.hot[0] as u16,
+                        d.hot[1] as u16,
+                    )
                     .map_err(|e| e.to_string())?;
-                Ok(event_loop.create_custom_cursor(source))
-            }));
+                    Ok(event_loop.create_custom_cursor(source))
+                })
+            });
             match cursor {
                 Some(cursor) => window.set_cursor(cursor),
                 None => window.set_cursor(CursorIcon::Default),
@@ -191,14 +219,36 @@ mod tests {
     #[test]
     fn a_host_sets_its_cursor_while_active_and_the_arrow_once_when_it_stops() {
         let mut applied = (false, Cursor::Default);
-        assert_eq!(next(&mut applied, Cursor::Crosshair, false), None, "never while inactive");
-        assert_eq!(next(&mut applied, Cursor::Crosshair, true), Some(Cursor::Crosshair));
-        assert_eq!(next(&mut applied, Cursor::Hidden, true), Some(Cursor::Hidden));
+        assert_eq!(
+            next(&mut applied, Cursor::Crosshair, false),
+            None,
+            "never while inactive"
+        );
+        assert_eq!(
+            next(&mut applied, Cursor::Crosshair, true),
+            Some(Cursor::Crosshair)
+        );
+        assert_eq!(
+            next(&mut applied, Cursor::Hidden, true),
+            Some(Cursor::Hidden)
+        );
         assert_eq!(next(&mut applied, Cursor::Hidden, true), None);
-        assert_eq!(next(&mut applied, Cursor::Hidden, false), Some(Cursor::Default), "the arrow once on leaving");
-        assert_eq!(next(&mut applied, Cursor::Hidden, false), None, "then another window's cursor stays");
+        assert_eq!(
+            next(&mut applied, Cursor::Hidden, false),
+            Some(Cursor::Default),
+            "the arrow once on leaving"
+        );
+        assert_eq!(
+            next(&mut applied, Cursor::Hidden, false),
+            None,
+            "then another window's cursor stays"
+        );
         assert_eq!(next(&mut applied, Cursor::Pointer, false), None);
-        assert_eq!(next(&mut applied, Cursor::Default, true), Some(Cursor::Default), "entering claims the cursor");
+        assert_eq!(
+            next(&mut applied, Cursor::Default, true),
+            Some(Cursor::Default),
+            "entering claims the cursor"
+        );
         assert_eq!(next(&mut applied, Cursor::Default, true), None);
     }
 
@@ -212,6 +262,9 @@ mod tests {
         next(&mut applied, image, false);
         assert!(!holds_image(applied), "not once the pointer leaves");
         next(&mut applied, Cursor::Crosshair, true);
-        assert!(!holds_image(applied), "nor for a system shape, which the window's cursor rects keep");
+        assert!(
+            !holds_image(applied),
+            "nor for a system shape, which the window's cursor rects keep"
+        );
     }
 }

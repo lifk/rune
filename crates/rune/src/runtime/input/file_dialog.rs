@@ -1,5 +1,8 @@
 use super::*;
-use crate::file_dialog::{DialogState, FileDialogError, FileDialogKind, FileDialogOptions, FileDialogResult, Pending, Request};
+use crate::file_dialog::{
+    DialogState, FileDialogError, FileDialogKind, FileDialogOptions, FileDialogResult, Pending,
+    Request,
+};
 
 impl<S: 'static> Runtime<S> {
     /// The file dialog showing, or about to show, from [`Tx::open_file`], [`Tx::save_file`] or
@@ -11,8 +14,15 @@ impl<S: 'static> Runtime<S> {
     /// Answers the file dialog showing as if the user chose `path`, or cancelled with `None`.
     /// Its callback runs on the next frame. For tests and headless drivers; native dialogs
     /// answer themselves.
-    pub fn resolve_file_dialog(&mut self, path: Option<std::path::PathBuf>) -> Result<(), FileDialogError> {
-        let id = self.file_dialog.pending().ok_or_else(|| FileDialogError("no file dialog is open".into()))?.id;
+    pub fn resolve_file_dialog(
+        &mut self,
+        path: Option<std::path::PathBuf>,
+    ) -> Result<(), FileDialogError> {
+        let id = self
+            .file_dialog
+            .pending()
+            .ok_or_else(|| FileDialogError("no file dialog is open".into()))?
+            .id;
         self.answer_file_dialog(id, Ok(path));
         Ok(())
     }
@@ -25,16 +35,26 @@ impl<S: 'static> Runtime<S> {
         self.file_dialog_answers.push((id, request.on_answer));
         if self.native_overlay {
             self.trace_event("file-dialog:overlay");
-            self.queue.push(Action::FileDialog(id, Err(FileDialogError("overlays cannot open file dialogs".into()))));
+            self.queue.push(Action::FileDialog(
+                id,
+                Err(FileDialogError("overlays cannot open file dialogs".into())),
+            ));
             return;
         }
         if self.file_dialog.is_open() {
             self.trace_event("file-dialog:busy");
-            self.queue.push(Action::FileDialog(id, Err(FileDialogError("a file dialog is already open".into()))));
+            self.queue.push(Action::FileDialog(
+                id,
+                Err(FileDialogError("a file dialog is already open".into())),
+            ));
             return;
         }
         self.trace_event(format_args!("file-dialog:open:{:?}", request.kind));
-        self.file_dialog = DialogState::Requested(Pending { id, kind: request.kind, options: request.options });
+        self.file_dialog = DialogState::Requested(Pending {
+            id,
+            kind: request.kind,
+            options: request.options,
+        });
     }
 
     /// The dialog for the host to show, marked shown. Nothing while it shows.
@@ -56,12 +76,29 @@ impl<S: 'static> Runtime<S> {
         }
     }
 
-    pub(super) fn run_file_dialog(&mut self, id: u64, result: FileDialogResult, one: &mut Tx) -> bool {
-        let Some(i) = self.file_dialog_answers.iter().position(|(dialog, _)| *dialog == id) else { return false };
+    pub(super) fn run_file_dialog(
+        &mut self,
+        id: u64,
+        result: FileDialogResult,
+        one: &mut Tx,
+    ) -> bool {
+        let Some(i) = self
+            .file_dialog_answers
+            .iter()
+            .position(|(dialog, _)| *dialog == id)
+        else {
+            return false;
+        };
         let (_, f) = self.file_dialog_answers.remove(i);
         self.trace_event(format_args!(
             "file-dialog:answer:{}",
-            if result.as_ref().is_ok_and(Option::is_some) { "path" } else if result.is_ok() { "cancel" } else { "error" }
+            if result.as_ref().is_ok_and(Option::is_some) {
+                "path"
+            } else if result.is_ok() {
+                "cancel"
+            } else {
+                "error"
+            }
         ));
         f(states!(self), result, one);
         true
@@ -75,8 +112,16 @@ impl<S: 'static> Runtime<S> {
             if let Some(d) = self.file_dialog.take() {
                 self.queue.push(Action::FileDialog(d.id, Ok(None)));
             }
-            let Some(pos) = self.queue.iter().position(|a| matches!(a, Action::FileDialog(..))) else { return };
-            let Action::FileDialog(id, result) = self.queue.remove(pos) else { unreachable!() };
+            let Some(pos) = self
+                .queue
+                .iter()
+                .position(|a| matches!(a, Action::FileDialog(..)))
+            else {
+                return;
+            };
+            let Action::FileDialog(id, result) = self.queue.remove(pos) else {
+                unreachable!()
+            };
             let mut one = self.transaction();
             self.run_file_dialog(id, result, &mut one);
             self.latch_requests(&mut one);

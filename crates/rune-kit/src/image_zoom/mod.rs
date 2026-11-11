@@ -57,22 +57,34 @@ pub struct ImageZoom {
 }
 
 impl ImageZoom {
-    pub fn new() -> ImageZoom { ImageZoom::default() }
+    pub fn new() -> ImageZoom {
+        ImageZoom::default()
+    }
 
     /// The view as it shows now.
-    pub fn view(&self) -> ZoomView { self.glide.shown() }
+    pub fn view(&self) -> ZoomView {
+        self.glide.shown()
+    }
 
     /// The zoom as a percentage of the image's natural size, as the zoom bar shows it.
-    pub fn level(&self) -> u32 { (self.view().scale * self.fit_ratio.get().max(f32::EPSILON) * 100.0).round() as u32 }
+    pub fn level(&self) -> u32 {
+        (self.view().scale * self.fit_ratio.get().max(f32::EPSILON) * 100.0).round() as u32
+    }
 
     /// Whether the image shows above fit.
-    pub fn zoomed(&self) -> bool { self.view().scale > 1.0 }
+    pub fn zoomed(&self) -> bool {
+        self.view().scale > 1.0
+    }
 
     /// Zoomed in (or on its way there), the first Escape zooms back out instead of closing.
-    pub fn owns_escape(&self) -> bool { self.glide.goal().scale > 1.0 }
+    pub fn owns_escape(&self) -> bool {
+        self.glide.goal().scale > 1.0
+    }
 
     /// Whether a pan holds the pointer.
-    pub fn dragging(&self) -> bool { gesture::dragging(&self.state) }
+    pub fn dragging(&self) -> bool {
+        gesture::dragging(&self.state)
+    }
 
     /// Steps a glide to the frame clock `now`. True while one runs (the view must run again);
     /// it asks `tx` for the next frame until it lands.
@@ -91,16 +103,24 @@ impl ImageZoom {
     }
 
     /// Back to fit at once, as a new image opens.
-    pub fn reset(&mut self) { *self = ImageZoom::default(); }
+    pub fn reset(&mut self) {
+        *self = ImageZoom::default();
+    }
 
     /// ⌘ + and the + button: √2 times the destination, about the middle.
-    pub fn zoom_in(&mut self, tx: &mut Tx) { self.step_by(STEP, tx) }
+    pub fn zoom_in(&mut self, tx: &mut Tx) {
+        self.step_by(STEP, tx)
+    }
 
     /// ⌘ − and the − button.
-    pub fn zoom_out(&mut self, tx: &mut Tx) { self.step_by(1.0 / STEP, tx) }
+    pub fn zoom_out(&mut self, tx: &mut Tx) {
+        self.step_by(1.0 / STEP, tx)
+    }
 
     /// ⌘ 0, 0, the level button and a double-click on a zoomed image.
-    pub fn fit(&mut self, tx: &mut Tx) { self.ease(FIT_VIEW, tx) }
+    pub fn fit(&mut self, tx: &mut Tx) {
+        self.ease(FIT_VIEW, tx)
+    }
 
     fn step_by(&mut self, factor: f32, tx: &mut Tx) {
         let goal = self.glide.goal();
@@ -109,7 +129,9 @@ impl ImageZoom {
 
     /// A double-click at `at` (viewport-centre points): 100% about the pointer, or back to fit.
     fn detail(&mut self, at: [f32; 2], tx: &mut Tx) {
-        if self.glide.goal().scale > 1.0 { return self.fit(tx); }
+        if self.glide.goal().scale > 1.0 {
+            return self.fit(tx);
+        }
         let to = math::zoom_at(self.glide.goal(), math::detail_scale(self.fit_ratio.get()), at, &self.bounds.get());
         self.ease(to, tx);
     }
@@ -122,7 +144,9 @@ impl ImageZoom {
     }
 
     fn ease(&mut self, to: ZoomView, tx: &mut Tx) {
-        if self.reduced_motion.get() { return self.follow(to, tx); }
+        if self.reduced_motion.get() {
+            return self.follow(to, tx);
+        }
         self.glide.set(to);
         self.run(Event::GlideStart { now: tx.clock() }, tx);
     }
@@ -158,7 +182,13 @@ impl ImageZoom {
         let k = ((body[2] - 2.0 * PAD).max(1.0) / nw).min((body[3] - 2.0 * PAD).max(1.0) / nh).min(1.0);
         let fitted = [nw * k, nh * k];
         self.fit_ratio.set(k);
-        self.bounds.set(ZoomBounds { width: fitted[0], height: fitted[1], viewport_width: body[2], viewport_height: body[3], max_scale: math::max_scale(k) });
+        self.bounds.set(ZoomBounds {
+            width: fitted[0],
+            height: fitted[1],
+            viewport_width: body[2],
+            viewport_height: body[3],
+            max_scale: math::max_scale(k),
+        });
         (body, fitted)
     }
 
@@ -187,13 +217,28 @@ impl ImageZoom {
         let m = ev.mods;
         let bare = !m.cmd && !m.ctrl && !m.alt && !m.logo;
         match &ev.key {
-            Key::Escape if self.owns_escape() => { self.fit(tx); Some(false) }
+            Key::Escape if self.owns_escape() => {
+                self.fit(tx);
+                Some(false)
+            }
             Key::Escape => Some(true),
-            Key::Text(t) if bare && t == "0" => { self.fit(tx); Some(false) }
+            Key::Text(t) if bare && t == "0" => {
+                self.fit(tx);
+                Some(false)
+            }
             Key::Command(c) if !m.alt => match c {
-                '=' | '+' => { self.zoom_in(tx); Some(false) }
-                '-' | '_' => { self.zoom_out(tx); Some(false) }
-                '0' => { self.fit(tx); Some(false) }
+                '=' | '+' => {
+                    self.zoom_in(tx);
+                    Some(false)
+                }
+                '-' | '_' => {
+                    self.zoom_out(tx);
+                    Some(false)
+                }
+                '0' => {
+                    self.fit(tx);
+                    Some(false)
+                }
                 _ => None,
             },
             _ => None,
@@ -251,7 +296,13 @@ impl<S: 'static> Preview<S> {
     }
 
     /// Accessible names: zoom out, zoom to fit (also the level's tooltip), zoom in and close.
-    pub fn labels(mut self, zoom_out: impl Into<String>, fit: impl Into<String>, zoom_in: impl Into<String>, close: impl Into<String>) -> Self {
+    pub fn labels(
+        mut self,
+        zoom_out: impl Into<String>,
+        fit: impl Into<String>,
+        zoom_in: impl Into<String>,
+        close: impl Into<String>,
+    ) -> Self {
         self.labels = [zoom_out.into(), fit.into(), zoom_in.into(), close.into()];
         self
     }
@@ -304,9 +355,11 @@ impl<S: 'static> Preview<S> {
         if zoom.zoomed() {
             // A zoomed image fades out across the padding instead of being cut at the edge; a
             // fitted one never reaches it.
-            body_el = body_el
-                .clip_fade_linear(PAD, PAD, PAD, PAD)
-                .cursor(if zoom.dragging() { Cursor::Grabbing } else { Cursor::Grab });
+            body_el = body_el.clip_fade_linear(PAD, PAD, PAD, PAD).cursor(if zoom.dragging() {
+                Cursor::Grabbing
+            } else {
+                Cursor::Grab
+            });
         }
         let close = self.close.clone();
         let dismiss = self.close.clone();
@@ -318,15 +371,21 @@ impl<S: 'static> Preview<S> {
             .h_full()
             .focusable(true)
             .no_focus_ring()
-            .modal_tx(false, move |s: &mut S, tx: &mut Tx| {
-                if lens(s).owns_escape() { lens(s).fit(tx) } else { dismiss(s, tx) }
-            })
+            .modal_tx(
+                false,
+                move |s: &mut S, tx: &mut Tx| {
+                    if lens(s).owns_escape() { lens(s).fit(tx) } else { dismiss(s, tx) }
+                },
+            )
             .on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| press(s, lens, d, false, &close, tx))
             .on_wheel(|_: &mut S, _, _: &mut Tx| true)
             .on_key({
                 let close = self.close.clone();
                 move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| match lens(s).key(ev, tx) {
-                    Some(true) => { close(s, tx); true }
+                    Some(true) => {
+                        close(s, tx);
+                        true
+                    }
                     Some(false) => true,
                     None => false,
                 }
@@ -341,8 +400,11 @@ impl<S: 'static> Preview<S> {
         let lens = self.lens;
         let [out, fit, into, close_label] = self.labels.clone();
         let level = (self.format)(zoom.level());
-        let mut bar = row().key("image-preview-controls").gap(2.0).padding(2.0).center_y().radius(8.0).fill(k.c.layer_01);
-        if let Some(t) = self.controls.clone() { bar = bar.transition(t); }
+        let mut bar =
+            row().key("image-preview-controls").gap(2.0).padding(2.0).center_y().radius(8.0).fill(k.c.layer_01);
+        if let Some(t) = self.controls.clone() {
+            bar = bar.transition(t);
+        }
         bar = crate::shadows(k, bar, &k.elevation.floating);
         let glyphs = self.icons.unwrap_or([k.glyph.dash, k.glyph.dash]);
         let close = self.close.clone();
@@ -357,14 +419,32 @@ impl<S: 'static> Preview<S> {
             .build(k)
             .key("image-preview-zoom-level")
             .min_w(52.0);
-        bar.child(IconButton::new(glyphs[0]).variant(IconButtonVariant::Ghost).label(out)
-                .on_press_tx(move |s: &mut S, tx: &mut Tx| lens(s).zoom_out(tx)).build(k).key("image-preview-zoom-out"))
-            .child(level)
-            .child(IconButton::new(glyphs[1]).variant(IconButtonVariant::Ghost).label(into)
-                .on_press_tx(move |s: &mut S, tx: &mut Tx| lens(s).zoom_in(tx)).build(k).key("image-preview-zoom-in"))
-            .child(el().key("image-preview-divider").size(1.0, 16.0).mx(2.0).fill(k.c.border_base))
-            .child(IconButton::new(k.glyph.close).variant(IconButtonVariant::Ghost).label(close_label)
-                .on_press_tx(move |s: &mut S, tx: &mut Tx| close(s, tx)).build(k).key(CLOSE_KEY))
+        bar.child(
+            IconButton::new(glyphs[0])
+                .variant(IconButtonVariant::Ghost)
+                .label(out)
+                .on_press_tx(move |s: &mut S, tx: &mut Tx| lens(s).zoom_out(tx))
+                .build(k)
+                .key("image-preview-zoom-out"),
+        )
+        .child(level)
+        .child(
+            IconButton::new(glyphs[1])
+                .variant(IconButtonVariant::Ghost)
+                .label(into)
+                .on_press_tx(move |s: &mut S, tx: &mut Tx| lens(s).zoom_in(tx))
+                .build(k)
+                .key("image-preview-zoom-in"),
+        )
+        .child(el().key("image-preview-divider").size(1.0, 16.0).mx(2.0).fill(k.c.border_base))
+        .child(
+            IconButton::new(k.glyph.close)
+                .variant(IconButtonVariant::Ghost)
+                .label(close_label)
+                .on_press_tx(move |s: &mut S, tx: &mut Tx| close(s, tx))
+                .build(k)
+                .key(CLOSE_KEY),
+        )
     }
 }
 
@@ -378,14 +458,24 @@ fn press<S>(s: &mut S, lens: Lens<S>, d: &mut Drag, on_body: bool, close: &OnClo
             let on_backdrop = !on_body || !z.hits_image(at);
             z.run(Event::PointerDown { on_body, on_backdrop, zoomed: z.zoomed(), at }, tx);
         }
-        Phase::Move => { z.run(Event::PointerMoved { at }, tx); }
-        Phase::Up if d.cancelled() => { z.run(Event::PointerCancel, tx); }
+        Phase::Move => {
+            z.run(Event::PointerMoved { at }, tx);
+        }
+        Phase::Up if d.cancelled() => {
+            z.run(Event::PointerCancel, tx);
+        }
         Phase::Up => {
             z.run(Event::PointerUp, tx);
             let on_backdrop = !on_body || !z.hits_image(at);
-            if z.run(Event::Click { on_backdrop }, tx) { return close(s, tx); }
-            if on_body && d.clicks == 2 { z.detail(z.centred(at), tx); }
+            if z.run(Event::Click { on_backdrop }, tx) {
+                return close(s, tx);
+            }
+            if on_body && d.clicks == 2 {
+                z.detail(z.centred(at), tx);
+            }
         }
     }
-    if matches!(z.state, State::Still(Gesture::Panning { .. })) { tx.instant(); }
+    if matches!(z.state, State::Still(Gesture::Panning { .. })) {
+        tx.instant();
+    }
 }

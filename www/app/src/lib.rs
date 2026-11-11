@@ -18,7 +18,7 @@ mod tokens;
 mod ui;
 mod wordmark;
 
-use sections::{HELLO, HOME, LIGHT, GLASS, METAL, SESSION, STREAMING, ready};
+use sections::{GLASS, HELLO, HOME, LIGHT, METAL, SESSION, STREAMING, ready};
 use tokens::*;
 use wordmark::{Glints, Glyphs, Which};
 
@@ -118,14 +118,27 @@ fn poll(s: &mut State, t: f64, tx: &mut Tx) -> bool {
 }
 
 fn view(s: &State, cx: &mut Cx<State>) -> El {
-    let bp = cx.layout_with("page", |r| Bp::of(r[2])).unwrap_or(Bp { at: 1000 });
+    let bp = cx
+        .layout_with("page", |r| Bp::of(r[2]))
+        .unwrap_or(Bp { at: 1000 });
     let reduced = cx.is_reduced_motion();
     let t = s.clock.0;
     let gutter = bp.gutter();
     let framed = |e: El| e.w_full().max_w(CONTENT + 2.0 * gutter).px(gutter);
-    let main = if s.not_found { col().child(sections::not_found(bp)) } else { home(s, cx, bp, reduced) };
-    col().key("page").w_full().fill(BG).items_center()
-        .child(framed(sections::topbar(s, s.glints.glow(Which::Brand, t, reduced))))
+    let main = if s.not_found {
+        col().child(sections::not_found(bp))
+    } else {
+        home(s, cx, bp, reduced)
+    };
+    col()
+        .key("page")
+        .w_full()
+        .fill(BG)
+        .items_center()
+        .child(framed(sections::topbar(
+            s,
+            s.glints.glow(Which::Brand, t, reduced),
+        )))
         .child(framed(main.key("main").role("main")))
         .child(framed(sections::footer()))
 }
@@ -136,21 +149,41 @@ fn home(s: &State, cx: &Cx<State>, bp: Bp, reduced: bool) -> El {
     let springs = sections::springs_intro(bp)
         .child(springs::demo(s, cx, bp))
         .child(memo("retarget", bp, sections::retarget_code));
-    let frame = sections::frame_intro(bp).child(pipeline::pipeline(&s.pipeline, cx.layout_size("pl"), bp, reduced));
+    let frame = sections::frame_intro(bp).child(pipeline::pipeline(
+        &s.pipeline,
+        cx.layout_size("pl"),
+        bp,
+        reduced,
+    ));
     let (hello, _hello) = ready(images, cx, &[&HELLO]);
     // The rest of the page's pictures arrive when their section does; an export outside a browser
     // has every file on disk and writes them all.
     let eager = cfg!(not(target_arch = "wasm32"));
     let shown = |name: &str| eager || s.seen.contains(name);
-    let (gallery, _gallery) = if shown("renderer") { ready(images, cx, &[&METAL, &GLASS, &LIGHT]) } else { (Vec::new(), Vec::new()) };
-    let (shots, _shots) = if shown("opencode") { ready(images, cx, &[&SESSION, &HOME, &STREAMING]) } else { (Vec::new(), Vec::new()) };
-    col().w_full()
+    let (gallery, _gallery) = if shown("renderer") {
+        ready(images, cx, &[&METAL, &GLASS, &LIGHT])
+    } else {
+        (Vec::new(), Vec::new())
+    };
+    let (shots, _shots) = if shown("opencode") {
+        ready(images, cx, &[&SESSION, &HOME, &STREAMING])
+    } else {
+        (Vec::new(), Vec::new())
+    };
+    col()
+        .w_full()
         .child(hero::hero(s, cx, bp, glow))
-        .child(memo("views", (bp, hello), || sections::views(cx, images, bp)))
+        .child(memo("views", (bp, hello), || {
+            sections::views(cx, images, bp)
+        }))
         .child(springs)
         .child(frame)
-        .child(memo("renderer", (bp, gallery), || sections::gallery(cx, images, bp)))
-        .child(memo("opencode", (bp, shots), || sections::opencode(cx, images, bp)))
+        .child(memo("renderer", (bp, gallery), || {
+            sections::gallery(cx, images, bp)
+        }))
+        .child(memo("opencode", (bp, shots), || {
+            sections::opencode(cx, images, bp)
+        }))
         .child(memo("agents", bp, || sections::agents(bp)))
         .child(memo("platforms", bp, || sections::platforms(bp)))
         .child(sections::cta(bp, s.copied_until.is_some()))
@@ -167,7 +200,10 @@ pub fn spec() -> AppSpec<State> {
 
 /// The page as an app: document mode, with the page's own font files.
 pub fn app() -> rune::App<State> {
-    rune::App::new(spec()).web_document().font_url("fonts/geist.ttf").font_url("fonts/geist-mono.ttf")
+    rune::App::new(spec())
+        .web_document()
+        .font_url("fonts/geist.ttf")
+        .font_url("fonts/geist-mono.ttf")
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen::prelude::wasm_bindgen(start))]

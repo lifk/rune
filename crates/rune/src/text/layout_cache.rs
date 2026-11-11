@@ -29,7 +29,12 @@ pub(super) struct Entry<T> {
 impl<T> Entry<T> {
     pub(super) fn new(value: T, used: u32, text_len: usize, shape: u64) -> Self {
         let cost = (text_len * LAYOUT_PER_BYTE + LAYOUT_BASE).min(u32::MAX as usize) as u32;
-        Entry { value, used, cost, shape }
+        Entry {
+            value,
+            used,
+            cost,
+            shape,
+        }
     }
 }
 
@@ -49,15 +54,25 @@ pub(super) const STALE_BYTES: usize = 3 << 20;
 /// that commit's are kept while the budget lasts rather than all dropped together.
 fn evict<T>(cache: &mut Cache<T>, g: u32) {
     let stale = |used: u32| g.wrapping_sub(used) >= 2;
-    let total: usize = cache.values().filter(|e| stale(e.used)).map(|e| e.cost as usize).sum();
+    let total: usize = cache
+        .values()
+        .filter(|e| stale(e.used))
+        .map(|e| e.cost as usize)
+        .sum();
     if total <= STALE_BYTES {
         return;
     }
-    let mut ages: Vec<(u32, usize)> = cache.values().filter(|e| stale(e.used)).map(|e| (g.wrapping_sub(e.used), e.cost as usize)).collect();
+    let mut ages: Vec<(u32, usize)> = cache
+        .values()
+        .filter(|e| stale(e.used))
+        .map(|e| (g.wrapping_sub(e.used), e.cost as usize))
+        .collect();
     ages.sort_unstable_by_key(|a| a.0);
     let (mut younger, mut kept, mut cutoff) = (0, 0, u32::MAX);
     for (i, &(age, cost)) in ages.iter().enumerate() {
-        if i > 0 && ages[i - 1].0 != age { younger = kept; }
+        if i > 0 && ages[i - 1].0 != age {
+            younger = kept;
+        }
         kept += cost;
         if kept > STALE_BYTES {
             cutoff = age;
@@ -67,7 +82,11 @@ fn evict<T>(cache: &mut Cache<T>, g: u32) {
     let mut room = STALE_BYTES - younger;
     cache.retain(|_, e| {
         let (age, cost) = (g.wrapping_sub(e.used), e.cost as usize);
-        age < cutoff || age == cutoff && cost <= room && { room -= cost; true }
+        age < cutoff
+            || age == cutoff && cost <= room && {
+                room -= cost;
+                true
+            }
     });
 }
 
@@ -85,8 +104,10 @@ impl TextSystem {
         let g = self.generation;
         if !self.superseded.is_empty() {
             let gone = &self.superseded;
-            self.layouts.retain(|_, e| e.used == g || !gone.contains(&e.shape));
-            self.elisions.retain(|_, e| e.used == g || !gone.contains(&e.shape));
+            self.layouts
+                .retain(|_, e| e.used == g || !gone.contains(&e.shape));
+            self.elisions
+                .retain(|_, e| e.used == g || !gone.contains(&e.shape));
             self.superseded.clear();
         }
         evict(&mut self.layouts, g);
@@ -106,13 +127,25 @@ impl TextSystem {
     }
 
     #[inline]
-    pub(crate) fn insert_elision(&mut self, key: u64, shape: u64, drawn_len: usize, value: CachedElision) {
+    pub(crate) fn insert_elision(
+        &mut self,
+        key: u64,
+        shape: u64,
+        drawn_len: usize,
+        value: CachedElision,
+    ) {
         let g = self.generation;
-        self.elisions.insert(key, Entry::new(value, g, drawn_len, shape));
+        self.elisions
+            .insert(key, Entry::new(value, g, drawn_len, shape));
     }
 
     /// A live run owns its latest layout; don't retain every timer tick in the commit cache.
-    pub(crate) fn layout_live(&mut self, text: &str, style: TextStyle, scale: f32) -> Rc<Layout<Ink>> {
+    pub(crate) fn layout_live(
+        &mut self,
+        text: &str,
+        style: TextStyle,
+        scale: f32,
+    ) -> Rc<Layout<Ink>> {
         let key = shape_key(text, &[], style, scale, false, &[]);
         let cached = self.layouts.contains_key(&key);
         let prev_shape = self.shapes.get(&key).copied();
@@ -120,16 +153,24 @@ impl TextSystem {
         if !cached {
             self.layouts.remove(&key);
             match prev_shape {
-                Some(prev) => { self.shapes.insert(key, prev); }
-                None => { self.shapes.remove(&key); }
+                Some(prev) => {
+                    self.shapes.insert(key, prev);
+                }
+                None => {
+                    self.shapes.remove(&key);
+                }
             }
         }
         layout
     }
 
     #[cfg(test)]
-    pub(crate) fn cached_layout_count(&self) -> usize { self.layouts.len() }
+    pub(crate) fn cached_layout_count(&self) -> usize {
+        self.layouts.len()
+    }
 
     #[cfg(test)]
-    pub(crate) fn cached_elision_count(&self) -> usize { self.elisions.len() }
+    pub(crate) fn cached_elision_count(&self) -> usize {
+        self.elisions.len()
+    }
 }

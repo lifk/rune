@@ -45,7 +45,11 @@ impl El {
     /// across any active IME preedit.
     pub fn spans(mut self, spans: impl Into<Vec<Span>>) -> Self {
         let spans = spans.into();
-        if let Some(inp) = self.cold.get_mut_if_some().and_then(|c| c.input.as_deref_mut()) {
+        if let Some(inp) = self
+            .cold
+            .get_mut_if_some()
+            .and_then(|c| c.input.as_deref_mut())
+        {
             inp.decorations = spans;
             self.sync_input_rich();
         } else if let Some(t) = &mut self.text {
@@ -66,7 +70,11 @@ impl El {
     /// replacing the content. During streaming reveal a ringed chip fades with its last word
     /// on each line; selection is painted over the chip and below the glyphs.
     pub fn span_ring(mut self, start: usize, end: usize, color: Color, width: f32) -> Self {
-        if let Some(t) = &mut self.text && start < end && width > 0.0 && width.is_finite() {
+        if let Some(t) = &mut self.text
+            && start < end
+            && width > 0.0
+            && width.is_finite()
+        {
             t.rings.push((start as u32, end as u32, color, width));
         }
         self
@@ -75,13 +83,18 @@ impl El {
     /// default), as a stylesheet's `border-radius` on one kind of span: a diff's changed words
     /// at 3, say, while inline code keeps 4.
     pub fn span_radius(mut self, radius: f32) -> Self {
-        if let Some(t) = &mut self.text && radius.is_finite() {
+        if let Some(t) = &mut self.text
+            && radius.is_finite()
+        {
             t.span_radius = radius.max(0.0);
         }
         self
     }
     /// Inset border rings `(start, end, color, width)` for multiple byte ranges (see [`El::span_ring`]).
-    pub fn span_rings(mut self, rings: impl IntoIterator<Item = (usize, usize, Color, f32)>) -> Self {
+    pub fn span_rings(
+        mut self,
+        rings: impl IntoIterator<Item = (usize, usize, Color, f32)>,
+    ) -> Self {
         for (start, end, color, width) in rings {
             self = self.span_ring(start, end, color, width);
         }
@@ -90,13 +103,18 @@ impl El {
     /// A strikethrough line across bytes `start..end` in `color` (`None`: the span's or text's
     /// colour). Wrapped lines each get their own segment.
     pub fn strike(mut self, start: usize, end: usize, color: Option<Color>) -> Self {
-        if let Some(t) = &mut self.text && start < end {
+        if let Some(t) = &mut self.text
+            && start < end
+        {
             t.strikes.push((start as u32, end as u32, color));
         }
         self
     }
     /// Strikethrough lines `(start, end, color)` for multiple byte ranges (see [`El::strike`]).
-    pub fn strikes(mut self, strikes: impl IntoIterator<Item = (usize, usize, Option<Color>)>) -> Self {
+    pub fn strikes(
+        mut self,
+        strikes: impl IntoIterator<Item = (usize, usize, Option<Color>)>,
+    ) -> Self {
         for (start, end, color) in strikes {
             self = self.strike(start, end, color);
         }
@@ -107,13 +125,18 @@ impl El {
     /// Drawn from the shaped layout's glyph boxes without splitting runs, so adding, moving or
     /// clearing highlights never reshapes text or shifts line breaks.
     pub fn text_highlight(mut self, highlight: crate::text::TextHighlight) -> Self {
-        if let Some(t) = &mut self.text && highlight.start < highlight.end {
+        if let Some(t) = &mut self.text
+            && highlight.start < highlight.end
+        {
             t.highlights.push(highlight);
         }
         self
     }
     /// Paint-only [`TextHighlight`](crate::TextHighlight)s over bytes of the text (see [`El::text_highlight`]).
-    pub fn text_highlights(mut self, highlights: impl IntoIterator<Item = crate::text::TextHighlight>) -> Self {
+    pub fn text_highlights(
+        mut self,
+        highlights: impl IntoIterator<Item = crate::text::TextHighlight>,
+    ) -> Self {
         for h in highlights {
             self = self.text_highlight(h);
         }
@@ -122,7 +145,11 @@ impl El {
     /// Set the visual palette for rich inline marks (`code`, `link`) and paragraph blocks
     /// (`quote`, `code block`, list markers) on a [`text_input`].
     pub fn rich_style(mut self, style: crate::edit::RichStyle) -> Self {
-        if let Some(inp) = self.cold.get_mut_if_some().and_then(|c| c.input.as_deref_mut()) {
+        if let Some(inp) = self
+            .cold
+            .get_mut_if_some()
+            .and_then(|c| c.input.as_deref_mut())
+        {
             inp.rich_style = style;
             self.sync_input_rich();
         } else if let Some(t) = &mut self.text {
@@ -151,8 +178,15 @@ impl El {
     ///
     /// The closure may capture state; it runs each time the field is built, so a pill follows
     /// whatever it captured. For colours too, see [`El::pill_style`].
-    pub fn pill_icon(mut self, icon: impl Fn(&str) -> Option<&'static crate::Icon> + 'static) -> Self {
-        if let Some(inp) = self.cold.get_mut_if_some().and_then(|c| c.input.as_deref_mut()) {
+    pub fn pill_icon(
+        mut self,
+        icon: impl Fn(&str) -> Option<&'static crate::Icon> + 'static,
+    ) -> Self {
+        if let Some(inp) = self
+            .cold
+            .get_mut_if_some()
+            .and_then(|c| c.input.as_deref_mut())
+        {
             inp.pill_icon = Some(Rc::new(icon));
             self.sync_input_pills();
             self.sync_input_rich();
@@ -172,7 +206,11 @@ impl El {
     /// })
     /// ```
     pub fn pill_style(mut self, style: impl Fn(&str) -> PillStyle + 'static) -> Self {
-        if let Some(inp) = self.cold.get_mut_if_some().and_then(|c| c.input.as_deref_mut()) {
+        if let Some(inp) = self
+            .cold
+            .get_mut_if_some()
+            .and_then(|c| c.input.as_deref_mut())
+        {
             inp.pill_style = Some(Rc::new(style));
             self.sync_input_pills();
             self.sync_input_rich();
@@ -180,7 +218,9 @@ impl El {
         self
     }
     pub(super) fn sync_input_pills(&mut self) {
-        let (Some(inp), Some(t)) = (&self.cold.input, &mut self.text) else { return };
+        let (Some(inp), Some(t)) = (&self.cold.input, &mut self.text) else {
+            return;
+        };
         if inp.edit.is_plain() {
             t.pills.clear();
             return;
@@ -191,13 +231,24 @@ impl El {
             .into_iter()
             .map(|(start, end, id)| {
                 let st = inp.pill_style.as_ref().map(|f| f(id)).unwrap_or_default();
-                let icon = st.icon.or_else(|| inp.pill_icon.as_ref().and_then(|f| f(id)));
-                crate::text::PillChip { start, end, icon, bg: st.bg, fg: st.fg, bare: None }
+                let icon = st
+                    .icon
+                    .or_else(|| inp.pill_icon.as_ref().and_then(|f| f(id)));
+                crate::text::PillChip {
+                    start,
+                    end,
+                    icon,
+                    bg: st.bg,
+                    fg: st.fg,
+                    bare: None,
+                }
             })
             .collect();
     }
     pub(crate) fn sync_input_rich(&mut self) {
-        let (Some(inp), Some(t)) = (&self.cold.input, &mut self.text) else { return };
+        let (Some(inp), Some(t)) = (&self.cold.input, &mut self.text) else {
+            return;
+        };
         t.rich_style = inp.rich_style;
         if inp.edit.is_plain() && inp.decorations.is_empty() {
             // A plain field lays out and draws exactly as before rich editing existed.
@@ -211,7 +262,10 @@ impl El {
         let (mut base_spans, strikes, rich_links, blocks) =
             inp.edit.rich_display_specs(t.style, inp.rich_style);
         for d in &inp.decorations {
-            for (ds, de) in inp.edit.map_range_to_display(d.start as usize, d.end as usize) {
+            for (ds, de) in inp
+                .edit
+                .map_range_to_display(d.start as usize, d.end as usize)
+            {
                 let mut sp = d.clone();
                 sp.start = ds;
                 sp.end = de;
@@ -220,7 +274,12 @@ impl El {
         }
         let pill_fg = t.pill_colors.and_then(|(_, fg)| fg);
         base_spans.extend(t.pills.iter().filter_map(|p| {
-            Some(Span { start: p.start, end: p.end, color: Some(p.fg.or(pill_fg)?), ..Span::default() })
+            Some(Span {
+                start: p.start,
+                end: p.end,
+                color: Some(p.fg.or(pill_fg)?),
+                ..Span::default()
+            })
         }));
         let mut flat = crate::text::flatten_spans(&base_spans);
         for s in &mut flat {
@@ -296,7 +355,9 @@ impl El {
     }
     fn set_elide(&mut self, elide: Elide) {
         // A field's caret and selection index its own text, which a cut would break.
-        if self.cold.input.is_some() { return; }
+        if self.cold.input.is_some() {
+            return;
+        }
         self.set_one_line(|t| {
             t.truncate = true;
             t.elide = elide;
@@ -324,7 +385,9 @@ impl El {
     /// looks up to it, and copying and the accessibility text keep the whole string. 0 shows
     /// every line. A [`text_input`] ignores it; use [`auto_grow`] there.
     pub fn max_lines(mut self, lines: usize) -> Self {
-        if self.cold.input.is_some() { return self; }
+        if self.cold.input.is_some() {
+            return self;
+        }
         if let Some(t) = &mut self.text {
             t.wrap = true;
             t.max_lines = lines;
@@ -355,7 +418,11 @@ impl El {
     /// Keep a text field to one line: long text scrolls sideways under the caret instead of
     /// wrapping. Fields are multi-line by default.
     pub fn single_line(mut self) -> Self {
-        if let Some(i) = self.cold.get_mut_if_some().and_then(|c| c.input.as_deref_mut()) {
+        if let Some(i) = self
+            .cold
+            .get_mut_if_some()
+            .and_then(|c| c.input.as_deref_mut())
+        {
             i.single_line = true;
             i.edit.set_single_line(true);
             if let Some(t) = &mut self.text {
@@ -385,7 +452,9 @@ impl El {
     /// focused.
     pub fn on_link<S: 'static>(mut self, f: impl Fn(&mut S, &str, &mut Tx) + 'static) -> Self {
         if let Some(t) = &mut self.text {
-            t.on_link = Some(LinkFn(Rc::new(move |s, id, tx| f(downcast::<S>(s), id, tx))));
+            t.on_link = Some(LinkFn(Rc::new(move |s, id, tx| {
+                f(downcast::<S>(s), id, tx)
+            })));
         }
         self
     }
@@ -393,9 +462,14 @@ impl El {
     /// (right-click, macOS control-click) lands on its glyphs: a menu for that link. It takes
     /// the press, so ancestors' [`El::on_secondary_press`] and the text's Copy menu don't see
     /// it; elsewhere in the text they still do.
-    pub fn on_link_secondary<S: 'static>(mut self, f: impl Fn(&mut S, &str, PointerPress, &mut Tx) + 'static) -> Self {
+    pub fn on_link_secondary<S: 'static>(
+        mut self,
+        f: impl Fn(&mut S, &str, PointerPress, &mut Tx) + 'static,
+    ) -> Self {
         if let Some(t) = &mut self.text {
-            t.on_link_secondary = Some(LinkSecondaryFn(Rc::new(move |s, id, p, tx| f(downcast::<S>(s), id, p, tx))));
+            t.on_link_secondary = Some(LinkSecondaryFn(Rc::new(move |s, id, p, tx| {
+                f(downcast::<S>(s), id, p, tx)
+            })));
         }
         self
     }
@@ -404,13 +478,21 @@ impl El {
     /// web) puts a red marker under each word the caret has left, and the field's menu offers its
     /// suggestions and Learn Spelling. Off by default; a secure field never checks.
     pub fn spellcheck(mut self, on: bool) -> Self {
-        if let Some(i) = self.cold.get_mut_if_some().and_then(|c| c.input.as_deref_mut()) {
+        if let Some(i) = self
+            .cold
+            .get_mut_if_some()
+            .and_then(|c| c.input.as_deref_mut())
+        {
             i.spellcheck = on;
         }
         self
     }
     pub fn placeholder(mut self, s: impl Into<String>, c: Color) -> Self {
-        if let Some(i) = self.cold.get_mut_if_some().and_then(|c| c.input.as_deref_mut()) {
+        if let Some(i) = self
+            .cold
+            .get_mut_if_some()
+            .and_then(|c| c.input.as_deref_mut())
+        {
             i.placeholder = s.into();
             i.placeholder_color = c;
             i.placeholder_inked = true;
@@ -418,7 +500,11 @@ impl El {
         self
     }
     pub fn caret(mut self, caret: Color, selection: Color) -> Self {
-        if let Some(i) = self.cold.get_mut_if_some().and_then(|c| c.input.as_deref_mut()) {
+        if let Some(i) = self
+            .cold
+            .get_mut_if_some()
+            .and_then(|c| c.input.as_deref_mut())
+        {
             i.caret = caret;
             i.selection = selection;
             i.caret_inked = true;
@@ -444,9 +530,14 @@ impl El {
     /// [`El::selectable`] in place.
     pub fn set_selectable(&mut self, on: bool) -> &mut Self {
         if let Some(t) = &mut self.text {
-            if self.cold.input.is_some() || t.redacted { return self; }
+            if self.cold.input.is_some() || t.redacted {
+                return self;
+            }
             t.selectable = on;
-            if on && (self.handlers.cursor.is_none() || (!t.links.is_empty() && self.handlers.cursor == Some(Cursor::Pointer))) {
+            if on
+                && (self.handlers.cursor.is_none()
+                    || (!t.links.is_empty() && self.handlers.cursor == Some(Cursor::Pointer)))
+            {
                 self.handlers.cursor = Some(Cursor::Text);
             }
         }
@@ -477,7 +568,10 @@ impl El {
     /// ```
     ///
     /// [`TextSelection::text`]: crate::TextSelection::text
-    pub fn selection_copy(mut self, f: impl Fn(&crate::TextSelection) -> Option<String> + 'static) -> Self {
+    pub fn selection_copy(
+        mut self,
+        f: impl Fn(&crate::TextSelection) -> Option<String> + 'static,
+    ) -> Self {
         self.handlers.selection_copy = Some(Rc::new(f));
         self
     }
@@ -498,8 +592,13 @@ impl El {
     /// ```
     ///
     /// [`SelectionChange`]: crate::SelectionChange
-    pub fn on_selection_change<S: 'static>(mut self, f: impl Fn(&mut S, &crate::SelectionChange, &mut Tx) + 'static) -> Self {
-        self.handlers.on_selection_change = Some(Rc::new(move |s, change, tx| f(downcast::<S>(s), change, tx)));
+    pub fn on_selection_change<S: 'static>(
+        mut self,
+        f: impl Fn(&mut S, &crate::SelectionChange, &mut Tx) + 'static,
+    ) -> Self {
+        self.handlers.on_selection_change = Some(Rc::new(move |s, change, tx| {
+            f(downcast::<S>(s), change, tx)
+        }));
         self
     }
     /// Draws and lays out, but the pointer and keyboard pass through this element and
@@ -516,9 +615,12 @@ impl El {
     /// Bytes of [`El::selectable`] text that draw but aren't copied, such as the spacing
     /// characters Markdown pads inline code with. A double-click's word stops at them.
     pub fn uncopied(mut self, range: std::ops::Range<usize>) -> Self {
-        if let Some(t) = &mut self.text && range.start < range.end {
+        if let Some(t) = &mut self.text
+            && range.start < range.end
+        {
             let at = t.uncopied.partition_point(|r| (r.0 as usize) < range.start);
-            t.uncopied.insert(at, (range.start as u32, range.end as u32));
+            t.uncopied
+                .insert(at, (range.start as u32, range.end as u32));
         }
         self
     }
@@ -531,14 +633,18 @@ impl El {
     /// text(para).selectable(true).copy_breaks(2, 2) // "first para\n\nsecond para"
     /// ```
     pub fn copy_breaks(mut self, before: u8, after: u8) -> Self {
-        if let Some(t) = &mut self.text { t.copy_breaks = [before, after]; }
+        if let Some(t) = &mut self.text {
+            t.copy_breaks = [before, after];
+        }
         self
     }
     /// Text copying puts before this [`El::selectable`] text when a selection takes it from its
     /// start along with other texts, without drawing it: a list item's `"- "` or `"1. "`, whose
     /// drawn marker isn't selectable. A copy of this text alone leaves it out.
     pub fn copy_prefix(mut self, prefix: impl Into<std::rc::Rc<str>>) -> Self {
-        if let Some(t) = &mut self.text { t.copy_prefix = Some(prefix.into()); }
+        if let Some(t) = &mut self.text {
+            t.copy_prefix = Some(prefix.into());
+        }
         self
     }
     /// A text field's selection as a browser paints a field's: its highlight and the ink its
@@ -546,19 +652,40 @@ impl El {
     /// ([`SelectionStyle::chromium`](crate::SelectionStyle::chromium) is Chromium's). It takes
     /// over [`El::caret`]'s and [`El::selection_color`]'s highlight.
     pub fn selection_style(mut self, style: crate::SelectionStyle) -> Self {
-        if let Some(i) = self.cold.get_mut_if_some().and_then(|c| c.input.as_deref_mut()) { i.selection_style = Some(style); }
+        if let Some(i) = self
+            .cold
+            .get_mut_if_some()
+            .and_then(|c| c.input.as_deref_mut())
+        {
+            i.selection_style = Some(style);
+        }
         self
     }
     /// The selection highlight of [`El::selectable`] text or a text field, drawn alike for both.
     pub fn selection_color(mut self, color: Color) -> Self {
-        if let Some(i) = self.cold.get_mut_if_some().and_then(|c| c.input.as_deref_mut()) { i.selection = color; }
-        if let Some(t) = &mut self.text { t.selection = color; }
+        if let Some(i) = self
+            .cold
+            .get_mut_if_some()
+            .and_then(|c| c.input.as_deref_mut())
+        {
+            i.selection = color;
+        }
+        if let Some(t) = &mut self.text {
+            t.selection = color;
+        }
         self
     }
     /// Binds the field to a `TextEdit` in app state. `f` may capture (a row index, say); wrap
     /// a closure in [`edit_access`] so its returned borrow is tied to the state.
-    pub fn on_edit<S: 'static>(mut self, f: impl for<'a> Fn(&'a mut S) -> &'a mut TextEdit + 'static) -> Self {
-        if let Some(i) = self.cold.get_mut_if_some().and_then(|c| c.input.as_deref_mut()) {
+    pub fn on_edit<S: 'static>(
+        mut self,
+        f: impl for<'a> Fn(&'a mut S) -> &'a mut TextEdit + 'static,
+    ) -> Self {
+        if let Some(i) = self
+            .cold
+            .get_mut_if_some()
+            .and_then(|c| c.input.as_deref_mut())
+        {
             i.access = Some(Rc::new(edit_fn(move |s| f(downcast::<S>(s)))));
         }
         self
@@ -568,14 +695,24 @@ impl El {
     /// or code block), while plain Return in a paragraph calls `on_submit` — or presses the
     /// [`El::default_button`] when the field has none.
     pub fn on_submit<S: 'static>(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
-        if let Some(i) = self.cold.get_mut_if_some().and_then(|c| c.input.as_deref_mut()) {
+        if let Some(i) = self
+            .cold
+            .get_mut_if_some()
+            .and_then(|c| c.input.as_deref_mut())
+        {
             i.submit = Some(Rc::new(move |s, tx| f(downcast::<S>(s), tx)));
         }
         self
     }
     /// Let dependent layout reflow when this input changes; the typed text remains immediate.
     pub fn animate_edit_layout(mut self) -> Self {
-        if let Some(i) = self.cold.get_mut_if_some().and_then(|c| c.input.as_deref_mut()) { i.animate_layout = true; }
+        if let Some(i) = self
+            .cold
+            .get_mut_if_some()
+            .and_then(|c| c.input.as_deref_mut())
+        {
+            i.animate_layout = true;
+        }
         self
     }
 }

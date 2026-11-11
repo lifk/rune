@@ -19,17 +19,32 @@ static RUN: OnceLock<Instant> = OnceLock::new();
 static WRITTEN: Mutex<Option<Option<PathBuf>>> = Mutex::new(None);
 
 /// `run` starts the event loop.
-pub(crate) fn run_starts() { RUN.get_or_init(Instant::now); }
+pub(crate) fn run_starts() {
+    RUN.get_or_init(Instant::now);
+}
 
 /// A window's `on_ready` returned. Only the process's first writes the file.
-pub(crate) fn ready() { ready_in(std::env::var_os(VAR).as_deref()) }
+pub(crate) fn ready() {
+    ready_in(std::env::var_os(VAR).as_deref())
+}
 
 fn ready_in(dir: Option<&OsStr>) {
     let mut written = WRITTEN.lock().unwrap_or_else(|e| e.into_inner());
-    if written.is_some() { return; }
-    let Some(dir) = dir.filter(|dir| !dir.is_empty()) else { *written = Some(None); return };
-    let ready_ms = crate::tooling::perf_warn::launch::process_age().or_else(|| RUN.get().map(Instant::elapsed)).map_or(0, |age| age.as_millis() as u64);
-    let signal = Signal { pid: std::process::id(), bundle_id: bundle_id(), ready_ms };
+    if written.is_some() {
+        return;
+    }
+    let Some(dir) = dir.filter(|dir| !dir.is_empty()) else {
+        *written = Some(None);
+        return;
+    };
+    let ready_ms = crate::tooling::perf_warn::launch::process_age()
+        .or_else(|| RUN.get().map(Instant::elapsed))
+        .map_or(0, |age| age.as_millis() as u64);
+    let signal = Signal {
+        pid: std::process::id(),
+        bundle_id: bundle_id(),
+        ready_ms,
+    };
     *written = Some(match signal.write_in(Some(dir)) {
         Some(Ok(path)) => {
             on_exit();
@@ -48,17 +63,30 @@ fn ready_in(dir: Option<&OsStr>) {
 /// Removes the file, if this process wrote one. Runs as the event loop returns and at exit.
 pub(crate) fn clear() {
     // At exit, another thread may hold the lock; leaving the file then is what a kill does.
-    let Ok(mut written) = WRITTEN.try_lock() else { return };
-    if let Some(Some(path)) = written.as_mut().map(Option::take) { let _ = std::fs::remove_file(path); }
+    let Ok(mut written) = WRITTEN.try_lock() else {
+        return;
+    };
+    if let Some(Some(path)) = written.as_mut().map(Option::take) {
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 /// What the file says.
-struct Signal { pid: u32, bundle_id: String, ready_ms: u64 }
+struct Signal {
+    pid: u32,
+    bundle_id: String,
+    ready_ms: u64,
+}
 
 impl Signal {
     fn json(&self) -> String {
         let id = serde_json::to_string(&self.bundle_id).unwrap_or_else(|_| "\"\"".into());
-        format!(r#"{{"pid":{},"bundle_id":{id},"ready_ms":{},"rune":"{}"}}"#, self.pid, self.ready_ms, env!("CARGO_PKG_VERSION"))
+        format!(
+            r#"{{"pid":{},"bundle_id":{id},"ready_ms":{},"rune":"{}"}}"#,
+            self.pid,
+            self.ready_ms,
+            env!("CARGO_PKG_VERSION")
+        )
     }
 
     /// Writes the file into `dir`, made 0700 if it's missing, through a temporary file renamed
@@ -77,7 +105,9 @@ impl Signal {
             let mut file = std::fs::File::create(&temp)?;
             file.write_all(format!("{}\n", self.json()).as_bytes())?;
             drop(file);
-            std::fs::rename(&temp, &path).inspect_err(|_| { let _ = std::fs::remove_file(&temp); })?;
+            std::fs::rename(&temp, &path).inspect_err(|_| {
+                let _ = std::fs::remove_file(&temp);
+            })?;
             Ok(path)
         })())
     }
@@ -86,8 +116,15 @@ impl Signal {
 /// The main bundle's identifier on macOS, else the executable's name.
 fn bundle_id() -> String {
     #[cfg(target_os = "macos")]
-    if let Some(id) = main_bundle_id() { return id; }
-    std::env::current_exe().ok().and_then(|exe| exe.file_name().map(|name| name.to_string_lossy().into_owned()))
+    if let Some(id) = main_bundle_id() {
+        return id;
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| {
+            exe.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
         .unwrap_or_else(|| "rune-app".into())
 }
 
@@ -107,7 +144,9 @@ fn main_bundle_id() -> Option<String> {
 fn on_exit() {
     #[cfg(unix)]
     {
-        extern "C" fn at_exit() { clear() }
+        extern "C" fn at_exit() {
+            clear()
+        }
         // SAFETY: registers a plain function with no captured state.
         unsafe { libc::atexit(at_exit) };
     }

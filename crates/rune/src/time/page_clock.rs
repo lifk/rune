@@ -19,44 +19,70 @@ impl Instant {
         Instant(Duration::from_secs_f64(ms / 1000.0))
     }
 
-    pub fn duration_since(&self, earlier: Instant) -> Duration { self.saturating_duration_since(earlier) }
-    pub fn checked_duration_since(&self, earlier: Instant) -> Option<Duration> { self.0.checked_sub(earlier.0) }
-    pub fn saturating_duration_since(&self, earlier: Instant) -> Duration { self.0.saturating_sub(earlier.0) }
-    pub fn elapsed(&self) -> Duration { Instant::now().saturating_duration_since(*self) }
-    pub fn checked_add(&self, duration: Duration) -> Option<Instant> { self.0.checked_add(duration).map(Instant) }
-    pub fn checked_sub(&self, duration: Duration) -> Option<Instant> { self.0.checked_sub(duration).map(Instant) }
+    pub fn duration_since(&self, earlier: Instant) -> Duration {
+        self.saturating_duration_since(earlier)
+    }
+    pub fn checked_duration_since(&self, earlier: Instant) -> Option<Duration> {
+        self.0.checked_sub(earlier.0)
+    }
+    pub fn saturating_duration_since(&self, earlier: Instant) -> Duration {
+        self.0.saturating_sub(earlier.0)
+    }
+    pub fn elapsed(&self) -> Duration {
+        Instant::now().saturating_duration_since(*self)
+    }
+    pub fn checked_add(&self, duration: Duration) -> Option<Instant> {
+        self.0.checked_add(duration).map(Instant)
+    }
+    pub fn checked_sub(&self, duration: Duration) -> Option<Instant> {
+        self.0.checked_sub(duration).map(Instant)
+    }
 
     #[cfg(target_arch = "wasm32")]
     pub(crate) fn to_web_time(self) -> web_time::Instant {
         let now = Instant::now();
         match self.checked_duration_since(now) {
             Some(ahead) => web_time::Instant::now() + ahead,
-            None => web_time::Instant::now().checked_sub(now.0 - self.0).unwrap_or_else(web_time::Instant::now),
+            None => web_time::Instant::now()
+                .checked_sub(now.0 - self.0)
+                .unwrap_or_else(web_time::Instant::now),
         }
     }
 }
 
 impl Add<Duration> for Instant {
     type Output = Instant;
-    fn add(self, rhs: Duration) -> Instant { self.checked_add(rhs).expect("overflow when adding duration to instant") }
+    fn add(self, rhs: Duration) -> Instant {
+        self.checked_add(rhs)
+            .expect("overflow when adding duration to instant")
+    }
 }
 
 impl AddAssign<Duration> for Instant {
-    fn add_assign(&mut self, rhs: Duration) { *self = *self + rhs; }
+    fn add_assign(&mut self, rhs: Duration) {
+        *self = *self + rhs;
+    }
 }
 
 impl Sub<Duration> for Instant {
     type Output = Instant;
-    fn sub(self, rhs: Duration) -> Instant { self.checked_sub(rhs).expect("overflow when subtracting duration from instant") }
+    fn sub(self, rhs: Duration) -> Instant {
+        self.checked_sub(rhs)
+            .expect("overflow when subtracting duration from instant")
+    }
 }
 
 impl SubAssign<Duration> for Instant {
-    fn sub_assign(&mut self, rhs: Duration) { *self = *self - rhs; }
+    fn sub_assign(&mut self, rhs: Duration) {
+        *self = *self - rhs;
+    }
 }
 
 impl Sub<Instant> for Instant {
     type Output = Duration;
-    fn sub(self, rhs: Instant) -> Duration { self.saturating_duration_since(rhs) }
+    fn sub(self, rhs: Instant) -> Duration {
+        self.saturating_duration_since(rhs)
+    }
 }
 
 /// Turns a source that may jump back into one that never does: after a jump back, readings
@@ -68,20 +94,31 @@ pub(crate) struct Monotonic {
 }
 
 impl Monotonic {
-    pub(crate) const fn new() -> Self { Monotonic { last: 0.0, offset: 0.0 } }
+    pub(crate) const fn new() -> Self {
+        Monotonic {
+            last: 0.0,
+            offset: 0.0,
+        }
+    }
 
     pub(crate) fn read(&mut self, source: f64) -> f64 {
-        if !source.is_finite() { return self.last; }
+        if !source.is_finite() {
+            return self.last;
+        }
         let t = source + self.offset;
-        if t < self.last { self.offset = self.last - source; } else { self.last = t; }
+        if t < self.last {
+            self.offset = self.last - source;
+        } else {
+            self.last = t;
+        }
         self.last
     }
 }
 
 #[cfg(target_arch = "wasm32")]
 mod js {
-    use wasm_bindgen::prelude::*;
     use wasm_bindgen::JsCast;
+    use wasm_bindgen::prelude::*;
 
     #[wasm_bindgen]
     extern "C" {
@@ -93,12 +130,19 @@ mod js {
         fn now(this: &Performance) -> f64;
     }
 
-    pub(super) fn performance_now() -> f64 { js_sys::global().unchecked_into::<Global>().performance().now() }
+    pub(super) fn performance_now() -> f64 {
+        js_sys::global()
+            .unchecked_into::<Global>()
+            .performance()
+            .now()
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 mod js {
-    pub(super) fn performance_now() -> f64 { 0.0 }
+    pub(super) fn performance_now() -> f64 {
+        0.0
+    }
 }
 
 #[cfg(test)]

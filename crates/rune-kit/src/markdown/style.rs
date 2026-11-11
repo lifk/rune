@@ -226,7 +226,11 @@ impl MarkdownStyle {
             highlight_bg: if k.dark { k.alpha(c.warning.icon, 0.24) } else { rune::oklcha(0.86, 0.15, 85.0, 0.42) },
             highlight_fg: None,
             highlight_ring: None,
-            highlight_current_bg: if k.dark { k.alpha(c.warning.icon, 0.40) } else { rune::oklcha(0.82, 0.17, 75.0, 0.58) },
+            highlight_current_bg: if k.dark {
+                k.alpha(c.warning.icon, 0.40)
+            } else {
+                rune::oklcha(0.82, 0.17, 75.0, 0.58)
+            },
             highlight_current_fg: None,
             highlight_current_ring: Some((if k.dark { c.warning.icon } else { rune::oklch(0.66, 0.16, 70.0) }, 1.0)),
             task: TaskPaint {
@@ -361,7 +365,17 @@ impl MarkdownStyle {
     /// its first line). Checked, they fill `fill_on` with a `mark` in it; unchecked, they fill
     /// `fill_off` inside a `border_off` outline. 16 points, 8 in and centred by default.
     #[allow(clippy::too_many_arguments)]
-    pub fn task_checkbox(mut self, size: f32, radius: f32, left: f32, top: Option<f32>, fill_on: Color, mark: Color, fill_off: Color, border_off: Color) -> Self {
+    pub fn task_checkbox(
+        mut self,
+        size: f32,
+        radius: f32,
+        left: f32,
+        top: Option<f32>,
+        fill_on: Color,
+        mark: Color,
+        fill_off: Color,
+        border_off: Color,
+    ) -> Self {
         let t = &mut self.task;
         (t.size, t.radius, t.left, t.top) = (size.max(0.0), radius.max(0.0), left.max(0.0), top);
         (t.fill_on, t.border_on, t.mark, t.fill_off, t.border_off) = (fill_on, fill_on, mark, fill_off, border_off);
@@ -627,14 +641,53 @@ impl std::hash::Hash for MarkdownStyle {
             task,
             diagram,
         } = *self;
-        (text, muted, accent, link_underline, code_bg, code_block_fill, code_block_border, quote_rule, rule).hash(state);
-        (body, headings, code_block, (code_text, plain_code_text), shell, link_hover, list_outside, list_nested.map(|n| n.map(f32_bits)), table_align).hash(state);
-        (f32_bits(quote.width), f32_bits(quote.pad), quote.text).hash(state);
-        [inline_code_scale, inline_code_weight, inline_code_pad, code_block_pad[0], code_block_pad[1], list_indent, list_gap, strong_weight, table_min_column]
-            .map(f32_bits)
+        (text, muted, accent, link_underline, code_bg, code_block_fill, code_block_border, quote_rule, rule)
             .hash(state);
-        (table_outline, table_rule, table_head_fill, table_head_text, table_head_rule, table_head_weight.map(f32_bits), table_tabular, table_font).hash(state);
-        ([f32_bits(table_pad[0]), f32_bits(table_pad[1])], table_flush_left, table_head_pad.map(|p| p.map(f32_bits)), table_full_width, table_margin.map(f32_bits)).hash(state);
+        (
+            body,
+            headings,
+            code_block,
+            (code_text, plain_code_text),
+            shell,
+            link_hover,
+            list_outside,
+            list_nested.map(|n| n.map(f32_bits)),
+            table_align,
+        )
+            .hash(state);
+        (f32_bits(quote.width), f32_bits(quote.pad), quote.text).hash(state);
+        [
+            inline_code_scale,
+            inline_code_weight,
+            inline_code_pad,
+            code_block_pad[0],
+            code_block_pad[1],
+            list_indent,
+            list_gap,
+            strong_weight,
+            table_min_column,
+        ]
+        .map(f32_bits)
+        .hash(state);
+        (
+            table_outline,
+            table_rule,
+            table_head_fill,
+            table_head_text,
+            table_head_rule,
+            table_head_weight.map(f32_bits),
+            table_tabular,
+            table_font,
+        )
+            .hash(state);
+        (
+            [f32_bits(table_pad[0]), f32_bits(table_pad[1])],
+            table_flush_left,
+            table_head_pad.map(|p| p.map(f32_bits)),
+            table_full_width,
+            table_margin.map(f32_bits),
+        )
+            .hash(state);
         table_frame.map(|TableFrame { fill, ring, pad }| (fill, ring, f32_bits(pad))).hash(state);
         (table_bar, text_width.map(f32_bits), f32_bits(wide_fade), link_icon.map(|l| l.map(f32_bits))).hash(state);
         match table_body {
@@ -647,7 +700,8 @@ impl std::hash::Hash for MarkdownStyle {
                 }
             }
         }
-        (diff_add, diff_remove, diff_add_text, diff_remove_text, diff_hues, diff_hunk, syntax, highlight, selection).hash(state);
+        (diff_add, diff_remove, diff_add_text, diff_remove_text, diff_hues, diff_hunk, syntax, highlight, selection)
+            .hash(state);
         (
             highlight_bg,
             highlight_fg,
@@ -657,8 +711,35 @@ impl std::hash::Hash for MarkdownStyle {
             highlight_current_ring.map(|(c, w)| (c, f32_bits(w))),
         )
             .hash(state);
-        let TaskPaint { fill_on, border_on, border_off, fill_off, hover, focus_ring, mark, check, radius, motion, size, left, top } = task;
-        (fill_on, border_on, border_off, fill_off, hover, focus_ring, mark, check as *const Icon as usize, f32_bits(radius), f32_bits(motion.duration), f32_bits(motion.bounce)).hash(state);
+        let TaskPaint {
+            fill_on,
+            border_on,
+            border_off,
+            fill_off,
+            hover,
+            focus_ring,
+            mark,
+            check,
+            radius,
+            motion,
+            size,
+            left,
+            top,
+        } = task;
+        (
+            fill_on,
+            border_on,
+            border_off,
+            fill_off,
+            hover,
+            focus_ring,
+            mark,
+            check as *const Icon as usize,
+            f32_bits(radius),
+            f32_bits(motion.duration),
+            f32_bits(motion.bounce),
+        )
+            .hash(state);
         (f32_bits(size), f32_bits(left), top.map(f32_bits)).hash(state);
         let DiagramPaint {
             text,
@@ -677,7 +758,8 @@ impl std::hash::Hash for MarkdownStyle {
             hover,
             hover_neighbours,
         } = diagram;
-        (text, muted, surface, surface_border, node_fill, node_border, line, cluster_fill, note_fill, note_border).hash(state);
+        (text, muted, surface, surface_border, node_fill, node_border, line, cluster_fill, note_fill, note_border)
+            .hash(state);
         (font, f32_bits(max_width), f32_bits(min_scale), hover, hover_neighbours).hash(state);
     }
 }

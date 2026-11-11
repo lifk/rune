@@ -77,13 +77,21 @@ pub enum Effects<E> {
 }
 
 impl<E> Effects<E> {
-    pub const fn none() -> Self { Self::None }
+    pub const fn none() -> Self {
+        Self::None
+    }
 
-    pub const fn one(e: E) -> Self { Self::One(e) }
+    pub const fn one(e: E) -> Self {
+        Self::One(e)
+    }
 
-    pub const fn two(a: E, b: E) -> Self { Self::Two(a, b) }
+    pub const fn two(a: E, b: E) -> Self {
+        Self::Two(a, b)
+    }
 
-    pub const fn is_empty(&self) -> bool { matches!(self, Self::None) }
+    pub const fn is_empty(&self) -> bool {
+        matches!(self, Self::None)
+    }
 
     /// Adds `e` after the effects already asked for.
     pub fn push(&mut self, e: E) {
@@ -101,7 +109,9 @@ impl<E> Effects<E> {
 
 impl<E> Extend<E> for Effects<E> {
     fn extend<I: IntoIterator<Item = E>>(&mut self, iter: I) {
-        for e in iter { self.push(e); }
+        for e in iter {
+            self.push(e);
+        }
     }
 }
 

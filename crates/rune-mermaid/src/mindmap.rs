@@ -39,17 +39,28 @@ pub(crate) fn parse(body: &[&str], indents: &[usize]) -> Option<Mindmap> {
     let mut stack: Vec<(usize, usize)> = Vec::new();
     for (i, line) in body.iter().enumerate() {
         let l = line.trim();
-        if l.starts_with("::icon(") || l.starts_with(":::") || l.starts_with("accTitle") || l.starts_with("accDescr") {
+        if l.starts_with("::icon(")
+            || l.starts_with(":::")
+            || l.starts_with("accTitle")
+            || l.starts_with("accDescr")
+        {
             continue;
         }
-        let Some((text, look)) = node(l) else { continue };
+        let Some((text, look)) = node(l) else {
+            continue;
+        };
         if nodes.len() >= MAX_ITEMS {
             return None;
         }
         let indent = indents.get(i).copied().unwrap_or(0);
         let id = nodes.len();
         if id == 0 {
-            nodes.push(Node { text, look, depth: 0, children: Vec::new() });
+            nodes.push(Node {
+                text,
+                look,
+                depth: 0,
+                children: Vec::new(),
+            });
             stack.push((indent, 0));
             continue;
         }
@@ -63,7 +74,12 @@ pub(crate) fn parse(body: &[&str], indents: &[usize]) -> Option<Mindmap> {
             return None;
         }
         nodes[parent].children.push(id);
-        nodes.push(Node { text, look, depth, children: Vec::new() });
+        nodes.push(Node {
+            text,
+            look,
+            depth,
+            children: Vec::new(),
+        });
         stack.push((indent, id));
     }
     (!nodes.is_empty()).then_some(Mindmap { nodes })
@@ -121,13 +137,20 @@ pub(crate) fn draw(m: &Mindmap, paint: &DiagramStyle) -> Option<Scene> {
         .map(|i| {
             let node = &m.nodes[i];
             let label = measure_wrap(&node.text, font(i), WRAP);
-            Placed { size: size(look(i, node.look), label.size), label, side: 0.0, branch: 0, at: [0.0; 2] }
+            Placed {
+                size: size(look(i, node.look), label.size),
+                label,
+                side: 0.0,
+                branch: 0,
+                at: [0.0; 2],
+            }
         })
         .collect();
     let mut block = vec![0.0f32; n];
     for i in (0..n).rev() {
         let kids = &m.nodes[i].children;
-        let stacked: f32 = kids.iter().map(|&k| block[k]).sum::<f32>() + GAP_Y * kids.len().saturating_sub(1) as f32;
+        let stacked: f32 = kids.iter().map(|&k| block[k]).sum::<f32>()
+            + GAP_Y * kids.len().saturating_sub(1) as f32;
         block[i] = placed[i].size[1].max(stacked);
     }
 
@@ -146,7 +169,13 @@ pub(crate) fn draw(m: &Mindmap, paint: &DiagramStyle) -> Option<Scene> {
         }
     }
     for (b, &k) in top.iter().enumerate() {
-        mark(m, &mut placed, k, b, if right.contains(&k) { 1.0 } else { -1.0 });
+        mark(
+            m,
+            &mut placed,
+            k,
+            b,
+            if right.contains(&k) { 1.0 } else { -1.0 },
+        );
     }
 
     // Each depth on each side is a column as wide as its widest node.
@@ -157,7 +186,8 @@ pub(crate) fn draw(m: &Mindmap, paint: &DiagramStyle) -> Option<Scene> {
     }
     for (kids, side) in [(&right, 1.0f32), (&left, -1.0)] {
         let col = &cols[usize::from(side > 0.0)];
-        let height: f32 = kids.iter().map(|&k| block[k]).sum::<f32>() + GAP_Y * kids.len().saturating_sub(1) as f32;
+        let height: f32 = kids.iter().map(|&k| block[k]).sum::<f32>()
+            + GAP_Y * kids.len().saturating_sub(1) as f32;
         let mut y = -height / 2.0;
         for &k in kids.iter() {
             place(m, &mut placed, &block, col, k, y);
@@ -173,7 +203,12 @@ pub(crate) fn draw(m: &Mindmap, paint: &DiagramStyle) -> Option<Scene> {
             let a = [p.at[0] + q.side * p.size[0] / 2.0, p.at[1]];
             let b = [q.at[0] - q.side * q.size[0] / 2.0, q.at[1]];
             let width = (3.5 - node.depth as f32 * 0.75).max(1.25);
-            c.stroke(s_curve(a, b, false), false, width, solid(paint, branch_hue(q.branch)));
+            c.stroke(
+                s_curve(a, b, false),
+                false,
+                width,
+                solid(paint, branch_hue(q.branch)),
+            );
         }
     }
     for (i, node) in m.nodes.iter().enumerate() {
@@ -182,9 +217,16 @@ pub(crate) fn draw(m: &Mindmap, paint: &DiagramStyle) -> Option<Scene> {
         let (fill, border) = match node.depth {
             0 => (solid(paint, hue(0)), strong(paint, hue(0))),
             1 => (soft(paint, h), strong(paint, h)),
-            _ => (over_color(soft(paint, h).alpha(0.55), paint.surface), strong(paint, h).alpha(0.7)),
+            _ => (
+                over_color(soft(paint, h).alpha(0.55), paint.surface),
+                strong(paint, h).alpha(0.7),
+            ),
         };
-        let text = if node.depth == 0 { ink(fill) } else { paint.text };
+        let text = if node.depth == 0 {
+            ink(fill)
+        } else {
+            paint.text
+        };
         draw_node(&mut c, look(i, node.look), p, [fill, border, text], font(i));
     }
     c.finish_fit(paint)
@@ -192,7 +234,11 @@ pub(crate) fn draw(m: &Mindmap, paint: &DiagramStyle) -> Option<Scene> {
 
 /// A plain root is drawn rounded, so it reads as the centre.
 fn look(i: usize, look: Look) -> Look {
-    if i == 0 && look == Look::Plain { Look::Rounded } else { look }
+    if i == 0 && look == Look::Plain {
+        Look::Rounded
+    } else {
+        look
+    }
 }
 
 /// Branch `b`'s hue; the root keeps the first.
@@ -212,9 +258,14 @@ fn mark(m: &Mindmap, placed: &mut [Placed], i: usize, branch: usize, side: f32) 
 fn place(m: &Mindmap, placed: &mut [Placed], block: &[f32], col: &[f32], i: usize, top: f32) {
     let node = &m.nodes[i];
     let side = placed[i].side;
-    let inner = col[1..node.depth].iter().map(|w| w + GAP_X).sum::<f32>() + placed[0].size[0] / 2.0 + GAP_X;
-    placed[i].at = [side * (inner + placed[i].size[0] / 2.0), top + block[i] / 2.0];
-    let stacked: f32 = node.children.iter().map(|&k| block[k]).sum::<f32>() + GAP_Y * node.children.len().saturating_sub(1) as f32;
+    let inner =
+        col[1..node.depth].iter().map(|w| w + GAP_X).sum::<f32>() + placed[0].size[0] / 2.0 + GAP_X;
+    placed[i].at = [
+        side * (inner + placed[i].size[0] / 2.0),
+        top + block[i] / 2.0,
+    ];
+    let stacked: f32 = node.children.iter().map(|&k| block[k]).sum::<f32>()
+        + GAP_Y * node.children.len().saturating_sub(1) as f32;
     let mut y = top + (block[i] - stacked) / 2.0;
     for &k in &node.children {
         place(m, placed, block, col, k, y);
@@ -236,13 +287,23 @@ fn size(look: Look, t: [f32; 2]) -> [f32; 2] {
     match as_shape(look) {
         Some(s) => {
             let [w, h] = shape::node_size(s, t);
-            if look == Look::Hexagon { [w, (t[1] + 16.0).max(34.0)] } else { [w, h] }
+            if look == Look::Hexagon {
+                [w, (t[1] + 16.0).max(34.0)]
+            } else {
+                [w, h]
+            }
         }
         None => [t[0] + 24.0, (t[1] + 14.0).max(32.0)],
     }
 }
 
-fn draw_node(c: &mut Canvas, look: Look, p: &Placed, [fill, border, text]: [Color; 3], font: TextStyle) {
+fn draw_node(
+    c: &mut Canvas,
+    look: Look,
+    p: &Placed,
+    [fill, border, text]: [Color; 3],
+    font: TextStyle,
+) {
     let [x, y] = p.at;
     let [w, h] = p.size;
     let (x0, y0, x1, y1) = (x - w / 2.0, y - h / 2.0, x + w / 2.0, y + h / 2.0);

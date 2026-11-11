@@ -1,12 +1,19 @@
-use super::*;
 use super::tests::{pixels, rect};
+use super::*;
 
 // Apple's continuous corner for r = 1, corner at the origin: three cubics from (0, K) to (K, 0),
 // as Core Animation and SwiftUI draw it.
 const CURVE: [[f32; 2]; 10] = [
-    [0.0, 1.528_664_8], [0.0, 1.088_493_2], [0.0, 0.868_407], [0.074_911_41, 0.631_494],
-    [0.169_06, 0.372_824], [0.372_824, 0.169_06], [0.631_494, 0.074_911_41],
-    [0.868_407, 0.0], [1.088_493_2, 0.0], [1.528_664_8, 0.0],
+    [0.0, 1.528_664_8],
+    [0.0, 1.088_493_2],
+    [0.0, 0.868_407],
+    [0.074_911_41, 0.631_494],
+    [0.169_06, 0.372_824],
+    [0.372_824, 0.169_06],
+    [0.631_494, 0.074_911_41],
+    [0.868_407, 0.0],
+    [1.088_493_2, 0.0],
+    [1.528_664_8, 0.0],
 ];
 
 fn polyline(r: f32) -> Vec<[f32; 2]> {
@@ -14,8 +21,15 @@ fn polyline(r: f32) -> Vec<[f32; 2]> {
     for c in CURVE[..].windows(4).step_by(3) {
         for k in 0..64 {
             let t = k as f32 / 64.0;
-            let b = [(1.0 - t).powi(3), 3.0 * t * (1.0 - t).powi(2), 3.0 * t * t * (1.0 - t), t.powi(3)];
-            points.push(std::array::from_fn(|a| (0..4).map(|j| b[j] * c[j][a]).sum::<f32>() * r));
+            let b = [
+                (1.0 - t).powi(3),
+                3.0 * t * (1.0 - t).powi(2),
+                3.0 * t * t * (1.0 - t),
+                t.powi(3),
+            ];
+            points.push(std::array::from_fn(|a| {
+                (0..4).map(|j| b[j] * c[j][a]).sum::<f32>() * r
+            }));
         }
     }
     points.push(CURVE[9].map(|v| v * r));
@@ -26,7 +40,9 @@ fn polyline(r: f32) -> Vec<[f32; 2]> {
 /// along both edges.
 fn oracle(p: [f32; 2], line: &[[f32; 2]]) -> f32 {
     let e = line[line.len() - 1][0];
-    if p[0] >= e || p[1] >= e { return (-p[0]).max(-p[1]); }
+    if p[0] >= e || p[1] >= e {
+        return (-p[0]).max(-p[1]);
+    }
     let mut best = (f32::MAX, 0.0);
     for s in line.windows(2) {
         let (a, b) = (s[0], s[1]);
@@ -34,7 +50,9 @@ fn oracle(p: [f32; 2], line: &[[f32; 2]]) -> f32 {
         let ap = [p[0] - a[0], p[1] - a[1]];
         let t = ((ap[0] * ab[0] + ap[1] * ab[1]) / (ab[0] * ab[0] + ab[1] * ab[1])).clamp(0.0, 1.0);
         let d = (ap[0] - ab[0] * t).hypot(ap[1] - ab[1] * t);
-        if d < best.0 { best = (d, ab[0] * ap[1] - ab[1] * ap[0]); }
+        if d < best.0 {
+            best = (d, ab[0] * ap[1] - ab[1] * ap[0]);
+        }
     }
     if best.1 > 0.0 { -best.0 } else { best.0 }
 }
@@ -86,5 +104,8 @@ fn continuous_corners_at_half_the_shorter_side_stay_closed() {
     assert_eq!(alpha(32, 16), 255);
     assert_eq!(alpha(32, 0), 255, "the top edge's centre is flat");
     assert_eq!(alpha(0, 0), 0);
-    assert!(alpha(0, 16) > 64 && alpha(0, 16) < 255, "the end reaches the rect's side");
+    assert!(
+        alpha(0, 16) > 64 && alpha(0, 16) < 255,
+        "the end reaches the rect's side"
+    );
 }

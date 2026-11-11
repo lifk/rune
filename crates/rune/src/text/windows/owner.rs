@@ -14,16 +14,28 @@ struct Owner {
     _blob: Blob<u8>,
 }
 
-static VTABLE: IUnknown_Vtbl = IUnknown_Vtbl { QueryInterface: query_interface, AddRef: add_ref, Release: release };
+static VTABLE: IUnknown_Vtbl = IUnknown_Vtbl {
+    QueryInterface: query_interface,
+    AddRef: add_ref,
+    Release: release,
+};
 
 /// An `IUnknown` holding `blob` until DirectWrite and Rune both let it go.
 pub(super) fn new(blob: Blob<u8>) -> IUnknown {
-    let owner = Box::new(Owner { vtable: &VTABLE, refs: AtomicU32::new(1), _blob: blob });
+    let owner = Box::new(Owner {
+        vtable: &VTABLE,
+        refs: AtomicU32::new(1),
+        _blob: blob,
+    });
     // SAFETY: `Owner` starts with an IUnknown vtable and its one reference moves to the result.
     unsafe { IUnknown::from_raw(Box::into_raw(owner).cast()) }
 }
 
-unsafe extern "system" fn query_interface(this: *mut c_void, iid: *const GUID, out: *mut *mut c_void) -> HRESULT {
+unsafe extern "system" fn query_interface(
+    this: *mut c_void,
+    iid: *const GUID,
+    out: *mut *mut c_void,
+) -> HRESULT {
     // SAFETY: COM passes valid pointers; only IUnknown itself is offered.
     unsafe {
         if out.is_null() || iid.is_null() {

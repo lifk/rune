@@ -22,7 +22,11 @@ pub(crate) mod bgl {
         wgpu::BindGroupLayoutEntry {
             binding,
             visibility: vis,
-            ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
             count: None,
         }
     }
@@ -38,22 +42,46 @@ pub(crate) mod bgl {
             count: None,
         }
     }
-    pub fn tex(binding: u32, vis: wgpu::ShaderStages, kind: wgpu::TextureSampleType, dim: wgpu::TextureViewDimension) -> wgpu::BindGroupLayoutEntry {
+    pub fn tex(
+        binding: u32,
+        vis: wgpu::ShaderStages,
+        kind: wgpu::TextureSampleType,
+        dim: wgpu::TextureViewDimension,
+    ) -> wgpu::BindGroupLayoutEntry {
         wgpu::BindGroupLayoutEntry {
             binding,
             visibility: vis,
-            ty: wgpu::BindingType::Texture { sample_type: kind, view_dimension: dim, multisampled: false },
+            ty: wgpu::BindingType::Texture {
+                sample_type: kind,
+                view_dimension: dim,
+                multisampled: false,
+            },
             count: None,
         }
     }
     pub fn f2(binding: u32, vis: wgpu::ShaderStages) -> wgpu::BindGroupLayoutEntry {
-        tex(binding, vis, wgpu::TextureSampleType::Float { filterable: true }, wgpu::TextureViewDimension::D2)
+        tex(
+            binding,
+            vis,
+            wgpu::TextureSampleType::Float { filterable: true },
+            wgpu::TextureViewDimension::D2,
+        )
     }
     pub fn f2a(binding: u32, vis: wgpu::ShaderStages) -> wgpu::BindGroupLayoutEntry {
-        tex(binding, vis, wgpu::TextureSampleType::Float { filterable: true }, wgpu::TextureViewDimension::D2Array)
+        tex(
+            binding,
+            vis,
+            wgpu::TextureSampleType::Float { filterable: true },
+            wgpu::TextureViewDimension::D2Array,
+        )
     }
     pub fn u2(binding: u32, vis: wgpu::ShaderStages) -> wgpu::BindGroupLayoutEntry {
-        tex(binding, vis, wgpu::TextureSampleType::Uint, wgpu::TextureViewDimension::D2)
+        tex(
+            binding,
+            vis,
+            wgpu::TextureSampleType::Uint,
+            wgpu::TextureViewDimension::D2,
+        )
     }
     pub fn store(binding: u32, dim: wgpu::TextureViewDimension) -> wgpu::BindGroupLayoutEntry {
         wgpu::BindGroupLayoutEntry {
@@ -77,13 +105,30 @@ pub(crate) mod bgl {
     }
 }
 
-pub(crate) fn layout(device: &wgpu::Device, label: &str, entries: &[wgpu::BindGroupLayoutEntry]) -> wgpu::BindGroupLayout {
-    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: Some(label), entries })
+pub(crate) fn layout(
+    device: &wgpu::Device,
+    label: &str,
+    entries: &[wgpu::BindGroupLayoutEntry],
+) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some(label),
+        entries,
+    })
 }
 
-pub(crate) fn compute(device: &wgpu::Device, label: &str, m: &wgpu::ShaderModule, entry: &str, bgls: &[&wgpu::BindGroupLayout]) -> wgpu::ComputePipeline {
+pub(crate) fn compute(
+    device: &wgpu::Device,
+    label: &str,
+    m: &wgpu::ShaderModule,
+    entry: &str,
+    bgls: &[&wgpu::BindGroupLayout],
+) -> wgpu::ComputePipeline {
     let bgls: Vec<Option<&wgpu::BindGroupLayout>> = bgls.iter().map(|b| Some(*b)).collect();
-    let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some(label), bind_group_layouts: &bgls, immediate_size: 0 });
+    let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some(label),
+        bind_group_layouts: &bgls,
+        immediate_size: 0,
+    });
     device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
         label: Some(label),
         layout: Some(&pl),
@@ -94,10 +139,22 @@ pub(crate) fn compute(device: &wgpu::Device, label: &str, m: &wgpu::ShaderModule
     })
 }
 
-pub(crate) fn texture(device: &wgpu::Device, label: &str, w: u32, h: u32, layers: u32, format: wgpu::TextureFormat, usage: wgpu::TextureUsages) -> wgpu::Texture {
+pub(crate) fn texture(
+    device: &wgpu::Device,
+    label: &str,
+    w: u32,
+    h: u32,
+    layers: u32,
+    format: wgpu::TextureFormat,
+    usage: wgpu::TextureUsages,
+) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
         label: Some(label),
-        size: wgpu::Extent3d { width: w.max(1), height: h.max(1), depth_or_array_layers: layers },
+        size: wgpu::Extent3d {
+            width: w.max(1),
+            height: h.max(1),
+            depth_or_array_layers: layers,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -107,13 +164,24 @@ pub(crate) fn texture(device: &wgpu::Device, label: &str, w: u32, h: u32, layers
     })
 }
 
-pub(crate) fn bind<const N: usize>(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, entries: [wgpu::BindingResource<'_>; N]) -> wgpu::BindGroup {
+pub(crate) fn bind<const N: usize>(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    entries: [wgpu::BindingResource<'_>; N],
+) -> wgpu::BindGroup {
     let mut binding = 0;
     let entries = entries.map(|resource| {
         binding += 1;
-        wgpu::BindGroupEntry { binding: binding - 1, resource }
+        wgpu::BindGroupEntry {
+            binding: binding - 1,
+            resource,
+        }
     });
-    device.create_bind_group(&wgpu::BindGroupDescriptor { label: None, layout, entries: &entries })
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: None,
+        layout,
+        entries: &entries,
+    })
 }
 
 /// The last bind group made, reused while the resources it's keyed on stay the same.
@@ -124,7 +192,11 @@ impl<K: PartialEq> BindCache<K> {
         BindCache(None)
     }
 
-    pub(crate) fn get(&mut self, key: K, make: impl FnOnce() -> wgpu::BindGroup) -> &wgpu::BindGroup {
+    pub(crate) fn get(
+        &mut self,
+        key: K,
+        make: impl FnOnce() -> wgpu::BindGroup,
+    ) -> &wgpu::BindGroup {
         if self.0.as_ref().is_none_or(|(k, _)| *k != key) {
             self.0 = Some((key, make()));
         }

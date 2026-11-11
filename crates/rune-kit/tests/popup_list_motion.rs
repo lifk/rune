@@ -42,7 +42,12 @@ fn settled(items: &[&str]) -> Runtime<S> {
 }
 
 fn settled_with(items: &[&str], animate: bool) -> Runtime<S> {
-    let mut rt = Runtime::new(S { ids: ids(items), padding: None, row_radius: None, animate }, view, (600.0, 600.0), Env::new(true, 1.0));
+    let mut rt = Runtime::new(
+        S { ids: ids(items), padding: None, row_radius: None, animate },
+        view,
+        (600.0, 600.0),
+        Env::new(true, 1.0),
+    );
     rt.frame(0.0);
     for _ in 0..60 {
         rt.frame(1.0 / 120.0);
@@ -71,7 +76,13 @@ fn grows_without_overshoot(rt: &mut Runtime<S>) {
         let lowest = track.iter().copied().fold(f32::MAX, f32::min);
         let end = *track.last().unwrap();
         for (f, pair) in track.windows(2).enumerate() {
-            assert!(pair[1] <= pair[0] + 0.05, "{key} sank {:.2} -> {:.2} at frame {}: {track:?}", pair[0], pair[1], f + 1);
+            assert!(
+                pair[1] <= pair[0] + 0.05,
+                "{key} sank {:.2} -> {:.2} at frame {}: {track:?}",
+                pair[0],
+                pair[1],
+                f + 1
+            );
         }
         assert!(end - lowest < 0.05, "{key} rose {:.1} pt past its slot", end - lowest);
     }
@@ -122,7 +133,9 @@ fn swaps_rows_and_height_at_once(animate: bool) {
     let mut rt = settled_with(&SIX, animate);
     rt.update(|s, tx| {
         s.ids = ids(&["a1"]);
-        if animate { tx.instant(); }
+        if animate {
+            tx.instant();
+        }
     });
     rt.frame(1.0 / 120.0);
     for id in ["a0", "a2", "a3", "a4", "a5"] {
@@ -134,7 +147,9 @@ fn swaps_rows_and_height_at_once(animate: bool) {
 
     rt.update(|s, tx| {
         s.ids = ids(&TEN);
-        if animate { tx.instant(); }
+        if animate {
+            tx.instant();
+        }
     });
     rt.frame(1.0 / 120.0);
     assert!((y(&rt, "p-content") - 104.0).abs() < 0.05, "popover top {}", y(&rt, "p-content"));
@@ -154,7 +169,12 @@ fn padding_and_row_radius_default_to_4_and_follow_their_builders() {
     assert!((r.rect[0] - c[0] - 4.0).abs() < 0.05 && (r.rect[1] - c[1] - 4.0).abs() < 0.05);
     assert!((c[3] - (6.0 * 28.0 + 8.0)).abs() < 0.05);
 
-    let mut rt = Runtime::new(S { ids: ids(&SIX), padding: Some(6.0), row_radius: Some(6.0), animate: false }, view, (600.0, 600.0), Env::new(true, 1.0));
+    let mut rt = Runtime::new(
+        S { ids: ids(&SIX), padding: Some(6.0), row_radius: Some(6.0), animate: false },
+        view,
+        (600.0, 600.0),
+        Env::new(true, 1.0),
+    );
     rt.frame(0.0);
     let (c, r) = (content(&rt), row(&rt));
     assert_eq!(r.radius, 6.0);
@@ -168,7 +188,12 @@ fn padding_and_row_radius_default_to_4_and_follow_their_builders() {
 /// clipped away.
 fn settled_long() -> Runtime<S> {
     let ids = (0..60).map(|i| format!("a{i}")).collect();
-    let mut rt = Runtime::new(S { ids, padding: None, row_radius: None, animate: true }, view, (600.0, 600.0), Env::new(true, 1.0));
+    let mut rt = Runtime::new(
+        S { ids, padding: None, row_radius: None, animate: true },
+        view,
+        (600.0, 600.0),
+        Env::new(true, 1.0),
+    );
     rt.frame(0.0);
     for _ in 0..60 {
         rt.frame(1.0 / 120.0);

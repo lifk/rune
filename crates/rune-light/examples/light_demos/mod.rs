@@ -2,7 +2,14 @@ use super::*;
 
 // ---------------------------------------------------------------- demos
 
-pub type Frame = (Vec<Prim>, Vec<Instance>, Vec<Instance>, Color, Vec<Light>, Settings);
+pub type Frame = (
+    Vec<Prim>,
+    Vec<Instance>,
+    Vec<Instance>,
+    Color,
+    Vec<Light>,
+    Settings,
+);
 
 pub(super) trait Demo {
     fn name(&self) -> &'static str;
@@ -31,9 +38,15 @@ fn loop_path(pts: &[[f32; 2]], u: f32) -> [f32; 2] {
     let p = |k: isize| pts[((i as isize + k).rem_euclid(n as isize)) as usize];
     let (p0, p1, p2, p3) = (p(-1), p(0), p(1), p(2));
     let cr = |a: f32, b: f32, c: f32, d: f32| {
-        0.5 * ((2.0 * b) + (-a + c) * f + (2.0 * a - 5.0 * b + 4.0 * c - d) * f * f + (-a + 3.0 * b - 3.0 * c + d) * f * f * f)
+        0.5 * ((2.0 * b)
+            + (-a + c) * f
+            + (2.0 * a - 5.0 * b + 4.0 * c - d) * f * f
+            + (-a + 3.0 * b - 3.0 * c + d) * f * f * f)
     };
-    [cr(p0[0], p1[0], p2[0], p3[0]), cr(p0[1], p1[1], p2[1], p3[1])]
+    [
+        cr(p0[0], p1[0], p2[0], p3[0]),
+        cr(p0[1], p1[1], p2[1], p3[1]),
+    ]
 }
 
 /// A dragged light: waypoints the "hand" jumps between, followed by springs (Kit's palette "calm" .4/0 → softer .7/0
@@ -49,7 +62,13 @@ struct Drag {
 impl Drag {
     fn new(stops: Vec<(f32, [f32; 2])>, spring: Spring) -> Drag {
         let p0 = stops[0].1;
-        Drag { x: Track::at(p0[0]), y: Track::at(p0[1]), stops, next: 1, spring }
+        Drag {
+            x: Track::at(p0[0]),
+            y: Track::at(p0[1]),
+            stops,
+            next: 1,
+            spring,
+        }
     }
 
     pub fn at(&mut self, t: f32) -> [f32; 2] {
@@ -80,7 +99,9 @@ impl Chat {
             (3.0, [560.0, 658.0]),
             (3.55, [1085.0, 250.0]),
         ];
-        Chat { drag: Drag::new(stops, Spring::new(0.85, 0.0)) }
+        Chat {
+            drag: Drag::new(stops, Spring::new(0.85, 0.0)),
+        }
     }
 }
 
@@ -120,7 +141,11 @@ pub fn chat_scene(ts: &mut TextSystem, t: f32, p: [f32; 2]) -> Frame {
         ui.rect(0.0, 0.0, 268.0, 800.0, 0.0, side, None, |p| p);
         ui.paint(268.0, 0.0, 1.0, 800.0, 0.0, hair);
         ui.text(24.0, 22.0, "OpenCode", 15.0, 600.0, txt);
-        ui.rect(20.0, 58.0, 228.0, 34.0, 9.0, card, Some((hair, 1.0)), |p| p.raised(3.0 * sc()).bevel(3.0 * sc(), 1.2 * sc()).gloss(0.5, 0.45));
+        ui.rect(20.0, 58.0, 228.0, 34.0, 9.0, card, Some((hair, 1.0)), |p| {
+            p.raised(3.0 * sc())
+                .bevel(3.0 * sc(), 1.2 * sc())
+                .gloss(0.5, 0.45)
+        });
         ui.text(36.0, 66.0, "+  New session", 13.0, 500.0, txt);
         ui.text(24.0, 116.0, "TODAY", 11.0, 600.0, txt3);
         let sessions = [
@@ -135,27 +160,88 @@ pub fn chat_scene(ts: &mut TextSystem, t: f32, p: [f32; 2]) -> Frame {
         for (i, s) in sessions.iter().enumerate() {
             let y = 138.0 + i as f32 * 36.0;
             if i == 0 {
-                ui.rect(14.0, y - 7.0, 240.0, 32.0, 8.0, oklcha(1.0, 0.0, 0.0, 0.06), None, |p| p);
+                ui.rect(
+                    14.0,
+                    y - 7.0,
+                    240.0,
+                    32.0,
+                    8.0,
+                    oklcha(1.0, 0.0, 0.0, 0.06),
+                    None,
+                    |p| p,
+                );
             }
-            ui.text(26.0, y, s, 13.0, if i == 0 { 500.0 } else { 400.0 }, if i == 0 { txt } else { txt2 });
+            ui.text(
+                26.0,
+                y,
+                s,
+                13.0,
+                if i == 0 { 500.0 } else { 400.0 },
+                if i == 0 { txt } else { txt2 },
+            );
         }
 
         // Header
-        ui.text(300.0, 22.0, "rune-light: lighting for UIs", 14.0, 600.0, txt);
+        ui.text(
+            300.0,
+            22.0,
+            "rune-light: lighting for UIs",
+            14.0,
+            600.0,
+            txt,
+        );
         let chip = "claude-opus-5.5";
         let cw = ui.measure(chip, 12.0, 500.0);
-        ui.rect(1240.0 - cw - 24.0, 16.0, cw + 24.0, 28.0, 14.0, card, Some((hair, 1.0)), |p| p.raised(2.0 * sc()).bevel(4.0 * sc(), 1.0 * sc()).gloss(0.5, 0.4));
+        ui.rect(
+            1240.0 - cw - 24.0,
+            16.0,
+            cw + 24.0,
+            28.0,
+            14.0,
+            card,
+            Some((hair, 1.0)),
+            |p| {
+                p.raised(2.0 * sc())
+                    .bevel(4.0 * sc(), 1.0 * sc())
+                    .gloss(0.5, 0.4)
+            },
+        );
         ui.text(1240.0 - cw - 12.0, 22.0, chip, 12.0, 500.0, txt2);
         ui.paint(269.0, 60.0, 1011.0, 1.0, 0.0, hair);
 
-        let raise = |p: Prim| p.raised(7.0 * sc()).bevel(6.0 * sc(), 2.0 * sc()).gloss(0.55, 0.42);
+        let raise = |p: Prim| {
+            p.raised(7.0 * sc())
+                .bevel(6.0 * sc(), 2.0 * sc())
+                .gloss(0.55, 0.42)
+        };
         // User bubble
-        let l1 = ["what if lighting effects. like you could put a light and", "it would raytrace around the ui elements…"];
-        ui.rect(800.0, 88.0, 440.0, 68.0, 16.0, user, Some((oklcha(1.0, 0.0, 0.0, 0.08), 1.0)), raise);
+        let l1 = [
+            "what if lighting effects. like you could put a light and",
+            "it would raytrace around the ui elements…",
+        ];
+        ui.rect(
+            800.0,
+            88.0,
+            440.0,
+            68.0,
+            16.0,
+            user,
+            Some((oklcha(1.0, 0.0, 0.0, 0.08), 1.0)),
+            raise,
+        );
         bubble_text(&mut ui, 818.0, 101.0, &l1, txt);
 
         // Assistant
-        ui.rect(300.0, 182.0, 600.0, 152.0, 16.0, card, Some((hair, 1.0)), raise);
+        ui.rect(
+            300.0,
+            182.0,
+            600.0,
+            152.0,
+            16.0,
+            card,
+            Some((hair, 1.0)),
+            raise,
+        );
         bubble_text(
             &mut ui,
             322.0,
@@ -168,21 +254,75 @@ pub fn chat_scene(ts: &mut TextSystem, t: f32, p: [f32; 2]) -> Frame {
             ],
             txt,
         );
-        for (i, chipt) in ["Read shader.wgsl", "Edit rune-light/src/lib.rs", "Run bench"].iter().enumerate() {
+        for (i, chipt) in [
+            "Read shader.wgsl",
+            "Edit rune-light/src/lib.rs",
+            "Run bench",
+        ]
+        .iter()
+        .enumerate()
+        {
             let x = 322.0 + [0.0, 140.0, 330.0][i];
             let w = ui.measure(chipt, 12.0, 500.0) + 22.0;
-            ui.rect(x, 292.0, w, 26.0, 13.0, oklch(0.27, 0.008, 265.0), Some((hair, 1.0)), |p| p.on(7.0 * sc()).raised(2.5 * sc()).bevel(4.0 * sc(), 1.0 * sc()).gloss(0.4, 0.4));
+            ui.rect(
+                x,
+                292.0,
+                w,
+                26.0,
+                13.0,
+                oklch(0.27, 0.008, 265.0),
+                Some((hair, 1.0)),
+                |p| {
+                    p.on(7.0 * sc())
+                        .raised(2.5 * sc())
+                        .bevel(4.0 * sc(), 1.0 * sc())
+                        .gloss(0.4, 0.4)
+                },
+            );
             ui.text(x + 11.0, 297.0, chipt, 12.0, 500.0, txt2);
         }
 
         // User
-        ui.rect(960.0, 360.0, 280.0, 44.0, 16.0, user, Some((oklcha(1.0, 0.0, 0.0, 0.08), 1.0)), raise);
+        ui.rect(
+            960.0,
+            360.0,
+            280.0,
+            44.0,
+            16.0,
+            user,
+            Some((oklcha(1.0, 0.0, 0.0, 0.08), 1.0)),
+            raise,
+        );
         bubble_text(&mut ui, 980.0, 372.0, &["MAKE THIS SOOO GOOOD"], txt);
 
         // Assistant with code
-        ui.rect(300.0, 430.0, 640.0, 196.0, 16.0, card, Some((hair, 1.0)), raise);
-        bubble_text(&mut ui, 322.0, 446.0, &["Here's the API: lights are springs like everything else."], txt);
-        ui.rect(318.0, 480.0, 604.0, 126.0, 10.0, code, Some((hair, 1.0)), |p| p.on(7.0 * sc()).gloss(0.2, 0.5));
+        ui.rect(
+            300.0,
+            430.0,
+            640.0,
+            196.0,
+            16.0,
+            card,
+            Some((hair, 1.0)),
+            raise,
+        );
+        bubble_text(
+            &mut ui,
+            322.0,
+            446.0,
+            &["Here's the API: lights are springs like everything else."],
+            txt,
+        );
+        ui.rect(
+            318.0,
+            480.0,
+            604.0,
+            126.0,
+            10.0,
+            code,
+            Some((hair, 1.0)),
+            |p| p.on(7.0 * sc()).gloss(0.2, 0.5),
+        );
         let mono = oklch(0.8, 0.06, 200.0);
         ui.lines(
             336.0,
@@ -201,11 +341,27 @@ pub fn chat_scene(ts: &mut TextSystem, t: f32, p: [f32; 2]) -> Frame {
         );
 
         // Composer
-        ui.rect(300.0, 690.0, 940.0, 78.0, 18.0, card, Some((oklcha(1.0, 0.0, 0.0, 0.09), 1.0)), |p| {
-            p.raised(10.0 * sc()).bevel(7.0 * sc(), 2.5 * sc()).gloss(0.6, 0.38)
-        });
+        ui.rect(
+            300.0,
+            690.0,
+            940.0,
+            78.0,
+            18.0,
+            card,
+            Some((oklcha(1.0, 0.0, 0.0, 0.09), 1.0)),
+            |p| {
+                p.raised(10.0 * sc())
+                    .bevel(7.0 * sc(), 2.5 * sc())
+                    .gloss(0.6, 0.38)
+            },
+        );
         ui.text(322.0, 708.0, "Ask anything…", 14.0, 400.0, txt3);
-        ui.rect(1192.0, 724.0, 32.0, 32.0, 16.0, accent, None, |p| p.on(10.0 * sc()).raised(4.0 * sc()).bevel(10.0 * sc(), 3.0 * sc()).gloss(0.8, 0.3));
+        ui.rect(1192.0, 724.0, 32.0, 32.0, 16.0, accent, None, |p| {
+            p.on(10.0 * sc())
+                .raised(4.0 * sc())
+                .bevel(10.0 * sc(), 3.0 * sc())
+                .gloss(0.8, 0.3)
+        });
         ui.paint(1203.0, 739.0, 10.0, 2.0, 1.0, oklch(0.2, 0.02, 255.0));
 
         let lamp = Light::point(p[0] * sc(), p[1] * sc(), 40.0 * sc())
@@ -295,16 +451,39 @@ pub struct Hit {
 
 fn mix(a: Color, b: Color, k: f32) -> Color {
     let k = k.clamp(0.0, 1.0);
-    Color { r: a.r + (b.r - a.r) * k, g: a.g + (b.g - a.g) * k, b: a.b + (b.b - a.b) * k, a: a.a + (b.a - a.a) * k }
+    Color {
+        r: a.r + (b.r - a.r) * k,
+        g: a.g + (b.g - a.g) * k,
+        b: a.b + (b.b - a.b) * k,
+        a: a.a + (b.a - a.a) * k,
+    }
 }
 
-fn settings_panel(ui: &mut Ui, card: Color, txt: Color, txt2: Color, hair: Color, st: &Panel) -> Vec<Hit> {
+fn settings_panel(
+    ui: &mut Ui,
+    card: Color,
+    txt: Color,
+    txt2: Color,
+    hair: Color,
+    st: &Panel,
+) -> Vec<Hit> {
     let accent = st.accent;
     let mut hits = Vec::new();
-    let raise_card = |p: Prim| p.raised(4.0 * sc()).bevel(5.0 * sc(), 1.5 * sc()).gloss(0.45, 0.45);
+    let raise_card = |p: Prim| {
+        p.raised(4.0 * sc())
+            .bevel(5.0 * sc(), 1.5 * sc())
+            .gloss(0.45, 0.45)
+    };
     let top = 4.0 * sc();
     ui.text(160.0, 70.0, "Settings", 24.0, 600.0, txt);
-    ui.text(160.0, 106.0, "Appearance, sound and shortcuts", 13.0, 400.0, txt2);
+    ui.text(
+        160.0,
+        106.0,
+        "Appearance, sound and shortcuts",
+        13.0,
+        400.0,
+        txt2,
+    );
     let rows: [(&str, &str, u8); 9] = [
         ("Appearance", "Dark", 2),
         ("Accent colour", "", 3),
@@ -336,23 +515,55 @@ fn settings_panel(ui: &mut Ui, card: Color, txt: Color, txt2: Color, hair: Color
                     let k = st.toggles[id - TOGGLE0];
                     let m = st.lift(id);
                     let track = mix(oklch(0.33, 0.006, 265.0), accent, k);
-                    ui.rect(rx - 42.0, ry + 16.0, 42.0, 24.0, 12.0, track, None, |p| p.on(top).gloss(0.4, 0.4));
-                    let kx = rx - 40.0 + 18.0 * k;
-                    ui.rect(kx, ry + 18.0, 20.0, 20.0, 10.0, oklch(0.96, 0.0, 0.0), None, |p| {
-                        p.on(top).raised(5.0 * sc() * m).bevel(10.0 * sc(), 4.0 * sc() * m).gloss(0.7, 0.3)
+                    ui.rect(rx - 42.0, ry + 16.0, 42.0, 24.0, 12.0, track, None, |p| {
+                        p.on(top).gloss(0.4, 0.4)
                     });
-                    hits.push(Hit { id, rect: [rx - 42.0, ry + 16.0, 42.0, 24.0] });
+                    let kx = rx - 40.0 + 18.0 * k;
+                    ui.rect(
+                        kx,
+                        ry + 18.0,
+                        20.0,
+                        20.0,
+                        10.0,
+                        oklch(0.96, 0.0, 0.0),
+                        None,
+                        |p| {
+                            p.on(top)
+                                .raised(5.0 * sc() * m)
+                                .bevel(10.0 * sc(), 4.0 * sc() * m)
+                                .gloss(0.7, 0.3)
+                        },
+                    );
+                    hits.push(Hit {
+                        id,
+                        rect: [rx - 42.0, ry + 16.0, 42.0, 24.0],
+                    });
                 }
                 2 => {
                     let id = BUTTON0 + button;
                     button += 1;
                     let m = st.lift(id);
                     let w = ui.measure(value, 12.0, 500.0) + 20.0;
-                    ui.rect(rx - w, ry + 14.0, w, 28.0, 8.0, oklch(0.3, 0.006, 265.0), Some((hair, 1.0)), |p| {
-                        p.on(top).raised(3.0 * sc() * m).bevel(4.0 * sc(), 1.2 * sc() * m).gloss(0.5, 0.4)
-                    });
+                    ui.rect(
+                        rx - w,
+                        ry + 14.0,
+                        w,
+                        28.0,
+                        8.0,
+                        oklch(0.3, 0.006, 265.0),
+                        Some((hair, 1.0)),
+                        |p| {
+                            p.on(top)
+                                .raised(3.0 * sc() * m)
+                                .bevel(4.0 * sc(), 1.2 * sc() * m)
+                                .gloss(0.5, 0.4)
+                        },
+                    );
                     ui.text(rx - w + 10.0, ry + 20.0, value, 12.0, 500.0, txt);
-                    hits.push(Hit { id, rect: [rx - w, ry + 14.0, w, 28.0] });
+                    hits.push(Hit {
+                        id,
+                        rect: [rx - w, ry + 14.0, w, 28.0],
+                    });
                 }
                 3 => {
                     for (k, h) in DOT_HUES.iter().enumerate() {
@@ -363,64 +574,221 @@ fn settings_panel(ui: &mut Ui, card: Color, txt: Color, txt2: Color, hair: Color
                         if k == st.selected && st.ring > 0.0 {
                             let o = 3.0;
                             let ring = oklcha(0.95, 0.0, 0.0, 0.8 * st.ring);
-                            let r = [(cx - o) * sc(), (ry + 19.0 - o) * sc(), (18.0 + 2.0 * o) * sc(), (18.0 + 2.0 * o) * sc()];
-                            ui.base.push(inst(r, (9.0 + o) * sc(), Color::TRANSPARENT, Some((ring, 1.5 * sc()))));
+                            let r = [
+                                (cx - o) * sc(),
+                                (ry + 19.0 - o) * sc(),
+                                (18.0 + 2.0 * o) * sc(),
+                                (18.0 + 2.0 * o) * sc(),
+                            ];
+                            ui.base.push(inst(
+                                r,
+                                (9.0 + o) * sc(),
+                                Color::TRANSPARENT,
+                                Some((ring, 1.5 * sc())),
+                            ));
                         }
-                        ui.rect(cx, ry + 19.0, 18.0, 18.0, 9.0, c, None, |p| p.on(top).raised(3.5 * sc() * m).bevel(9.0 * sc(), 3.0 * sc() * m).gloss(0.7, 0.3));
-                        hits.push(Hit { id, rect: [cx - 4.0, ry + 15.0, 26.0, 26.0] });
+                        ui.rect(cx, ry + 19.0, 18.0, 18.0, 9.0, c, None, |p| {
+                            p.on(top)
+                                .raised(3.5 * sc() * m)
+                                .bevel(9.0 * sc(), 3.0 * sc() * m)
+                                .gloss(0.7, 0.3)
+                        });
+                        hits.push(Hit {
+                            id,
+                            rect: [cx - 4.0, ry + 15.0, 26.0, 26.0],
+                        });
                     }
                 }
                 _ => {
                     let m = st.lift(SLIDER);
                     let v = st.volume.clamp(0.0, 1.0);
-                    ui.rect(rx - 130.0, ry + 26.0, 130.0, 4.0, 2.0, oklch(0.33, 0.006, 265.0), None, |p| p.on(top));
+                    ui.rect(
+                        rx - 130.0,
+                        ry + 26.0,
+                        130.0,
+                        4.0,
+                        2.0,
+                        oklch(0.33, 0.006, 265.0),
+                        None,
+                        |p| p.on(top),
+                    );
                     if v > 0.0 {
-                        ui.rect(rx - 130.0, ry + 26.0, 130.0 * v, 4.0, 2.0, accent, None, |p| p.on(top));
+                        ui.rect(
+                            rx - 130.0,
+                            ry + 26.0,
+                            130.0 * v,
+                            4.0,
+                            2.0,
+                            accent,
+                            None,
+                            |p| p.on(top),
+                        );
                     }
-                    ui.rect(rx - 140.0 + 130.0 * v, ry + 18.0, 20.0, 20.0, 10.0, oklch(0.96, 0.0, 0.0), None, |p| {
-                        p.on(top).raised(6.0 * sc() * m).bevel(10.0 * sc(), 4.0 * sc() * m).gloss(0.7, 0.3)
-                    });
+                    ui.rect(
+                        rx - 140.0 + 130.0 * v,
+                        ry + 18.0,
+                        20.0,
+                        20.0,
+                        10.0,
+                        oklch(0.96, 0.0, 0.0),
+                        None,
+                        |p| {
+                            p.on(top)
+                                .raised(6.0 * sc() * m)
+                                .bevel(10.0 * sc(), 4.0 * sc() * m)
+                                .gloss(0.7, 0.3)
+                        },
+                    );
                     // The slider's hit rect spans exactly the track in x, so value = (x - rect.x) / rect.w.
-                    hits.push(Hit { id: SLIDER, rect: [rx - 130.0, ry + 12.0, 130.0, 32.0] });
+                    hits.push(Hit {
+                        id: SLIDER,
+                        rect: [rx - 130.0, ry + 12.0, 130.0, 32.0],
+                    });
                 }
             }
         }
     }
     // A wide card below with buttons.
     let by = 340.0;
-    ui.rect(160.0, by, 970.0, 150.0, 14.0, card, Some((hair, 1.0)), raise_card);
+    ui.rect(
+        160.0,
+        by,
+        970.0,
+        150.0,
+        14.0,
+        card,
+        Some((hair, 1.0)),
+        raise_card,
+    );
     ui.text(180.0, by + 20.0, "Keyboard shortcuts", 15.0, 600.0, txt);
-    ui.text(180.0, by + 46.0, "Press a key combination to record a new shortcut.", 13.0, 400.0, txt2);
+    ui.text(
+        180.0,
+        by + 46.0,
+        "Press a key combination to record a new shortcut.",
+        13.0,
+        400.0,
+        txt2,
+    );
     for (i, k) in ["⌘", "⇧", "K"].iter().enumerate() {
         let id = BUTTON0 + 2 + i;
         let m = st.lift(id);
-        ui.rect(180.0 + i as f32 * 52.0, by + 82.0, 44.0, 44.0, 10.0, oklch(0.3, 0.006, 265.0), Some((hair, 1.0)), |p| {
-            p.on(top).raised(6.0 * sc() * m).bevel(7.0 * sc(), 2.5 * sc() * m).gloss(0.6, 0.35)
-        });
+        ui.rect(
+            180.0 + i as f32 * 52.0,
+            by + 82.0,
+            44.0,
+            44.0,
+            10.0,
+            oklch(0.3, 0.006, 265.0),
+            Some((hair, 1.0)),
+            |p| {
+                p.on(top)
+                    .raised(6.0 * sc() * m)
+                    .bevel(7.0 * sc(), 2.5 * sc() * m)
+                    .gloss(0.6, 0.35)
+            },
+        );
         ui.text(195.0 + i as f32 * 52.0, by + 94.0, k, 15.0, 600.0, txt);
-        hits.push(Hit { id, rect: [180.0 + i as f32 * 52.0, by + 82.0, 44.0, 44.0] });
+        hits.push(Hit {
+            id,
+            rect: [180.0 + i as f32 * 52.0, by + 82.0, 44.0, 44.0],
+        });
     }
     let m = st.lift(BUTTON0 + 6);
-    ui.rect(940.0, by + 90.0, 170.0, 36.0, 10.0, accent, None, |p| p.on(top).raised(5.0 * sc() * m).bevel(6.0 * sc(), 2.0 * sc() * m).gloss(0.7, 0.3));
-    ui.text(975.0, by + 99.0, "Record shortcut", 13.0, 600.0, oklch(0.18, 0.03, 255.0));
-    hits.push(Hit { id: BUTTON0 + 6, rect: [940.0, by + 90.0, 170.0, 36.0] });
-    let m = st.lift(BUTTON0 + 5);
-    ui.rect(780.0, by + 90.0, 140.0, 36.0, 10.0, oklch(0.3, 0.006, 265.0), Some((hair, 1.0)), |p| {
-        p.on(top).raised(5.0 * sc() * m).bevel(6.0 * sc(), 2.0 * sc() * m).gloss(0.6, 0.35)
+    ui.rect(940.0, by + 90.0, 170.0, 36.0, 10.0, accent, None, |p| {
+        p.on(top)
+            .raised(5.0 * sc() * m)
+            .bevel(6.0 * sc(), 2.0 * sc() * m)
+            .gloss(0.7, 0.3)
     });
+    ui.text(
+        975.0,
+        by + 99.0,
+        "Record shortcut",
+        13.0,
+        600.0,
+        oklch(0.18, 0.03, 255.0),
+    );
+    hits.push(Hit {
+        id: BUTTON0 + 6,
+        rect: [940.0, by + 90.0, 170.0, 36.0],
+    });
+    let m = st.lift(BUTTON0 + 5);
+    ui.rect(
+        780.0,
+        by + 90.0,
+        140.0,
+        36.0,
+        10.0,
+        oklch(0.3, 0.006, 265.0),
+        Some((hair, 1.0)),
+        |p| {
+            p.on(top)
+                .raised(5.0 * sc() * m)
+                .bevel(6.0 * sc(), 2.0 * sc() * m)
+                .gloss(0.6, 0.35)
+        },
+    );
     ui.text(828.0, by + 99.0, "Reset", 13.0, 600.0, txt);
-    hits.push(Hit { id: BUTTON0 + 5, rect: [780.0, by + 90.0, 140.0, 36.0] });
+    hits.push(Hit {
+        id: BUTTON0 + 5,
+        rect: [780.0, by + 90.0, 140.0, 36.0],
+    });
     // Lower row of tiles.
     for i in 0..5 {
         let x = 160.0 + i as f32 * 198.0;
-        ui.rect(x, 520.0, 180.0, 120.0, 14.0, card, Some((hair, 1.0)), raise_card);
+        ui.rect(
+            x,
+            520.0,
+            180.0,
+            120.0,
+            14.0,
+            card,
+            Some((hair, 1.0)),
+            raise_card,
+        );
         let names = ["Microphone", "Speakers", "Camera", "Display", "Battery"];
         ui.text(x + 18.0, 538.0, names[i], 13.0, 600.0, txt);
-        ui.text(x + 18.0, 560.0, ["MacBook Pro", "Studio Display", "FaceTime HD", "Built-in", "92 %"][i], 12.0, 400.0, txt2);
-        ui.rect(x + 18.0, 600.0, 144.0, 18.0, 9.0, oklch(0.27, 0.006, 265.0), None, |p| p.on(top));
+        ui.text(
+            x + 18.0,
+            560.0,
+            [
+                "MacBook Pro",
+                "Studio Display",
+                "FaceTime HD",
+                "Built-in",
+                "92 %",
+            ][i],
+            12.0,
+            400.0,
+            txt2,
+        );
+        ui.rect(
+            x + 18.0,
+            600.0,
+            144.0,
+            18.0,
+            9.0,
+            oklch(0.27, 0.006, 265.0),
+            None,
+            |p| p.on(top),
+        );
         let fill = [0.7, 0.45, 0.0, 0.85, 0.92][i];
         if fill > 0.0 {
-            ui.rect(x + 18.0, 600.0, 144.0 * fill, 18.0, 9.0, accent, None, |p| p.on(top).raised(2.0 * sc()).bevel(9.0 * sc(), 2.0 * sc()).gloss(0.6, 0.3));
+            ui.rect(
+                x + 18.0,
+                600.0,
+                144.0 * fill,
+                18.0,
+                9.0,
+                accent,
+                None,
+                |p| {
+                    p.on(top)
+                        .raised(2.0 * sc())
+                        .bevel(9.0 * sc(), 2.0 * sc())
+                        .gloss(0.6, 0.3)
+                },
+            );
         }
     }
     hits
@@ -435,7 +803,14 @@ impl Demo for Flashlight {
     }
     fn frame(&mut self, ts: &mut TextSystem, t: f32) -> Frame {
         // The pointer wanders like a hand: one smooth closed path at an even pace.
-        let path = [[300.0, 230.0], [700.0, 180.0], [1020.0, 300.0], [860.0, 470.0], [560.0, 600.0], [260.0, 520.0]];
+        let path = [
+            [300.0, 230.0],
+            [700.0, 180.0],
+            [1020.0, 300.0],
+            [860.0, 470.0],
+            [560.0, 600.0],
+            [260.0, 520.0],
+        ];
         let p = loop_path(&path, t / 4.0 + 0.02);
         flashlight_scene(ts, t, p, &Panel::default(), false).0
     }
@@ -444,7 +819,13 @@ impl Demo for Flashlight {
 /// The dark settings panel lit by a torch aimed at the pointer `p` (points). `overhead` holds the torch straight
 /// above the pointer so the hotspot sits exactly under it (the live window); otherwise it's held low and to the
 /// right (the headless demo). Returns the panel's hit regions too.
-pub fn flashlight_scene(ts: &mut TextSystem, t: f32, p: [f32; 2], panel: &Panel, overhead: bool) -> (Frame, Vec<Hit>) {
+pub fn flashlight_scene(
+    ts: &mut TextSystem,
+    t: f32,
+    p: [f32; 2],
+    panel: &Panel,
+    overhead: bool,
+) -> (Frame, Vec<Hit>) {
     let bg = oklch(0.16, 0.005, 265.0);
     let mut ui = Ui::new(ts, bg);
     let hits = settings_panel(
@@ -455,7 +836,11 @@ pub fn flashlight_scene(ts: &mut TextSystem, t: f32, p: [f32; 2], panel: &Panel,
         oklcha(1.0, 0.0, 0.0, 0.06),
         panel,
     );
-    let lp = if overhead { [p[0], p[1], 260.0] } else { [p[0] + 80.0, p[1] + 130.0, 260.0] };
+    let lp = if overhead {
+        [p[0], p[1], 260.0]
+    } else {
+        [p[0] + 80.0, p[1] + 130.0, 260.0]
+    };
     let axis = [p[0] - lp[0], p[1] - lp[1], -lp[2]];
     let torch = Light::point(lp[0] * sc(), lp[1] * sc(), lp[2] * sc())
         .color(lin(1.0, 0.95, 0.88))
@@ -467,7 +852,12 @@ pub fn flashlight_scene(ts: &mut TextSystem, t: f32, p: [f32; 2], panel: &Panel,
     let s = Settings {
         ambient: [0.07, 0.075, 0.09],
         albedo_floor: 0.04,
-        text: TextPolicy { floor: 0.32, ceiling: 1.3, lit: 1.0, specular: 0.1 },
+        text: TextPolicy {
+            floor: 0.32,
+            ceiling: 1.3,
+            lit: 1.0,
+            specular: 0.1,
+        },
         rim: 1.0,
         contact_ao: 0.3,
         background_gloss: 0.5,
@@ -497,7 +887,11 @@ impl Demo for Emissive {
         // out with no phase jump; lights cool, never cut.
         while t >= self.flip {
             self.up = !self.up;
-            self.breath.retarget(self.flip as f64, if self.up { 1.0 } else { 0.55 }, Spring::new(0.85, 0.0));
+            self.breath.retarget(
+                self.flip as f64,
+                if self.up { 1.0 } else { 0.55 },
+                Spring::new(0.85, 0.0),
+            );
             self.flip += 1.1;
         }
         let b = self.breath.value(t as f64);
@@ -507,65 +901,164 @@ impl Demo for Emissive {
         let txt = oklch(0.94, 0.003, 265.0);
         let txt2 = oklch(0.64, 0.01, 265.0);
         let hair = oklcha(1.0, 0.0, 0.0, 0.06);
-        let raise = |p: Prim| p.raised(6.0 * sc()).bevel(6.0 * sc(), 2.0 * sc()).gloss(0.5, 0.42);
+        let raise = |p: Prim| {
+            p.raised(6.0 * sc())
+                .bevel(6.0 * sc(), 2.0 * sc())
+                .gloss(0.5, 0.42)
+        };
 
         ui.text(140.0, 64.0, "Voice memo", 24.0, 600.0, txt);
-        ui.text(140.0, 100.0, "Recording · Studio Display microphone", 13.0, 400.0, txt2);
+        ui.text(
+            140.0,
+            100.0,
+            "Recording · Studio Display microphone",
+            13.0,
+            400.0,
+            txt2,
+        );
 
         // Left column of cards around the recorder
-        for (i, (title, sub)) in [("Transcript", "Live, 2 speakers"), ("Markers", "3 added"), ("Noise", "Voice isolation on")].iter().enumerate() {
+        for (i, (title, sub)) in [
+            ("Transcript", "Live, 2 speakers"),
+            ("Markers", "3 added"),
+            ("Noise", "Voice isolation on"),
+        ]
+        .iter()
+        .enumerate()
+        {
             let y = 150.0 + i as f32 * 128.0;
             ui.rect(140.0, y, 300.0, 108.0, 16.0, card, Some((hair, 1.0)), raise);
             ui.text(162.0, y + 20.0, title, 14.0, 600.0, txt);
             ui.text(162.0, y + 44.0, sub, 13.0, 400.0, txt2);
         }
         // The recorder card in the middle
-        ui.rect(470.0, 150.0, 400.0, 364.0, 20.0, card, Some((hair, 1.0)), raise);
+        ui.rect(
+            470.0,
+            150.0,
+            400.0,
+            364.0,
+            20.0,
+            card,
+            Some((hair, 1.0)),
+            raise,
+        );
         ui.text(494.0, 172.0, "00:42.18", 34.0, 600.0, txt);
-        ui.text(494.0, 220.0, "Recording", 13.0, 500.0, oklch(0.75, 0.12, 25.0));
+        ui.text(
+            494.0,
+            220.0,
+            "Recording",
+            13.0,
+            500.0,
+            oklch(0.75, 0.12, 25.0),
+        );
         // Waveform bars (flat, receive light)
         for k in 0..40 {
-            let h = 8.0 + 46.0 * (0.5 + 0.5 * ((k as f32 * 0.7).sin() * (k as f32 * 0.23 + 1.0).cos())).abs();
-            ui.rect(494.0 + k as f32 * 8.8, 290.0 - h * 0.5, 4.6, h, 2.3, oklch(0.5, 0.01, 265.0), None, |p| p.on(12.0).raised(2.0 * sc()));
+            let h = 8.0
+                + 46.0
+                    * (0.5 + 0.5 * ((k as f32 * 0.7).sin() * (k as f32 * 0.23 + 1.0).cos())).abs();
+            ui.rect(
+                494.0 + k as f32 * 8.8,
+                290.0 - h * 0.5,
+                4.6,
+                h,
+                2.3,
+                oklch(0.5, 0.01, 265.0),
+                None,
+                |p| p.on(12.0).raised(2.0 * sc()),
+            );
         }
         // Glowing record button with a spring breath
         let red = oklch(0.66, 0.2, 25.0);
         let red_lin = [red.r, red.g, red.b];
         let glow = 7.0 * b;
-        ui.rect(620.0, 370.0, 100.0, 100.0, 50.0, oklch(0.27, 0.008, 265.0), Some((hair, 1.0)), |p| {
-            p.on(12.0).bevel(16.0 * sc(), 4.0 * sc()).gloss(0.6, 0.35)
+        ui.rect(
+            620.0,
+            370.0,
+            100.0,
+            100.0,
+            50.0,
+            oklch(0.27, 0.008, 265.0),
+            Some((hair, 1.0)),
+            |p| p.on(12.0).bevel(16.0 * sc(), 4.0 * sc()).gloss(0.6, 0.35),
+        );
+        ui.rect(640.0, 390.0, 60.0, 60.0, 30.0, red, None, |p| {
+            p.on(12.0)
+                .emissive([red_lin[0] * glow, red_lin[1] * glow, red_lin[2] * glow])
         });
-        ui.rect(640.0, 390.0, 60.0, 60.0, 30.0, red, None, |p| p.on(12.0).emissive([red_lin[0] * glow, red_lin[1] * glow, red_lin[2] * glow]));
 
         // Progress bar under it, emitting cyan, growing
         let prog = 0.25 + 0.5 * (t / 4.0).min(1.0);
         let cyan = oklch(0.78, 0.13, 210.0);
-        ui.rect(140.0, 560.0, 730.0, 10.0, 5.0, oklch(0.24, 0.006, 265.0), None, |p| p);
+        ui.rect(
+            140.0,
+            560.0,
+            730.0,
+            10.0,
+            5.0,
+            oklch(0.24, 0.006, 265.0),
+            None,
+            |p| p,
+        );
         let g2 = 1.9 * (0.85 + 0.15 * b);
-        ui.rect(140.0, 560.0, 730.0 * prog, 10.0, 5.0, cyan, None, |p| p.emissive([cyan.r * g2, cyan.g * g2, cyan.b * g2]));
-        ui.text(140.0, 584.0, "Uploading to OpenCode · 3 of 5 files", 12.0, 500.0, txt2);
+        ui.rect(140.0, 560.0, 730.0 * prog, 10.0, 5.0, cyan, None, |p| {
+            p.emissive([cyan.r * g2, cyan.g * g2, cyan.b * g2])
+        });
+        ui.text(
+            140.0,
+            584.0,
+            "Uploading to OpenCode · 3 of 5 files",
+            12.0,
+            500.0,
+            txt2,
+        );
 
         // Right column: notifications with a small green status dot (emissive)
         let green = oklch(0.78, 0.17, 150.0);
-        for (i, (title, sub)) in [("Agent finished", "rune-light demos rendered"), ("Build passed", "ci · 1m 12s"), ("Review", "Argon: no blockers")].iter().enumerate() {
+        for (i, (title, sub)) in [
+            ("Agent finished", "rune-light demos rendered"),
+            ("Build passed", "ci · 1m 12s"),
+            ("Review", "Argon: no blockers"),
+        ]
+        .iter()
+        .enumerate()
+        {
             let y = 150.0 + i as f32 * 128.0;
             ui.rect(900.0, y, 300.0, 108.0, 16.0, card, Some((hair, 1.0)), raise);
             ui.text(940.0, y + 20.0, title, 14.0, 600.0, txt);
             ui.text(940.0, y + 44.0, sub, 13.0, 400.0, txt2);
             let gd = if i == 0 { 2.2 * (0.6 + 0.4 * b) } else { 0.0 };
-            let c = if i == 0 { green } else { oklch(0.45, 0.01, 265.0) };
-            ui.rect(918.0, y + 24.0, 10.0, 10.0, 5.0, c, None, |p| p.on(12.0).emissive([c.r * gd, c.g * gd, c.b * gd]));
+            let c = if i == 0 {
+                green
+            } else {
+                oklch(0.45, 0.01, 265.0)
+            };
+            ui.rect(918.0, y + 24.0, 10.0, 10.0, 5.0, c, None, |p| {
+                p.on(12.0).emissive([c.r * gd, c.g * gd, c.b * gd])
+            });
         }
         // Bottom dock of chips
         for i in 0..6 {
             let x = 140.0 + i as f32 * 178.0;
             ui.rect(x, 640.0, 160.0, 90.0, 16.0, card, Some((hair, 1.0)), raise);
-            ui.text(x + 18.0, 660.0, ["Pause", "Marker", "Trim", "Share", "Export", "Delete"][i], 13.0, 600.0, txt);
+            ui.text(
+                x + 18.0,
+                660.0,
+                ["Pause", "Marker", "Trim", "Share", "Export", "Delete"][i],
+                13.0,
+                600.0,
+                txt,
+            );
         }
 
         let s = Settings {
             ambient: [0.3, 0.31, 0.35],
-            gi: Some(Gi { strength: 1.0, air: 0.09, bounce: 0.0, absorption: 0.24, ..Default::default() }),
+            gi: Some(Gi {
+                strength: 1.0,
+                air: 0.09,
+                bounce: 0.0,
+                absorption: 0.24,
+                ..Default::default()
+            }),
             contact_ao: 0.4,
             rim: 0.6,
             time: t,
@@ -594,23 +1087,75 @@ impl Demo for Raised {
         let body = oklch(0.255, 0.004, 265.0);
         let key = oklch(0.29, 0.004, 265.0);
         // Device body
-        ui.rect(120.0, 90.0, 1040.0, 620.0, 36.0, body, Some((oklcha(1.0, 0.0, 0.0, 0.05), 1.0)), |p| {
-            p.raised(10.0 * sc()).bevel(22.0 * sc(), 7.0 * sc()).gloss(0.7, 0.32)
-        });
-        ui.text(170.0, 130.0, "OP-1 Field · Control surface", 15.0, 600.0, txt);
-        ui.text(170.0, 156.0, "Bevels from the SDF catch the light", 12.0, 400.0, txt2);
+        ui.rect(
+            120.0,
+            90.0,
+            1040.0,
+            620.0,
+            36.0,
+            body,
+            Some((oklcha(1.0, 0.0, 0.0, 0.05), 1.0)),
+            |p| {
+                p.raised(10.0 * sc())
+                    .bevel(22.0 * sc(), 7.0 * sc())
+                    .gloss(0.7, 0.32)
+            },
+        );
+        ui.text(
+            170.0,
+            130.0,
+            "OP-1 Field · Control surface",
+            15.0,
+            600.0,
+            txt,
+        );
+        ui.text(
+            170.0,
+            156.0,
+            "Bevels from the SDF catch the light",
+            12.0,
+            400.0,
+            txt2,
+        );
         // Four encoder knobs
         let hues = [255.0, 150.0, 60.0, 25.0];
         for i in 0..4 {
             let cx = 200.0 + i as f32 * 140.0;
-            ui.rect(cx - 48.0, 210.0, 96.0, 96.0, 48.0, key, None, |p| p.floating(10.0 * sc(), 22.0 * sc()).bevel(30.0 * sc(), 10.0 * sc()).gloss(0.9, 0.26));
+            ui.rect(cx - 48.0, 210.0, 96.0, 96.0, 48.0, key, None, |p| {
+                p.floating(10.0 * sc(), 22.0 * sc())
+                    .bevel(30.0 * sc(), 10.0 * sc())
+                    .gloss(0.9, 0.26)
+            });
             let c = oklch(0.7, 0.14, hues[i]);
             ui.rect(cx - 5.0, 222.0, 10.0, 10.0, 5.0, c, None, |p| p);
         }
         // Screen (flat, recessed look by being darker; glossy)
-        ui.rect(780.0, 200.0, 330.0, 200.0, 18.0, oklch(0.14, 0.01, 265.0), None, |p| p.gloss(1.0, 0.18));
-        ui.text(806.0, 226.0, "128 BPM", 28.0, 600.0, oklch(0.85, 0.12, 150.0));
-        ui.text(806.0, 270.0, "Pattern A · bar 12", 13.0, 400.0, oklch(0.6, 0.06, 150.0));
+        ui.rect(
+            780.0,
+            200.0,
+            330.0,
+            200.0,
+            18.0,
+            oklch(0.14, 0.01, 265.0),
+            None,
+            |p| p.gloss(1.0, 0.18),
+        );
+        ui.text(
+            806.0,
+            226.0,
+            "128 BPM",
+            28.0,
+            600.0,
+            oklch(0.85, 0.12, 150.0),
+        );
+        ui.text(
+            806.0,
+            270.0,
+            "Pattern A · bar 12",
+            13.0,
+            400.0,
+            oklch(0.6, 0.06, 150.0),
+        );
         // Keys: two rows
         for r in 0..2 {
             for i in 0..12 {
@@ -618,8 +1163,19 @@ impl Demo for Raised {
                 let y = 450.0 + r as f32 * 110.0;
                 let accent = (r == 0 && (i == 2 || i == 7)) || (r == 1 && i == 10);
                 let c = if accent { oklch(0.62, 0.17, 35.0) } else { key };
-                ui.rect(x, y, 68.0, 92.0, 14.0, c, None, |p| p.floating(10.0 * sc(), 18.0 * sc()).bevel(12.0 * sc(), 4.5 * sc()).gloss(0.85, 0.28));
-                ui.text(x + 12.0, y + 12.0, ["C", "D", "E", "F", "G", "A", "B", "C", "D", "E", "F", "G"][i], 12.0, 600.0, if accent { oklch(0.2, 0.03, 35.0) } else { txt2 });
+                ui.rect(x, y, 68.0, 92.0, 14.0, c, None, |p| {
+                    p.floating(10.0 * sc(), 18.0 * sc())
+                        .bevel(12.0 * sc(), 4.5 * sc())
+                        .gloss(0.85, 0.28)
+                });
+                ui.text(
+                    x + 12.0,
+                    y + 12.0,
+                    ["C", "D", "E", "F", "G", "A", "B", "C", "D", "E", "F", "G"][i],
+                    12.0,
+                    600.0,
+                    if accent { oklch(0.2, 0.03, 35.0) } else { txt2 },
+                );
             }
         }
         // The light sweeps across on a slow arc (one smooth path, no reversal mid-clip).
@@ -627,14 +1183,25 @@ impl Demo for Raised {
         let e = u * u * (3.0 - 2.0 * u);
         let x = 40.0 + e * 1200.0;
         let y = 560.0 - 300.0 * (1.0 - (2.0 * e - 1.0).powi(2));
-        let key_l = Light::point(x * sc(), y * sc(), 150.0 * sc()).color(lin(1.0, 0.93, 0.85)).intensity(3.4).radius(26.0 * sc()).range(2200.0 * sc()).specular(2.4);
+        let key_l = Light::point(x * sc(), y * sc(), 150.0 * sc())
+            .color(lin(1.0, 0.93, 0.85))
+            .intensity(3.4)
+            .radius(26.0 * sc())
+            .range(2200.0 * sc())
+            .specular(2.4);
         let fill = Light::point(1400.0 * sc(), 900.0 * sc(), 700.0 * sc())
             .color(lin(0.5, 0.62, 1.0))
             .intensity(0.4)
             .radius(200.0 * sc())
             .range(5000.0 * sc())
             .specular(0.6);
-        let s = Settings { ambient: [0.3, 0.31, 0.34], rim: 1.1, contact_ao: 0.5, time: t, ..Default::default() };
+        let s = Settings {
+            ambient: [0.3, 0.31, 0.34],
+            rim: 1.1,
+            contact_ao: 0.5,
+            time: t,
+            ..Default::default()
+        };
         finish(ui, vec![key_l, fill], s)
     }
 }
@@ -658,8 +1225,9 @@ impl Demo for GodRays {
         let txt2 = oklch(0.6, 0.01, 265.0);
         let hair = oklcha(1.0, 0.0, 0.0, 0.06);
         let names = [
-            "Inbox", "Calendar", "Notes", "Music", "Photos", "Maps", "Files", "Terminal", "Mail", "Weather", "Clock", "Books", "Stocks", "Podcasts",
-            "Home", "Wallet", "Health", "Camera", "Code", "Fleet", "Chat", "Voice", "Launcher", "Rune",
+            "Inbox", "Calendar", "Notes", "Music", "Photos", "Maps", "Files", "Terminal", "Mail",
+            "Weather", "Clock", "Books", "Stocks", "Podcasts", "Home", "Wallet", "Health",
+            "Camera", "Code", "Fleet", "Chat", "Voice", "Launcher", "Rune",
         ];
         let (cols, rows) = (8usize, 3usize);
         let (cw, ch, gx, gy) = (124.0, 124.0, 28.0, 28.0);
@@ -670,14 +1238,34 @@ impl Demo for GodRays {
                 let x = x0 + c as f32 * (cw + gx);
                 let y = y0 + r as f32 * (ch + gy);
                 let i = r * cols + c;
-                ui.rect(x, y, cw, ch, 24.0, card, Some((hair, 1.0)), |p| p.raised(14.0 * sc()).bevel(8.0 * sc(), 2.5 * sc()).gloss(0.5, 0.4));
+                ui.rect(x, y, cw, ch, 24.0, card, Some((hair, 1.0)), |p| {
+                    p.raised(14.0 * sc())
+                        .bevel(8.0 * sc(), 2.5 * sc())
+                        .gloss(0.5, 0.4)
+                });
                 let hue = (i as f32 * 47.0) % 360.0;
-                ui.rect(x + 20.0, y + 20.0, 40.0, 40.0, 12.0, oklch(0.62, 0.12, hue), None, |p| p);
+                ui.rect(
+                    x + 20.0,
+                    y + 20.0,
+                    40.0,
+                    40.0,
+                    12.0,
+                    oklch(0.62, 0.12, hue),
+                    None,
+                    |p| p,
+                );
                 ui.text(x + 20.0, y + 84.0, names[i], 13.0, 600.0, txt);
             }
         }
         ui.text(x0, 120.0, "Good evening", 30.0, 600.0, txt);
-        ui.text(x0, 164.0, "24 apps · light from behind the grid", 14.0, 400.0, txt2);
+        ui.text(
+            x0,
+            164.0,
+            "24 apps · light from behind the grid",
+            14.0,
+            400.0,
+            txt2,
+        );
         // The source sits behind the grid's top edge, lower than the cards, and drifts once across: every gap
         // throws a shaft and the fan swings with it.
         let u = (t / self.seconds()).clamp(0.0, 1.0);
@@ -691,17 +1279,27 @@ impl Demo for GodRays {
             .range(3000.0 * sc())
             .shafts(1.5)
             .softness(2.2);
-        let s = Settings { ambient: [0.5, 0.5, 0.58], shafts_over: 0.12, rim: 0.8, contact_ao: 0.35, time: t, ..Default::default() };
+        let s = Settings {
+            ambient: [0.5, 0.5, 0.58],
+            shafts_over: 0.12,
+            rim: 0.8,
+            contact_ao: 0.35,
+            time: t,
+            ..Default::default()
+        };
         finish(ui, vec![sun], s)
     }
 }
-
 
 pub(super) fn all_demos() -> Vec<Box<dyn Demo>> {
     vec![
         Box::new(Chat::new()),
         Box::new(Flashlight),
-        Box::new(Emissive { breath: Track::at(0.8), flip: 0.0, up: false }),
+        Box::new(Emissive {
+            breath: Track::at(0.8),
+            flip: 0.0,
+            up: false,
+        }),
         Box::new(Raised),
         Box::new(GodRays),
     ]

@@ -1,5 +1,5 @@
 use rune_motion::prelude::*;
-use rune_motion::{Keyframes, MotionEvent, PropClass, Prop};
+use rune_motion::{Keyframes, MotionEvent, Prop, PropClass};
 
 const X: Prop<f32> = Prop::custom(64, PropClass::Spatial);
 const N: NodeId = NodeId(7);
@@ -7,7 +7,10 @@ const N: NodeId = NodeId(7);
 struct Rng(u64);
 impl Rng {
     fn next(&mut self) -> f32 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         ((self.0 >> 40) as f32) / (1u64 << 24) as f32
     }
     fn range(&mut self, a: f32, b: f32) -> f32 {
@@ -51,7 +54,10 @@ fn randomized_retargets_are_c1_continuous() {
             store.animate(N, X, target, anim);
             let (x1, v1) = state(&store);
             let scale = 1.0 + x0.abs().max(v0.abs()) * 1e-5;
-            assert!((x1 - x0).abs() < 2e-3 * scale, "seed {seed} step {step}: position jumped {x0} → {x1}");
+            assert!(
+                (x1 - x0).abs() < 2e-3 * scale,
+                "seed {seed} step {step}: position jumped {x0} → {x1}"
+            );
             assert!(
                 (v1 - v0).abs() < 2e-2 * scale.max(1.0 + v0.abs() * 1e-4),
                 "seed {seed} step {step} ({anim:?}): velocity jumped {v0} → {v1}"
@@ -163,12 +169,17 @@ fn settle_and_completion_events() {
     let completed: Vec<_> = events
         .iter()
         .filter_map(|e| match e {
-            MotionEvent::Completed { token, finished, .. } => Some((*token, *finished)),
+            MotionEvent::Completed {
+                token, finished, ..
+            } => Some((*token, *finished)),
             _ => None,
         })
         .collect();
     assert_eq!(completed, vec![(11, false), (12, true)]);
-    let settles = events.iter().filter(|e| matches!(e, MotionEvent::Settled { .. })).count();
+    let settles = events
+        .iter()
+        .filter(|e| matches!(e, MotionEvent::Settled { .. }))
+        .count();
     assert_eq!(settles, 1);
     assert_eq!(s.get(N, X), Some(2.0));
     // Settle snaps below the 1/64 px quantum: the last moving frame was already that close.
@@ -178,10 +189,15 @@ fn settle_and_completion_events() {
 #[test]
 fn removing_an_animating_track_completes_it_unfinished() {
     let completions = |s: &AnimationStore| -> Vec<(u64, bool)> {
-        s.events().iter().filter_map(|e| match e {
-            MotionEvent::Completed { token, finished, .. } => Some((*token, *finished)),
-            _ => None,
-        }).collect()
+        s.events()
+            .iter()
+            .filter_map(|e| match e {
+                MotionEvent::Completed {
+                    token, finished, ..
+                } => Some((*token, *finished)),
+                _ => None,
+            })
+            .collect()
     };
     let mut s = AnimationStore::new();
     s.set(N, X, 0.0);
@@ -190,7 +206,11 @@ fn removing_an_animating_track_completes_it_unfinished() {
     assert!(s.is_animating(N, X));
     s.remove_node(N);
     s.tick_at(0.03);
-    assert_eq!(completions(&s), [(21, false)], "the node unmounted mid-animation");
+    assert_eq!(
+        completions(&s),
+        [(21, false)],
+        "the node unmounted mid-animation"
+    );
 
     s.set(N, X, 0.0);
     s.animate(N, X, 1.0, motion::SNAP.completion(22));
@@ -216,7 +236,17 @@ fn removing_an_animating_track_completes_it_unfinished() {
 fn fling_into_a_bound_hands_off_velocity_smoothly() {
     let mut s = AnimationStore::new();
     s.set(N, X, 0.0);
-    s.release(N, X, 3000.0, Release::DecayClamped { decay: Decay::IOS_NORMAL, min: 0.0, max: 500.0, spring: motion::GLIDE });
+    s.release(
+        N,
+        X,
+        3000.0,
+        Release::DecayClamped {
+            decay: Decay::IOS_NORMAL,
+            min: 0.0,
+            max: 500.0,
+            spring: motion::GLIDE,
+        },
+    );
     // Find the handoff by walking finely; velocity must stay continuous across it.
     let mut prev = state(&s);
     let mut max_dv: f32 = 0.0;
@@ -238,7 +268,17 @@ fn rubber_band_then_spring_back() {
     let over = rune_motion::rubber_band_clamp(-120.0, 0.0, 500.0, 800.0);
     assert!(over < 0.0 && over > -120.0 * 0.55);
     s.set(N, X, over);
-    s.release(N, X, 0.0, Release::DecayClamped { decay: Decay::IOS_NORMAL, min: 0.0, max: 500.0, spring: motion::GLIDE });
+    s.release(
+        N,
+        X,
+        0.0,
+        Release::DecayClamped {
+            decay: Decay::IOS_NORMAL,
+            min: 0.0,
+            max: 500.0,
+            spring: motion::GLIDE,
+        },
+    );
     s.tick_at(5.0);
     s.tick_at(5.1);
     assert_eq!(s.get(N, X), Some(0.0));
@@ -282,7 +322,11 @@ fn reduced_motion_maps_by_property_class() {
     s.animate(N, prop::OPACITY, 1.0, motion::GLIDE);
     s.animate(N, prop::BLUR, 0.0, motion::GLIDE);
     s.tick_at(0.0);
-    assert_eq!(s.get(N, prop::OFFSET), Some(Vec2::new(100.0, 0.0)), "travel jumps");
+    assert_eq!(
+        s.get(N, prop::OFFSET),
+        Some(Vec2::new(100.0, 0.0)),
+        "travel jumps"
+    );
     assert_eq!(s.get(N, prop::BLUR), Some(0.0), "blur jumps");
     s.tick_at(0.09);
     let o = s.get(N, prop::OPACITY).unwrap();
@@ -291,7 +335,12 @@ fn reduced_motion_maps_by_property_class() {
     assert_eq!(s.get(N, prop::OPACITY), Some(1.0));
     // Gestures are the user's own motion and are untouched.
     s.set(N, prop::SCROLL, Vec2::ZERO);
-    s.release(N, prop::SCROLL, Vec2::new(0.0, 1000.0), Release::Decay(Decay::IOS_NORMAL));
+    s.release(
+        N,
+        prop::SCROLL,
+        Vec2::new(0.0, 1000.0),
+        Release::Decay(Decay::IOS_NORMAL),
+    );
     s.tick_at(0.3);
     assert!(s.get(N, prop::SCROLL).unwrap().y > 50.0);
 }
@@ -305,9 +354,17 @@ fn multi_lane_values_share_timing() {
     let mid = s.get(N, prop::FILL).unwrap();
     // All four lanes ride one spring: the colour is the OKLab interpolation at that progress.
     let p = motion::SETTLE.sample(0.0, 0.0, 1.0, 0.15).0;
-    let (a, b) = (Color::hex(0xff0000).to_oklab(), Color::hex(0x0000ff).to_oklab());
+    let (a, b) = (
+        Color::hex(0xff0000).to_oklab(),
+        Color::hex(0x0000ff).to_oklab(),
+    );
     let want = Color::from_oklab(core::array::from_fn(|k| a[k] + (b[k] - a[k]) * p), 1.0);
-    for (x, y) in [(mid.r, want.r), (mid.g, want.g), (mid.b, want.b), (mid.a, want.a)] {
+    for (x, y) in [
+        (mid.r, want.r),
+        (mid.g, want.g),
+        (mid.b, want.b),
+        (mid.a, want.a),
+    ] {
         assert!((x - y).abs() < 2e-3, "{mid:?} vs {want:?}");
     }
     s.tick_at(5.0);

@@ -5,12 +5,18 @@ use crate::el::{Anchor, Flow, Pin, Side};
 
 /// The node an `El::above` anchor `a` names, among the `before` nodes ahead of its element.
 pub(super) fn anchor_index(nodes: &[Node], before: usize, a: &Anchor) -> Option<usize> {
-    nodes[..before].iter().position(|n| n.key.as_ref() == Some(&a.key))
+    nodes[..before]
+        .iter()
+        .position(|n| n.key.as_ref() == Some(&a.key))
 }
 
 /// Where a walk from node `i` goes next: the node it is anchored above, else its parent.
 pub(super) fn step_up(nodes: &[Node], i: usize) -> Option<usize> {
-    nodes[i].above.as_ref().and_then(|a| anchor_index(nodes, i, a)).or(nodes[i].parent)
+    nodes[i]
+        .above
+        .as_ref()
+        .and_then(|a| anchor_index(nodes, i, a))
+        .or(nodes[i].parent)
 }
 
 /// How far an anchored overlay stays inside the window.
@@ -18,7 +24,12 @@ const MARGIN: f32 = 8.0;
 
 /// Where an anchored overlay of `size` goes next to `t` (x0, y0, x1, y1), flipped to the
 /// opposite side when it doesn't fit, then kept 8 points inside the viewport.
-pub(crate) fn anchor_position(a: &Anchor, t: [f32; 4], size: (f32, f32), vp: (f32, f32)) -> (f32, f32) {
+pub(crate) fn anchor_position(
+    a: &Anchor,
+    t: [f32; 4],
+    size: (f32, f32),
+    vp: (f32, f32),
+) -> (f32, f32) {
     let (w, h) = size;
     let margin = MARGIN;
     let along = |lo: f32, hi: f32, len: f32| match a.align {
@@ -42,7 +53,11 @@ pub(crate) fn anchor_position(a: &Anchor, t: [f32; 4], size: (f32, f32), vp: (f3
     }
     // Flip the alignment when it overflows and the other end fits, then shift along the side.
     let vertical = matches!(a.side, Side::Top | Side::Bottom);
-    let (pos, lo, hi, len, room) = if vertical { (&mut x, t[0], t[2], w, vp.0) } else { (&mut y, t[1], t[3], h, vp.1) };
+    let (pos, lo, hi, len, room) = if vertical {
+        (&mut x, t[0], t[2], w, vp.0)
+    } else {
+        (&mut y, t[1], t[3], h, vp.1)
+    };
     match a.align {
         Align::End if *pos < margin && lo + len <= room - margin => *pos = lo,
         Align::Start if *pos + len > room - margin && hi - len >= margin => *pos = hi - len,
@@ -51,7 +66,11 @@ pub(crate) fn anchor_position(a: &Anchor, t: [f32; 4], size: (f32, f32), vp: (f3
     *pos = pos.clamp(margin, (room - len - margin).max(margin));
     // Along the main axis only keep the start edge inside; a long list may run off the far end
     // (`El::anchored_fit` bounds it instead).
-    if vertical { y = y.max(margin) } else { x = x.max(margin) }
+    if vertical {
+        y = y.max(margin)
+    } else {
+        x = x.max(margin)
+    }
     if a.round {
         // `Math.round`: halves go up.
         return ((x + 0.5).floor(), (y + 0.5).floor());
@@ -67,7 +86,11 @@ fn fit_bound(a: &Anchor, t: [f32; 4], len: f32, vp: (f32, f32)) -> Option<f32> {
         Side::Top | Side::Bottom => (t[1] - a.gap - MARGIN, vp.1 - MARGIN - (t[3] + a.gap)),
         Side::Left | Side::Right => (t[0] - a.gap - MARGIN, vp.0 - MARGIN - (t[2] + a.gap)),
     };
-    let (own, other) = if matches!(a.side, Side::Top | Side::Left) { (before, after) } else { (after, before) };
+    let (own, other) = if matches!(a.side, Side::Top | Side::Left) {
+        (before, after)
+    } else {
+        (after, before)
+    };
     if len <= own || len <= other {
         return None;
     }
@@ -82,7 +105,10 @@ impl<S: 'static> Measurement<'_, S> {
         self.node_index.reserve(nodes.len());
         for i in 0..nodes.len() {
             let id = if nodes[i].id != NodeId(0) {
-                debug_assert_eq!(self.path_ids.get(&nodes[i].path).copied(), Some(nodes[i].id));
+                debug_assert_eq!(
+                    self.path_ids.get(&nodes[i].path).copied(),
+                    Some(nodes[i].id)
+                );
                 nodes[i].id
             } else {
                 self.node_id(&nodes[i].path)
@@ -91,14 +117,19 @@ impl<S: 'static> Measurement<'_, S> {
             self.node_index.insert(id, i);
             let mut l = taffy.box_layout(nodes[i].taffy);
             // Right to left: laid out left to right, then mirrored inside the parent (`El::dir`).
-            if let Some(p) = nodes[i].parent.filter(|&p| nodes[p].flow == Flow::Rtl && nodes[i].pin == Pin::Flowing) {
+            if let Some(p) = nodes[i]
+                .parent
+                .filter(|&p| nodes[p].flow == Flow::Rtl && nodes[i].pin == Pin::Flowing)
+            {
                 l.x = nodes[p].local.w - l.x - l.w;
             }
             if nodes[i].flow == Flow::Rtl {
                 l.inset.swap(0, 2);
             }
             nodes[i].local = MRect::new(l.x, l.y, l.w, l.h);
-            let (px, py) = nodes[i].parent.map_or((0.0, 0.0), |p| (nodes[p].target[0], nodes[p].target[1]));
+            let (px, py) = nodes[i]
+                .parent
+                .map_or((0.0, 0.0), |p| (nodes[p].target[0], nodes[p].target[1]));
             let mut x = px + l.x;
             let mut y = py + l.y;
             if let Some(a) = &nodes[i].above
@@ -120,17 +151,32 @@ impl<S: 'static> Measurement<'_, S> {
     pub(super) fn fit_anchored(&self, taffy: &mut LayoutEngine, nodes: &[Node]) -> bool {
         let mut changed = false;
         for (i, n) in nodes.iter().enumerate() {
-            let Some(a) = n.above.as_ref().filter(|a| a.fit) else { continue };
-            let Some(j) = anchor_index(&nodes, i, a) else { continue };
+            let Some(a) = n.above.as_ref().filter(|a| a.fit) else {
+                continue;
+            };
+            let Some(j) = anchor_index(&nodes, i, a) else {
+                continue;
+            };
             let target = sticky::anchored_target(nodes, self.scrolls, j, self.viewport);
             // It draws `k` times its layout size beside where the anchor draws.
             let k = inherited_zoom(nodes, i, &|m: &Node| m.static_scale).max(MIN_ZOOM);
-            let target = if k == 1.0 { target } else { zoomed_rect(nodes, self.scrolls, j, target, self.viewport) };
+            let target = if k == 1.0 {
+                target
+            } else {
+                zoomed_rect(nodes, self.scrolls, j, target, self.viewport)
+            };
             let zoomed;
-            let a = if k == 1.0 { a } else { zoomed = zoomed_gap(a, k); &zoomed };
+            let a = if k == 1.0 {
+                a
+            } else {
+                zoomed = zoomed_gap(a, k);
+                &zoomed
+            };
             let vertical = matches!(a.side, Side::Top | Side::Bottom);
             let len = if vertical { n.local.h } else { n.local.w };
-            let Some(bound) = fit_bound(a, target, len * k, self.viewport) else { continue };
+            let Some(bound) = fit_bound(a, target, len * k, self.viewport) else {
+                continue;
+            };
             let mut style = taffy.style(n.taffy).clone();
             if vertical {
                 style.set_max_height(length(bound / k));
@@ -149,11 +195,11 @@ impl<S: 'static> Measurement<'_, S> {
 }
 
 #[cfg(test)]
-#[path = "anchor_zoom_tests.rs"]
-mod zoom_tests;
-#[cfg(test)]
 #[path = "anchor_zoom_motion_tests.rs"]
 mod zoom_motion_tests;
+#[cfg(test)]
+#[path = "anchor_zoom_tests.rs"]
+mod zoom_tests;
 
 /// The smallest zoom an anchored overlay is placed at, so placing it never divides by zero.
 const MIN_ZOOM: f32 = 1e-3;
@@ -164,11 +210,15 @@ const MIN_ZOOM: f32 = 1e-3;
 /// already zooms its popovers by hand does. `own` reads a node's own `El::scale`.
 pub(super) fn inherited_zoom(nodes: &[Node], i: usize, own: &impl Fn(&Node) -> f32) -> f32 {
     let n = &nodes[i];
-    let Some(a) = n.above.as_ref().filter(|a| !a.unscaled) else { return 1.0 };
+    let Some(a) = n.above.as_ref().filter(|a| !a.unscaled) else {
+        return 1.0;
+    };
     if n.scale_track || n.static_scale != 1.0 {
         return 1.0;
     }
-    let Some(j) = anchor_index(&nodes, i, a) else { return 1.0 };
+    let Some(j) = anchor_index(&nodes, i, a) else {
+        return 1.0;
+    };
     let mut k = 1.0;
     let mut at = nodes[j].parent;
     while let Some(p) = at {
@@ -183,7 +233,13 @@ pub(super) fn inherited_zoom(nodes: &[Node], i: usize, own: &impl Fn(&Node) -> f
 
 /// `t`, node `j`'s layout rect, where its ancestors' `El::scale`s draw it at rest. An anchored
 /// ancestor zooms about its own top-left corner.
-fn zoomed_rect(nodes: &[Node], scrolls: &HashMap<NodeId, ScrollState>, j: usize, t: [f32; 4], vp: (f32, f32)) -> [f32; 4] {
+fn zoomed_rect(
+    nodes: &[Node],
+    scrolls: &HashMap<NodeId, ScrollState>,
+    j: usize,
+    t: [f32; 4],
+    vp: (f32, f32),
+) -> [f32; 4] {
     let chain: Vec<usize> = std::iter::successors(nodes[j].parent, |&p| nodes[p].parent).collect();
     // A point `x` draws at `to + (x - from) * k`, as `Inh` composes scales down the tree.
     let (mut k, mut from, mut to) = (1.0f32, [0.0f32; 2], [0.0f32; 2]);
@@ -204,16 +260,27 @@ fn zoomed_rect(nodes: &[Node], scrolls: &HashMap<NodeId, ScrollState>, j: usize,
             (false, None) => [0.5, 0.5],
         };
         let pivot = [r[0] + ox * (r[2] - r[0]), r[1] + oy * (r[3] - r[1])];
-        to = [to[0] + (pivot[0] - from[0]) * k, to[1] + (pivot[1] - from[1]) * k];
+        to = [
+            to[0] + (pivot[0] - from[0]) * k,
+            to[1] + (pivot[1] - from[1]) * k,
+        ];
         from = pivot;
         k *= own;
     }
-    [to[0] + (t[0] - from[0]) * k, to[1] + (t[1] - from[1]) * k, to[0] + (t[2] - from[0]) * k, to[1] + (t[3] - from[1]) * k]
+    [
+        to[0] + (t[0] - from[0]) * k,
+        to[1] + (t[1] - from[1]) * k,
+        to[0] + (t[2] - from[0]) * k,
+        to[1] + (t[3] - from[1]) * k,
+    ]
 }
 
 /// `a` with its gap at zoom `k`; the window margin stays in window points.
 fn zoomed_gap(a: &Anchor, k: f32) -> Anchor {
-    Anchor { gap: a.gap * k, ..a.clone() }
+    Anchor {
+        gap: a.gap * k,
+        ..a.clone()
+    }
 }
 
 /// The point on drawn box `d` that touches its anchor `t`: the middle of the edge facing the
@@ -225,7 +292,8 @@ fn attach_point(a: &Anchor, t: [f32; 4], d: [f32; 4]) -> [f32; 2] {
         Align::Center => (lo + hi) * 0.5,
         Align::End => hi,
     };
-    let facing = |lo: f32, hi: f32, t_lo: f32, t_hi: f32| if lo + hi > t_lo + t_hi { lo } else { hi };
+    let facing =
+        |lo: f32, hi: f32, t_lo: f32, t_hi: f32| if lo + hi > t_lo + t_hi { lo } else { hi };
     match a.side {
         Side::Top | Side::Bottom => [along(d[0], d[2]), facing(d[1], d[3], t[1], t[3])],
         Side::Left | Side::Right => [facing(d[0], d[2], t[0], t[2]), along(d[1], d[3])],
@@ -237,16 +305,40 @@ impl<S: 'static> Runtime<S> {
     /// zoom (see [`inherited_zoom`]), placed and flipped by its zoomed size where the anchor was
     /// drawn, and zooming about the point it attaches at. Its own `prop::OFFSET` and transition
     /// still apply on top; its ancestors' positions and scales don't.
-    pub(super) fn anchored_inh(&self, i: usize, j: usize, a: &Anchor, p: &rune_motion::Presented, pinh: &mut Inh) {
-        let tracked = |m: &Node| if m.scale_track { self.scene.get(m.id, P_SCALE).unwrap_or(m.static_scale) } else { m.static_scale };
+    pub(super) fn anchored_inh(
+        &self,
+        i: usize,
+        j: usize,
+        a: &Anchor,
+        p: &rune_motion::Presented,
+        pinh: &mut Inh,
+    ) {
+        let tracked = |m: &Node| {
+            if m.scale_track {
+                self.scene.get(m.id, P_SCALE).unwrap_or(m.static_scale)
+            } else {
+                m.static_scale
+            }
+        };
         let k = inherited_zoom(&self.nodes, i, &tracked).max(MIN_ZOOM);
         let d = self.drawn[j];
-        let target = if d != [0.0; 4] { [d[0], d[1], d[0] + d[2], d[1] + d[3]] } else {
+        let target = if d != [0.0; 4] {
+            [d[0], d[1], d[0] + d[2], d[1] + d[3]]
+        } else {
             let t = sticky::anchored_target(&self.nodes, &self.scrolls, j, self.viewport);
-            if k == 1.0 { t } else { zoomed_rect(&self.nodes, &self.scrolls, j, t, self.viewport) }
+            if k == 1.0 {
+                t
+            } else {
+                zoomed_rect(&self.nodes, &self.scrolls, j, t, self.viewport)
+            }
         };
         let zoomed;
-        let a = if k == 1.0 { a } else { zoomed = zoomed_gap(a, k); &zoomed };
+        let a = if k == 1.0 {
+            a
+        } else {
+            zoomed = zoomed_gap(a, k);
+            &zoomed
+        };
         let (w, h) = (p.rect.w * k, p.rect.h * k);
         let (ax, ay) = anchor_position(a, target, (w, h), self.viewport);
         let pivot = attach_point(a, target, [ax, ay, ax + w, ay + h]);
@@ -267,8 +359,15 @@ impl<S: 'static> Runtime<S> {
         pinh.dy = pivot[1] + (ay - pivot[1]) / k - world.y;
         (pinh.scale, pinh.anchor, pinh.anchor_to) = (k, pivot, pivot);
         // Text rasterizes as the anchor's does: crisp at the zoom once it rests.
-        let motion = self.nodes[j].parent.and_then(|jp| self.inh_scratch.get(jp)).map_or(ScaleMotion::Still, |h| h.scale_motion);
+        let motion = self.nodes[j]
+            .parent
+            .and_then(|jp| self.inh_scratch.get(jp))
+            .map_or(ScaleMotion::Still, |h| h.scale_motion);
         pinh.scale_motion = pinh.scale_motion.max(motion);
-        pinh.still = if pinh.scale_motion == ScaleMotion::Still { (k, pivot, pivot) } else { (1.0, [0.0; 2], [0.0; 2]) };
+        pinh.still = if pinh.scale_motion == ScaleMotion::Still {
+            (k, pivot, pivot)
+        } else {
+            (1.0, [0.0; 2], [0.0; 2])
+        };
     }
 }

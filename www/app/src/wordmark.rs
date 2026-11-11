@@ -10,17 +10,20 @@ use rune::{El, Shape, canvas};
 use crate::tokens::{glint, ink};
 
 const RUNE: [&str; 11] = [
-    "###....", "####...", "##.##..", "##..##.", "##..##.", "##.##..", "####...", "##.##..", "##..##.", "##...##", "##...##",
+    "###....", "####...", "##.##..", "##..##.", "##..##.", "##.##..", "####...", "##.##..",
+    "##..##.", "##...##", "##...##",
 ];
 const U: [&str; 11] = [
-    "##...##", "##...##", "##...##", "##...##", "##...##", "##...##", "##...##", "##...##", "##...##", "#######", ".#####.",
+    "##...##", "##...##", "##...##", "##...##", "##...##", "##...##", "##...##", "##...##",
+    "##...##", "#######", ".#####.",
 ];
 const N: [&str; 11] = [
-    "###...##", "####..##", "####..##", "####..##", "##.##.##", "##.##.##", "##.##.##", "##..####", "##..####", "##..####",
-    "##...###",
+    "###...##", "####..##", "####..##", "####..##", "##.##.##", "##.##.##", "##.##.##", "##..####",
+    "##..####", "##..####", "##...###",
 ];
 const E: [&str; 11] = [
-    "######", "######", "##....", "##....", "#####.", "#####.", "##....", "##....", "##....", "######", "######",
+    "######", "######", "##....", "##....", "#####.", "#####.", "##....", "##....", "##....",
+    "######", "######",
 ];
 
 pub const CAP: usize = 11;
@@ -31,16 +34,30 @@ const RISE: f64 = 0.04;
 const TAU: f64 = 0.18;
 
 fn ink_cells(rows: &[&str]) -> Vec<(i32, i32)> {
-    rows.iter().enumerate().flat_map(|(y, r)| r.bytes().enumerate().filter(|&(_, c)| c == b'#').map(move |(x, _)| (x as i32, y as i32))).collect()
+    rows.iter()
+        .enumerate()
+        .flat_map(|(y, r)| {
+            r.bytes()
+                .enumerate()
+                .filter(|&(_, c)| c == b'#')
+                .map(move |(x, _)| (x as i32, y as i32))
+        })
+        .collect()
 }
 
 /// Where `next` starts after `prev` (placed at `at`): as far left as keeps one clear pixel
 /// between their ink in every direction, diagonals included.
 fn fit(prev: &[&str], at: i32, next: &[&str]) -> i32 {
-    let a: Vec<_> = ink_cells(prev).into_iter().map(|(x, y)| (x + at, y)).collect();
+    let a: Vec<_> = ink_cells(prev)
+        .into_iter()
+        .map(|(x, y)| (x + at, y))
+        .collect();
     let b = ink_cells(next);
     let mut x = at + 1;
-    while a.iter().any(|&(ax, ay)| b.iter().any(|&(bx, by)| (bx + x - ax).abs() <= 1 && (by - ay).abs() <= 1)) {
+    while a.iter().any(|&(ax, ay)| {
+        b.iter()
+            .any(|&(bx, by)| (bx + x - ax).abs() <= 1 && (by - ay).abs() <= 1)
+    }) {
         x += 1;
     }
     x
@@ -63,7 +80,11 @@ impl Glyphs {
         }
         let &(last, at) = glyphs.last().unwrap();
         let width = at as usize + last[0].len();
-        Glyphs { glyphs, width, carve: carve_order(&RUNE) }
+        Glyphs {
+            glyphs,
+            width,
+            carve: carve_order(&RUNE),
+        }
     }
 }
 
@@ -81,7 +102,12 @@ fn runs(rows: &[&str], dx: i32, out: &mut Vec<[f32; 4]>) {
             while x < row.len() && row[x] == b'#' {
                 x += 1;
             }
-            out.push([(dx + start as i32) as f32, y as f32, (x - start) as f32, 1.0]);
+            out.push([
+                (dx + start as i32) as f32,
+                y as f32,
+                (x - start) as f32,
+                1.0,
+            ]);
         }
     }
 }
@@ -94,9 +120,16 @@ fn rect(r: [f32; 4]) -> Vec<[f32; 2]> {
 /// ᚱ's carve order: the stave top to bottom, then the bowl out and back, then the leg. Each
 /// cell gets the arc length (0 to 1) of its nearest point on that path.
 fn carve_order(rows: &[&str]) -> Vec<(i32, i32, f32)> {
-    let path: [[[f32; 2]; 2]; 4] =
-        [[[1.0, 0.5], [1.0, 10.5]], [[1.5, 0.5], [5.0, 3.5]], [[5.0, 3.5], [1.5, 6.5]], [[2.5, 6.5], [6.0, 10.5]]];
-    let lens: Vec<f32> = path.iter().map(|[a, b]| (b[0] - a[0]).hypot(b[1] - a[1])).collect();
+    let path: [[[f32; 2]; 2]; 4] = [
+        [[1.0, 0.5], [1.0, 10.5]],
+        [[1.5, 0.5], [5.0, 3.5]],
+        [[5.0, 3.5], [1.5, 6.5]],
+        [[2.5, 6.5], [6.0, 10.5]],
+    ];
+    let lens: Vec<f32> = path
+        .iter()
+        .map(|[a, b]| (b[0] - a[0]).hypot(b[1] - a[1]))
+        .collect();
     let total: f32 = lens.iter().sum();
     ink_cells(rows)
         .into_iter()
@@ -105,7 +138,8 @@ fn carve_order(rows: &[&str]) -> Vec<(i32, i32, f32)> {
             let (mut best, mut arc, mut acc) = (f32::INFINITY, 0.0, 0.0);
             for (i, [a, b]) in path.iter().enumerate() {
                 let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
-                let p = (((c[0] - a[0]) * dx + (c[1] - a[1]) * dy) / (dx * dx + dy * dy)).clamp(0.0, 1.0);
+                let p = (((c[0] - a[0]) * dx + (c[1] - a[1]) * dy) / (dx * dx + dy * dy))
+                    .clamp(0.0, 1.0);
                 let d = (a[0] + dx * p - c[0]).hypot(a[1] + dy * p - c[1]);
                 if d < best - 1e-6 {
                     best = d;
@@ -119,7 +153,11 @@ fn carve_order(rows: &[&str]) -> Vec<(i32, i32, f32)> {
 }
 
 fn ease_in_out(p: f64) -> f64 {
-    if p < 0.5 { 2.0 * p * p } else { 1.0 - (-2.0 * p + 2.0).powi(2) / 2.0 }
+    if p < 0.5 {
+        2.0 * p * p
+    } else {
+        1.0 - (-2.0 * p + 2.0).powi(2) / 2.0
+    }
 }
 
 /// When the head passes `order` (0 to 1) along the carve, in seconds after the start.
@@ -127,7 +165,11 @@ fn passes(order: f32) -> f64 {
     let (mut lo, mut hi) = (0.0, 1.0);
     for _ in 0..20 {
         let m = (lo + hi) / 2.0;
-        if ease_in_out(m) < f64::from(order) { lo = m } else { hi = m }
+        if ease_in_out(m) < f64::from(order) {
+            lo = m
+        } else {
+            hi = m
+        }
     }
     (lo + hi) / 2.0 * TRAVEL
 }
@@ -181,7 +223,10 @@ pub fn wordmark(g: &Glyphs, cell: f32, glow: Glow) -> El {
             shape = shape.fill(rect([x as f32, y as f32, 1.0, 1.0]), hot.alpha(h));
         }
     }
-    canvas(shape).key("wordmark").size(cell * g.width as f32, cell * CAP as f32).a11y_hidden()
+    canvas(shape)
+        .key("wordmark")
+        .size(cell * g.width as f32, cell * CAP as f32)
+        .a11y_hidden()
 }
 
 /// Reduced motion's stand-in for a glint, `t` seconds in: the letter fades to lit in 90 ms,
@@ -308,11 +353,17 @@ mod tests {
         assert!(!moving && (5.0..=9.0).contains(&at), "{at}");
         let (changed, moving, _) = g.tick(at);
         assert!(changed && moving);
-        assert!(matches!(g.glow(Which::Masthead, at + 0.1, false), Glow::Glint(_)));
+        assert!(matches!(
+            g.glow(Which::Masthead, at + 0.1, false),
+            Glow::Glint(_)
+        ));
         g.masthead_visible(false, false, at + 0.2);
         let (_, _, next) = g.tick(at + GLINT_SECONDS + 1.0);
         assert_eq!(next, None);
-        assert_eq!(g.glow(Which::Masthead, at + GLINT_SECONDS + 1.0, false), Glow::Off);
+        assert_eq!(
+            g.glow(Which::Masthead, at + GLINT_SECONDS + 1.0, false),
+            Glow::Off
+        );
     }
 
     #[test]

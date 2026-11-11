@@ -55,7 +55,12 @@ impl HelpLook {
     /// edge, 12 pt text, under its element 6 pt clear (over it 4 pt clear), after the
     /// runtime's `help_delay`.
     pub fn system(dark: bool) -> HelpLook {
-        let grey = |v: f32| Color { r: v, g: v, b: v, a: 1.0 };
+        let grey = |v: f32| Color {
+            r: v,
+            g: v,
+            b: v,
+            a: 1.0,
+        };
         let (fill, ink, edge) = if dark {
             (grey(0.17), grey(0.93), Color::WHITE.alpha(0.14))
         } else {
@@ -92,13 +97,33 @@ impl HelpLook {
     /// Keycaps ([`El::help_keys`](crate::El::help_keys)) on `fill`, their labels in `font` and
     /// `ink`, uppercased when `upper`.
     pub fn keycaps(mut self, fill: Color, ink: Color, font: TextStyle, upper: bool) -> Self {
-        self.key = KeyCap { fill, ink, font, upper, ..self.key };
+        self.key = KeyCap {
+            fill,
+            ink,
+            font,
+            upper,
+            ..self.key
+        };
         self
     }
     /// A keycap's height, inner padding either side (its least width is its height) and corner
     /// radius, `gap` points between two and `lead` points after the text.
-    pub fn keycap_shape(mut self, height: f32, pad_x: f32, radius: f32, gap: f32, lead: f32) -> Self {
-        self.key = KeyCap { height: height.max(0.0), pad_x: pad_x.max(0.0), radius: radius.max(0.0), gap: gap.max(0.0), lead: lead.max(0.0), ..self.key };
+    pub fn keycap_shape(
+        mut self,
+        height: f32,
+        pad_x: f32,
+        radius: f32,
+        gap: f32,
+        lead: f32,
+    ) -> Self {
+        self.key = KeyCap {
+            height: height.max(0.0),
+            pad_x: pad_x.max(0.0),
+            radius: radius.max(0.0),
+            gap: gap.max(0.0),
+            lead: lead.max(0.0),
+            ..self.key
+        };
         self
     }
     pub fn fill(mut self, c: Color) -> Self {
@@ -162,14 +187,22 @@ impl HelpLook {
     /// default; reduced motion never fades.
     pub fn fade(mut self, enter: f64, exit: f64, scale: f32) -> Self {
         self.fade = [enter.max(0.0), exit.max(0.0)];
-        self.fade_scale = if scale.is_finite() { scale.clamp(0.0, 1.0) } else { 1.0 };
+        self.fade_scale = if scale.is_finite() {
+            scale.clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
         self
     }
     /// Box-shadow layers, painted in order (the first four); empty for none. Inset shadows
     /// are skipped.
     pub fn shadows(mut self, layers: impl IntoIterator<Item = Shadow>) -> Self {
         self.shadows = [None; SHADOWS];
-        for (slot, s) in self.shadows.iter_mut().zip(layers.into_iter().filter(|s| !s.inset)) {
+        for (slot, s) in self
+            .shadows
+            .iter_mut()
+            .zip(layers.into_iter().filter(|s| !s.inset))
+        {
             *slot = Some(s);
         }
         self

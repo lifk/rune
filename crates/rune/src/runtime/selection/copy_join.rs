@@ -21,11 +21,20 @@ pub(crate) struct CopyJoin {
 
 impl CopyJoin {
     /// The text so far.
-    pub(crate) fn text(&self) -> &str { &self.out }
+    pub(crate) fn text(&self) -> &str {
+        &self.out
+    }
 
     /// Adds `piece`, what bytes `range` of `spec` copy as. `beside`: it sits beside the last
     /// piece, as a table row's next cell does. `true` when `cap` bytes cut it short.
-    pub(crate) fn push(&mut self, spec: &TextSpec, range: Range<usize>, piece: &str, beside: bool, cap: usize) -> bool {
+    pub(crate) fn push(
+        &mut self,
+        spec: &TextSpec,
+        range: Range<usize>,
+        piece: &str,
+        beside: bool,
+        cap: usize,
+    ) -> bool {
         let mut lead = String::new();
         if self.pieces > 0 {
             if beside {
@@ -36,7 +45,11 @@ impl CopyJoin {
                 lead.extend(std::iter::repeat_n('\n', want.saturating_sub(have)));
             }
         }
-        let prefix = spec.copy_prefix.as_deref().filter(|_| from_start(spec, &range)).unwrap_or("");
+        let prefix = spec
+            .copy_prefix
+            .as_deref()
+            .filter(|_| from_start(spec, &range))
+            .unwrap_or("");
         if self.pieces == 0 {
             self.first_prefix = prefix.len();
         }
@@ -68,6 +81,10 @@ impl CopyJoin {
 /// `range` takes `spec` from its first copied byte.
 fn from_start(spec: &TextSpec, range: &Range<usize>) -> bool {
     let len = spec.content.len();
-    let first = if spec.uncopied.is_empty() { 0 } else { trim_uncopied(&spec.uncopied, (0, len)).0 };
+    let first = if spec.uncopied.is_empty() {
+        0
+    } else {
+        trim_uncopied(&spec.uncopied, (0, len)).0
+    };
     !range.is_empty() && range.start <= first
 }

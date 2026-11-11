@@ -64,7 +64,9 @@ pub fn merge<T: Copy>(
     name: impl Fn(&T) -> &'static str,
     join: impl Fn(&mut T, &T),
 ) -> Vec<T> {
-    let (last, own) = own.split_last().map_or((None, own), |(l, rest)| (Some(*l), rest));
+    let (last, own) = own
+        .split_last()
+        .map_or((None, own), |(l, rest)| (Some(*l), rest));
     let mut out: Vec<T> = own.to_vec();
     for m in more {
         match out.iter_mut().find(|o| name(o) == name(m)) {

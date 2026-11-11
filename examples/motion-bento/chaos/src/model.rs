@@ -18,7 +18,9 @@ pub const SCENE_NOTES: [&str; 4] = [
 pub const DOCK: [&str; 5] = ["Energy", "Genres", "Orb", "Transfers", "Visitors"];
 /// Each dock tile's key.
 pub const DOCK_KEYS: [&str; 5] = ["energy", "chips", "orb", "transfers", "visitors"];
-pub const CHIPS: [&str; 8] = ["Ambient", "Lo-fi", "Jazz", "Rain", "Synth", "Piano", "Cafe", "Forest"];
+pub const CHIPS: [&str; 8] = [
+    "Ambient", "Lo-fi", "Jazz", "Rain", "Synth", "Piano", "Cafe", "Forest",
+];
 /// Chips shown while the chip tile is collapsed.
 pub const CHIPS_FOLDED: usize = 4;
 pub const TRACKS: [(&str, &str); 8] = [
@@ -171,7 +173,9 @@ const R_VISITORS: usize = 7;
 
 impl Model {
     pub fn new(seed: u64) -> Model {
-        let rng = std::array::from_fn(|i| Rng::new(seed.wrapping_mul(0x2545_f491_4f6c_dd1d) ^ (i as u64 + 1)));
+        let rng = std::array::from_fn(|i| {
+            Rng::new(seed.wrapping_mul(0x2545_f491_4f6c_dd1d) ^ (i as u64 + 1))
+        });
         let mut m = Model {
             events: 0,
             scene: 0,
@@ -186,7 +190,12 @@ impl Model {
             kwh_tenths: 128,
             chips_open: false,
             chips: [true, false, true, false, false, false, false, false],
-            orb: Orb { size: 0.8, hue: 245.0, round: 0.5, turn: 0.0 },
+            orb: Orb {
+                size: 0.8,
+                hue: 245.0,
+                round: 0.5,
+                turn: 0.0,
+            },
             transfers: [0.35, 0.7, 0.12],
             visitors: 1284,
             visits: Vec::new(),
@@ -205,7 +214,14 @@ impl Model {
         for kind in [2, 0, 5] {
             let id = m.id();
             m.minute += 3;
-            m.feed.insert(0, FeedItem { id, kind, minute: m.minute });
+            m.feed.insert(
+                0,
+                FeedItem {
+                    id,
+                    kind,
+                    minute: m.minute,
+                },
+            );
         }
         m
     }
@@ -216,7 +232,11 @@ impl Model {
     }
 
     pub fn chips_shown(&self) -> usize {
-        if self.chips_open { CHIPS.len() } else { CHIPS_FOLDED }
+        if self.chips_open {
+            CHIPS.len()
+        } else {
+            CHIPS_FOLDED
+        }
     }
 
     pub fn energy_kwh(&self) -> String {
@@ -268,7 +288,14 @@ impl Model {
                 let kind = r.below(FEED_KINDS.len());
                 self.minute = (self.minute + 1 + r.below(4) as u32) % 60;
                 let id = self.id();
-                self.feed.insert(0, FeedItem { id, kind, minute: self.minute });
+                self.feed.insert(
+                    0,
+                    FeedItem {
+                        id,
+                        kind,
+                        minute: self.minute,
+                    },
+                );
                 self.feed.truncate(FEED_LEN);
             }
             Action::Focus(i) => self.focus = i as usize % DOCK.len(),
@@ -315,13 +342,31 @@ mod tests {
 
     #[test]
     fn the_same_actions_give_the_same_state() {
-        let actions = [Action::Fader(2), Action::Puck, Action::Queue, Action::Feed, Action::Orb, Action::Energy];
+        let actions = [
+            Action::Fader(2),
+            Action::Puck,
+            Action::Queue,
+            Action::Feed,
+            Action::Orb,
+            Action::Energy,
+        ];
         let run = |seed| {
             let mut m = Model::new(seed);
             for a in actions.iter().chain(&actions) {
                 m.apply(*a);
             }
-            format!("{:?}", (m.faders, m.puck, m.queue, m.feed, m.orb, m.energy, m.kwh_tenths))
+            format!(
+                "{:?}",
+                (
+                    m.faders,
+                    m.puck,
+                    m.queue,
+                    m.feed,
+                    m.orb,
+                    m.energy,
+                    m.kwh_tenths
+                )
+            )
         };
         assert_eq!(run(3), run(3));
         assert_ne!(run(3), run(4));
@@ -338,7 +383,12 @@ mod tests {
         assert_eq!(m.visits.len(), VISITS);
         assert_eq!(m.queue.len(), QUEUE_LEN);
         assert_eq!(m.feed.len(), FEED_LEN);
-        let ids: std::collections::HashSet<u32> = m.queue.iter().map(|c| c.id).chain(m.feed.iter().map(|f| f.id)).collect();
+        let ids: std::collections::HashSet<u32> = m
+            .queue
+            .iter()
+            .map(|c| c.id)
+            .chain(m.feed.iter().map(|f| f.id))
+            .collect();
         assert_eq!(ids.len(), QUEUE_LEN + FEED_LEN);
     }
 }

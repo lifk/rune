@@ -34,7 +34,11 @@ pub(crate) struct Requirer {
 
 impl Requirer {
     pub(crate) fn new(compiled: Rc<Compiled>, loading: Loading) -> Self {
-        Requirer { compiled, loading, at: Some(Vec::new()) }
+        Requirer {
+            compiled,
+            loading,
+            at: Some(Vec::new()),
+        }
     }
 
     /// The file of module `at`.
@@ -43,8 +47,10 @@ impl Requirer {
             return Ok(self.compiled.module(ENTRY).map(|_| ENTRY.to_owned()));
         }
         let base = at.join("/");
-        let found: Vec<String> =
-            [format!("{base}.luau"), format!("{base}/init.luau")].into_iter().filter(|p| self.compiled.module(p).is_some()).collect();
+        let found: Vec<String> = [format!("{base}.luau"), format!("{base}/init.luau")]
+            .into_iter()
+            .filter(|p| self.compiled.module(p).is_some())
+            .collect();
         match found.len() {
             0 => Ok(None),
             1 => Ok(found.into_iter().next()),
@@ -53,7 +59,9 @@ impl Requirer {
     }
 
     fn resolved(&self) -> Option<String> {
-        self.at.as_deref().and_then(|at| self.file(at).ok().flatten())
+        self.at
+            .as_deref()
+            .and_then(|at| self.file(at).ok().flatten())
     }
 }
 
@@ -63,9 +71,15 @@ impl Require for Requirer {
     }
 
     fn reset(&mut self, chunk_name: &str) -> StdResult<(), NavigateError> {
-        let path = chunk_name.strip_prefix('@').ok_or(NavigateError::NotFound)?;
+        let path = chunk_name
+            .strip_prefix('@')
+            .ok_or(NavigateError::NotFound)?;
         let path = path.strip_suffix(".luau").unwrap_or(path);
-        let mut at: Vec<String> = path.split('/').filter(|c| !c.is_empty()).map(str::to_owned).collect();
+        let mut at: Vec<String> = path
+            .split('/')
+            .filter(|c| !c.is_empty())
+            .map(str::to_owned)
+            .collect();
         if at.last().is_some_and(|c| c == "init") {
             at.pop();
         }
@@ -120,11 +134,15 @@ impl Require for Requirer {
     }
 
     fn config(&self) -> std::io::Result<Vec<u8>> {
-        self.config_text().map(|s| s.as_bytes().to_vec()).ok_or_else(|| std::io::ErrorKind::NotFound.into())
+        self.config_text()
+            .map(|s| s.as_bytes().to_vec())
+            .ok_or_else(|| std::io::ErrorKind::NotFound.into())
     }
 
     fn loader(&self, lua: &Lua) -> mlua::Result<Function> {
-        let path = self.resolved().ok_or_else(|| mlua::Error::runtime("module not found"))?;
+        let path = self
+            .resolved()
+            .ok_or_else(|| mlua::Error::runtime("module not found"))?;
         module_loader(lua, &self.compiled, &self.loading, &path)
     }
 }
@@ -142,13 +160,24 @@ impl Requirer {
 /// A function that runs module `path` once, refusing to start it again while it is still
 /// running (a `require` cycle). A module that opens with `--!native` compiles to native code
 /// where the platform allows it.
-pub(crate) fn module_loader(lua: &Lua, compiled: &Compiled, loading: &Loading, path: &str) -> mlua::Result<Function> {
-    let module = compiled.module(path).ok_or_else(|| mlua::Error::runtime(format!("no module {path}")))?;
+pub(crate) fn module_loader(
+    lua: &Lua,
+    compiled: &Compiled,
+    loading: &Loading,
+    path: &str,
+) -> mlua::Result<Function> {
+    let module = compiled
+        .module(path)
+        .ok_or_else(|| mlua::Error::runtime(format!("no module {path}")))?;
     #[cfg(luau_jit)]
     lua.enable_jit(module.native);
     #[cfg(not(luau_jit))]
     let _ = module.native;
-    let chunk = lua.load(&*module.code).set_mode(ChunkMode::Binary).set_name(format!("@{path}")).into_function();
+    let chunk = lua
+        .load(&*module.code)
+        .set_mode(ChunkMode::Binary)
+        .set_name(format!("@{path}"))
+        .into_function();
     #[cfg(luau_jit)]
     lua.enable_jit(false);
     let chunk = chunk?;
@@ -158,7 +187,10 @@ pub(crate) fn module_loader(lua: &Lua, compiled: &Compiled, loading: &Loading, p
         if loading.borrow().contains(&path) {
             let mut chain = loading.borrow().clone();
             chain.push(path.clone());
-            return Err(mlua::Error::runtime(format!("require cycle: {}", chain.join(" -> "))));
+            return Err(mlua::Error::runtime(format!(
+                "require cycle: {}",
+                chain.join(" -> ")
+            )));
         }
         loading.borrow_mut().push(path.clone());
         let out = chunk.call::<MultiValue>(args);

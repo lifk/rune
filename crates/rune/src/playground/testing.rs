@@ -12,10 +12,18 @@ impl<S: 'static> App<S> {
     /// read from the command line. Call [`Runtime::frame`] to build the first frame.
     pub fn headless_runtime(mut self, size: (f32, f32), env: Env) -> Runtime<S> {
         let playground = self.playground.take();
-        let (chrome, titlebar, borderless) = (self.chrome, self.titlebar, self.window_options.borderless);
-        let (on_focus, on_ime, modifier_keys, tab_visits_controls, srgb_blend) = (self.on_focus, self.on_ime, self.modifier_keys, self.tab_visits_controls, self.srgb_blend);
+        let (chrome, titlebar, borderless) =
+            (self.chrome, self.titlebar, self.window_options.borderless);
+        let (on_focus, on_ime, modifier_keys, tab_visits_controls, srgb_blend) = (
+            self.on_focus,
+            self.on_ime,
+            self.modifier_keys,
+            self.tab_visits_controls,
+            self.srgb_blend,
+        );
         let (spec, state, _) = self.into_parts(None);
-        let mut rt = crate::tooling::runtime_for(&spec, state, size, env, std::sync::Arc::new(|| {}));
+        let mut rt =
+            crate::tooling::runtime_for(&spec, state, size, env, std::sync::Arc::new(|| {}));
         if let Some(playground) = playground.filter(Playground::is_enabled) {
             rt.playground = Some(Box::new(Live::new(playground, &spec, false)));
         }
@@ -43,7 +51,8 @@ impl<S: 'static> Runtime<S> {
     /// story or variant, listing those it has.
     pub fn open_playground(&mut self, story: &str, variant: Option<&str>) {
         let live = self.playground.as_mut().expect(NO_PLAYGROUND);
-        live.open_at(Some(story), variant).unwrap_or_else(|e| panic!("{e}"));
+        live.open_at(Some(story), variant)
+            .unwrap_or_else(|e| panic!("{e}"));
         self.settle_playground(Request::Open(Some(story.to_owned())));
     }
 
@@ -53,10 +62,24 @@ impl<S: 'static> Runtime<S> {
     ///
     /// Panics when the playground isn't open, or its story has no trigger on `key`.
     pub fn playground_trigger(&mut self, key: char) {
-        let live = self.playground.as_ref().filter(|p| p.is_open()).unwrap_or_else(|| panic!("the playground isn't open: call Runtime::open_playground first"));
+        let live = self
+            .playground
+            .as_ref()
+            .filter(|p| p.is_open())
+            .unwrap_or_else(|| {
+                panic!("the playground isn't open: call Runtime::open_playground first")
+            });
         let Some(request) = live.trigger_request(key) else {
-            let keys: Vec<String> = live.triggers().iter().map(|(k, label)| format!("{k:?} ({label})")).collect();
-            panic!("{:?} has no trigger on {key:?}; it has: {}", live.path(live.selected), keys.join(", "));
+            let keys: Vec<String> = live
+                .triggers()
+                .iter()
+                .map(|(k, label)| format!("{k:?} ({label})"))
+                .collect();
+            panic!(
+                "{:?} has no trigger on {key:?}; it has: {}",
+                live.path(live.selected),
+                keys.join(", ")
+            );
         };
         self.settle_playground(request);
     }
@@ -81,7 +104,9 @@ impl<S: 'static> Runtime<S> {
     /// rect, text, role and the rest. The playground's list and side column aren't searched;
     /// [`Runtime::find`] and [`Runtime::elements`] see the whole window.
     pub fn playground_element(&self, key: &str) -> Option<ElementInfo> {
-        if !self.playground.as_ref().is_some_and(|p| p.is_open()) { return None; }
+        if !self.playground.as_ref().is_some_and(|p| p.is_open()) {
+            return None;
+        }
         let all = self.elements();
         let i = stage_element(&all, key)?;
         all.into_iter().nth(i)
@@ -92,16 +117,25 @@ const NO_PLAYGROUND: &str = "this runtime has no playground: build it with App::
 
 /// The index in `all` of the element keyed or pathed `key` on the stage, not exiting.
 pub(crate) fn stage_element(all: &[ElementInfo], key: &str) -> Option<usize> {
-    let named = |i: &usize| !all[*i].exiting && (all[*i].key.as_deref() == Some(key) || all[*i].path == key);
-    let in_stage = |i: &usize| std::iter::successors(Some(*i), |&j| all[j].parent).any(|j| all[j].key.as_deref().is_some_and(is_stage));
+    let named = |i: &usize| {
+        !all[*i].exiting && (all[*i].key.as_deref() == Some(key) || all[*i].path == key)
+    };
+    let in_stage = |i: &usize| {
+        std::iter::successors(Some(*i), |&j| all[j].parent)
+            .any(|j| all[j].key.as_deref().is_some_and(is_stage))
+    };
     (0..all.len()).filter(named).find(in_stage)
 }
 
 impl<S: 'static> Live<S> {
     /// The open stage's own state: a scene's, or a story's.
     fn stage_state(&self) -> Option<&dyn Any> {
-        if !self.open { return None; }
-        if let Some(scene) = &self.scene { return Some(&scene.state); }
+        if !self.open {
+            return None;
+        }
+        if let Some(scene) = &self.scene {
+            return Some(&scene.state);
+        }
         self.own().map(|(own, stage)| own.state_ref(stage))
     }
 }

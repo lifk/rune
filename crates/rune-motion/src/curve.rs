@@ -24,10 +24,16 @@ impl Curve {
         Curve::Tween { duration, easing }
     }
     pub const fn linear(duration: f32) -> Curve {
-        Curve::Tween { duration, easing: Easing::Linear }
+        Curve::Tween {
+            duration,
+            easing: Easing::Linear,
+        }
     }
     pub const fn ease_in_out(duration: f32) -> Curve {
-        Curve::Tween { duration, easing: Easing::EASE_IN_OUT }
+        Curve::Tween {
+            duration,
+            easing: Easing::EASE_IN_OUT,
+        }
     }
 
     /// When the animation "logically" completes (SwiftUI `.logicallyComplete`): a spring's
@@ -52,7 +58,11 @@ impl Curve {
 impl From<Spring> for Curve {
     /// [`Spring::NONE`] is [`Curve::Instant`].
     fn from(s: Spring) -> Curve {
-        if s == Spring::NONE { Curve::Instant } else { Curve::Spring(s) }
+        if s == Spring::NONE {
+            Curve::Instant
+        } else {
+            Curve::Spring(s)
+        }
     }
 }
 
@@ -72,7 +82,9 @@ impl Decay {
     /// From a per-millisecond deceleration rate `r` (UIKit): k = −1000 · ln r.
     pub fn per_ms(r: f32) -> Decay {
         assert!(r > 0.0 && r < 1.0, "deceleration rate must be in (0, 1)");
-        Decay { rate: -1000.0 * r.ln() }
+        Decay {
+            rate: -1000.0 * r.ln(),
+        }
     }
 
     #[inline]
@@ -122,7 +134,13 @@ pub struct Anim {
 
 impl Anim {
     pub const fn new(curve: Curve) -> Anim {
-        Anim { curve, delay: 0.0, blend: Blend::Auto, velocity: Velocity::Inherit, token: 0 }
+        Anim {
+            curve,
+            delay: 0.0,
+            blend: Blend::Auto,
+            velocity: Velocity::Inherit,
+            token: 0,
+        }
     }
     pub const INSTANT: Anim = Anim::new(Curve::Instant);
 
@@ -154,10 +172,16 @@ impl From<SpringPair> for Anim {
 /// Builder methods on anything that converts to an [`Anim`]: `SETTLE.delay(0.05)`.
 pub trait AnimExt: Into<Anim> + Sized {
     fn delay(self, seconds: f32) -> Anim {
-        Anim { delay: seconds, ..self.into() }
+        Anim {
+            delay: seconds,
+            ..self.into()
+        }
     }
     fn blend(self, blend: Blend) -> Anim {
-        Anim { blend, ..self.into() }
+        Anim {
+            blend,
+            ..self.into()
+        }
     }
     fn additive(self) -> Anim {
         self.blend(Blend::Additive)
@@ -166,10 +190,16 @@ pub trait AnimExt: Into<Anim> + Sized {
         self.blend(Blend::Merge)
     }
     fn velocity(self, velocity: Velocity) -> Anim {
-        Anim { velocity, ..self.into() }
+        Anim {
+            velocity,
+            ..self.into()
+        }
     }
     fn completion(self, token: u64) -> Anim {
-        Anim { token, ..self.into() }
+        Anim {
+            token,
+            ..self.into()
+        }
     }
 }
 impl<T: Into<Anim>> AnimExt for T {}

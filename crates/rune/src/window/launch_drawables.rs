@@ -1,5 +1,5 @@
-use std::time::Duration;
 use crate::time::Instant;
+use std::time::Duration;
 
 /// A new window's surface keeps two drawables until the window first rests on screen, or for
 /// its first second there, then its configured three. CAMetalLayer makes another window-sized
@@ -18,16 +18,25 @@ impl LaunchDrawables {
 
     /// Caps a new surface's `config` at two drawables.
     pub(super) fn cap(config: &mut wgpu::SurfaceConfiguration) -> Self {
-        if config.desired_maximum_frame_latency <= 1 { return Self::Steady; }
+        if config.desired_maximum_frame_latency <= 1 {
+            return Self::Steady;
+        }
         let steady = std::mem::replace(&mut config.desired_maximum_frame_latency, 1);
-        Self::Capped { steady, since: None }
+        Self::Capped {
+            steady,
+            since: None,
+        }
     }
 
     /// After a frame on screen: the frame latency to configure, once, when launch ends.
     pub(super) fn settle(&mut self, idle: bool, now: Instant) -> Option<u32> {
-        let Self::Capped { steady, since } = self else { return None };
+        let Self::Capped { steady, since } = self else {
+            return None;
+        };
         let since = *since.get_or_insert(now);
-        if !idle && now.duration_since(since) < Self::LAUNCH { return None; }
+        if !idle && now.duration_since(since) < Self::LAUNCH {
+            return None;
+        }
         let steady = *steady;
         *self = Self::Steady;
         Some(steady)

@@ -42,11 +42,15 @@ impl Direction {
         let mut isolates = 0u32;
         for c in text.chars() {
             match classes.get(c) {
-                BidiClass::LeftToRightIsolate | BidiClass::RightToLeftIsolate | BidiClass::FirstStrongIsolate => isolates += 1,
+                BidiClass::LeftToRightIsolate
+                | BidiClass::RightToLeftIsolate
+                | BidiClass::FirstStrongIsolate => isolates += 1,
                 BidiClass::PopDirectionalIsolate => isolates = isolates.saturating_sub(1),
                 BidiClass::ParagraphSeparator if isolates == 0 => return None,
                 BidiClass::LeftToRight if isolates == 0 => return Some(Direction::Ltr),
-                BidiClass::RightToLeft | BidiClass::ArabicLetter if isolates == 0 => return Some(Direction::Rtl),
+                BidiClass::RightToLeft | BidiClass::ArabicLetter if isolates == 0 => {
+                    return Some(Direction::Rtl);
+                }
                 _ => {}
             }
         }
@@ -104,7 +108,11 @@ pub(crate) enum Flow {
 impl Flow {
     /// A laid-out paragraph's flow: its bidi base level.
     pub(crate) fn of_layout<B: parley::Brush>(layout: &parley::Layout<B>) -> Flow {
-        if layout.is_rtl() { Flow::Rtl } else { Flow::Ltr }
+        if layout.is_rtl() {
+            Flow::Rtl
+        } else {
+            Flow::Ltr
+        }
     }
 
     /// The paragraph direction text in this flow lays out in.
@@ -127,7 +135,11 @@ pub(crate) enum Pin {
 
 impl Pin {
     pub(crate) fn of(el: &El) -> Pin {
-        if el.flags.has(ElFlags::UNMIRRORED) { Pin::Physical } else { Pin::Flowing }
+        if el.flags.has(ElFlags::UNMIRRORED) {
+            Pin::Physical
+        } else {
+            Pin::Flowing
+        }
     }
 }
 
@@ -168,7 +180,13 @@ pub(crate) fn step(parent: Flow, event: DirEvent<'_>) -> (Flow, DirEffect) {
     let flow = match event {
         DirEvent::Inherit => parent,
         DirEvent::Set(flow) => flow,
-        DirEvent::Auto(el) => if first_strong(el) == Some(Direction::Rtl) { Flow::Rtl } else { Flow::Ltr },
+        DirEvent::Auto(el) => {
+            if first_strong(el) == Some(Direction::Rtl) {
+                Flow::Rtl
+            } else {
+                Flow::Ltr
+            }
+        }
     };
     let effect = match flow {
         Flow::Ltr => DirEffect::Keep,
@@ -187,11 +205,17 @@ fn first_strong(el: &El) -> Option<Direction> {
     }
     // An empty field reads its placeholder, as the placeholder shows in its place.
     if let Some(i) = el.cold.input.as_ref().filter(|i| !i.edit.is_secure())
-        && let Some(d) = Direction::of(if i.edit.text.is_empty() { &i.placeholder } else { &i.edit.text })
+        && let Some(d) = Direction::of(if i.edit.text.is_empty() {
+            &i.placeholder
+        } else {
+            &i.edit.text
+        })
     {
         return Some(d);
     }
-    el.all_children().filter(|c| c.flags.dir().is_none()).find_map(first_strong)
+    el.all_children()
+        .filter(|c| c.flags.dir().is_none())
+        .find_map(first_strong)
 }
 
 /// Mirrors what a right-to-left element draws on its own left and right: corner radii, border
@@ -204,8 +228,14 @@ pub(crate) fn mirror_visual(vis: &mut Visual) {
     }
     let Some(cold) = vis.cold.get() else { return };
     let turns = cold.mirror_rtl && (cold.rotate != 0.0 || cold.icon_turn != 0.0);
-    let flips = turns || cold.border_sides.is_some() || cold.clip.is_some() || cold.clip_corners.is_some()
-        || cold.radial.as_ref().is_some_and(|r| matches!(r.geometry, GradientGeometry::Linear { .. }));
+    let flips = turns
+        || cold.border_sides.is_some()
+        || cold.clip.is_some()
+        || cold.clip_corners.is_some()
+        || cold
+            .radial
+            .as_ref()
+            .is_some_and(|r| matches!(r.geometry, GradientGeometry::Linear { .. }));
     if !flips {
         return;
     }

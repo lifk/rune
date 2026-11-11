@@ -47,19 +47,26 @@ pub struct Rewind {
 }
 
 impl Default for Rewind {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl std::fmt::Debug for Rewind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Rewind").field("frames", &self.frames()).field("bytes", &self.bytes()).finish()
+        f.debug_struct("Rewind")
+            .field("frames", &self.frames())
+            .field("bytes", &self.bytes())
+            .finish()
     }
 }
 
 impl Rewind {
     /// Keeps the last 60 seconds, within 24 MB.
     pub fn new() -> Self {
-        Rewind { tape: Arc::new(Mutex::new(tape::Tape::new(60.0, 24 << 20))) }
+        Rewind {
+            tape: Arc::new(Mutex::new(tape::Tape::new(60.0, 24 << 20))),
+        }
     }
 
     /// Keep the last `seconds` (at least one frame is always kept).
@@ -86,13 +93,19 @@ impl Rewind {
         self.lock().paused = false;
     }
 
-    pub fn is_paused(&self) -> bool { self.lock().paused }
+    pub fn is_paused(&self) -> bool {
+        self.lock().paused
+    }
 
     /// Frames held.
-    pub fn frames(&self) -> usize { self.lock().frames.len() }
+    pub fn frames(&self) -> usize {
+        self.lock().frames.len()
+    }
 
     /// Bytes the recording holds, roughly.
-    pub fn bytes(&self) -> usize { self.lock().bytes() }
+    pub fn bytes(&self) -> usize {
+        self.lock().bytes()
+    }
 
     pub(crate) fn lock(&self) -> MutexGuard<'_, tape::Tape> {
         self.tape.lock().unwrap_or_else(PoisonError::into_inner)

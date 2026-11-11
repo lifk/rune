@@ -13,13 +13,18 @@ use std::sync::Mutex;
 
 use windows::Data::Xml::Dom::XmlDocument;
 use windows::Foundation::TypedEventHandler;
-use windows::UI::Notifications::{ToastActivatedEventArgs, ToastNotification, ToastNotificationManager};
+use windows::UI::Notifications::{
+    ToastActivatedEventArgs, ToastNotification, ToastNotificationManager,
+};
 use windows::Win32::Foundation::{HWND, LPARAM};
-use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentProcessId, GetCurrentThreadId};
+use windows::Win32::System::Threading::{
+    AttachThreadInput, GetCurrentProcessId, GetCurrentThreadId,
+};
 use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
 use windows::Win32::UI::WindowsAndMessaging::{
-    BringWindowToTop, EnumWindows, GW_OWNER, GWL_EXSTYLE, GetForegroundWindow, GetWindow, GetWindowLongW, GetWindowThreadProcessId,
-    IsIconic, IsWindowVisible, SW_RESTORE, SW_SHOW, SetForegroundWindow, ShowWindow, WS_EX_TOOLWINDOW,
+    BringWindowToTop, EnumWindows, GW_OWNER, GWL_EXSTYLE, GetForegroundWindow, GetWindow,
+    GetWindowLongW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SW_RESTORE, SW_SHOW,
+    SetForegroundWindow, ShowWindow, WS_EX_TOOLWINDOW,
 };
 use windows::core::{BOOL, HSTRING, IInspectable, Interface, Ref};
 
@@ -60,14 +65,25 @@ pub(super) fn register(identity: &Identity) -> Result<(), String> {
         return Err(format!("not an app id: {:?}", identity.id));
     }
     // SAFETY: the HSTRING outlives the call, which copies it.
-    unsafe { SetCurrentProcessExplicitAppUserModelID(&HSTRING::from(&identity.id)) }.map_err(|e| format!("SetCurrentProcessExplicitAppUserModelID: {e}"))?;
+    unsafe { SetCurrentProcessExplicitAppUserModelID(&HSTRING::from(&identity.id)) }
+        .map_err(|e| format!("SetCurrentProcessExplicitAppUserModelID: {e}"))?;
     let key = windows_registry::CURRENT_USER
-        .create(format!("Software\\Classes\\AppUserModelId\\{}", identity.id))
+        .create(format!(
+            "Software\\Classes\\AppUserModelId\\{}",
+            identity.id
+        ))
         .map_err(|e| format!("AppUserModelId key: {e}"))?;
-    let name = if identity.name.is_empty() { &identity.id } else { &identity.name };
-    key.set_string("DisplayName", name).map_err(|e| format!("DisplayName: {e}"))?;
+    let name = if identity.name.is_empty() {
+        &identity.id
+    } else {
+        &identity.name
+    };
+    key.set_string("DisplayName", name)
+        .map_err(|e| format!("DisplayName: {e}"))?;
     match &identity.icon {
-        Some(icon) => key.set_string("IconUri", icon.to_string_lossy()).map_err(|e| format!("IconUri: {e}"))?,
+        Some(icon) => key
+            .set_string("IconUri", icon.to_string_lossy())
+            .map_err(|e| format!("IconUri: {e}"))?,
         None => {
             _ = key.remove_value("IconUri");
         }
@@ -85,18 +101,29 @@ pub(super) fn register(identity: &Identity) -> Result<(), String> {
 fn register_scheme(scheme: &str, name: &str) -> Result<String, String> {
     let valid = scheme.len() >= 2
         && scheme.starts_with(|c: char| c.is_ascii_alphabetic())
-        && scheme.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+        && scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
     if !valid {
         return Err(format!("not a URL scheme: {scheme:?}"));
     }
     let scheme = scheme.to_ascii_lowercase();
     let exe = std::env::current_exe().map_err(|e| format!("current exe: {e}"))?;
     let exe = exe.to_string_lossy();
-    let classes = windows_registry::CURRENT_USER.create(format!("Software\\Classes\\{scheme}")).map_err(|e| format!("{scheme} key: {e}"))?;
-    classes.set_string("", format!("URL:{name}")).map_err(|e| format!("{scheme}: {e}"))?;
-    classes.set_string("URL Protocol", "").map_err(|e| format!("{scheme} URL Protocol: {e}"))?;
+    let classes = windows_registry::CURRENT_USER
+        .create(format!("Software\\Classes\\{scheme}"))
+        .map_err(|e| format!("{scheme} key: {e}"))?;
+    classes
+        .set_string("", format!("URL:{name}"))
+        .map_err(|e| format!("{scheme}: {e}"))?;
+    classes
+        .set_string("URL Protocol", "")
+        .map_err(|e| format!("{scheme} URL Protocol: {e}"))?;
     let set = |path: &str, value: String| {
-        classes.create(path).and_then(|k| k.set_string("", value)).map_err(|e| format!("{scheme}\\{path}: {e}"))
+        classes
+            .create(path)
+            .and_then(|k| k.set_string("", value))
+            .map_err(|e| format!("{scheme}\\{path}: {e}"))
     };
     set("DefaultIcon", format!("\"{exe}\",0"))?;
     set("shell\\open\\command", format!("\"{exe}\" \"%1\""))?;
@@ -116,7 +143,10 @@ pub(super) fn click_from_url(url: &str) -> Option<Click> {
         return None;
     }
     let (id, query) = rest.split_once('?').unwrap_or((rest, ""));
-    Some(Click { id: unpercent(id.trim_end_matches('/')), info: decode(query) })
+    Some(Click {
+        id: unpercent(id.trim_end_matches('/')),
+        info: decode(query),
+    })
 }
 
 pub(super) fn post(n: &Notification) -> bool {
@@ -129,7 +159,11 @@ pub(super) fn post(n: &Notification) -> bool {
             if posted.len() >= KEEP {
                 posted.remove(0);
             }
-            posted.push(Posted { id: n.id.clone(), tag, _toast: toast });
+            posted.push(Posted {
+                id: n.id.clone(),
+                tag,
+                _toast: toast,
+            });
             true
         }
         Err(_) => false,
@@ -148,24 +182,44 @@ fn show(app: &str, n: &Notification, tag: &str) -> windows::core::Result<ToastNo
         ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(app))?.Show(&toast)?;
         return Ok(toast);
     }
-    toast.Activated(&TypedEventHandler::new(|sender: Ref<ToastNotification>, args: Ref<IInspectable>| {
-        let tag = sender.ok()?.Tag()?.to_string_lossy();
-        let arguments = args.ok()?.cast::<ToastActivatedEventArgs>()?.Arguments()?.to_string_lossy();
-        let id = POSTED.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|p| p.tag == tag).map_or(tag, |p| p.id.clone());
-        super::deliver(Click { id, info: decode(&arguments) });
-        Ok(())
-    }))?;
+    toast.Activated(&TypedEventHandler::new(
+        |sender: Ref<ToastNotification>, args: Ref<IInspectable>| {
+            let tag = sender.ok()?.Tag()?.to_string_lossy();
+            let arguments = args
+                .ok()?
+                .cast::<ToastActivatedEventArgs>()?
+                .Arguments()?
+                .to_string_lossy();
+            let id = POSTED
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .iter()
+                .find(|p| p.tag == tag)
+                .map_or(tag, |p| p.id.clone());
+            super::deliver(Click {
+                id,
+                info: decode(&arguments),
+            });
+            Ok(())
+        },
+    ))?;
     ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(app))?.Show(&toast)?;
     Ok(toast)
 }
 
 pub(super) fn remove(ids: &[&str]) {
     let Some(app) = app_id() else { return };
-    let Ok(history) = ToastNotificationManager::History() else { return };
+    let Ok(history) = ToastNotificationManager::History() else {
+        return;
+    };
     let mut posted = POSTED.lock().unwrap_or_else(|e| e.into_inner());
     for id in ids {
         let tag = tag(id);
-        _ = history.RemoveGroupedTagWithId(&HSTRING::from(&tag), &HSTRING::from(GROUP), &HSTRING::from(&app));
+        _ = history.RemoveGroupedTagWithId(
+            &HSTRING::from(&tag),
+            &HSTRING::from(GROUP),
+            &HSTRING::from(&app),
+        );
         posted.retain(|p| p.tag != tag);
     }
 }
@@ -187,7 +241,14 @@ pub(super) fn bring_to_front() {
     let Some(hwnd) = main_window() else { return };
     // SAFETY: `hwnd` is one of this process's top-level windows, read just now.
     unsafe {
-        _ = ShowWindow(hwnd, if IsIconic(hwnd).as_bool() { SW_RESTORE } else { SW_SHOW });
+        _ = ShowWindow(
+            hwnd,
+            if IsIconic(hwnd).as_bool() {
+                SW_RESTORE
+            } else {
+                SW_SHOW
+            },
+        );
         if SetForegroundWindow(hwnd).as_bool() {
             return;
         }
@@ -240,9 +301,16 @@ fn tag(id: &str) -> String {
 /// The toast's XML: a generic toast with the title and body, and no sound. Its launch arguments
 /// are the user info, or with an activation scheme the link a click opens.
 pub(super) fn xml(n: &Notification, scheme: Option<&str>) -> String {
-    let body = if n.body.is_empty() { String::new() } else { format!("<text>{}</text>", escape(&n.body)) };
+    let body = if n.body.is_empty() {
+        String::new()
+    } else {
+        format!("<text>{}</text>", escape(&n.body))
+    };
     let launch = match scheme {
-        Some(scheme) => format!("activationType=\"protocol\" launch=\"{}\"", escape(&link(scheme, n))),
+        Some(scheme) => format!(
+            "activationType=\"protocol\" launch=\"{}\"",
+            escape(&link(scheme, n))
+        ),
         None => format!("launch=\"{}\"", escape(&encode(&n.info))),
     };
     format!(
@@ -269,7 +337,10 @@ fn escape(s: &str) -> String {
 
 /// User info as `key=value&key=value`, each part percent-encoded.
 pub(super) fn encode(info: &[(String, String)]) -> String {
-    info.iter().map(|(k, v)| format!("{}={}", percent(k), percent(v))).collect::<Vec<_>>().join("&")
+    info.iter()
+        .map(|(k, v)| format!("{}={}", percent(k), percent(v)))
+        .collect::<Vec<_>>()
+        .join("&")
 }
 
 pub(super) fn decode(args: &str) -> Vec<(String, String)> {
@@ -287,7 +358,13 @@ pub(super) fn decode(args: &str) -> Vec<(String, String)> {
 
 fn percent(s: &str) -> String {
     s.bytes()
-        .map(|b| if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') { (b as char).to_string() } else { format!("%{b:02X}") })
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
         .collect()
 }
 
@@ -296,7 +373,13 @@ fn unpercent(s: &str) -> String {
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
-        let hex = (b[i] == b'%' && i + 2 < b.len()).then(|| std::str::from_utf8(&b[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok())).flatten();
+        let hex = (b[i] == b'%' && i + 2 < b.len())
+            .then(|| {
+                std::str::from_utf8(&b[i + 1..i + 3])
+                    .ok()
+                    .and_then(|h| u8::from_str_radix(h, 16).ok())
+            })
+            .flatten();
         match hex {
             Some(v) => {
                 out.push(v);

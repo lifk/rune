@@ -24,17 +24,31 @@ pub(crate) struct FieldMenu {
 impl<S: 'static> Runtime<S> {
     /// Opens field `path`'s menu at window point `at`, pressed at `local` in the field (points
     /// from its text's top-left), or from the keyboard (`None`).
-    pub(super) fn field_menu(&mut self, path: String, at: (f32, f32), local: Option<(f32, f32)>, one: &mut Tx) -> bool {
-        let Some(i) = self.live(&path) else { return false };
-        let Some(input) = self.nodes[i].input.as_deref() else { return false };
-        let Some(access) = input.access.clone() else { return false };
+    pub(super) fn field_menu(
+        &mut self,
+        path: String,
+        at: (f32, f32),
+        local: Option<(f32, f32)>,
+        one: &mut Tx,
+    ) -> bool {
+        let Some(i) = self.live(&path) else {
+            return false;
+        };
+        let Some(input) = self.nodes[i].input.as_deref() else {
+            return false;
+        };
+        let Some(access) = input.access.clone() else {
+            return false;
+        };
         let (single, secure) = (input.single_line, input.edit.is_secure());
         let spell = input.spellcheck && !secure;
         let layout = self.nodes[i].text_layout.clone();
         let scroll = self.input_scroll.get(&path).copied().unwrap_or(0.0);
         let s = self.env.scale;
-        let toggle = std::iter::successors(Some(i), |&j| self.nodes[j].parent).find_map(|j| self.nodes[j].handlers.on_spellcheck.clone());
-        let keep = std::iter::successors(Some(i), |&j| self.nodes[j].parent).find_map(|j| self.nodes[j].handlers.on_spellcheck_languages.clone());
+        let toggle = std::iter::successors(Some(i), |&j| self.nodes[j].parent)
+            .find_map(|j| self.nodes[j].handlers.on_spellcheck.clone());
+        let keep = std::iter::successors(Some(i), |&j| self.nodes[j].parent)
+            .find_map(|j| self.nodes[j].handlers.on_spellcheck_languages.clone());
         if self.focus.path() != Some(path.as_str()) {
             self.set_focus(Some(path.clone()), false);
         }
@@ -48,7 +62,10 @@ impl<S: 'static> Runtime<S> {
             // A press in the selection keeps it for Cut and Copy. Elsewhere it moves the caret
             // there, and on a misspelled word selects the word, as Chromium does.
             if a == b || caret < a || caret > b {
-                match spell.then(|| crate::spell::misspelled_at(&e.text, caret)).flatten() {
+                match spell
+                    .then(|| crate::spell::misspelled_at(&e.text, caret))
+                    .flatten()
+                {
                     Some((wa, wb)) => e.set_selection(wa, wb),
                     None => e.set_caret(caret),
                 }
@@ -59,14 +76,29 @@ impl<S: 'static> Runtime<S> {
             .then(|| crate::spell::misspelled(&e.text))
             .filter(|found| found.contains(&(a, b)))
             .map(|_| (a, b, e.text[a..b].to_owned()));
-        let suggestions = word.as_ref().map(|w| crate::spell::suggest(&w.2)).unwrap_or_default();
+        let suggestions = word
+            .as_ref()
+            .map(|w| crate::spell::suggest(&w.2))
+            .unwrap_or_default();
         let mut menu = PopupMenu::new();
         if word.is_some() {
             if suggestions.is_empty() {
-                menu = menu.item(PopupItem::new("no-guesses", label(Label::NoGuesses)).enabled(false));
+                menu =
+                    menu.item(PopupItem::new("no-guesses", label(Label::NoGuesses)).enabled(false));
             }
-            menu = menu.items(suggestions.iter().enumerate().map(|(n, s)| PopupItem::new(format!("suggestion-{n}"), s.clone())));
-            menu = menu.separator().item(PopupItem::new("learn-spelling", label(Label::LearnSpelling))).separator();
+            menu = menu.items(
+                suggestions
+                    .iter()
+                    .enumerate()
+                    .map(|(n, s)| PopupItem::new(format!("suggestion-{n}"), s.clone())),
+            );
+            menu = menu
+                .separator()
+                .item(PopupItem::new(
+                    "learn-spelling",
+                    label(Label::LearnSpelling),
+                ))
+                .separator();
         }
         let selected = a != b && !secure;
         menu = menu
@@ -78,7 +110,9 @@ impl<S: 'static> Runtime<S> {
         }
         let mut languages = None;
         if let Some((on, _)) = &toggle {
-            menu = menu.separator().item(PopupItem::new("spellcheck", label(Label::Spellcheck)).checked(*on));
+            menu = menu
+                .separator()
+                .item(PopupItem::new("spellcheck", label(Label::Spellcheck)).checked(*on));
             // Desktop's dictionary picker (spellcheck.ts), where the platform has dictionaries
             // to choose: the last one stays, as the Spellcheck item is how to stop checking.
             let available = crate::spell::available_languages();
@@ -90,15 +124,26 @@ impl<S: 'static> Runtime<S> {
                 let locale = crate::labels::locale();
                 let name = |tag: &str| {
                     crate::labels::named(Label::Language(tag))
-                        .or_else(|| locale.as_deref().and_then(|locale| crate::spell::language_name_in(tag, locale)))
+                        .or_else(|| {
+                            locale
+                                .as_deref()
+                                .and_then(|locale| crate::spell::language_name_in(tag, locale))
+                        })
                         .unwrap_or_else(|| crate::spell::language_name(tag))
                 };
-                let mut named: Vec<(String, &String)> = available.iter().map(|tag| (name(tag), tag)).collect();
+                let mut named: Vec<(String, &String)> =
+                    available.iter().map(|tag| (name(tag), tag)).collect();
                 crate::spell::sort_names_in(&mut named, locale.as_deref().unwrap_or("en"));
                 let items = named.into_iter().map(|(name, tag)| {
-                    PopupItem::new(format!("language-{tag}"), name).checked(current.contains(tag)).enabled(!only(tag))
+                    PopupItem::new(format!("language-{tag}"), name)
+                        .checked(current.contains(tag))
+                        .enabled(!only(tag))
                 });
-                menu = menu.submenu_enabled(label(Label::SpellcheckLanguages), PopupMenu::new().items(items), *on);
+                menu = menu.submenu_enabled(
+                    label(Label::SpellcheckLanguages),
+                    PopupMenu::new().items(items),
+                    *on,
+                );
                 languages = Some((current, keep));
             }
         }
@@ -108,7 +153,13 @@ impl<S: 'static> Runtime<S> {
             menu,
             anchor: PopupAnchor::Point(at.0, at.1),
             on_pick: Box::new(|_, _, _| {}),
-            field: Some(Box::new(FieldMenu { path, word, suggestions, toggle, languages })),
+            field: Some(Box::new(FieldMenu {
+                path,
+                word,
+                suggestions,
+                toggle,
+                languages,
+            })),
         });
         true
     }
@@ -118,7 +169,14 @@ impl<S: 'static> Runtime<S> {
         if self.focus.path() != Some(menu.path.as_str()) && self.live(&menu.path).is_some() {
             self.set_focus(Some(menu.path.clone()), false);
         }
-        let command = |c| KeyEvent { key: Key::Command(c), mods: Mods { cmd: true, ctrl: !cfg!(target_os = "macos"), ..Mods::default() } };
+        let command = |c| KeyEvent {
+            key: Key::Command(c),
+            mods: Mods {
+                cmd: true,
+                ctrl: !cfg!(target_os = "macos"),
+                ..Mods::default()
+            },
+        };
         match picked {
             "cut" | "copy" | "select-all" => {
                 let ev = command(match picked {
@@ -142,7 +200,9 @@ impl<S: 'static> Runtime<S> {
                 }
             }
             id if id.starts_with("language-") => {
-                if let (Some((mut current, keep)), Some(tag)) = (menu.languages, id.strip_prefix("language-")) {
+                if let (Some((mut current, keep)), Some(tag)) =
+                    (menu.languages, id.strip_prefix("language-"))
+                {
                     match current.iter().position(|t| t == tag) {
                         Some(n) => _ = current.remove(n),
                         None => current.push(tag.to_owned()),
@@ -153,8 +213,12 @@ impl<S: 'static> Runtime<S> {
                 }
             }
             id => {
-                let n = id.strip_prefix("suggestion-").and_then(|n| n.parse::<usize>().ok());
-                if let (Some((a, b, _)), Some(suggestion)) = (menu.word, n.and_then(|n| menu.suggestions.get(n).cloned())) {
+                let n = id
+                    .strip_prefix("suggestion-")
+                    .and_then(|n| n.parse::<usize>().ok());
+                if let (Some((a, b, _)), Some(suggestion)) =
+                    (menu.word, n.and_then(|n| menu.suggestions.get(n).cloned()))
+                {
                     self.with_focused(
                         |e| {
                             e.set_selection(a, b);

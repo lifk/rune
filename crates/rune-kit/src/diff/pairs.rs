@@ -90,7 +90,8 @@ fn blocks(removed: &[Line], added: &[Line]) -> Vec<(usize, usize)> {
     if pairs == 0 || surplus == 0 || pairs * (surplus + 1) > MAX_COMPARISONS {
         return vec![(d, a)];
     }
-    let (removed, added): (Vec<Vec<u16>>, Vec<Vec<u16>>) = (removed.iter().map(stripped).collect(), added.iter().map(stripped).collect());
+    let (removed, added): (Vec<Vec<u16>>, Vec<Vec<u16>>) =
+        (removed.iter().map(stripped).collect(), added.iter().map(stripped).collect());
     let longer_added = a > d;
     let mut best = (0, -1.0);
     for offset in 0..=surplus {
@@ -106,7 +107,11 @@ fn blocks(removed: &[Line], added: &[Line]) -> Vec<(usize, usize)> {
     if offset == 0 {
         return vec![(d, a)];
     }
-    let blocks = if longer_added { [(0, offset), (pairs, pairs), (0, a - pairs - offset)] } else { [(offset, 0), (pairs, pairs), (d - pairs - offset, 0)] };
+    let blocks = if longer_added {
+        [(0, offset), (pairs, pairs), (0, a - pairs - offset)]
+    } else {
+        [(offset, 0), (pairs, pairs), (d - pairs - offset, 0)]
+    };
     blocks.into_iter().filter(|&(d, a)| d + a > 0).collect()
 }
 

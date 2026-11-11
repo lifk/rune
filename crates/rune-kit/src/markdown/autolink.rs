@@ -73,9 +73,8 @@ fn scan_bare_urls(text: &str, seg_start: usize, seg_end: usize, out: &mut Vec<(u
             i += prefix_len;
             continue;
         }
-        let raw_len = rest
-            .find(|c: char| c.is_whitespace() || c.is_control() || matches!(c, '<' | '>'))
-            .unwrap_or(rest.len());
+        let raw_len =
+            rest.find(|c: char| c.is_whitespace() || c.is_control() || matches!(c, '<' | '>')).unwrap_or(rest.len());
         let mut end = i + raw_len;
         trim_gfm_autolink(text, i, prefix_len, &mut end);
         let matched = &text[i..end];

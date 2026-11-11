@@ -3,10 +3,10 @@
 //! per entry point as wgpu-hal builds them. The question it answers: can a native backend keep
 //! WGSL as the one shader language, by translating with naga itself?
 
+use super::device::msl_version;
 use objc2_foundation_video::NSString;
 use objc2_metal::{MTLCompileOptions, MTLCreateSystemDefaultDevice, MTLDevice};
 use objc2_video::runtime::ProtocolObject;
-use super::device::msl_version;
 use wgpu::naga::{
     self,
     back::{msl, pipeline_constants::process_overrides},
@@ -31,7 +31,12 @@ struct Case {
 }
 
 fn case(name: &str, files: &[&'static str], source: String) -> Case {
-    Case { name: name.into(), files: files.to_vec(), source, constants: vec![Vec::new()] }
+    Case {
+        name: name.into(),
+        files: files.to_vec(),
+        source,
+        constants: vec![Vec::new()],
+    }
 }
 
 /// `gi_section` in rune-light's gpu.rs.
@@ -44,9 +49,13 @@ fn gi_section(name: &str) -> String {
 
 /// `section` in rune-light's glass.rs.
 fn glass_section(name: &str) -> String {
-    let (main, pyramid) = GLASS.split_once("// ---- pyramid ----").unwrap_or((GLASS, ""));
+    let (main, pyramid) = GLASS
+        .split_once("// ---- pyramid ----")
+        .unwrap_or((GLASS, ""));
     if name == "pyramid" {
-        format!("@vertex\nfn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4<f32> {{\n    let uv = vec2<f32>(f32((vi << 1u) & 2u), f32(vi & 2u));\n    return vec4<f32>(uv * 2.0 - 1.0, 0.0, 1.0);\n}}\n{pyramid}")
+        format!(
+            "@vertex\nfn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4<f32> {{\n    let uv = vec2<f32>(f32((vi << 1u) & 2u), f32(vi & 2u));\n    return vec4<f32>(uv * 2.0 - 1.0, 0.0, 1.0);\n}}\n{pyramid}"
+        )
     } else {
         main.to_string()
     }
@@ -55,60 +64,192 @@ fn glass_section(name: &str) -> String {
 /// `wgsl_part` in rune-light's reel example.
 fn reel_part(name: &str) -> String {
     let (viz, rest) = REEL.split_once("// ---- bloom ----").unwrap();
-    let (bloom, rest) = rest.split_once("// ---- per-probe mean of a cascade level ----").unwrap();
+    let (bloom, rest) = rest
+        .split_once("// ---- per-probe mean of a cascade level ----")
+        .unwrap();
     let (mean, enc) = rest.split_once("// ---- final encode ----").unwrap();
-    match name { "viz" => viz, "bloom" => bloom, "mean" => mean, _ => enc }.to_string()
+    match name {
+        "viz" => viz,
+        "bloom" => bloom,
+        "mean" => mean,
+        _ => enc,
+    }
+    .to_string()
 }
 
 fn cases() -> Vec<Case> {
     let mut cases = vec![
-        case("rune uber", &["rune/src/clip.wgsl", "rune/src/shader.wgsl", "rune/src/gpu/springs.wgsl"],
-            format!("{CLIP}\n{}\n{}", include_str!("../../shader.wgsl"), include_str!("../springs.wgsl"))),
-        case("rune backdrop blur", &["rune/src/backdrop_blur.wgsl"], include_str!("../../backdrop_blur.wgsl").into()),
-        case("rune backdrop composite", &["rune/src/clip.wgsl", "rune/src/backdrop_composite.wgsl"],
-            format!("{CLIP}\n{}", include_str!("../../backdrop_composite.wgsl"))),
-        case("rune video", &["rune/src/native_surface/video.wgsl"], include_str!("../../native_surface/video.wgsl").into()),
+        case(
+            "rune uber",
+            &[
+                "rune/src/clip.wgsl",
+                "rune/src/shader.wgsl",
+                "rune/src/gpu/springs.wgsl",
+            ],
+            format!(
+                "{CLIP}\n{}\n{}",
+                include_str!("../../shader.wgsl"),
+                include_str!("../springs.wgsl")
+            ),
+        ),
+        case(
+            "rune backdrop blur",
+            &["rune/src/backdrop_blur.wgsl"],
+            include_str!("../../backdrop_blur.wgsl").into(),
+        ),
+        case(
+            "rune backdrop composite",
+            &["rune/src/clip.wgsl", "rune/src/backdrop_composite.wgsl"],
+            format!("{CLIP}\n{}", include_str!("../../backdrop_composite.wgsl")),
+        ),
+        case(
+            "rune video",
+            &["rune/src/native_surface/video.wgsl"],
+            include_str!("../../native_surface/video.wgsl").into(),
+        ),
     ];
-    let mut blur = case("rune layer blur", &["rune/src/layer_blur.wgsl"], include_str!("../../layer_blur.wgsl").into());
-    blur.constants = [(0.0, 0.0), (0.0, 1.0), (2.0, 0.0), (2.0, 1.0), (3.0, 0.0)].iter().map(|&(m, a)| vec![("MODE", m), ("ADDITIVE", a)]).collect();
+    let mut blur = case(
+        "rune layer blur",
+        &["rune/src/layer_blur.wgsl"],
+        include_str!("../../layer_blur.wgsl").into(),
+    );
+    blur.constants = [(0.0, 0.0), (0.0, 1.0), (2.0, 0.0), (2.0, 1.0), (3.0, 0.0)]
+        .iter()
+        .map(|&(m, a)| vec![("MODE", m), ("ADDITIVE", a)])
+        .collect();
     cases.push(blur);
     let fx_effects: [(&str, &'static str, &str); 8] = [
-        ("glow", "rune-fx/src/shaders/glow.wgsl", include_str!("../../../../rune-fx/src/shaders/glow.wgsl")),
-        ("pulse", "rune-fx/src/shaders/pulse.wgsl", include_str!("../../../../rune-fx/src/shaders/pulse.wgsl")),
-        ("electric", "rune-fx/src/shaders/electric.wgsl", include_str!("../../../../rune-fx/src/shaders/electric.wgsl")),
-        ("fire", "rune-fx/src/shaders/fire.wgsl", include_str!("../../../../rune-fx/src/shaders/fire.wgsl")),
-        ("distort", "rune-fx/src/shaders/distort.wgsl", include_str!("../../../../rune-fx/src/shaders/distort.wgsl")),
-        ("motion", "rune-fx/src/shaders/motion.wgsl", include_str!("../../../../rune-fx/src/shaders/motion.wgsl")),
-        ("extras", "rune-fx/src/shaders/extras.wgsl", include_str!("../../../../rune-fx/src/shaders/extras.wgsl")),
-        ("fill", "rune-fx/src/shaders/fill.wgsl", include_str!("../../../../rune-fx/src/shaders/fill.wgsl")),
+        (
+            "glow",
+            "rune-fx/src/shaders/glow.wgsl",
+            include_str!("../../../../rune-fx/src/shaders/glow.wgsl"),
+        ),
+        (
+            "pulse",
+            "rune-fx/src/shaders/pulse.wgsl",
+            include_str!("../../../../rune-fx/src/shaders/pulse.wgsl"),
+        ),
+        (
+            "electric",
+            "rune-fx/src/shaders/electric.wgsl",
+            include_str!("../../../../rune-fx/src/shaders/electric.wgsl"),
+        ),
+        (
+            "fire",
+            "rune-fx/src/shaders/fire.wgsl",
+            include_str!("../../../../rune-fx/src/shaders/fire.wgsl"),
+        ),
+        (
+            "distort",
+            "rune-fx/src/shaders/distort.wgsl",
+            include_str!("../../../../rune-fx/src/shaders/distort.wgsl"),
+        ),
+        (
+            "motion",
+            "rune-fx/src/shaders/motion.wgsl",
+            include_str!("../../../../rune-fx/src/shaders/motion.wgsl"),
+        ),
+        (
+            "extras",
+            "rune-fx/src/shaders/extras.wgsl",
+            include_str!("../../../../rune-fx/src/shaders/extras.wgsl"),
+        ),
+        (
+            "fill",
+            "rune-fx/src/shaders/fill.wgsl",
+            include_str!("../../../../rune-fx/src/shaders/fill.wgsl"),
+        ),
     ];
     for (name, file, src) in fx_effects {
-        cases.push(case(&format!("fx {name}"), &["rune/src/clip.wgsl", "rune-fx/src/shaders/common.wgsl", file], format!("{CLIP}\n{FX_COMMON}\n{src}")));
+        cases.push(case(
+            &format!("fx {name}"),
+            &[
+                "rune/src/clip.wgsl",
+                "rune-fx/src/shaders/common.wgsl",
+                file,
+            ],
+            format!("{CLIP}\n{FX_COMMON}\n{src}"),
+        ));
     }
     cases.extend([
-        case("fx mip", &["rune-fx/src/shaders/mip.wgsl"], include_str!("../../../../rune-fx/src/shaders/mip.wgsl").into()),
-        case("fx blur", &["rune-fx/src/shaders/blur.wgsl"], include_str!("../../../../rune-fx/src/shaders/blur.wgsl").into()),
-        case("fx firesim", &["rune-fx/src/shaders/firesim.wgsl"], include_str!("../../../../rune-fx/src/shaders/firesim.wgsl").into()),
-        case("fx gallery ui", &["rune-fx/examples/gallery/ui.wgsl"], include_str!("../../../../rune-fx/examples/gallery/ui.wgsl").into()),
-        case("fx gallery resolve", &["rune-fx/examples/gallery/resolve.wgsl"], include_str!("../../../../rune-fx/examples/gallery/resolve.wgsl").into()),
+        case(
+            "fx mip",
+            &["rune-fx/src/shaders/mip.wgsl"],
+            include_str!("../../../../rune-fx/src/shaders/mip.wgsl").into(),
+        ),
+        case(
+            "fx blur",
+            &["rune-fx/src/shaders/blur.wgsl"],
+            include_str!("../../../../rune-fx/src/shaders/blur.wgsl").into(),
+        ),
+        case(
+            "fx firesim",
+            &["rune-fx/src/shaders/firesim.wgsl"],
+            include_str!("../../../../rune-fx/src/shaders/firesim.wgsl").into(),
+        ),
+        case(
+            "fx gallery ui",
+            &["rune-fx/examples/gallery/ui.wgsl"],
+            include_str!("../../../../rune-fx/examples/gallery/ui.wgsl").into(),
+        ),
+        case(
+            "fx gallery resolve",
+            &["rune-fx/examples/gallery/resolve.wgsl"],
+            include_str!("../../../../rune-fx/examples/gallery/resolve.wgsl").into(),
+        ),
     ]);
     let light: [(&str, &'static str, &str); 4] = [
-        ("gbuffer", "rune-light/src/shaders/gbuffer.wgsl", include_str!("../../../../rune-light/src/shaders/gbuffer.wgsl")),
-        ("field", "rune-light/src/shaders/field.wgsl", include_str!("../../../../rune-light/src/shaders/field.wgsl")),
-        ("shadow", "rune-light/src/shaders/shadow.wgsl", include_str!("../../../../rune-light/src/shaders/shadow.wgsl")),
-        ("composite", "rune-light/src/shaders/composite.wgsl", include_str!("../../../../rune-light/src/shaders/composite.wgsl")),
+        (
+            "gbuffer",
+            "rune-light/src/shaders/gbuffer.wgsl",
+            include_str!("../../../../rune-light/src/shaders/gbuffer.wgsl"),
+        ),
+        (
+            "field",
+            "rune-light/src/shaders/field.wgsl",
+            include_str!("../../../../rune-light/src/shaders/field.wgsl"),
+        ),
+        (
+            "shadow",
+            "rune-light/src/shaders/shadow.wgsl",
+            include_str!("../../../../rune-light/src/shaders/shadow.wgsl"),
+        ),
+        (
+            "composite",
+            "rune-light/src/shaders/composite.wgsl",
+            include_str!("../../../../rune-light/src/shaders/composite.wgsl"),
+        ),
     ];
     for (name, file, src) in light {
-        cases.push(case(&format!("light {name}"), &["rune-light/src/shaders/common.wgsl", file], format!("{LIGHT_COMMON}\n{src}")));
+        cases.push(case(
+            &format!("light {name}"),
+            &["rune-light/src/shaders/common.wgsl", file],
+            format!("{LIGHT_COMMON}\n{src}"),
+        ));
     }
     for name in ["scene", "cascades", "fluence"] {
-        cases.push(case(&format!("light gi {name}"), &["rune-light/src/shaders/common.wgsl", "rune-light/src/shaders/gi.wgsl"], gi_section(name)));
+        cases.push(case(
+            &format!("light gi {name}"),
+            &[
+                "rune-light/src/shaders/common.wgsl",
+                "rune-light/src/shaders/gi.wgsl",
+            ],
+            gi_section(name),
+        ));
     }
     for name in ["glass", "pyramid"] {
-        cases.push(case(&format!("light glass {name}"), &["rune-light/src/shaders/glass.wgsl"], glass_section(name)));
+        cases.push(case(
+            &format!("light glass {name}"),
+            &["rune-light/src/shaders/glass.wgsl"],
+            glass_section(name),
+        ));
     }
     for name in ["viz", "bloom", "mean", "enc"] {
-        cases.push(case(&format!("light reel {name}"), &["rune-light/examples/reel/reel.wgsl"], reel_part(name)));
+        cases.push(case(
+            &format!("light reel {name}"),
+            &["rune-light/examples/reel/reel.wgsl"],
+            reel_part(name),
+        ));
     }
     cases
 }
@@ -116,20 +257,30 @@ fn cases() -> Vec<Case> {
 /// Slots as wgpu-hal hands them out for a layout holding every binding the module declares:
 /// buffers, textures and samplers each counted up in (group, binding) order.
 fn resources(module: &naga::Module, stage: naga::ShaderStage) -> msl::EntryPointResources {
-    let mut bound: Vec<_> = module.global_variables.iter().filter_map(|(_, g)| Some((g.binding.clone()?, g))).collect();
+    let mut bound: Vec<_> = module
+        .global_variables
+        .iter()
+        .filter_map(|(_, g)| Some((g.binding.clone()?, g)))
+        .collect();
     bound.sort_by_key(|(b, _)| (b.group, b.binding));
     let (mut buffers, mut textures, mut samplers) = (0u8, 0u8, 0u8);
     let mut out = msl::EntryPointResources::default();
     for (binding, global) in bound {
         let mut target = msl::BindTarget::default();
         match (global.space, &module.types[global.ty].inner) {
-            (naga::AddressSpace::Uniform, _) => { target.buffer = Some(buffers); buffers += 1; }
+            (naga::AddressSpace::Uniform, _) => {
+                target.buffer = Some(buffers);
+                buffers += 1;
+            }
             (naga::AddressSpace::Storage { access }, _) => {
                 target.buffer = Some(buffers);
                 target.mutable = access.contains(naga::StorageAccess::STORE);
                 buffers += 1;
             }
-            (_, naga::TypeInner::Sampler { .. }) => { target.sampler = Some(msl::BindSamplerTarget::Resource(samplers)); samplers += 1; }
+            (_, naga::TypeInner::Sampler { .. }) => {
+                target.sampler = Some(msl::BindSamplerTarget::Resource(samplers));
+                samplers += 1;
+            }
             (_, naga::TypeInner::Image { class, .. }) => {
                 target.texture = Some(textures);
                 target.mutable = matches!(class, naga::ImageClass::Storage { access, .. } if access.contains(naga::StorageAccess::STORE));
@@ -139,7 +290,9 @@ fn resources(module: &naga::Module, stage: naga::ShaderStage) -> msl::EntryPoint
         }
         out.resources.insert(binding, target);
     }
-    if stage == naga::ShaderStage::Vertex || buffers > 0 { out.sizes_buffer = Some(buffers); }
+    if stage == naga::ShaderStage::Vertex || buffers > 0 {
+        out.sizes_buffer = Some(buffers);
+    }
     out
 }
 
@@ -172,7 +325,9 @@ fn vertex_buffers(module: &naga::Module, ep: &naga::EntryPoint) -> Vec<msl::Vert
     let mut inputs = Vec::new();
     for arg in &ep.function.arguments {
         match (&arg.binding, &module.types[arg.ty].inner) {
-            (Some(naga::Binding::Location { location, .. }), inner) => inputs.push((*location, vertex_format(inner).unwrap())),
+            (Some(naga::Binding::Location { location, .. }), inner) => {
+                inputs.push((*location, vertex_format(inner).unwrap()))
+            }
             (None, naga::TypeInner::Struct { members, .. }) => {
                 for m in members {
                     if let Some(naga::Binding::Location { location, .. }) = m.binding {
@@ -183,19 +338,34 @@ fn vertex_buffers(module: &naga::Module, ep: &naga::EntryPoint) -> Vec<msl::Vert
             _ => {}
         }
     }
-    if inputs.is_empty() { return Vec::new(); }
+    if inputs.is_empty() {
+        return Vec::new();
+    }
     let mut offset = 0;
-    let attributes = inputs.into_iter().map(|(shader_location, format)| {
-        let at = offset;
-        offset += format.size() as u32;
-        msl::AttributeMapping { shader_location, offset: at, format }
-    }).collect();
-    vec![msl::VertexBufferMapping { id: 30, stride: offset, step_mode: msl::VertexBufferStepMode::ByInstance, attributes }]
+    let attributes = inputs
+        .into_iter()
+        .map(|(shader_location, format)| {
+            let at = offset;
+            offset += format.size() as u32;
+            msl::AttributeMapping {
+                shader_location,
+                offset: at,
+                format,
+            }
+        })
+        .collect();
+    vec![msl::VertexBufferMapping {
+        id: 30,
+        stride: offset,
+        step_mode: msl::VertexBufferStepMode::ByInstance,
+        attributes,
+    }]
 }
 
 /// Translates and compiles each entry point; the error of the first that fails.
 fn compile(device: &ProtocolObject<dyn MTLDevice>, case: &Case) -> Result<usize, String> {
-    let module = naga::front::wgsl::parse_str(&case.source).map_err(|e| format!("parse: {}", e.emit_to_string(&case.source)))?;
+    let module = naga::front::wgsl::parse_str(&case.source)
+        .map_err(|e| format!("parse: {}", e.emit_to_string(&case.source)))?;
     let info = Validator::new(ValidationFlags::all(), Capabilities::all())
         .validate(&module)
         .map_err(|e| format!("validate: {}", e.emit_to_string(&case.source)))?;
@@ -203,17 +373,26 @@ fn compile(device: &ProtocolObject<dyn MTLDevice>, case: &Case) -> Result<usize,
     let limits = wgpu::Limits::default();
     let mut libraries = 0;
     for constants in &case.constants {
-        let constants: naga::back::PipelineConstants = constants.iter().map(|&(k, v)| (k.to_string(), v)).collect();
+        let constants: naga::back::PipelineConstants =
+            constants.iter().map(|&(k, v)| (k.to_string(), v)).collect();
         for ep in &module.entry_points {
-            let (ep_module, ep_info) = process_overrides(&module, &info, Some((ep.stage, &ep.name)), &constants)
-                .map_err(|e| format!("{}: overrides: {e:?}", ep.name))?;
-            let ep = ep_module.entry_points.iter().find(|e| e.name == ep.name && e.stage == ep.stage).expect("the entry point survives");
+            let (ep_module, ep_info) =
+                process_overrides(&module, &info, Some((ep.stage, &ep.name)), &constants)
+                    .map_err(|e| format!("{}: overrides: {e:?}", ep.name))?;
+            let ep = ep_module
+                .entry_points
+                .iter()
+                .find(|e| e.name == ep.name && e.stage == ep.stage)
+                .expect("the entry point survives");
             let options = msl::Options {
                 lang_version: (major, minor),
                 inline_samplers: Default::default(),
                 spirv_cross_compatibility: false,
                 fake_missing_bindings: false,
-                per_entry_point_map: msl::EntryPointResourceMap::from([(ep.name.clone(), resources(&ep_module, ep.stage))]),
+                per_entry_point_map: msl::EntryPointResourceMap::from([(
+                    ep.name.clone(),
+                    resources(&ep_module, ep.stage),
+                )]),
                 bounds_check_policies: BoundsCheckPolicies {
                     index: BoundsCheckPolicy::Restrict,
                     buffer: BoundsCheckPolicy::Restrict,
@@ -234,14 +413,20 @@ fn compile(device: &ProtocolObject<dyn MTLDevice>, case: &Case) -> Result<usize,
                 entry_point: Some((ep.stage, ep.name.clone())),
                 allow_and_force_point_size: false,
                 vertex_pulling_transform: true,
-                vertex_buffer_mappings: if ep.stage == naga::ShaderStage::Vertex { vertex_buffers(&ep_module, ep) } else { Vec::new() },
+                vertex_buffer_mappings: if ep.stage == naga::ShaderStage::Vertex {
+                    vertex_buffers(&ep_module, ep)
+                } else {
+                    Vec::new()
+                },
                 binding_array_length_map: Default::default(),
             };
-            let (source, _) = msl::write_string(&ep_module, &ep_info, &options, &pipeline).map_err(|e| format!("{}: msl: {e:?}", ep.name))?;
+            let (source, _) = msl::write_string(&ep_module, &ep_info, &options, &pipeline)
+                .map_err(|e| format!("{}: msl: {e:?}", ep.name))?;
             let compile = MTLCompileOptions::new();
             compile.setLanguageVersion(version);
             compile.setPreserveInvariance(true);
-            device.newLibraryWithSource_options_error(&NSString::from_str(&source), Some(&compile))
+            device
+                .newLibraryWithSource_options_error(&NSString::from_str(&source), Some(&compile))
                 .map_err(|e| format!("{}: metal: {}", ep.name, e.localizedDescription()))?;
             libraries += 1;
         }
@@ -258,7 +443,10 @@ fn every_wgsl_shader_compiles_to_a_metal_library() {
         let result = compile(&device, &case);
         match &result {
             Ok(n) => println!("ok    {:<26} {n} libraries", case.name),
-            Err(e) => { println!("FAIL  {:<26} {e}", case.name); failures.push(case.name.clone()); }
+            Err(e) => {
+                println!("FAIL  {:<26} {e}", case.name);
+                failures.push(case.name.clone());
+            }
         }
         for &file in &case.files {
             match files.iter_mut().find(|(f, _)| *f == file) {
@@ -268,7 +456,14 @@ fn every_wgsl_shader_compiles_to_a_metal_library() {
         }
     }
     let passed = files.iter().filter(|(_, ok)| *ok).count();
-    println!("{passed}/{} WGSL files compile in every module they are part of", files.len());
-    assert_eq!(files.len(), 29, "a WGSL file was added or removed: update this test");
+    println!(
+        "{passed}/{} WGSL files compile in every module they are part of",
+        files.len()
+    );
+    assert_eq!(
+        files.len(),
+        29,
+        "a WGSL file was added or removed: update this test"
+    );
     assert!(failures.is_empty(), "failed: {failures:?}");
 }

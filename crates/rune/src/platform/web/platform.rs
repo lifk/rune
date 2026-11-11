@@ -41,7 +41,11 @@ extern "C" {
     /// Resolves in a later task, letting the browser draw and handle input in between.
     #[wasm_bindgen(js_name = nextTask)]
     pub(crate) fn next_task() -> js_sys::Promise;
-    pub(super) fn viewport(canvas: &web_sys::HtmlCanvasElement, callback: &js_sys::Function, embedded: bool) -> js_sys::Function;
+    pub(super) fn viewport(
+        canvas: &web_sys::HtmlCanvasElement,
+        callback: &js_sys::Function,
+        embedded: bool,
+    ) -> js_sys::Function;
 }
 
 /// The browser's platform name and its touch points, as `FontSmoothing`'s web default reads them.

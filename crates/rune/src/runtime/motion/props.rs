@@ -14,7 +14,10 @@ pub(super) const P_SHADOWS: [Prop<Color>; 4] = [
 ];
 pub(super) const P_HOVER: Prop<f32> = Prop::custom(73, PropClass::Opacity);
 pub(super) const P_PRESS: Prop<f32> = Prop::custom(74, PropClass::Opacity);
-pub(super) const P_GRADIENT: [Prop<Color>; 2] = [Prop::custom(75, PropClass::Color), Prop::custom(76, PropClass::Color)];
+pub(super) const P_GRADIENT: [Prop<Color>; 2] = [
+    Prop::custom(75, PropClass::Color),
+    Prop::custom(76, PropClass::Color),
+];
 pub(super) const P_OUTLINE: Prop<Color> = Prop::custom(77, PropClass::Color);
 pub(super) const P_BORDER_BOTTOM: Prop<Color> = Prop::custom(78, PropClass::Color);
 /// `El::press_scale`'s presented factor, multiplied into the element's own scale.
@@ -31,7 +34,10 @@ pub(super) const P_RADIAL: [Prop<Color>; 8] = [
 ];
 /// A property's name in traces.
 pub(super) fn prop_name(id: u16) -> &'static str {
-    const BUILTIN: [&str; 12] = ["opacity", "frame", "offset", "scale", "rotation", "blur", "radius", "fill", "mask", "scroll", "presence", "travel"];
+    const BUILTIN: [&str; 12] = [
+        "opacity", "frame", "offset", "scale", "rotation", "blur", "radius", "fill", "mask",
+        "scroll", "presence", "travel",
+    ];
     match id {
         0..12 => BUILTIN[id as usize],
         64 => "fill-color",
@@ -85,15 +91,25 @@ impl<S: 'static> Runtime<S> {
     /// transaction's spring without one), or lands it when `quiet`: an instant change or motion,
     /// a mount, reduced motion. No group opacity draws at full, so an element that takes one on
     /// or drops it fades from or to 1. Returns whether a dropped one is still fading to full.
-    pub(super) fn set_group_rest(&mut self, id: NodeId, group: Option<[f32; 2]>, motion: Option<Anim>, spring: Spring, quiet: bool) -> bool {
+    pub(super) fn set_group_rest(
+        &mut self,
+        id: NodeId,
+        group: Option<[f32; 2]>,
+        motion: Option<Anim>,
+        spring: Spring,
+        quiet: bool,
+    ) -> bool {
         let store = self.scene.store();
         let had = store.has(id, P_GROUP_REST);
         let motion = motion.unwrap_or(spring.into());
         let quiet = quiet || matches!(motion.curve, rune_motion::Curve::Instant);
-        let settled = !store.is_animating(id, P_GROUP_REST) && store.get(id, P_GROUP_REST) == Some(1.0);
+        let settled =
+            !store.is_animating(id, P_GROUP_REST) && store.get(id, P_GROUP_REST) == Some(1.0);
         let to = group.map_or(1.0, |g| g[0]);
         if group.is_none() && (!had || quiet || settled) {
-            if had { self.scene.store_mut().remove(id, P_GROUP_REST); }
+            if had {
+                self.scene.store_mut().remove(id, P_GROUP_REST);
+            }
             return false;
         }
         if quiet {
@@ -109,16 +125,30 @@ impl<S: 'static> Runtime<S> {
 
     /// Drops the rest track of each dropped group opacity whose fade to full landed this frame.
     pub(super) fn land_group_fades(&mut self) {
-        let landed: Vec<usize> = self.scene.store().events().iter()
+        let landed: Vec<usize> = self
+            .scene
+            .store()
+            .events()
+            .iter()
             .filter_map(|e| match *e {
-                rune_motion::MotionEvent::Settled { node, prop, .. } if prop == P_GROUP_REST.id => self.node_index.get(&node).copied(),
+                rune_motion::MotionEvent::Settled { node, prop, .. } if prop == P_GROUP_REST.id => {
+                    self.node_index.get(&node).copied()
+                }
                 _ => None,
             })
-            .filter(|&i| self.nodes[i].group_fade && !self.scene.store().is_animating(self.nodes[i].id, P_GROUP_REST))
+            .filter(|&i| {
+                self.nodes[i].group_fade
+                    && !self
+                        .scene
+                        .store()
+                        .is_animating(self.nodes[i].id, P_GROUP_REST)
+            })
             .collect();
         for i in landed {
             self.nodes[i].group_fade = false;
-            self.scene.store_mut().remove(self.nodes[i].id, P_GROUP_REST);
+            self.scene
+                .store_mut()
+                .remove(self.nodes[i].id, P_GROUP_REST);
         }
     }
 
@@ -133,9 +163,11 @@ impl<S: 'static> Runtime<S> {
         let rest = self.scene.get(n.id, P_GROUP_REST).unwrap_or(rest);
         // A control the keyboard reached shows as if hovered, as CSS reveals a hover-only button
         // on `:focus-visible` (or `:focus-within` around it): focus is never on something unseen.
-        let focused = self.focus.keyboard() && self.focus.path().is_some_and(|f| {
-            f.strip_prefix(n.path.as_str()).is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
-        });
+        let focused = self.focus.keyboard()
+            && self.focus.path().is_some_and(|f| {
+                f.strip_prefix(n.path.as_str())
+                    .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+            });
         let group = if focused { 1.0 } else { group };
         rest + (hovered - rest) * group
     }

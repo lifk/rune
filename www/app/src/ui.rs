@@ -1,6 +1,8 @@
 //! The page's small parts: hairlines, paragraphs with inline code, buttons and links.
 
-use rune::{Color, El, Link, LinkPaint, Path, Shape, Span, TextStyle, Tx, canvas, el, rich, row, text};
+use rune::{
+    Color, El, Link, LinkPaint, Path, Shape, Span, TextStyle, Tx, canvas, el, rich, row, text,
+};
 
 use crate::tokens::*;
 
@@ -20,7 +22,12 @@ pub fn prose(key: &str, s: &str, style: TextStyle, color: Color) -> El {
             spans.push(Span::new(at, content.len()).mono().size(13.0).color(fg()));
         }
     }
-    rich(content, spans).key(key).font(style).color(color).wrap().selectable(true)
+    rich(content, spans)
+        .key(key)
+        .font(style)
+        .color(color)
+        .wrap()
+        .selectable(true)
 }
 
 /// A section's paragraph under its heading.
@@ -41,8 +48,22 @@ pub enum Button {
 /// A pill button that is a link.
 pub fn button(key: &str, label: &str, href: &str, kind: Button) -> El {
     let primary = kind != Button::Secondary;
-    let (fill, hover, ink) = if primary { (fg(), Color::WHITE, Color::BLACK) } else { (surface2(), Color::WHITE.alpha(0.04), fg()) };
-    let mut b = row().key(key).href(href).h(40.0).px(16.0).gap(8.0).center_y().radius(20.0).fill(fill).hover(hover).press_scale(0.98);
+    let (fill, hover, ink) = if primary {
+        (fg(), Color::WHITE, Color::BLACK)
+    } else {
+        (surface2(), Color::WHITE.alpha(0.04), fg())
+    };
+    let mut b = row()
+        .key(key)
+        .href(href)
+        .h(40.0)
+        .px(16.0)
+        .gap(8.0)
+        .center_y()
+        .radius(20.0)
+        .fill(fill)
+        .hover(hover)
+        .press_scale(0.98);
     if kind == Button::GitHub {
         b = b.child(github_mark(Color::BLACK));
     }
@@ -58,8 +79,12 @@ pub fn linked(key: &str, s: &str, style: TextStyle, color: Color) -> El {
     let mut links = Vec::new();
     let mut rest = s;
     while let Some(open) = rest.find('[') {
-        let Some(mid) = rest[open..].find("](").map(|m| open + m) else { break };
-        let Some(close) = rest[mid..].find(')').map(|c| mid + c) else { break };
+        let Some(mid) = rest[open..].find("](").map(|m| open + m) else {
+            break;
+        };
+        let Some(close) = rest[mid..].find(')').map(|c| mid + c) else {
+            break;
+        };
         content.push_str(&rest[..open]);
         let at = content.len();
         content.push_str(&rest[open + 1..mid]);
@@ -67,8 +92,16 @@ pub fn linked(key: &str, s: &str, style: TextStyle, color: Color) -> El {
         rest = &rest[close + 1..];
     }
     content.push_str(rest);
-    let spans = links.iter().map(|(r, _)| Span::new(r.start, r.end).color(fg())).collect();
-    let mut t = rich(content, spans).key(key).font(style).color(color).wrap().selectable(true);
+    let spans = links
+        .iter()
+        .map(|(r, _)| Span::new(r.start, r.end).color(fg()))
+        .collect();
+    let mut t = rich(content, spans)
+        .key(key)
+        .font(style)
+        .color(color)
+        .wrap()
+        .selectable(true);
     for (r, url) in links {
         t = t.link(Link::new(r, url).hover(LinkPaint::default().underline(fg())));
     }
@@ -79,18 +112,31 @@ pub fn linked(key: &str, s: &str, style: TextStyle, color: Color) -> El {
 
 /// A text link in a row of them: quiet until hovered.
 pub fn nav_link(key: &str, label: &str, href: &str, style: TextStyle) -> El {
-    row().key(key).href(href).hover_group()
-        .child(text(label.to_owned()).font(style).color(fg2()).group_color(fg()))
+    row().key(key).href(href).hover_group().child(
+        text(label.to_owned())
+            .font(style)
+            .color(fg2())
+            .group_color(fg()),
+    )
 }
 
 /// GitHub's mark, 16 points.
 pub fn github_mark(color: Color) -> El {
-    canvas(Shape::new().view_box(16.0, 16.0).fill_path(&mark_path(), color)).key("mark").size(16.0, 16.0).a11y_hidden()
+    canvas(
+        Shape::new()
+            .view_box(16.0, 16.0)
+            .fill_path(&mark_path(), color),
+    )
+    .key("mark")
+    .size(16.0, 16.0)
+    .a11y_hidden()
 }
 
 /// GitHub's octocat mark on a 16-unit square, from its SVG path.
 fn mark_path() -> Path {
-    svg_path("M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8")
+    svg_path(
+        "M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8",
+    )
 }
 
 /// The numbers in an SVG path's data, in order.
@@ -150,7 +196,11 @@ pub fn svg_path(d: &str) -> Path {
             'M' => {
                 for (i, p) in n.chunks_exact(2).enumerate() {
                     at = off([p[0], p[1]], at);
-                    path = if i == 0 { path.move_to(at) } else { path.line_to(at) };
+                    path = if i == 0 {
+                        path.move_to(at)
+                    } else {
+                        path.line_to(at)
+                    };
                     if i == 0 {
                         start = at;
                     }
@@ -166,7 +216,11 @@ pub fn svg_path(d: &str) -> Path {
             }
             'C' => {
                 for p in n.chunks_exact(6) {
-                    let (c1, c2, end) = (off([p[0], p[1]], at), off([p[2], p[3]], at), off([p[4], p[5]], at));
+                    let (c1, c2, end) = (
+                        off([p[0], p[1]], at),
+                        off([p[2], p[3]], at),
+                        off([p[4], p[5]], at),
+                    );
                     path = path.cubic_to(c1, c2, end);
                     ctrl = c2;
                     at = end;

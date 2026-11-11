@@ -37,7 +37,12 @@ const ALL: [&Icon; 28] = [
 fn panel(dark: bool) -> El {
     let k = Kit::neutral(dark);
     let tile = |i: &'static Icon| {
-        col().w(96.0).h(64.0).gap(8.0).items_center().justify_center()
+        col()
+            .w(96.0)
+            .h(64.0)
+            .gap(8.0)
+            .items_center()
+            .justify_center()
             .child(icon(i, 16.0).color(k.c.text_base))
             .child(text(i.name.trim_start_matches("kit-")).font(k.ty.text_xsmall).color(k.c.text_faint))
     };

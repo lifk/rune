@@ -3,9 +3,17 @@
 use rune::{App, AppSpec, Color, Cx, El, Spring, el};
 
 fn view(wide: &bool, _: &mut Cx<bool>) -> El {
-    el().key("root").size(480.0, 120.0).child(el().key("pill")
-        .size(if *wide { 400.0 } else { 100.0 }, 60.0)
-        .fill(Color { r: 0.4, g: 0.65, b: 1.0, a: 1.0 }).motion(Spring::new(0.6, 0.0)))
+    el().key("root").size(480.0, 120.0).child(
+        el().key("pill")
+            .size(if *wide { 400.0 } else { 100.0 }, 60.0)
+            .fill(Color {
+                r: 0.4,
+                g: 0.65,
+                b: 1.0,
+                a: 1.0,
+            })
+            .motion(Spring::new(0.6, 0.0)),
+    )
 }
 
 fn main() {
@@ -14,7 +22,11 @@ fn main() {
     // Deliberately off-refresh commits, including several retargets in one refresh.
     let updater = std::thread::spawn(move || {
         for i in 0..48 {
-            std::thread::sleep(std::time::Duration::from_millis(if i % 3 == 0 { 173 } else { 3 }));
+            std::thread::sleep(std::time::Duration::from_millis(if i % 3 == 0 {
+                173
+            } else {
+                3
+            }));
             if i == 15 {
                 handle.hide();
                 std::thread::sleep(std::time::Duration::from_millis(35));

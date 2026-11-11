@@ -39,21 +39,36 @@ pub(super) fn compose_turn(
 /// rectangular cut through the inherited rounded mask gets an outer scope of its own.
 #[cold]
 #[inline(never)]
-pub(super) fn open_turned_layer(instances: &mut Vec<Instance>, layers: &mut Vec<(usize, usize, usize)>, (i, surfaces): (usize, usize),
-    rect: [f32; 4], (angle, pivot): (f32, [f32; 2]),
-    (clip, fade, fade_origin, rounded): (&mut [f32; 4], &mut [f32; 4], &mut [f32; 4], &mut Option<([f32; 4], [f32; 4])>))
-{
-    if let Some((mask, _)) = *rounded && intersect(*clip, mask) != mask {
+pub(super) fn open_turned_layer(
+    instances: &mut Vec<Instance>,
+    layers: &mut Vec<(usize, usize, usize)>,
+    (i, surfaces): (usize, usize),
+    rect: [f32; 4],
+    (angle, pivot): (f32, [f32; 2]),
+    (clip, fade, fade_origin, rounded): (
+        &mut [f32; 4],
+        &mut [f32; 4],
+        &mut [f32; 4],
+        &mut Option<([f32; 4], [f32; 4])>,
+    ),
+) {
+    if let Some((mask, _)) = *rounded
+        && intersect(*clip, mask) != mask
+    {
         let mut marker = Instance::begin_layer(rect, *clip, Default::default());
         marker.fade = crate::render::pack_fade(*fade, *fade_origin, *clip);
         layers.push((i, instances.len(), surfaces));
         instances.push(marker);
         (*clip, *fade, *fade_origin) = (NO_CLIP, [0.0; 4], NO_CLIP);
     }
-    if let Some((mask, _)) = *rounded { *clip = intersect(*clip, mask); }
+    if let Some((mask, _)) = *rounded {
+        *clip = intersect(*clip, mask);
+    }
     let mut marker = Instance::begin_layer(rect, *clip, Default::default()).turned(angle, pivot);
     marker.fade = crate::render::pack_fade(*fade, *fade_origin, *clip);
-    if let Some((_, radii)) = *rounded { marker.round_clip_corners(radii); }
+    if let Some((_, radii)) = *rounded {
+        marker.round_clip_corners(radii);
+    }
     layers.push((i, instances.len(), surfaces));
     instances.push(marker);
     (*clip, *fade, *fade_origin, *rounded) = (NO_CLIP, [0.0; 4], NO_CLIP, None);
@@ -61,14 +76,23 @@ pub(super) fn open_turned_layer(instances: &mut Vec<Instance>, layers: &mut Vec<
 
 /// The overlap of two `[x0, y0, x1, y1]` rects (inverted when they don't meet).
 pub(crate) fn intersect(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
-    [a[0].max(b[0]), a[1].max(b[1]), a[2].min(b[2]), a[3].min(b[3])]
+    [
+        a[0].max(b[0]),
+        a[1].max(b[1]),
+        a[2].min(b[2]),
+        a[3].min(b[3]),
+    ]
 }
 
 pub(super) fn screen_clip_of(parent: Option<usize>, inh: &[Inh], turns: &[Turn]) -> [f32; 4] {
     let Some(pi) = parent else { return NO_CLIP };
     let Some(h) = inh.get(pi) else { return NO_CLIP };
     if let Some(&t) = h.turn.checked_sub(1).and_then(|k| turns.get(k as usize)) {
-        let ic = if h.clip == NO_CLIP { NO_CLIP } else { t.bbox(h.clip) };
+        let ic = if h.clip == NO_CLIP {
+            NO_CLIP
+        } else {
+            t.bbox(h.clip)
+        };
         let oc = t.outer_clip;
         intersect(oc, ic)
     } else {
@@ -81,7 +105,14 @@ impl Turn {
     pub(super) fn about(angle: f32, p: [f32; 2], rect: [f32; 4], outer_clip: [f32; 4]) -> Turn {
         let (sn, c) = angle.sin_cos();
         Turn {
-            mat: [c, -sn, sn, c, p[0] - c * p[0] + sn * p[1], p[1] - sn * p[0] - c * p[1]],
+            mat: [
+                c,
+                -sn,
+                sn,
+                c,
+                p[0] - c * p[0] + sn * p[1],
+                p[1] - sn * p[0] - c * p[1],
+            ],
             rect,
             angle,
             pivot: p,
@@ -93,10 +124,21 @@ impl Turn {
     pub(super) fn after(self, inner: Turn) -> Turn {
         let [a, b, c, d, x, y] = self.mat;
         let [e, f, g, h, u, v] = inner.mat;
-        let ic = if inner.outer_clip == NO_CLIP { NO_CLIP } else { self.bbox(inner.outer_clip) };
+        let ic = if inner.outer_clip == NO_CLIP {
+            NO_CLIP
+        } else {
+            self.bbox(inner.outer_clip)
+        };
         let oc = self.outer_clip;
         Turn {
-            mat: [a * e + b * g, a * f + b * h, c * e + d * g, c * f + d * h, a * u + b * v + x, c * u + d * v + y],
+            mat: [
+                a * e + b * g,
+                a * f + b * h,
+                c * e + d * g,
+                c * f + d * h,
+                a * u + b * v + x,
+                c * u + d * v + y,
+            ],
             outer_clip: intersect(oc, ic),
             ..inner
         }
@@ -105,10 +147,20 @@ impl Turn {
     /// The upright bounding box of edges `r` once turned.
     pub(super) fn bbox(self, r: [f32; 4]) -> [f32; 4] {
         let [a, b, c, d, x, y] = self.mat;
-        let mut out = [f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY];
+        let mut out = [
+            f32::INFINITY,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::NEG_INFINITY,
+        ];
         for (px, py) in [(r[0], r[1]), (r[2], r[1]), (r[0], r[3]), (r[2], r[3])] {
             let (qx, qy) = (a * px + b * py + x, c * px + d * py + y);
-            out = [out[0].min(qx), out[1].min(qy), out[2].max(qx), out[3].max(qy)];
+            out = [
+                out[0].min(qx),
+                out[1].min(qy),
+                out[2].max(qx),
+                out[3].max(qy),
+            ];
         }
         out
     }

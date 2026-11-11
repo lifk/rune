@@ -9,10 +9,15 @@
 use std::path::PathBuf;
 
 use rune::color::{Color, oklch, oklcha};
-use rune::render::{Gpu, Instance, KIND_RADIAL, KIND_RECT, KIND_SHADOW, NO_CLIP, Offscreen, Renderer, write_png};
+use rune::render::{
+    Gpu, Instance, KIND_RADIAL, KIND_RECT, KIND_SHADOW, NO_CLIP, Offscreen, Renderer, write_png,
+};
 use rune::text::TextSystem;
 use rune_fx::{FillAnchor, Fx, FxFrame, FxOptions, FxRenderer, LiquidMetalParams, Shape, rgb};
-use rune_light::{Gi, Glass, GlassLight, GlassRenderer, GlassSettings, Light, LightRenderer, Prim, Scene, Settings};
+use rune_light::{
+    Gi, Glass, GlassLight, GlassRenderer, GlassSettings, Light, LightRenderer, Prim, Scene,
+    Settings,
+};
 
 /// The canvas in points, and device px per point.
 const W: f32 = 960.0;
@@ -36,8 +41,24 @@ fn lin(c: Color) -> [f32; 3] {
     [c.r, c.g, c.b]
 }
 
-fn inst(rect: [f32; 4], radius: f32, fill: [f32; 4], border: [f32; 4], params: [f32; 4], uv: [f32; 4]) -> Instance {
-    Instance { rect, radii: [radius; 4], fill, border, params, uv, clip: NO_CLIP, fade: [0; 4] }
+fn inst(
+    rect: [f32; 4],
+    radius: f32,
+    fill: [f32; 4],
+    border: [f32; 4],
+    params: [f32; 4],
+    uv: [f32; 4],
+) -> Instance {
+    Instance {
+        rect,
+        radii: [radius; 4],
+        fill,
+        border,
+        params,
+        uv,
+        clip: NO_CLIP,
+        fade: [0; 4],
+    }
 }
 
 /// Rune instances in points, and the lighting primitives that go with them.
@@ -49,18 +70,34 @@ struct Paint {
 
 impl Paint {
     fn rect(&mut self, r: [f32; 4], radius: f32, c: Color) {
-        self.out.push(inst(px(r), radius * S, c.premul(1.0), [0.0; 4], [0.0, KIND_RECT, 0.0, 1.0], [0.0; 4]));
+        self.out.push(inst(
+            px(r),
+            radius * S,
+            c.premul(1.0),
+            [0.0; 4],
+            [0.0, KIND_RECT, 0.0, 1.0],
+            [0.0; 4],
+        ));
     }
 
     /// A rect that is also a lighting primitive, configured by `light`.
     fn solid(&mut self, r: [f32; 4], radius: f32, c: Color, light: impl FnOnce(Prim) -> Prim) {
         self.rect(r, radius, c);
-        self.prims.push(light(Prim::from_rune(px(r), [radius * S; 4]).albedo(lin(c))));
+        self.prims.push(light(
+            Prim::from_rune(px(r), [radius * S; 4]).albedo(lin(c)),
+        ));
     }
 
     /// A Gaussian shadow of a rounded rect, `sigma` in points.
     fn shadow(&mut self, r: [f32; 4], radius: f32, sigma: f32, c: Color) {
-        self.out.push(inst(px(r), radius * S, c.premul(1.0), [0.0; 4], [0.0, KIND_SHADOW, sigma * S, 1.0], [0.0; 4]));
+        self.out.push(inst(
+            px(r),
+            radius * S,
+            c.premul(1.0),
+            [0.0; 4],
+            [0.0, KIND_SHADOW, sigma * S, 1.0],
+            [0.0; 4],
+        ));
     }
 
     /// An elliptical pool of colour that falls smoothly to nothing at (rx, ry).
@@ -73,13 +110,26 @@ impl Paint {
             let open0 = if k > 0 { 2.0 } else { 0.0 };
             let open1 = if k + 1 < N { 2.0 } else { 0.0 };
             let uv = [rx * S, ry * S, rx * S, ry * S];
-            self.out.push(inst(rect, 0.0, c.premul(f(t0)), c.premul(f(t1)), [t0 + open0, KIND_RADIAL, 0.0, t1 + open1], uv));
+            self.out.push(inst(
+                rect,
+                0.0,
+                c.premul(f(t0)),
+                c.premul(f(t1)),
+                [t0 + open0, KIND_RADIAL, 0.0, t1 + open1],
+                uv,
+            ));
         }
     }
 
     /// The page's black, with the faintest lift behind the subject.
     fn backdrop(&mut self) {
-        self.pool(W * 0.5, H * 0.5, W * 0.62, H * 0.9, oklcha(0.2, 0.012, HUE, 0.5));
+        self.pool(
+            W * 0.5,
+            H * 0.5,
+            W * 0.62,
+            H * 0.9,
+            oklcha(0.2, 0.012, HUE, 0.5),
+        );
     }
 }
 
@@ -89,7 +139,11 @@ fn target(device: &wgpu::Device, w: u32, h: u32, usage: wgpu::TextureUsages) -> 
     device
         .create_texture(&wgpu::TextureDescriptor {
             label: None,
-            size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -118,7 +172,12 @@ struct Ctx {
 
 impl Ctx {
     fn new() -> Ctx {
-        let Gpu { adapter, device, queue, .. } = Gpu::headless();
+        let Gpu {
+            adapter,
+            device,
+            queue,
+            ..
+        } = Gpu::headless();
         eprintln!("adapter: {}", adapter.get_info().name);
         let rt = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
         let base = target(&device, PW, PH, rt);
@@ -134,7 +193,12 @@ impl Ctx {
         let resolve = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("resolve"),
             layout: None,
-            vertex: wgpu::VertexState { module: &module, entry_point: Some("vs"), compilation_options: Default::default(), buffers: &[] },
+            vertex: wgpu::VertexState {
+                module: &module,
+                entry_point: Some("vs"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
             primitive: Default::default(),
             depth_stencil: None,
             multisample: Default::default(),
@@ -142,34 +206,64 @@ impl Ctx {
                 module: &module,
                 entry_point: Some("fs"),
                 compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState { format: wgpu::TextureFormat::Rgba8Unorm, blend: None, write_mask: wgpu::ColorWrites::ALL })],
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
             }),
             multiview_mask: None,
             cache: None,
         });
-        Ctx { device, queue, rune, ts: TextSystem::default(), base, text, glassed, black, out, resolve }
+        Ctx {
+            device,
+            queue,
+            rune,
+            ts: TextSystem::default(),
+            base,
+            text,
+            glassed,
+            black,
+            out,
+            resolve,
+        }
     }
 
     /// Draws `p` into `base` over `clear`, and clears the text layer.
     fn draw(&mut self, p: &Paint, clear: Color) {
-        self.rune.prepare(&self.device, &self.queue, &mut self.ts.atlas, &p.out, (PW, PH));
+        self.rune.prepare(
+            &self.device,
+            &self.queue,
+            &mut self.ts.atlas,
+            &p.out,
+            (PW, PH),
+        );
         let mut enc = self.device.create_command_encoder(&Default::default());
-        self.rune.draw(&mut enc, &self.base, [clear.r, clear.g, clear.b, 1.0]);
+        self.rune
+            .draw(&mut enc, &self.base, [clear.r, clear.g, clear.b, 1.0]);
         self.queue.submit([enc.finish()]);
-        self.rune.prepare(&self.device, &self.queue, &mut self.ts.atlas, &[], (PW, PH));
+        self.rune
+            .prepare(&self.device, &self.queue, &mut self.ts.atlas, &[], (PW, PH));
         let mut enc = self.device.create_command_encoder(&Default::default());
         self.rune.draw(&mut enc, &self.text, [0.0; 4]);
         self.queue.submit([enc.finish()]);
     }
 
-    fn pass<'e>(enc: &'e mut wgpu::CommandEncoder, view: &'e wgpu::TextureView, load: wgpu::LoadOp<wgpu::Color>) -> wgpu::RenderPass<'e> {
+    fn pass<'e>(
+        enc: &'e mut wgpu::CommandEncoder,
+        view: &'e wgpu::TextureView,
+        load: wgpu::LoadOp<wgpu::Color>,
+    ) -> wgpu::RenderPass<'e> {
         enc.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: None,
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view,
                 depth_slice: None,
                 resolve_target: None,
-                ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
+                ops: wgpu::Operations {
+                    load,
+                    store: wgpu::StoreOp::Store,
+                },
             })],
             depth_stencil_attachment: None,
             timestamp_writes: None,
@@ -183,11 +277,18 @@ impl Ctx {
         let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &self.resolve.get_bind_group_layout(0),
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(src) }],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(src),
+            }],
         });
         let mut enc = self.device.create_command_encoder(&Default::default());
         {
-            let mut p = Self::pass(&mut enc, &self.out.view, wgpu::LoadOp::Clear(wgpu::Color::BLACK));
+            let mut p = Self::pass(
+                &mut enc,
+                &self.out.view,
+                wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+            );
             p.set_pipeline(&self.resolve);
             p.set_bind_group(0, &bg, &[]);
             p.draw(0..3, 0..1);
@@ -205,8 +306,19 @@ fn metal(ctx: &mut Ctx, t: f32, shape: Shape, r: [f32; 4], radius: f32) -> Vec<u
     let mut p = Paint::default();
     p.backdrop();
     // A contact shadow under the object, then a soft blue spill on the floor.
-    p.pool(r[0] + r[2] * 0.5, r[1] + r[3] + 6.0, r[2] * 0.62, 26.0, oklcha(0.42, 0.09, HUE, 0.22));
-    p.shadow([r[0] + 8.0, r[1] + 18.0, r[2] - 16.0, r[3]], radius, 22.0, oklcha(0.0, 0.0, 0.0, 0.85));
+    p.pool(
+        r[0] + r[2] * 0.5,
+        r[1] + r[3] + 6.0,
+        r[2] * 0.62,
+        26.0,
+        oklcha(0.42, 0.09, HUE, 0.22),
+    );
+    p.shadow(
+        [r[0] + 8.0, r[1] + 18.0, r[2] - 16.0, r[3]],
+        radius,
+        22.0,
+        oklcha(0.0, 0.0, 0.0, 0.85),
+    );
     ctx.draw(&p, oklch(0.0, 0.0, 0.0));
     let params = LiquidMetalParams {
         tint: rgb(0xe4e9f0),
@@ -224,7 +336,17 @@ fn metal(ctx: &mut Ctx, t: f32, shape: Shape, r: [f32; 4], radius: f32) -> Vec<u
     .anchor(FillAnchor::Element);
     let layers = [Fx::fill(params).on(shape).at(t)];
     let mut fx = FxRenderer::new(&ctx.device, F16, FxOptions { dither: false });
-    fx.prepare(&ctx.device, &ctx.queue, &FxFrame { viewport: [PW, PH], scale: S, layers: &layers, backdrop: None, sources: &[] });
+    fx.prepare(
+        &ctx.device,
+        &ctx.queue,
+        &FxFrame {
+            viewport: [PW, PH],
+            scale: S,
+            layers: &layers,
+            backdrop: None,
+            sources: &[],
+        },
+    );
     let mut enc = ctx.device.create_command_encoder(&Default::default());
     {
         let mut pass = Ctx::pass(&mut enc, &ctx.base, wgpu::LoadOp::Load);
@@ -235,31 +357,71 @@ fn metal(ctx: &mut Ctx, t: f32, shape: Shape, r: [f32; 4], radius: f32) -> Vec<u
 }
 
 /// A frosted pane of thick glass over crisp blue discs: sharp beside the pane, soft through it.
-fn glass(ctx: &mut Ctx, t: f32, pane: [f32; 4], radius: f32, frost: f32, orbs: &[(f32, f32, f32, Color)]) -> Vec<u8> {
+fn glass(
+    ctx: &mut Ctx,
+    t: f32,
+    pane: [f32; 4],
+    radius: f32,
+    frost: f32,
+    orbs: &[(f32, f32, f32, Color)],
+) -> Vec<u8> {
     let mut p = Paint::default();
     p.backdrop();
     for &(x, y, r, c) in orbs {
         // Each disc drifts a little on its own slow circle.
-        let (x, y) = (x + (t * 0.35 + x).sin() * 6.0, y + (t * 0.3 + y).cos() * 4.0);
+        let (x, y) = (
+            x + (t * 0.35 + x).sin() * 6.0,
+            y + (t * 0.3 + y).cos() * 4.0,
+        );
         p.pool(x, y, r * 2.4, r * 2.4, Color { a: 0.3, ..c });
         p.rect([x - r, y - r, 2.0 * r, 2.0 * r], r, c);
     }
     ctx.draw(&p, oklch(0.0, 0.0, 0.0));
     let k = S;
-    let slab = Glass::rounded(pane[0] * k, pane[1] * k, pane[2] * k, pane[3] * k, radius * k)
-        .thickness(40.0 * k)
-        .bevel(34.0 * k)
-        .dome(6.0 * k)
-        .gap(16.0 * k)
-        .ior(1.5)
-        .dispersion(0.025)
-        .frost(frost)
-        .tint([0.0005, 0.00035, 0.0002]);
-    let lamp = GlassLight { pos: [(pane[0] + pane[2] * 0.3) * k, (pane[1] - 220.0) * k, 420.0 * k, 260.0 * k], color: [0.9, 1.0, 1.15, 0.0] };
+    let slab = Glass::rounded(
+        pane[0] * k,
+        pane[1] * k,
+        pane[2] * k,
+        pane[3] * k,
+        radius * k,
+    )
+    .thickness(40.0 * k)
+    .bevel(34.0 * k)
+    .dome(6.0 * k)
+    .gap(16.0 * k)
+    .ior(1.5)
+    .dispersion(0.025)
+    .frost(frost)
+    .tint([0.0005, 0.00035, 0.0002]);
+    let lamp = GlassLight {
+        pos: [
+            (pane[0] + pane[2] * 0.3) * k,
+            (pane[1] - 220.0) * k,
+            420.0 * k,
+            260.0 * k,
+        ],
+        color: [0.9, 1.0, 1.15, 0.0],
+    };
     let mut gl = GlassRenderer::new(&ctx.device, PW, PH, F16);
-    let settings = GlassSettings { env: 0.45, shadow: 0.6, shadow_offset: [0.0, 24.0 * k], shadow_blur: 36.0 * k, caustic: 0.5 };
+    let settings = GlassSettings {
+        env: 0.45,
+        shadow: 0.6,
+        shadow_offset: [0.0, 24.0 * k],
+        shadow_blur: 36.0 * k,
+        caustic: 0.5,
+    };
     let mut enc = ctx.device.create_command_encoder(&Default::default());
-    gl.render(&ctx.device, &ctx.queue, &mut enc, &[slab], &[lamp], settings, &ctx.base, &ctx.black, &ctx.glassed);
+    gl.render(
+        &ctx.device,
+        &ctx.queue,
+        &mut enc,
+        &[slab],
+        &[lamp],
+        settings,
+        &ctx.base,
+        &ctx.black,
+        &ctx.glassed,
+    );
     ctx.queue.submit([enc.finish()]);
     ctx.resolve(&ctx.glassed)
 }
@@ -275,12 +437,16 @@ fn light(ctx: &mut Ctx, t: f32, build: impl FnOnce(&mut Paint, f32, f32)) -> Vec
     let k = S;
     // The key light sways slowly above and to the left; a faint blue fill from behind.
     let a = -2.25 + 0.12 * (t * 0.5).sin();
-    let key = Light::point((cx + 150.0 * a.cos()) * k, (cy + 130.0 * a.sin()) * k, 200.0 * k)
-        .color(lin(oklch(0.97, 0.012, HUE)))
-        .intensity(2.6)
-        .radius(40.0 * k)
-        .range(1000.0 * k)
-        .specular(2.6);
+    let key = Light::point(
+        (cx + 150.0 * a.cos()) * k,
+        (cy + 130.0 * a.sin()) * k,
+        200.0 * k,
+    )
+    .color(lin(oklch(0.97, 0.012, HUE)))
+    .intensity(2.6)
+    .radius(40.0 * k)
+    .range(1000.0 * k)
+    .specular(2.6);
     let fill = Light::point((cx + 420.0) * k, (cy - 300.0) * k, 420.0 * k)
         .color(lin(oklch(0.72, 0.12, HUE)))
         .intensity(0.35)
@@ -297,10 +463,29 @@ fn light(ctx: &mut Ctx, t: f32, build: impl FnOnce(&mut Paint, f32, f32)) -> Vec
         time: t,
         ..Default::default()
     };
-    let mut lights = LightRenderer::new(&ctx.device, &ctx.queue, PW, PH, wgpu::TextureFormat::Rgba8Unorm);
+    let mut lights = LightRenderer::new(
+        &ctx.device,
+        &ctx.queue,
+        PW,
+        PH,
+        wgpu::TextureFormat::Rgba8Unorm,
+    );
     let mut enc = ctx.device.create_command_encoder(&Default::default());
-    let scene = Scene { prims: &p.prims, lights: &[key, fill], settings, emission: None };
-    lights.render(&ctx.device, &ctx.queue, &mut enc, &scene, &ctx.base, &ctx.text, &ctx.out.view);
+    let scene = Scene {
+        prims: &p.prims,
+        lights: &[key, fill],
+        settings,
+        emission: None,
+    };
+    lights.render(
+        &ctx.device,
+        &ctx.queue,
+        &mut enc,
+        &scene,
+        &ctx.base,
+        &ctx.text,
+        &ctx.out.view,
+    );
     ctx.out.copy(&mut enc);
     ctx.queue.submit([enc.finish()]);
     ctx.out.read(&ctx.device)
@@ -311,20 +496,44 @@ fn render(ctx: &mut Ctx, name: &str, t: f32) -> Vec<u8> {
     match name {
         "metal" => {
             let r = 92.0;
-            metal(ctx, t, Shape::circle(cx, cy, r), [cx - r, cy - r, 2.0 * r, 2.0 * r], r)
+            metal(
+                ctx,
+                t,
+                Shape::circle(cx, cy, r),
+                [cx - r, cy - r, 2.0 * r, 2.0 * r],
+                r,
+            )
         }
-        "glass" => glass(ctx, t, [cx - 70.0, cy - 110.0, 220.0, 220.0], 50.0, 0.6, &[(cx - 48.0, cy - 50.0, 100.0, oklch(0.62, 0.16, HUE))]),
+        "glass" => glass(
+            ctx,
+            t,
+            [cx - 70.0, cy - 110.0, 220.0, 220.0],
+            50.0,
+            0.6,
+            &[(cx - 48.0, cy - 50.0, 100.0, oklch(0.62, 0.16, HUE))],
+        ),
         "light" => light(ctx, t, |p, cx, cy| {
             // A keypad: eight dark keys and one lit in blue.
             let (s, gap) = (60.0, 16.0);
             for i in 0..3 {
                 for j in 0..3 {
-                    let (x, y) = (cx - 1.5 * s - gap + j as f32 * (s + gap), cy - 1.5 * s - gap + i as f32 * (s + gap));
+                    let (x, y) = (
+                        cx - 1.5 * s - gap + j as f32 * (s + gap),
+                        cy - 1.5 * s - gap + i as f32 * (s + gap),
+                    );
                     let lit = i == 1 && j == 1;
-                    let c = if lit { oklch(0.55, 0.15, HUE) } else { oklch(0.4, 0.005, HUE) };
+                    let c = if lit {
+                        oklch(0.55, 0.15, HUE)
+                    } else {
+                        oklch(0.4, 0.005, HUE)
+                    };
                     p.solid([x, y, s, s], 16.0, c, |q| {
                         let q = q.raised(12.0 * S).bevel(12.0 * S, 4.0 * S).gloss(0.8, 0.3);
-                        if lit { q.emissive([0.006, 0.024, 0.08]) } else { q }
+                        if lit {
+                            q.emissive([0.006, 0.024, 0.08])
+                        } else {
+                            q
+                        }
                     });
                 }
             }
@@ -335,13 +544,22 @@ fn render(ctx: &mut Ctx, name: &str, t: f32) -> Vec<u8> {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let get = |k: &str| args.iter().position(|a| a == k).and_then(|i| args.get(i + 1)).cloned();
+    let get = |k: &str| {
+        args.iter()
+            .position(|a| a == k)
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+    };
     let out = get("--out").map_or_else(|| PathBuf::from("target/site-scenes"), PathBuf::from);
     let t: f32 = get("--t").map_or(1.2, |s| s.parse().expect("--t SECONDS"));
     let only = get("--only");
     std::fs::create_dir_all(&out).unwrap();
     let mut ctx = Ctx::new();
-    for name in SCENES.iter().copied().filter(|n| only.as_deref().is_none_or(|o| o == *n)) {
+    for name in SCENES
+        .iter()
+        .copied()
+        .filter(|n| only.as_deref().is_none_or(|o| o == *n))
+    {
         let px = render(&mut ctx, name, t);
         write_png(&out.join(format!("{name}.png")), PW, PH, &px).unwrap();
         eprintln!("wrote {name}.png");

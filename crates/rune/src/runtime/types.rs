@@ -69,7 +69,12 @@ impl crate::cold::Empty for NodeCold {
         above: None,
         scroll: None,
         scroll_axes: crate::el::ScrollAxes::Y,
-        scroll_edges: crate::el::ScrollEdges { fade: 0.0, fade_style: crate::el::FadeStyle::SMOOTH, margin: 0.0, anchor: false },
+        scroll_edges: crate::el::ScrollEdges {
+            fade: 0.0,
+            fade_style: crate::el::FadeStyle::SMOOTH,
+            margin: 0.0,
+            anchor: false,
+        },
         sticky: None,
         growth: None,
         glide: None,
@@ -217,7 +222,11 @@ impl Node {
     /// `El::hover_motion_within` pair.
     #[inline]
     pub(super) fn hover_motion(&self) -> Option<(Anim, Anim)> {
-        self.vis.hover_motion.as_deref().or(self.hover_within.as_deref()).copied()
+        self.vis
+            .hover_motion
+            .as_deref()
+            .or(self.hover_within.as_deref())
+            .copied()
     }
 
     #[inline]
@@ -233,7 +242,9 @@ impl Node {
     }
     /// Whether a press, hover or drag can go to this node itself.
     pub(super) fn has_primary_handler(&self) -> bool {
-        self.handlers.get().is_some_and(crate::el::Handlers::has_primary)
+        self.handlers
+            .get()
+            .is_some_and(crate::el::Handlers::has_primary)
     }
     /// Whether `selector` names this node, as `Cx::layout` reads it: its key, its full path, or
     /// a key path such as `msg-42/body` (see `flight::selects`).
@@ -256,11 +267,26 @@ impl AnimSource {
     pub const TEXT_FLIGHT: u16 = 128;
     pub const LIVE: u16 = 256;
     pub const VIRTUAL_FILL: u16 = 512;
-    pub const NAMES: [&'static str; 10] =
-        ["tracks", "growth", "scroll", "reveal", "loop", "scale-settle", "video", "text-flight", "live", "virtual-fill"];
+    pub const NAMES: [&'static str; 10] = [
+        "tracks",
+        "growth",
+        "scroll",
+        "reveal",
+        "loop",
+        "scale-settle",
+        "video",
+        "text-flight",
+        "live",
+        "virtual-fill",
+    ];
 
     pub fn names(bits: u16) -> Vec<&'static str> {
-        Self::NAMES.iter().enumerate().filter(|(i, _)| bits & (1 << i) != 0).map(|(_, n)| *n).collect()
+        Self::NAMES
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| bits & (1 << i) != 0)
+            .map(|(_, n)| *n)
+            .collect()
     }
 }
 
@@ -340,18 +366,51 @@ impl ScaleMotion {
             ScaleMotion::Moving => rest,
         };
         // A tiny or huge raster isn't worth its atlas space; sample the rest size instead.
-        if (1.0 / 16.0..=4.0).contains(&k) { k } else { 1.0 }
+        if (1.0 / 16.0..=4.0).contains(&k) {
+            k
+        } else {
+            1.0
+        }
     }
 }
 
 impl Default for Inh {
     fn default() -> Self {
-        Inh { opacity: 1.0, paint_opacity: 1.0, first_fade: 1.0, clip: NO_CLIP, fade: [0.0; 4], fade_origin: NO_CLIP,
-            paint_clip: NO_CLIP, paint_fade: [0.0; 4], paint_fade_origin: NO_CLIP, rounded: None,
-            scale: 1.0, anchor: [0.0; 2], anchor_to: [0.0; 2], blur: 0.0, dy: 0.0, dx: 0.0, cover: [0.0; 2], outer: None, mark: 0, group: 0.0,
-            hit_opacity: 1.0, group_rect: [f32::NEG_INFINITY, f32::NEG_INFINITY, f32::INFINITY, f32::INFINITY],
-            scale_motion: ScaleMotion::Still, still: (1.0, [0.0; 2], [0.0; 2]), in_cache: false, skip_paint: false, turn: 0,
-            snap: Default::default() }
+        Inh {
+            opacity: 1.0,
+            paint_opacity: 1.0,
+            first_fade: 1.0,
+            clip: NO_CLIP,
+            fade: [0.0; 4],
+            fade_origin: NO_CLIP,
+            paint_clip: NO_CLIP,
+            paint_fade: [0.0; 4],
+            paint_fade_origin: NO_CLIP,
+            rounded: None,
+            scale: 1.0,
+            anchor: [0.0; 2],
+            anchor_to: [0.0; 2],
+            blur: 0.0,
+            dy: 0.0,
+            dx: 0.0,
+            cover: [0.0; 2],
+            outer: None,
+            mark: 0,
+            group: 0.0,
+            hit_opacity: 1.0,
+            group_rect: [
+                f32::NEG_INFINITY,
+                f32::NEG_INFINITY,
+                f32::INFINITY,
+                f32::INFINITY,
+            ],
+            scale_motion: ScaleMotion::Still,
+            still: (1.0, [0.0; 2], [0.0; 2]),
+            in_cache: false,
+            skip_paint: false,
+            turn: 0,
+            snap: Default::default(),
+        }
     }
 }
 
@@ -456,13 +515,19 @@ impl AxisScroll {
     /// How far left the content draws, in points: `offset`, or less it in a right-to-left
     /// viewport.
     pub(super) fn shift(&self) -> f64 {
-        match self.flow { crate::el::Flow::Ltr => self.offset, crate::el::Flow::Rtl => -self.offset }
+        match self.flow {
+            crate::el::Flow::Ltr => self.offset,
+            crate::el::Flow::Rtl => -self.offset,
+        }
     }
 
     /// `delta` points of physical movement (positive moving content right) as a change of
     /// `offset`.
     pub(super) fn toward(&self, delta: f64) -> f64 {
-        match self.flow { crate::el::Flow::Ltr => -delta, crate::el::Flow::Rtl => delta }
+        match self.flow {
+            crate::el::Flow::Ltr => -delta,
+            crate::el::Flow::Rtl => delta,
+        }
     }
 }
 

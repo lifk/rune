@@ -6,7 +6,9 @@
 use std::time::Duration;
 
 use rune::{Cx, El, ElementInfo, Env, Key, KeyEvent, Mods, Runtime, Spring, col, el};
-use rune_kit::shell::{PaneMotion, PaneState, Reorder, RowStatus, Sidebar, SidebarPeek, SidebarRow, SidebarToggle, SplitView, Toolbar};
+use rune_kit::shell::{
+    PaneMotion, PaneState, Reorder, RowStatus, Sidebar, SidebarPeek, SidebarRow, SidebarToggle, SplitView, Toolbar,
+};
 use rune_kit::{ControlSize, Kit};
 
 const ROWS: usize = 5;
@@ -47,14 +49,25 @@ fn view(s: &S, cx: &mut Cx<S>) -> El {
             .status(if id == 0 { RowStatus::Busy } else { RowStatus::Unread })
             .on_close(move |s: &mut S, _| s.closed.push(id))
             .on_select(move |s: &mut S, _| s.picked = id)
-            .reorder(&s.reorder, i, s.order.len(), |s: &mut S| &mut s.reorder, |s: &mut S, from, to| {
-                let id = s.order.remove(from);
-                s.order.insert(to, id);
-            });
+            .reorder(
+                &s.reorder,
+                i,
+                s.order.len(),
+                |s: &mut S| &mut s.reorder,
+                |s: &mut S, from, to| {
+                    let id = s.order.remove(from);
+                    s.order.insert(to, id);
+                },
+            );
         r = r.selected(s.picked == id);
         r.build(&k).key(format!("row{id}"))
     });
-    let sidebar = Sidebar::new().inset(0.0).header_gap(4.0).header_padding(8.0, 16.0).row_gap(4.0).header(SidebarRow::new("Home").build(&k).key("home"));
+    let sidebar = Sidebar::new()
+        .inset(0.0)
+        .header_gap(4.0)
+        .header_padding(8.0, 16.0)
+        .row_gap(4.0)
+        .header(SidebarRow::new("Home").build(&k).key("home"));
     let sidebar = rows.fold(sidebar, |sb, r| sb.child(r));
     SplitView::new(col().key("body").w_full().h_full())
         .sidebar(&s.sidebar, |s: &mut S| &mut s.sidebar, sidebar.build(&k))
@@ -64,9 +77,24 @@ fn view(s: &S, cx: &mut Cx<S>) -> El {
         .frame_inset(8.0)
         .toolbar_in_panel()
         .sidebar_padding(18.0, 10.0)
-        .sidebar_toggle(SidebarToggle::new().size(ControlSize::Large).past_lights(16.0).edge(18.0).gap(4.0).in_header().unread(true))
+        .sidebar_toggle(
+            SidebarToggle::new()
+                .size(ControlSize::Large)
+                .past_lights(16.0)
+                .edge(18.0)
+                .gap(4.0)
+                .in_header()
+                .unread(true),
+        )
         .pane_motion(PaneMotion::new().spring(Spring::new(0.3, 0.0)).scale_with_width(480.0, 0.15, 0.3).fade_tail(0.15))
-        .sidebar_peek(SidebarPeek::new().edge(16.0, ms(40)).toggle_delay(ms(80)).below(56.0).hold(15.0, ms(100)).spring(Spring::new(0.18, 0.0)))
+        .sidebar_peek(
+            SidebarPeek::new()
+                .edge(16.0, ms(40))
+                .toggle_delay(ms(80))
+                .below(56.0)
+                .hold(15.0, ms(100))
+                .spring(Spring::new(0.18, 0.0)),
+        )
         .reduced_motion(s.reduced)
         .build(&k)
 }
@@ -84,13 +112,19 @@ fn settle(rt: &mut Runtime<S>) {
 }
 
 fn find(rt: &Runtime<S>, key: &str) -> ElementInfo {
-    rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key) && !e.exiting).unwrap_or_else(|| panic!("no {key}"))
+    rt.elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some(key) && !e.exiting)
+        .unwrap_or_else(|| panic!("no {key}"))
 }
 
 /// The first element keyed `key` inside the element keyed `parent`.
 fn inside(rt: &Runtime<S>, parent: &str, key: &str) -> ElementInfo {
     let all = rt.elements();
-    let p = all.iter().position(|e| e.key.as_deref() == Some(parent) && !e.exiting).unwrap_or_else(|| panic!("no {parent}"));
+    let p = all
+        .iter()
+        .position(|e| e.key.as_deref() == Some(parent) && !e.exiting)
+        .unwrap_or_else(|| panic!("no {parent}"));
     let within = |mut i: usize| {
         while let Some(up) = all[i].parent {
             if up == p {
@@ -100,7 +134,9 @@ fn inside(rt: &Runtime<S>, parent: &str, key: &str) -> ElementInfo {
         }
         false
     };
-    let i = (0..all.len()).find(|&i| all[i].key.as_deref() == Some(key) && within(i)).unwrap_or_else(|| panic!("no {key} in {parent}"));
+    let i = (0..all.len())
+        .find(|&i| all[i].key.as_deref() == Some(key) && within(i))
+        .unwrap_or_else(|| panic!("no {key} in {parent}"));
     all[i].clone()
 }
 
@@ -122,7 +158,11 @@ fn the_main_pane_is_framed_and_the_toolbar_sits_inside_it() {
     assert_eq!((toolbar[1], toolbar[3]), (8.0, 48.0), "the toolbar is the pane's top 48 points");
     let (x, y) = (500.0, 4.0);
     rt.pointer_down(x, y);
-    assert_eq!(rt.take_titlebar_action(), Some(rune::TitlebarAction::Drag), "the strip above the pane drags the window");
+    assert_eq!(
+        rt.take_titlebar_action(),
+        Some(rune::TitlebarAction::Drag),
+        "the strip above the pane drags the window"
+    );
     rt.pointer_up(x, y);
 
     rt.update(|s, tx| {
@@ -146,7 +186,10 @@ fn the_sidebar_pads_its_contents_and_they_slide_with_its_edge() {
         rt.frame(1.0 / 60.0);
         let pane = find(&rt, "sidebar-pane").rect;
         let content = find(&rt, "pane-content").rect;
-        assert!((content[0] + content[2] - (pane[0] + pane[2])).abs() < 0.5, "pinned to the moving edge: {content:?} in {pane:?}");
+        assert!(
+            (content[0] + content[2] - (pane[0] + pane[2])).abs() < 0.5,
+            "pinned to the moving edge: {content:?} in {pane:?}"
+        );
         assert_eq!(content[2], 276.0, "at full width");
     }
 }
@@ -186,7 +229,11 @@ fn the_toggle_sits_at_the_headers_end_and_floats_past_the_lights_when_closed() {
     rt.set_titlebar_inset(inset);
     rt.frame(1.0 / 60.0);
     let t = find(&rt, "sidebar-toggle").rect;
-    assert_eq!((t[0], t[1], t[2]), (276.0 - 10.0 - 28.0, 8.0 + 10.0, 28.0), "at the header's end, on the toolbar's centre line");
+    assert_eq!(
+        (t[0], t[1], t[2]),
+        (276.0 - 10.0 - 28.0, 8.0 + 10.0, 28.0),
+        "at the header's end, on the toolbar's centre line"
+    );
     assert_eq!(find(&rt, "toolbar").rect[1] + 24.0, t[1] + 14.0);
     rt.set_system_reduced_motion(true);
     rt.update(|s, _| s.sidebar.set_open(false));
@@ -376,7 +423,10 @@ fn dragging_a_row_lifts_it_reflows_the_others_and_escape_puts_it_back() {
     for _ in 0..60 {
         rt.frame(1.0 / 60.0);
         let now = y0(&rt, "row0");
-        assert!((now - last).abs() < 20.0 && now <= r2 + 0.5, "it settles into its slot without a jump: {last} -> {now}");
+        assert!(
+            (now - last).abs() < 20.0 && now <= r2 + 0.5,
+            "it settles into its slot without a jump: {last} -> {now}"
+        );
         last = now;
     }
     assert_eq!(last, r2);
@@ -423,7 +473,11 @@ fn cancelling_a_resize_restores_the_width_and_open_state_without_peeking() {
         rt.pointer_move(12.0, y);
         rt.frame(0.1);
         assert!(!rt.state.sidebar.is_peeking(), "a held resize never peeks");
-        if blur { rt.window_focus(false); } else { rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() }); }
+        if blur {
+            rt.window_focus(false);
+        } else {
+            rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
+        }
         rt.frame(0.0);
         assert_eq!(rt.state.sidebar.width(), 276.0);
         assert!(rt.state.sidebar.is_open(), "blur={blur}");

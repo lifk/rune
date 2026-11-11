@@ -8,13 +8,24 @@ struct T {
     knobs: Knobs,
 }
 const L: Knob = Knob::new("Left size", 0.0, 10.0, 5.0).label("Left column size");
-const C: Knob = Knob::choice("Style", &["One", "Two", "Three"], 0).hints(&["The first", "The second", ""]);
+const C: Knob =
+    Knob::choice("Style", &["One", "Two", "Three"], 0).hints(&["The first", "The second", ""]);
 const R: Knob = Knob::new("Right pad", 0.0, 40.0, 20.0);
-const GROUPS: &[Group] = &[Group::new("Left", "left", &[L, C]), Group::new("Right", "right", &[R])];
+const GROUPS: &[Group] = &[
+    Group::new("Left", "left", &[L, C]),
+    Group::new("Right", "right", &[R]),
+];
 
 fn view(s: &T, _: &mut Cx<T>) -> El {
-    let page = row().key("cols").w_full().h_full().child(col().key("left").w(300.0).h_full()).child(col().key("right").grow(1.0).h_full());
-    side(page, &s.knobs, GROUPS, Style::dark(), |s: &mut T| &mut s.knobs)
+    let page = row()
+        .key("cols")
+        .w_full()
+        .h_full()
+        .child(col().key("left").w(300.0).h_full())
+        .child(col().key("right").grow(1.0).h_full());
+    side(page, &s.knobs, GROUPS, Style::dark(), |s: &mut T| {
+        &mut s.knobs
+    })
 }
 
 fn settle(rt: &mut Runtime<T>) {
@@ -33,12 +44,23 @@ fn click(rt: &mut Runtime<T>, key: &str) {
 }
 
 fn page_w(rt: &mut Runtime<T>) -> f32 {
-    rt.elements().into_iter().find(|e| e.key.as_deref() == Some("knobs-page")).expect("page").target[2]
+    rt.elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some("knobs-page"))
+        .expect("page")
+        .target[2]
 }
 
 #[test]
 fn opening_pushes_the_page_over_and_closing_gives_it_back() {
-    let mut rt = Runtime::new(T { knobs: Knobs::default() }, view, (1000.0, 700.0), Env::new(true, 1.0));
+    let mut rt = Runtime::new(
+        T {
+            knobs: Knobs::default(),
+        },
+        view,
+        (1000.0, 700.0),
+        Env::new(true, 1.0),
+    );
     settle(&mut rt);
     assert_eq!(page_w(&mut rt), 1000.0);
     rt.state.knobs.show();
@@ -46,7 +68,10 @@ fn opening_pushes_the_page_over_and_closing_gives_it_back() {
     settle(&mut rt);
     assert_eq!(page_w(&mut rt), 1000.0 - crate::SIDE_W);
     assert_eq!(rt.state.knobs.side_room(), crate::SIDE_W);
-    assert!(rt.find("knobs-sec-0").is_some() && rt.find("knobs-sec-1").is_some(), "every group is a section");
+    assert!(
+        rt.find("knobs-sec-0").is_some() && rt.find("knobs-sec-1").is_some(),
+        "every group is a section"
+    );
     rt.state.knobs.close();
     rt.invalidate();
     settle(&mut rt);
@@ -54,16 +79,26 @@ fn opening_pushes_the_page_over_and_closing_gives_it_back() {
 }
 
 fn body(rt: &Runtime<T>, sec: &str) -> f32 {
-    rt.elements().into_iter().find(|e| e.path.contains(sec) && e.key.as_deref() == Some("body")).map(|e| e.rect[3]).unwrap()
+    rt.elements()
+        .into_iter()
+        .find(|e| e.path.contains(sec) && e.key.as_deref() == Some("body"))
+        .map(|e| e.rect[3])
+        .unwrap()
 }
 
 #[test]
 fn a_header_opens_its_group_and_picks_it() {
-    let mut s = T { knobs: Knobs::default() };
+    let mut s = T {
+        knobs: Knobs::default(),
+    };
     s.knobs.show();
     let mut rt = Runtime::new(s, view, (1000.0, 700.0), Env::new(true, 1.0));
     settle(&mut rt);
-    assert_eq!(body(&rt, "knobs-sec-1"), 0.0, "folded up front, though on screen");
+    assert_eq!(
+        body(&rt, "knobs-sec-1"),
+        0.0,
+        "folded up front, though on screen"
+    );
     click(&mut rt, "knobs-sec-1/head");
     assert!(rt.state.knobs.unfolded.contains("Right"));
     assert_eq!(rt.state.knobs.group.as_deref(), Some("Right"));
@@ -75,7 +110,9 @@ fn a_header_opens_its_group_and_picks_it() {
 
 #[test]
 fn the_panel_reopens_folded_but_for_the_group_last_opened() {
-    let mut s = T { knobs: Knobs::default() };
+    let mut s = T {
+        knobs: Knobs::default(),
+    };
     s.knobs.show();
     let mut rt = Runtime::new(s, view, (1000.0, 700.0), Env::new(true, 1.0));
     settle(&mut rt);
@@ -91,7 +128,9 @@ fn the_panel_reopens_folded_but_for_the_group_last_opened() {
 
 #[test]
 fn using_a_knob_makes_its_group_the_panels() {
-    let mut s = T { knobs: Knobs::default() };
+    let mut s = T {
+        knobs: Knobs::default(),
+    };
     s.knobs.show();
     let mut rt = Runtime::new(s, view, (1000.0, 700.0), Env::new(true, 1.0));
     settle(&mut rt);
@@ -99,13 +138,18 @@ fn using_a_knob_makes_its_group_the_panels() {
     click(&mut rt, "knobs-sec-1/body/knobs-card/knobs-knob-0");
     assert_eq!(rt.state.knobs.group.as_deref(), Some("Right"));
     click(&mut rt, "knobs-random");
-    assert!(rt.state.knobs.values.contains_key("Right pad"), "Random acts on the group in use");
+    assert!(
+        rt.state.knobs.values.contains_key("Right pad"),
+        "Random acts on the group in use"
+    );
     assert!(!rt.state.knobs.values.contains_key("Left size"));
 }
 
 #[test]
 fn the_edge_drags_to_resize() {
-    let mut s = T { knobs: Knobs::default() };
+    let mut s = T {
+        knobs: Knobs::default(),
+    };
     s.knobs.show();
     let mut rt = Runtime::new(s, view, (1000.0, 700.0), Env::new(true, 1.0));
     settle(&mut rt);
@@ -121,8 +165,16 @@ fn the_edge_drags_to_resize() {
 #[test]
 fn choices_fit_the_width() {
     const FEW: Knob = Knob::choice("Edge", &["Fade", "Line", "Tint"], 0);
-    const SIX: Knob = Knob::choice("Question glyph", &["Disc", "? disc", "? mark", "? square", "? ring", "Bang"], 0);
-    const MANY: Knob = Knob::choice("Theme picker style", &["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"], 0);
+    const SIX: Knob = Knob::choice(
+        "Question glyph",
+        &["Disc", "? disc", "? mark", "? square", "? ring", "Bang"],
+        0,
+    );
+    const MANY: Knob = Knob::choice(
+        "Theme picker style",
+        &["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"],
+        0,
+    );
     assert_eq!(shape(&FEW, 316.0, false), Shape::Inline);
     // Six options come out as two even rows of three, not four and two.
     assert_eq!(shape(&SIX, 316.0, false), Shape::Grid { cols: 3 });
@@ -132,12 +184,20 @@ fn choices_fit_the_width() {
 
 #[test]
 fn folding_rolls_the_rows_up_on_the_fold_spring() {
-    let mut s = T { knobs: Knobs::default() };
+    let mut s = T {
+        knobs: Knobs::default(),
+    };
     s.knobs.show();
     s.knobs.set_folded("Left", false);
     let mut rt = Runtime::new(s, view, (1000.0, 700.0), Env::new(true, 1.0));
     settle(&mut rt);
-    let seen = |rt: &Runtime<T>| rt.elements().into_iter().find(|e| e.path.contains("knobs-sec-0") && e.key.as_deref() == Some("body")).map(|e| e.rect[3]).unwrap();
+    let seen = |rt: &Runtime<T>| {
+        rt.elements()
+            .into_iter()
+            .find(|e| e.path.contains("knobs-sec-0") && e.key.as_deref() == Some("body"))
+            .map(|e| e.rect[3])
+            .unwrap()
+    };
     let open = seen(&rt);
     let (x, y) = rt.find("knobs-sec-0/head").unwrap();
     rt.pointer_move(x, y);
@@ -155,22 +215,32 @@ fn folding_rolls_the_rows_up_on_the_fold_spring() {
 
 #[test]
 fn hovering_an_option_says_what_it_does_under_the_list() {
-    let mut s = T { knobs: Knobs::default() };
+    let mut s = T {
+        knobs: Knobs::default(),
+    };
     s.knobs.show();
     s.knobs.set_folded("Left", false);
     let mut rt = Runtime::new(s, view, (1000.0, 700.0), Env::new(true, 1.0));
     settle(&mut rt);
-    assert!(rt.find("knobs-about-option").is_none(), "nothing in hand, so the keys show");
+    assert!(
+        rt.find("knobs-about-option").is_none(),
+        "nothing in hand, so the keys show"
+    );
     let (x, y) = rt.find("opt-1").expect("Style's second option");
     rt.pointer_move(x, y);
     settle(&mut rt);
-    assert!(rt.find("knobs-about-option").is_some(), "the hovered option's line shows");
+    assert!(
+        rt.find("knobs-about-option").is_some(),
+        "the hovered option's line shows"
+    );
     assert_eq!(C.hint(1), "The second");
     assert_eq!(C.hint(2), "", "an option without a line says nothing");
 }
 
 fn open_left() -> Runtime<T> {
-    let mut s = T { knobs: Knobs::default() };
+    let mut s = T {
+        knobs: Knobs::default(),
+    };
     s.knobs.show();
     s.knobs.set_folded("Left", false);
     let mut rt = Runtime::new(s, view, (1000.0, 700.0), Env::new(true, 1.0));
@@ -179,7 +249,11 @@ fn open_left() -> Runtime<T> {
 }
 
 fn rect(rt: &Runtime<T>, suffix: &str) -> [f32; 4] {
-    rt.elements().into_iter().find(|e| e.path.ends_with(suffix) && e.opacity > 0.0).unwrap_or_else(|| panic!("no {suffix}")).rect
+    rt.elements()
+        .into_iter()
+        .find(|e| e.path.ends_with(suffix) && e.opacity > 0.0)
+        .unwrap_or_else(|| panic!("no {suffix}"))
+        .rect
 }
 
 fn right_click(rt: &mut Runtime<T>, x: f32, y: f32) {
@@ -191,7 +265,10 @@ fn right_click(rt: &mut Runtime<T>, x: f32, y: f32) {
 }
 
 fn press(rt: &mut Runtime<T>, key: rune::Key) {
-    rt.key(rune::KeyEvent { key, mods: Default::default() });
+    rt.key(rune::KeyEvent {
+        key,
+        mods: Default::default(),
+    });
     settle(rt);
 }
 
@@ -213,18 +290,35 @@ fn a_hovered_group_header_offers_random_and_reset() {
     let mut rt = open_left();
     rt.state.knobs.set(&L, 8.0);
     rt.state.knobs.set(&R, 30.0);
-    assert!(rt.find("knobs-sec-0/head/reset").is_none(), "the count shows until hovered");
+    assert!(
+        rt.find("knobs-sec-0/head/reset").is_none(),
+        "the count shows until hovered"
+    );
     let h = rect(&rt, "knobs-sec-0/head");
     rt.pointer_move(h[0] + 40.0, h[1] + h[3] / 2.0);
     settle(&mut rt);
     click(&mut rt, "knobs-sec-0/head/reset");
     assert_eq!(rt.state.knobs.get(&L), 5.0, "Reset puts the group back");
-    assert_eq!(rt.state.knobs.get(&R), 30.0, "and leaves other groups alone");
-    assert!(rt.find("knobs-sec-0/body/knobs-card/knobs-knob-0").is_some(), "without folding the group");
+    assert_eq!(
+        rt.state.knobs.get(&R),
+        30.0,
+        "and leaves other groups alone"
+    );
+    assert!(
+        rt.find("knobs-sec-0/body/knobs-card/knobs-knob-0")
+            .is_some(),
+        "without folding the group"
+    );
     click(&mut rt, "knobs-sec-0/head/random");
-    assert!(rt.state.knobs.values.contains_key("Left size"), "Random sets the group's knobs");
+    assert!(
+        rt.state.knobs.values.contains_key("Left size"),
+        "Random sets the group's knobs"
+    );
     right_click(&mut rt, h[0] + 40.0, h[1] + h[3] / 2.0);
-    assert!(!rt.state.knobs.values.contains_key("Left size"), "right-clicking the header resets it too");
+    assert!(
+        !rt.state.knobs.values.contains_key("Left size"),
+        "right-clicking the header resets it too"
+    );
 }
 
 #[test]
@@ -243,7 +337,11 @@ fn clicking_a_choice_row_puts_the_arrows_on_its_options() {
     rt.pointer_up(x, y);
     settle(&mut rt);
     press(&mut rt, rune::Key::Right);
-    assert_eq!(rt.state.knobs.get(&C), 1.0, "→ steps the clicked choice, not the group");
+    assert_eq!(
+        rt.state.knobs.get(&C),
+        1.0,
+        "→ steps the clicked choice, not the group"
+    );
     press(&mut rt, rune::Key::Right);
     assert_eq!(rt.state.knobs.get(&C), 2.0);
 }
@@ -258,7 +356,10 @@ fn moving_the_pointer_takes_the_highlight_from_the_keyboard() {
     let row = rect(&rt, "knobs-sec-0/body/knobs-card/knobs-knob-1");
     rt.pointer_move(row[0] + 30.0, row[1] + row[3] / 2.0);
     settle(&mut rt);
-    assert!(!rt.state.knobs.kbd, "only the row under the pointer stays lit");
+    assert!(
+        !rt.state.knobs.kbd,
+        "only the row under the pointer stays lit"
+    );
     press(&mut rt, rune::Key::Down);
     assert!(rt.state.knobs.kbd, "a key lights the keyboard's row again");
 }

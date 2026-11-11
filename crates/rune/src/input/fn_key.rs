@@ -31,7 +31,11 @@ impl FnKey {
             unsafe {
                 let code: u16 = msg_send![event, keyCode];
                 let target: *mut NSWindow = msg_send![event, window];
-                if code == KEY_CODE_FN && view.window().is_some_and(|w| Retained::as_ptr(&w).cast_mut() == target) {
+                if code == KEY_CODE_FN
+                    && view
+                        .window()
+                        .is_some_and(|w| Retained::as_ptr(&w).cast_mut() == target)
+                {
                     let flags: usize = msg_send![event, modifierFlags];
                     seen.borrow_mut().push(flags & FLAG_FUNCTION != 0);
                 }
@@ -42,15 +46,22 @@ impl FnKey {
         let token: Option<Retained<NSObject>> = unsafe {
             msg_send_id![NSEvent::class(), addLocalMonitorForEventsMatchingMask: FLAGS_CHANGED, handler: &*handler]
         };
-        Some(Self { token: token?, changes })
+        Some(Self {
+            token: token?,
+            changes,
+        })
     }
 
-    pub(crate) fn take(&self) -> Vec<bool> { std::mem::take(&mut *self.changes.borrow_mut()) }
+    pub(crate) fn take(&self) -> Vec<bool> {
+        std::mem::take(&mut *self.changes.borrow_mut())
+    }
 }
 
 impl Drop for FnKey {
     fn drop(&mut self) {
         // SAFETY: the token came from addLocalMonitorForEventsMatchingMask.
-        unsafe { let _: () = msg_send![NSEvent::class(), removeMonitor: &*self.token]; }
+        unsafe {
+            let _: () = msg_send![NSEvent::class(), removeMonitor: &*self.token];
+        }
     }
 }

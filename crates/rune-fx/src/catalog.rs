@@ -32,18 +32,31 @@ pub struct Choice {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ParamKind {
     /// A float; `step` is a sensible slider step.
-    Number { min: f32, max: f32, step: f32, unit: Unit },
+    Number {
+        min: f32,
+        max: f32,
+        step: f32,
+        unit: Unit,
+    },
     /// A whole number.
-    Count { min: u32, max: u32 },
+    Count {
+        min: u32,
+        max: u32,
+    },
     Toggle,
     Choice(&'static [Choice]),
     Color,
     /// An ordered colour list (`Stops`).
-    Colors { min: usize, max: usize },
+    Colors {
+        min: usize,
+        max: usize,
+    },
     /// A point in the shape's rect, 0..1 on each axis.
     Point,
     /// Up to `max` points in the shape's rect (one per colour of a `Colors` param).
-    Points { max: usize },
+    Points {
+        max: usize,
+    },
 }
 
 /// A tunable param. Its default is whatever the style's `Default` (or a preset) holds: read it
@@ -228,7 +241,11 @@ impl ParamValue for Stops {
         }
     }
     fn rust(&self) -> String {
-        let hex: Vec<String> = self.as_slice().iter().map(|c| format!("0x{:06x}", c.hex())).collect();
+        let hex: Vec<String> = self
+            .as_slice()
+            .iter()
+            .map(|c| format!("0x{:06x}", c.hex()))
+            .collect();
         format!("Stops::hex(&[{}])", hex.join(", "))
     }
 }
@@ -321,7 +338,12 @@ macro_rules! params {
 pub(crate) use params;
 
 pub(crate) const fn num(min: f32, max: f32, step: f32, unit: Unit) -> ParamKind {
-    ParamKind::Number { min, max, step, unit }
+    ParamKind::Number {
+        min,
+        max,
+        step,
+        unit,
+    }
 }
 
 // ---------------------------------------------------------------- FillParams by id
@@ -329,8 +351,16 @@ pub(crate) const fn num(min: f32, max: f32, step: f32, unit: Unit) -> ParamKind 
 impl FillParams {
     /// Params every fill style has.
     pub const COMMON: &'static [Param] = &[
-        Param { id: "border", name: "Border", kind: num(0.0, 32.0, 0.5, Unit::Pt) },
-        Param { id: "intensity", name: "Intensity", kind: num(0.0, 1.0, 0.01, Unit::Fraction) },
+        Param {
+            id: "border",
+            name: "Border",
+            kind: num(0.0, 32.0, 0.5, Unit::Pt),
+        },
+        Param {
+            id: "intensity",
+            name: "Intensity",
+            kind: num(0.0, 1.0, 0.01, Unit::Fraction),
+        },
     ];
 
     /// This style's catalog entry.
@@ -368,14 +398,22 @@ impl FillParams {
                 .params
                 .iter()
                 .filter(|q| base.get_param(q.id) != self.style.get_param(q.id))
-                .filter_map(|q| self.style.rust_field(q.id).map(|v| format!("{}: {v}", q.id)))
+                .filter_map(|q| {
+                    self.style
+                        .rust_field(q.id)
+                        .map(|v| format!("{}: {v}", q.id))
+                })
                 .collect();
             if best.as_ref().is_none_or(|b| diff.len() < b.0) {
                 best = Some((diff.len(), p, diff));
             }
         }
         let (_, preset, diff) = best.expect("every style has a preset");
-        let mut s = if diff.is_empty() { preset.rust.to_string() } else { format!("{} {{ {}, ..{} }}", info.rust, diff.join(", "), preset.rust) };
+        let mut s = if diff.is_empty() {
+            preset.rust.to_string()
+        } else {
+            format!("{} {{ {}, ..{} }}", info.rust, diff.join(", "), preset.rust)
+        };
         if self.border != 0.0 {
             s += &format!(".border({})", float(self.border));
         }
@@ -507,10 +545,20 @@ mod tests {
             assert_eq!(s.default_fill().info().id, s.id);
             assert_eq!(fill_style(s.id).map(|x| x.id), Some(s.id));
             assert!(!s.presets.is_empty() && !s.params.is_empty());
-            let mut ids: Vec<_> = s.params.iter().map(|p| p.id).chain(FillParams::COMMON.iter().map(|p| p.id)).collect();
+            let mut ids: Vec<_> = s
+                .params
+                .iter()
+                .map(|p| p.id)
+                .chain(FillParams::COMMON.iter().map(|p| p.id))
+                .collect();
             ids.sort();
             ids.dedup();
-            assert_eq!(ids.len(), s.params.len() + FillParams::COMMON.len(), "{}: unique param ids", s.id);
+            assert_eq!(
+                ids.len(),
+                s.params.len() + FillParams::COMMON.len(),
+                "{}: unique param ids",
+                s.id
+            );
             let mut ps: Vec<_> = s.presets.iter().map(|p| p.id).collect();
             ps.sort();
             ps.dedup();
@@ -549,36 +597,85 @@ mod tests {
             for pr in s.presets {
                 let f = pr.fill();
                 for p in s.params.iter().chain(FillParams::COMMON) {
-                    let v = f.get(p.id).unwrap_or_else(|| panic!("{}.{} reads", s.id, p.id));
+                    let v = f
+                        .get(p.id)
+                        .unwrap_or_else(|| panic!("{}.{} reads", s.id, p.id));
                     match (p.kind, v) {
-                        (ParamKind::Number { min, max, .. }, Value::Number(x)) => assert!((min..=max).contains(&x), "{}/{}.{} = {x} outside {min}..{max}", s.id, pr.id, p.id),
-                        (ParamKind::Count { min, max }, Value::Count(n)) => assert!((min..=max).contains(&n), "{}.{}", s.id, p.id),
+                        (ParamKind::Number { min, max, .. }, Value::Number(x)) => assert!(
+                            (min..=max).contains(&x),
+                            "{}/{}.{} = {x} outside {min}..{max}",
+                            s.id,
+                            pr.id,
+                            p.id
+                        ),
+                        (ParamKind::Count { min, max }, Value::Count(n)) => {
+                            assert!((min..=max).contains(&n), "{}.{}", s.id, p.id)
+                        }
                         (ParamKind::Choice(c), Value::Choice(k)) => assert!(k < c.len()),
-                        (ParamKind::Colors { min, max }, Value::Colors(c)) => assert!((min..=max).contains(&c.len()), "{}/{}.{}", s.id, pr.id, p.id),
-                        (ParamKind::Toggle, Value::Toggle(_)) | (ParamKind::Color, Value::Color(_)) | (ParamKind::Point, Value::Point(_)) | (ParamKind::Points { .. }, Value::Points(_)) => {}
+                        (ParamKind::Colors { min, max }, Value::Colors(c)) => assert!(
+                            (min..=max).contains(&c.len()),
+                            "{}/{}.{}",
+                            s.id,
+                            pr.id,
+                            p.id
+                        ),
+                        (ParamKind::Toggle, Value::Toggle(_))
+                        | (ParamKind::Color, Value::Color(_))
+                        | (ParamKind::Point, Value::Point(_))
+                        | (ParamKind::Points { .. }, Value::Points(_)) => {}
                         (k, v) => panic!("{}.{}: {k:?} holds {v:?}", s.id, p.id),
                     }
                     let mut g = f;
                     assert!(g.set(p.id, v), "{}.{} writes", s.id, p.id);
                     assert_eq!(g, f);
-                    assert!(!g.set(p.id, Value::Point([9.0, 9.0])) || matches!(p.kind, ParamKind::Point), "{}.{} rejects the wrong kind", s.id, p.id);
-                    assert!(!g.set(p.id, Value::Number(f32::NAN)), "{}.{} rejects NaN", s.id, p.id);
-                    assert!(!g.set(p.id, Value::Number(f32::INFINITY)), "{}.{} rejects inf", s.id, p.id);
+                    assert!(
+                        !g.set(p.id, Value::Point([9.0, 9.0]))
+                            || matches!(p.kind, ParamKind::Point),
+                        "{}.{} rejects the wrong kind",
+                        s.id,
+                        p.id
+                    );
+                    assert!(
+                        !g.set(p.id, Value::Number(f32::NAN)),
+                        "{}.{} rejects NaN",
+                        s.id,
+                        p.id
+                    );
+                    assert!(
+                        !g.set(p.id, Value::Number(f32::INFINITY)),
+                        "{}.{} rejects inf",
+                        s.id,
+                        p.id
+                    );
                     // Round-trip a distinct value for every param kind.
                     let alt = match (p.kind, v) {
-                        (ParamKind::Number { min, max, .. }, Value::Number(x)) => Value::Number(if (x - max).abs() > 1e-4 { max } else { min }),
-                        (ParamKind::Count { min, max }, Value::Count(n)) => Value::Count(if n != max { max } else { min }),
-                        (ParamKind::Choice(c), Value::Choice(k)) => Value::Choice((k + 1) % c.len()),
+                        (ParamKind::Number { min, max, .. }, Value::Number(x)) => {
+                            Value::Number(if (x - max).abs() > 1e-4 { max } else { min })
+                        }
+                        (ParamKind::Count { min, max }, Value::Count(n)) => {
+                            Value::Count(if n != max { max } else { min })
+                        }
+                        (ParamKind::Choice(c), Value::Choice(k)) => {
+                            Value::Choice((k + 1) % c.len())
+                        }
                         (ParamKind::Toggle, Value::Toggle(b)) => Value::Toggle(!b),
                         (ParamKind::Color, _) => Value::Color(rgb(0x123456)),
-                        (ParamKind::Colors { max, .. }, _) => Value::Colors(Stops::hex(&[0x112233, 0x445566, 0x778899, 0xaabbcc, 0xddeeff, 0x102030][..max])),
+                        (ParamKind::Colors { max, .. }, _) => Value::Colors(Stops::hex(
+                            &[0x112233, 0x445566, 0x778899, 0xaabbcc, 0xddeeff, 0x102030][..max],
+                        )),
                         (ParamKind::Point, _) => Value::Point([0.25, 0.75]),
                         (ParamKind::Points { .. }, _) => Value::Points([[0.1, 0.2]; MAX_STOPS]),
                         _ => unreachable!(),
                     };
                     assert_ne!(alt, v, "{}.{} has a distinct test value", s.id, p.id);
                     assert!(g.set(p.id, alt), "{}.{} writes distinct value", s.id, p.id);
-                    assert_eq!(g.get(p.id), Some(alt), "{}.{} round-trips distinct value", s.id, p.id);
+                    assert_eq!(
+                        g.get(p.id),
+                        Some(alt),
+                        "{}.{} round-trips distinct value",
+                        s.id,
+                        p.id
+                    );
                     assert_ne!(g, f, "{}.{} mutates FillParams", s.id, p.id);
                 }
                 assert!(f.get("nope").is_none());
@@ -593,19 +690,29 @@ mod tests {
         assert!(p.set("flow", Value::Number(0.9)));
         assert!(p.set("tint", Value::Color(rgb(0x808080))));
         assert!(p.set("border", Value::Number(3.0)));
-        let FillStyle::LiquidMetal(m) = p.style else { unreachable!() };
+        let FillStyle::LiquidMetal(m) = p.style else {
+            unreachable!()
+        };
         assert_eq!(m.flow, 0.9);
         assert_eq!(p.border, 3.0);
-        assert!(!p.set("pattern", Value::Choice(0)), "not a liquid metal param");
+        assert!(
+            !p.set("pattern", Value::Choice(0)),
+            "not a liquid metal param"
+        );
         let mut d = FillParams::from(DitherParams::bayer());
         assert!(d.set("pattern", Value::Choice(3)));
-        let FillStyle::Dither(dp) = d.style else { unreachable!() };
+        let FillStyle::Dither(dp) = d.style else {
+            unreachable!()
+        };
         assert_eq!(dp.pattern, DitherPattern::BlueNoise);
     }
 
     /// Parse and evaluate the Rust subset emitted by `FillParams::to_rust()`.
     fn eval_emitted_rust(code: &str) -> FillParams {
-        let mut s = code.strip_prefix("Fx::fill(").and_then(|s| s.strip_suffix(')')).expect(code);
+        let mut s = code
+            .strip_prefix("Fx::fill(")
+            .and_then(|s| s.strip_suffix(')'))
+            .expect(code);
         let mut intensity = 1.0f32;
         if let Some((base, arg)) = s.rsplit_once(".intensity(") {
             intensity = arg.strip_suffix(')').expect(code).parse().expect(code);
@@ -619,8 +726,15 @@ mod tests {
         let mut fill = if let Some((ty, body)) = s.split_once(" { ") {
             let body = body.strip_suffix(" }").expect(code);
             let (fields_str, preset_rust) = body.rsplit_once(", ..").expect(code);
-            let info = fill_styles().iter().find(|i| i.rust == ty.trim()).expect(ty);
-            let preset = info.presets.iter().find(|p| p.rust == preset_rust.trim()).expect(preset_rust);
+            let info = fill_styles()
+                .iter()
+                .find(|i| i.rust == ty.trim())
+                .expect(ty);
+            let preset = info
+                .presets
+                .iter()
+                .find(|p| p.rust == preset_rust.trim())
+                .expect(preset_rust);
             let mut f = preset.fill();
             // Split top-level `field: expr` pairs outside `[...]` and `(...)`.
             let mut depth = 0i32;
@@ -639,7 +753,12 @@ mod tests {
             apply_field(&mut f, info, &fields_str[start..]);
             f
         } else {
-            fill_styles().iter().flat_map(|i| i.presets).find(|p| p.rust == s.trim()).expect(s).fill()
+            fill_styles()
+                .iter()
+                .flat_map(|i| i.presets)
+                .find(|p| p.rust == s.trim())
+                .expect(s)
+                .fill()
         };
         fill.border = border;
         fill.intensity = intensity;
@@ -653,7 +772,11 @@ mod tests {
     }
 
     fn parse_pt(s: &str) -> [f32; 2] {
-        let inner = s.trim().strip_prefix('[').and_then(|s| s.strip_suffix(']')).expect(s);
+        let inner = s
+            .trim()
+            .strip_prefix('[')
+            .and_then(|s| s.strip_suffix(']'))
+            .expect(s);
         let (x, y) = inner.split_once(',').expect(s);
         [x.trim().parse().expect(s), y.trim().parse().expect(s)]
     }
@@ -663,7 +786,10 @@ mod tests {
         let param = info.params.iter().find(|p| p.id == id).expect(id);
         let v = match param.kind {
             ParamKind::Number { .. } => {
-                assert!(val.contains('.') || val.contains('e'), "float literal has decimal or exp: {val}");
+                assert!(
+                    val.contains('.') || val.contains('e'),
+                    "float literal has decimal or exp: {val}"
+                );
                 Value::Number(val.parse().expect(val))
             }
             ParamKind::Count { .. } => Value::Count(val.parse().expect(val)),
@@ -673,17 +799,26 @@ mod tests {
                 Value::Choice(idx)
             }
             ParamKind::Color => {
-                let hex = val.strip_prefix("rgb(").and_then(|s| s.strip_suffix(')')).expect(val);
+                let hex = val
+                    .strip_prefix("rgb(")
+                    .and_then(|s| s.strip_suffix(')'))
+                    .expect(val);
                 Value::Color(rgb(parse_hex(hex)))
             }
             ParamKind::Colors { .. } => {
-                let list = val.strip_prefix("Stops::hex(&[").and_then(|s| s.strip_suffix("])")).expect(val);
+                let list = val
+                    .strip_prefix("Stops::hex(&[")
+                    .and_then(|s| s.strip_suffix("])"))
+                    .expect(val);
                 let hexes: Vec<u32> = list.split(',').map(parse_hex).collect();
                 Value::Colors(Stops::hex(&hexes))
             }
             ParamKind::Point => Value::Point(parse_pt(val)),
             ParamKind::Points { .. } => {
-                let inner = val.strip_prefix('[').and_then(|s| s.strip_suffix(']')).expect(val);
+                let inner = val
+                    .strip_prefix('[')
+                    .and_then(|s| s.strip_suffix(']'))
+                    .expect(val);
                 let mut pts = [[0.0; 2]; MAX_STOPS];
                 let mut k = 0;
                 let mut start = 0;
@@ -710,11 +845,28 @@ mod tests {
 
     #[test]
     fn rust_is_written_against_the_closest_preset_and_parses_back() {
-        assert_eq!(FillParams::from(LiquidMetalParams::gold()).to_rust(), "Fx::fill(LiquidMetalParams::gold())");
-        let f = FillParams::from(LiquidMetalParams { flow: 0.8, ..LiquidMetalParams::rose() }).border(4.0);
-        assert_eq!(f.to_rust(), "Fx::fill(LiquidMetalParams { flow: 0.8, ..LiquidMetalParams::rose() }.border(4.0))");
-        let d = FillParams::from(DitherParams { pattern: DitherPattern::Bayer8, colors: Stops::hex(&[0x000000, 0xffffff]), ..DitherParams::bayer() });
-        assert_eq!(d.to_rust(), "Fx::fill(DitherParams { pattern: DitherPattern::Bayer8, colors: Stops::hex(&[0x000000, 0xffffff]), ..DitherParams::bayer() })");
+        assert_eq!(
+            FillParams::from(LiquidMetalParams::gold()).to_rust(),
+            "Fx::fill(LiquidMetalParams::gold())"
+        );
+        let f = FillParams::from(LiquidMetalParams {
+            flow: 0.8,
+            ..LiquidMetalParams::rose()
+        })
+        .border(4.0);
+        assert_eq!(
+            f.to_rust(),
+            "Fx::fill(LiquidMetalParams { flow: 0.8, ..LiquidMetalParams::rose() }.border(4.0))"
+        );
+        let d = FillParams::from(DitherParams {
+            pattern: DitherPattern::Bayer8,
+            colors: Stops::hex(&[0x000000, 0xffffff]),
+            ..DitherParams::bayer()
+        });
+        assert_eq!(
+            d.to_rust(),
+            "Fx::fill(DitherParams { pattern: DitherPattern::Bayer8, colors: Stops::hex(&[0x000000, 0xffffff]), ..DitherParams::bayer() })"
+        );
         for s in fill_styles() {
             for p in s.presets {
                 let base = p.fill();
@@ -723,21 +875,40 @@ mod tests {
                 let mut all_changed = base.border(3.5).intensity(0.75);
                 for param in s.params {
                     let alt = match param.kind {
-                        ParamKind::Number { min, max, .. } => Value::Number((min + max) * 0.5 + 0.125),
+                        ParamKind::Number { min, max, .. } => {
+                            Value::Number((min + max) * 0.5 + 0.125)
+                        }
                         ParamKind::Count { max, .. } => Value::Count(max),
-                        ParamKind::Toggle => Value::Toggle(!matches!(base.get(param.id), Some(Value::Toggle(true)))),
+                        ParamKind::Toggle => {
+                            Value::Toggle(!matches!(base.get(param.id), Some(Value::Toggle(true))))
+                        }
                         ParamKind::Choice(c) => Value::Choice(c.len() - 1),
                         ParamKind::Color => Value::Color(rgb(0xabcdef)),
-                        ParamKind::Colors { min, .. } => Value::Colors(Stops::hex(&[0x102030, 0x405060, 0x708090, 0xa0b0c0, 0xd0e0f0, 0x112233][..min])),
+                        ParamKind::Colors { min, .. } => Value::Colors(Stops::hex(
+                            &[0x102030, 0x405060, 0x708090, 0xa0b0c0, 0xd0e0f0, 0x112233][..min],
+                        )),
                         ParamKind::Point => Value::Point([0.3, 0.7]),
                         ParamKind::Points { .. } => Value::Points([[0.25, 0.75]; MAX_STOPS]),
                     };
                     let mut one = base;
                     assert!(one.set(param.id, alt));
-                    assert_eq!(eval_emitted_rust(&one.to_rust()), one, "{}/{}.{}", s.id, p.id, param.id);
+                    assert_eq!(
+                        eval_emitted_rust(&one.to_rust()),
+                        one,
+                        "{}/{}.{}",
+                        s.id,
+                        p.id,
+                        param.id
+                    );
                     assert!(all_changed.set(param.id, alt));
                 }
-                assert_eq!(eval_emitted_rust(&all_changed.to_rust()), all_changed, "{}/{} all fields", s.id, p.id);
+                assert_eq!(
+                    eval_emitted_rust(&all_changed.to_rust()),
+                    all_changed,
+                    "{}/{} all fields",
+                    s.id,
+                    p.id
+                );
             }
         }
     }

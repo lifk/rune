@@ -54,7 +54,12 @@ thread_local! {
 
 impl FakeMicrophone {
     fn with(signal: Signal) -> Self {
-        Self { signal, permission: MicPermission::Granted, answer: MicPermission::Granted, unplug: None }
+        Self {
+            signal,
+            permission: MicPermission::Granted,
+            answer: MicPermission::Granted,
+            unplug: None,
+        }
     }
     /// Digital silence.
     pub fn silence() -> Self {
@@ -66,7 +71,10 @@ impl FakeMicrophone {
     }
     /// Mono samples at `rate` Hz (-1 to 1).
     pub fn samples(rate: u32, samples: impl Into<Vec<f32>>) -> Self {
-        Self::with(Signal::Samples { rate: rate.max(1), samples: samples.into().into() })
+        Self::with(Signal::Samples {
+            rate: rate.max(1),
+            samples: samples.into().into(),
+        })
     }
     /// A WAV file (8, 16, 24 or 32-bit PCM, or 32-bit float), mixed to mono, read when a
     /// recording starts. A file that can't be read fails the recording with the reason.
@@ -118,13 +126,31 @@ impl FakeMicrophone {
     /// The samples to record from, read once per recording.
     pub(super) fn open(&self) -> Result<Input, String> {
         Ok(match &self.signal {
-            Signal::Swell => Input { rate: RATE, kind: Kind::Swell },
-            Signal::Silence => Input { rate: RATE, kind: Kind::Silence },
-            Signal::Sine { hz, amplitude } => Input { rate: RATE, kind: Kind::Sine { hz: *hz as f64, amplitude: *amplitude as f64 } },
-            Signal::Samples { rate, samples } => Input { rate: *rate, kind: Kind::Samples(samples.clone()) },
+            Signal::Swell => Input {
+                rate: RATE,
+                kind: Kind::Swell,
+            },
+            Signal::Silence => Input {
+                rate: RATE,
+                kind: Kind::Silence,
+            },
+            Signal::Sine { hz, amplitude } => Input {
+                rate: RATE,
+                kind: Kind::Sine {
+                    hz: *hz as f64,
+                    amplitude: *amplitude as f64,
+                },
+            },
+            Signal::Samples { rate, samples } => Input {
+                rate: *rate,
+                kind: Kind::Samples(samples.clone()),
+            },
             Signal::Wav(path) => {
                 let (rate, samples) = read_wav(path)?;
-                Input { rate, kind: Kind::Samples(samples.into()) }
+                Input {
+                    rate,
+                    kind: Kind::Samples(samples.into()),
+                }
             }
         })
     }
@@ -150,7 +176,9 @@ impl Input {
         match &self.kind {
             Kind::Silence => 0.0,
             Kind::Sine { hz, amplitude } => (amplitude * (tau * hz * t).sin()) as f32,
-            Kind::Swell => (0.3 * (0.5 - 0.5 * (tau * t / 1.6).cos()) * (tau * 220.0 * t).sin()) as f32,
+            Kind::Swell => {
+                (0.3 * (0.5 - 0.5 * (tau * t / 1.6).cos()) * (tau * 220.0 * t).sin()) as f32
+            }
             Kind::Samples(s) if s.is_empty() => 0.0,
             Kind::Samples(s) => s[(i % s.len() as u64) as usize],
         }
@@ -160,9 +188,13 @@ impl Input {
 /// Writes the first `frames` samples of `input` to a 16-bit mono WAV.
 pub(super) fn write_wav(path: &Path, input: &Input, frames: u64) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("couldn't write {}: {e}", path.display());
-    let bytes = frames.checked_mul(2).filter(|b| *b <= u32::MAX as u64 - 36).ok_or_else(|| "the recording is too long for a WAV file".to_string())?;
+    let bytes = frames
+        .checked_mul(2)
+        .filter(|b| *b <= u32::MAX as u64 - 36)
+        .ok_or_else(|| "the recording is too long for a WAV file".to_string())?;
     let mut out = BufWriter::new(std::fs::File::create(path).map_err(fail)?);
-    out.write_all(&wav_header(input.rate, bytes as u32)).map_err(fail)?;
+    out.write_all(&wav_header(input.rate, bytes as u32))
+        .map_err(fail)?;
     for i in 0..frames {
         let s = (input.sample(i).clamp(-1.0, 1.0) * 32767.0).round() as i16;
         out.write_all(&s.to_le_bytes()).map_err(fail)?;
@@ -191,7 +223,9 @@ fn wav_header(rate: u32, data: u32) -> [u8; 44] {
 /// Reads a PCM or float WAV, mixed to mono: (sample rate, samples).
 pub(crate) fn read_wav(path: &Path) -> Result<(u32, Vec<f32>), String> {
     let mut bytes = Vec::new();
-    std::fs::File::open(path).and_then(|mut f| f.read_to_end(&mut bytes)).map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
+    std::fs::File::open(path)
+        .and_then(|mut f| f.read_to_end(&mut bytes))
+        .map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
     parse_wav(&bytes).map_err(|e| format!("{}: {e}", path.display()))
 }
 
@@ -213,7 +247,9 @@ pub(super) fn parse_wav(b: &[u8]) -> Result<(u32, Vec<f32>), &'static str> {
         }
         at = end.saturating_add(len & 1);
     }
-    let (Some(f), Some(data)) = (fmt, data) else { return Err("no fmt or data chunk") };
+    let (Some(f), Some(data)) = (fmt, data) else {
+        return Err("no fmt or data chunk");
+    };
     let mut format = u16_at(f);
     if format == 0xFFFE && f + 26 <= b.len() {
         format = u16_at(f + 24); // WAVE_FORMAT_EXTENSIBLE: the sub-format's first two bytes.

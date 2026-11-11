@@ -35,8 +35,19 @@ pub struct AllowRow {
 }
 
 impl AllowRow {
-    pub const fn new(kind: &'static str, element: &'static str, cell: &'static str, why: &'static str) -> Self {
-        AllowRow { kind, element, cell, why, max: None }
+    pub const fn new(
+        kind: &'static str,
+        element: &'static str,
+        cell: &'static str,
+        why: &'static str,
+    ) -> Self {
+        AllowRow {
+            kind,
+            element,
+            cell,
+            why,
+            max: None,
+        }
     }
 
     /// Covers at most `n` findings in a run; the rest fail.
@@ -46,7 +57,9 @@ impl AllowRow {
     }
 
     pub fn matches(&self, f: &Finding, cell: &str) -> bool {
-        (self.kind.is_empty() || f.kind == self.kind) && f.element.contains(self.element) && self.in_cell(cell)
+        (self.kind.is_empty() || f.kind == self.kind)
+            && f.element.contains(self.element)
+            && self.in_cell(cell)
     }
 
     fn in_cell(&self, cell: &str) -> bool {
@@ -62,7 +75,11 @@ impl From<Allow> for AllowRow {
 
 /// Why `f` in `cell` is allowed, if a row of `allow` matches it.
 pub fn allowed(allow: &[Allow], f: &Finding, cell: &str) -> Option<&'static str> {
-    allow.iter().map(|&a| AllowRow::from(a)).find(|r| r.matches(f, cell)).map(|r| r.why)
+    allow
+        .iter()
+        .map(|&a| AllowRow::from(a))
+        .find(|r| r.matches(f, cell))
+        .map(|r| r.why)
 }
 
 fn rows(allow: &[Allow]) -> Vec<AllowRow> {
@@ -73,20 +90,35 @@ fn rows(allow: &[Allow]) -> Vec<AllowRow> {
 /// recording, in the order given. `MOTION_GATE_DUMP` and `MOTION_GATE_SHEET` write evidence for
 /// the cell they name.
 pub fn run(cells: Vec<(String, Job)>, filter: &str) -> Vec<Cell> {
-    let jobs: Vec<(usize, (String, Job))> = cells.into_iter().filter(|c| c.0.contains(filter)).enumerate().collect();
+    let jobs: Vec<(usize, (String, Job))> = cells
+        .into_iter()
+        .filter(|c| c.0.contains(filter))
+        .enumerate()
+        .collect();
     let jobs = std::sync::Mutex::new(jobs);
     let out = std::sync::Mutex::new(Vec::new());
-    let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).min(12);
+    let threads = std::thread::available_parallelism()
+        .map_or(4, |n| n.get())
+        .min(12);
     std::thread::scope(|scope| {
         for _ in 0..threads {
             std::thread::Builder::new()
                 .stack_size(64 << 20)
-                .spawn_scoped(scope, || loop {
-                    let Some((i, (name, job))) = jobs.lock().unwrap().pop() else { break };
-                    let rec = job();
-                    evidence(&name, &rec, std::env::var("MOTION_GATE_OUT").ok());
-                    let cell = Cell { skipped: rec.frames < 10, frames: rec.frames, findings: check(&rec), name };
-                    out.lock().unwrap().push((i, cell));
+                .spawn_scoped(scope, || {
+                    loop {
+                        let Some((i, (name, job))) = jobs.lock().unwrap().pop() else {
+                            break;
+                        };
+                        let rec = job();
+                        evidence(&name, &rec, std::env::var("MOTION_GATE_OUT").ok());
+                        let cell = Cell {
+                            skipped: rec.frames < 10,
+                            frames: rec.frames,
+                            findings: check(&rec),
+                            name,
+                        };
+                        out.lock().unwrap().push((i, cell));
+                    }
                 })
                 .unwrap();
         }
@@ -118,8 +150,15 @@ pub(crate) fn evidence(cell: &str, rec: &Recording, out: Option<String>) {
         if let (Some(c), Some(Ok(at))) = (p.next(), p.next().map(str::parse))
             && (c.is_empty() || c == cell)
         {
-            let out = out.unwrap_or_else(|| std::env::temp_dir().join("motion-gate").display().to_string());
-            sheet(rec, at, p.next().unwrap_or("")).save(format!("{out}.sheet.png")).unwrap();
+            let out = out.unwrap_or_else(|| {
+                std::env::temp_dir()
+                    .join("motion-gate")
+                    .display()
+                    .to_string()
+            });
+            sheet(rec, at, p.next().unwrap_or(""))
+                .save(format!("{out}.sheet.png"))
+                .unwrap();
         }
     }
 }
@@ -149,7 +188,13 @@ pub fn report_rows(cells: &[Cell], rows: &[AllowRow], list_allowed: bool, secs: 
 }
 
 /// `whole`: every cell ran, so a row that matched nothing is worth listing.
-fn report_with(cells: &[Cell], rows: &[AllowRow], list_allowed: bool, whole: bool, secs: f32) -> Report {
+fn report_with(
+    cells: &[Cell],
+    rows: &[AllowRow],
+    list_allowed: bool,
+    whole: bool,
+    secs: f32,
+) -> Report {
     let mut used = vec![0usize; rows.len()];
     let mut text = String::new();
     let (mut failing, mut allowed_n) = (0, 0);
@@ -175,25 +220,45 @@ fn report_with(cells: &[Cell], rows: &[AllowRow], list_allowed: bool, whole: boo
                 _ => {
                     failing += 1;
                     failed_kinds.push(f.kind);
-                    let past = over.map_or(String::new(), |m| format!("  (past its allow row's max of {m})"));
+                    let past = over.map_or(String::new(), |m| {
+                        format!("  (past its allow row's max of {m})")
+                    });
                     text += &format!("{}  in {}{past}\n", f, c.name);
                 }
             }
         }
     }
     let ran = |r: &AllowRow| cells.iter().any(|c| !c.skipped && r.in_cell(&c.name));
-    let unused: Vec<&AllowRow> = rows.iter().zip(&used).filter(|(r, n)| whole && **n == 0 && ran(r)).map(|(r, _)| r).collect();
+    let unused: Vec<&AllowRow> = rows
+        .iter()
+        .zip(&used)
+        .filter(|(r, n)| whole && **n == 0 && ran(r))
+        .map(|(r, _)| r)
+        .collect();
     for r in &unused {
-        text += &format!("unused allow row (\"{}\", \"{}\", \"{}\"): {}\n", r.kind, r.element, r.cell, r.why);
+        text += &format!(
+            "unused allow row (\"{}\", \"{}\", \"{}\"): {}\n",
+            r.kind, r.element, r.cell, r.why
+        );
     }
     let frames: usize = cells.iter().map(|c| c.frames).sum();
-    let summary = format!("motion gate: {} cells, {frames} frames, {failing} findings ({allowed_n} allowed, {} unused allow rows) in {secs:.1} s\n", cells.len(), unused.len());
+    let summary = format!(
+        "motion gate: {} cells, {frames} frames, {failing} findings ({allowed_n} allowed, {} unused allow rows) in {secs:.1} s\n",
+        cells.len(),
+        unused.len()
+    );
     failed_kinds.sort();
     failed_kinds.dedup();
     for r in RULES.iter().filter(|r| failed_kinds.contains(&r.kind)) {
         text += &format!("  {}: {} ({})\n", r.kind, r.means, r.threshold);
     }
-    Report { text: summary.clone() + &text, summary, failing, allowed: allowed_n, unused: unused.len() }
+    Report {
+        text: summary.clone() + &text,
+        summary,
+        failing,
+        allowed: allowed_n,
+        unused: unused.len(),
+    }
 }
 
 /// The gate as a test: runs the cells `MOTION_GATE` keeps, writes the report to
@@ -208,7 +273,13 @@ pub fn gate_rows(cells: Vec<(String, Job)>, allow: &[AllowRow]) {
     let filter = std::env::var("MOTION_GATE").unwrap_or_default();
     let started = Instant::now();
     let cells = run(cells, &filter);
-    let r = report_with(&cells, allow, std::env::var_os("MOTION_GATE_ALLOWED").is_some(), filter.is_empty(), started.elapsed().as_secs_f32());
+    let r = report_with(
+        &cells,
+        allow,
+        std::env::var_os("MOTION_GATE_ALLOWED").is_some(),
+        filter.is_empty(),
+        started.elapsed().as_secs_f32(),
+    );
     if let Ok(path) = std::env::var("MOTION_GATE_OUT") {
         std::fs::write(path, &r.text).unwrap();
     }

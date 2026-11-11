@@ -21,12 +21,22 @@ impl SelectionStyle {
     /// over white), with white text, and #323232 text while the window is inactive.
     pub fn chromium() -> Self {
         let c = |h: &str| crate::color::hex(h).unwrap_or(Color::TRANSPARENT);
-        SelectionStyle { active: c("#0041c6cc"), active_ink: Some(Color::WHITE), inactive: c("#bababacc"), inactive_ink: Some(c("#323232")) }
+        SelectionStyle {
+            active: c("#0041c6cc"),
+            active_ink: Some(Color::WHITE),
+            inactive: c("#bababacc"),
+            inactive_ink: Some(c("#323232")),
+        }
     }
 
     /// `highlight` under the selected text, active or not, the text keeping its colours.
     pub const fn new(highlight: Color) -> Self {
-        SelectionStyle { active: highlight, active_ink: None, inactive: highlight, inactive_ink: None }
+        SelectionStyle {
+            active: highlight,
+            active_ink: None,
+            inactive: highlight,
+            inactive_ink: None,
+        }
     }
 
     /// The selected glyphs take `ink` while the window is active.
@@ -44,6 +54,10 @@ impl SelectionStyle {
 
     /// The highlight and ink for a window that is `active`.
     pub(crate) fn pick(&self, active: bool) -> (Color, Option<Color>) {
-        if active { (self.active, self.active_ink) } else { (self.inactive, self.inactive_ink) }
+        if active {
+            (self.active, self.active_ink)
+        } else {
+            (self.inactive, self.inactive_ink)
+        }
     }
 }

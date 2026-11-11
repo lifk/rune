@@ -25,7 +25,14 @@ pub struct Track {
 }
 
 impl Track {
-    pub fn new(spring: Spring, time: f64, from: f32, target: f32, velocity: f32, epsilon: f32) -> Self {
+    pub fn new(
+        spring: Spring,
+        time: f64,
+        from: f32,
+        target: f32,
+        velocity: f32,
+        epsilon: f32,
+    ) -> Self {
         assert!([from, target, velocity].iter().all(|v| v.is_finite()));
         let duration = spring.settling_duration_from(from, velocity, target, epsilon);
         let a = from - target;
@@ -40,7 +47,11 @@ impl Track {
             let sigma = z * w;
             let wd = w * (1.0 - z * z).sqrt();
             let b = (velocity + sigma * a) / wd;
-            (1, [a, b, b * wd - sigma * a, -a * wd - sigma * b], [sigma, wd])
+            (
+                1,
+                [a, b, b * wd - sigma * a, -a * wd - sigma * b],
+                [sigma, wd],
+            )
         } else {
             let root = (z * z - 1.0).sqrt();
             let r1 = -w * (z - root);
@@ -49,7 +60,15 @@ impl Track {
             (3, [c1, a - c1, r1, r2], [0.0; 2])
         };
         assert!(abcd.iter().chain(rates.iter()).all(|x| x.is_finite()));
-        Self { abcd, rates, target, kind, start: split_time(time), duration, pad: 0.0 }
+        Self {
+            abcd,
+            rates,
+            target,
+            kind,
+            start: split_time(time),
+            duration,
+            pad: 0.0,
+        }
     }
 
     pub fn constant(value: f32) -> Self {
@@ -71,7 +90,10 @@ pub struct Node {
 
 impl Node {
     pub fn settle_at(&self) -> f64 {
-        self.x.settle_at().max(self.y.settle_at()).max(self.opacity.settle_at())
+        self.x
+            .settle_at()
+            .max(self.y.settle_at())
+            .max(self.opacity.settle_at())
     }
 }
 
@@ -99,7 +121,12 @@ impl Bindings {
         })
     }
 
-    pub fn new(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, nodes: &[Node], ids: &[u32]) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        nodes: &[Node],
+        ids: &[u32],
+    ) -> Self {
         use wgpu::util::DeviceExt;
         assert!(!nodes.is_empty() && !ids.is_empty());
         assert!(ids.iter().all(|&id| (id as usize) < nodes.len()));
@@ -119,11 +146,22 @@ impl Bindings {
             label: Some("spring properties"),
             layout,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: nodes.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: ids.as_entire_binding() },
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: nodes.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: ids.as_entire_binding(),
+                },
             ],
         });
-        Self { group, nodes, deadlines, settle_at }
+        Self {
+            group,
+            nodes,
+            deadlines,
+            settle_at,
+        }
     }
 }
 

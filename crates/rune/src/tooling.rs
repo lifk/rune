@@ -12,7 +12,9 @@ use crate::render::write_png;
 use crate::runtime::{Cx, Env, Runtime, Waker};
 use crate::text::TextSystem;
 
-pub use crate::tooling::headless_run::{HeadlessRun, PointerAction, ScriptEvent, ScriptPoint, TimedEvent, WindowFrame, headless_run};
+pub use crate::tooling::headless_run::{
+    HeadlessRun, PointerAction, ScriptEvent, ScriptPoint, TimedEvent, WindowFrame, headless_run,
+};
 
 pub struct AppSpec<S: 'static> {
     pub title: &'static str,
@@ -42,7 +44,12 @@ pub struct AppSpec<S: 'static> {
 impl<S: 'static> AppSpec<S> {
     /// The required parts; everything else at its default. Literals that set a few more fields
     /// end with `..AppSpec::new(..)`, so new fields don't break them.
-    pub fn new(title: &'static str, size: (f32, f32), init: fn() -> S, view: fn(&S, &mut Cx<S>) -> El) -> Self {
+    pub fn new(
+        title: &'static str,
+        size: (f32, f32),
+        init: fn() -> S,
+        view: fn(&S, &mut Cx<S>) -> El,
+    ) -> Self {
         AppSpec {
             title,
             size,
@@ -80,7 +87,11 @@ pub struct Chrome {
 }
 
 impl Chrome {
-    pub const DEFAULT: Chrome = Chrome { full_size_content: true, traffic_lights: None, drag_regions: false };
+    pub const DEFAULT: Chrome = Chrome {
+        full_size_content: true,
+        traffic_lights: None,
+        drag_regions: false,
+    };
     /// Headless `--chrome` overlay and checks: macOS 26 draws 14 pt buttons on a 23 pt pitch.
     pub const TRAFFIC_LIGHT: f32 = 14.0;
     pub const TRAFFIC_PITCH: f32 = 23.0;
@@ -92,13 +103,21 @@ impl Chrome {
             return None;
         }
         let (x, y) = self.traffic_lights.unwrap_or((7.0, 6.0));
-        Some(std::array::from_fn(|i| [x + i as f32 * Self::TRAFFIC_PITCH, y, Self::TRAFFIC_LIGHT, Self::TRAFFIC_LIGHT]))
+        Some(std::array::from_fn(|i| {
+            [
+                x + i as f32 * Self::TRAFFIC_PITCH,
+                y,
+                Self::TRAFFIC_LIGHT,
+                Self::TRAFFIC_LIGHT,
+            ]
+        }))
     }
 
     /// The trailing edge of [`Chrome::traffic_light_rects`]' zoom button, or 0 without them:
     /// what [`Cx::titlebar_inset`](crate::Cx::titlebar_inset) reports in a headless run.
     pub fn titlebar_inset(&self) -> f32 {
-        self.traffic_light_rects().map_or(0.0, |r| r[2][0] + r[2][2])
+        self.traffic_light_rects()
+            .map_or(0.0, |r| r[2][0] + r[2][2])
     }
 }
 
@@ -128,11 +147,19 @@ pub(crate) fn app_id() -> Option<&'static str> {
 /// included. The first read wins, so an app that passes `App::args` reads this after `run`
 /// starts.
 pub fn extra_args() -> &'static [String] {
-    if EXTRA.get().is_none() { Args::parse(); }
+    if EXTRA.get().is_none() {
+        Args::parse();
+    }
     EXTRA.get().map_or(&[], |v| v.as_slice())
 }
 
-pub(crate) fn runtime_for<S: 'static>(spec: &AppSpec<S>, state: S, size: (f32, f32), env: Env, waker: Waker) -> Runtime<S> {
+pub(crate) fn runtime_for<S: 'static>(
+    spec: &AppSpec<S>,
+    state: S,
+    size: (f32, f32),
+    env: Env,
+    waker: Waker,
+) -> Runtime<S> {
     let text = TextSystem::for_window(spec.fonts, spec.families);
     let mut rt = Runtime::with_text(state, spec.view, size, env, text);
     rt.poll = spec.poll;
@@ -168,15 +195,15 @@ mod strip;
 #[path = "tooling/trace.rs"]
 mod trace;
 
-pub use args::{Args, is_headless};
 pub(crate) use args::*;
+pub use args::{Args, is_headless};
 pub use headless::headless;
 pub(crate) use headless::*;
 pub(crate) use key_names::{key_named, script_key_base, script_mods};
 use script::parse_script;
 pub(crate) use strip::*;
-pub(crate) use trace::{FrameTiming, Trace, tree_json};
 use trace::r2;
+pub(crate) use trace::{FrameTiming, Trace, tree_json};
 
 /// Opens the app's window and quits when it closes (`App` for other lifetimes), or renders
 /// headless for the tooling arguments.
@@ -190,40 +217,64 @@ pub fn run<S: 'static>(spec: AppSpec<S>) {
 /// Create independent windows from a display-aware factory. Headless tools invoke the same
 /// factory with one virtual display and select one retained tree using `--window KEY`.
 /// Windows may have different state types: return `AnyWindowSpec`s (`WindowSpec::boxed`).
-pub fn run_windows<I: IntoIterator<Item: Into<crate::AnyWindowSpec>>>(factory: impl FnOnce(&[crate::Display]) -> I + 'static) {
+pub fn run_windows<I: IntoIterator<Item: Into<crate::AnyWindowSpec>>>(
+    factory: impl FnOnce(&[crate::Display]) -> I + 'static,
+) {
     run_windows_with(crate::RunOptions::default(), factory);
 }
 
 /// Run a window factory with process-level options, such as macOS accessory activation.
-pub fn run_windows_with<I: IntoIterator<Item: Into<crate::AnyWindowSpec>>>(options: crate::RunOptions, factory: impl FnOnce(&[crate::Display]) -> I + 'static) {
+pub fn run_windows_with<I: IntoIterator<Item: Into<crate::AnyWindowSpec>>>(
+    options: crate::RunOptions,
+    factory: impl FnOnce(&[crate::Display]) -> I + 'static,
+) {
     started(try_run_windows_with(options, factory));
 }
 
 /// `run_windows_with`, returning an error instead of panicking when the event loop can't start
 /// (no display over ssh or in CI, no Wayland or X11 server) or fails.
-pub fn try_run_windows_with<I: IntoIterator<Item: Into<crate::AnyWindowSpec>>>(options: crate::RunOptions, factory: impl FnOnce(&[crate::Display]) -> I + 'static) -> Result<(), String> {
+pub fn try_run_windows_with<I: IntoIterator<Item: Into<crate::AnyWindowSpec>>>(
+    options: crate::RunOptions,
+    factory: impl FnOnce(&[crate::Display]) -> I + 'static,
+) -> Result<(), String> {
     run_window_factory(options, window_args(None, Args::parse), erase(factory))
 }
 
 /// Run a window factory with explicit Rune arguments, without reading the host CLI.
 /// Pass `[]` to isolate an embedding application's flags before display discovery.
-pub fn run_windows_with_args<I: IntoIterator<Item: Into<crate::AnyWindowSpec>>>(options: crate::RunOptions, args: impl IntoIterator<Item = String>, factory: impl FnOnce(&[crate::Display]) -> I + 'static) {
+pub fn run_windows_with_args<I: IntoIterator<Item: Into<crate::AnyWindowSpec>>>(
+    options: crate::RunOptions,
+    args: impl IntoIterator<Item = String>,
+    factory: impl FnOnce(&[crate::Display]) -> I + 'static,
+) {
     started(try_run_windows_with_args(options, args, factory));
 }
 
 /// `run_windows_with_args`, returning an error instead of panicking when the event loop can't
 /// start or fails.
-pub fn try_run_windows_with_args<I: IntoIterator<Item: Into<crate::AnyWindowSpec>>>(options: crate::RunOptions, args: impl IntoIterator<Item = String>, factory: impl FnOnce(&[crate::Display]) -> I + 'static) -> Result<(), String> {
-    run_window_factory(options, window_args(Some(args.into_iter().collect()), Args::parse), erase(factory))
+pub fn try_run_windows_with_args<I: IntoIterator<Item: Into<crate::AnyWindowSpec>>>(
+    options: crate::RunOptions,
+    args: impl IntoIterator<Item = String>,
+    factory: impl FnOnce(&[crate::Display]) -> I + 'static,
+) -> Result<(), String> {
+    run_window_factory(
+        options,
+        window_args(Some(args.into_iter().collect()), Args::parse),
+        erase(factory),
+    )
 }
 
 fn started(result: Result<(), String>) {
-    if let Err(error) = result { panic!("{error}"); }
+    if let Err(error) = result {
+        panic!("{error}");
+    }
 }
 
 type Factory = Box<dyn FnOnce(&[crate::Display]) -> Vec<crate::AnyWindowSpec>>;
 
-fn erase<I: IntoIterator<Item: Into<crate::AnyWindowSpec>>>(factory: impl FnOnce(&[crate::Display]) -> I + 'static) -> Factory {
+fn erase<I: IntoIterator<Item: Into<crate::AnyWindowSpec>>>(
+    factory: impl FnOnce(&[crate::Display]) -> I + 'static,
+) -> Factory {
     Box::new(move |displays| factory(displays).into_iter().map(Into::into).collect())
 }
 
@@ -231,7 +282,11 @@ pub(crate) fn window_args(args: Option<Vec<String>>, process: impl FnOnce() -> A
     args.map_or_else(process, Args::parse_from)
 }
 
-fn run_window_factory(options: crate::RunOptions, args: Args, factory: Factory) -> Result<(), String> {
+fn run_window_factory(
+    options: crate::RunOptions,
+    args: Args,
+    factory: Factory,
+) -> Result<(), String> {
     if args.headless() {
         crate::render::discard_prewarm();
         let displays = desktop(&args, read_script(&args).as_ref()).displays();
@@ -243,15 +298,25 @@ fn run_window_factory(options: crate::RunOptions, args: Args, factory: Factory) 
 
 /// Lists the windows, or renders the one `--window KEY` selects (the first by default) with its
 /// own state. Windows that apps added with `App::window` are selectable too.
-fn headless_window(windows: Vec<crate::AnyWindowSpec>, displays: &[crate::Display], args: Args, options: crate::RunOptions) -> Result<(), String> {
+fn headless_window(
+    windows: Vec<crate::AnyWindowSpec>,
+    displays: &[crate::Display],
+    args: Args,
+    options: crate::RunOptions,
+) -> Result<(), String> {
     let mut windows = crate::windows::flatten(windows);
     crate::windows::validate(&windows).unwrap_or_else(|e| die(&e));
     if args.list_windows {
-        for window in windows { println!("{}", window.key()); }
+        for window in windows {
+            println!("{}", window.key());
+        }
         return Ok(());
     }
     let index = match args.window.as_deref() {
-        Some(key) => windows.iter().position(|w| w.key() == key).unwrap_or_else(|| die(&format!("no window {key:?}; use --list-windows"))),
+        Some(key) => windows
+            .iter()
+            .position(|w| w.key() == key)
+            .unwrap_or_else(|| die(&format!("no window {key:?}; use --list-windows"))),
         None if !windows.is_empty() => 0,
         None => die("the app created no windows"),
     };
@@ -265,7 +330,11 @@ fn headless_window(windows: Vec<crate::AnyWindowSpec>, displays: &[crate::Displa
     if !args.headless() {
         return crate::window::run_windows(Box::new(move |_| vec![window]), args, options);
     }
-    let scale = displays.iter().find(|d| d.primary).unwrap_or(&displays[0]).scale;
+    let scale = displays
+        .iter()
+        .find(|d| d.primary)
+        .unwrap_or(&displays[0])
+        .scale;
     window.headless(args, scale as f32);
     Ok(())
 }
@@ -350,17 +419,33 @@ pub(crate) enum Kind {
 
 impl Kind {
     /// A press that later `Rel` positions are relative to.
-    pub(crate) fn is_down(&self) -> bool { matches!(self, Kind::Down | Kind::SecondaryDown | Kind::ButtonDown(_)) }
-    pub(crate) fn is_up(&self) -> bool { matches!(self, Kind::Up | Kind::SecondaryUp | Kind::ButtonUp(_)) }
+    pub(crate) fn is_down(&self) -> bool {
+        matches!(self, Kind::Down | Kind::SecondaryDown | Kind::ButtonDown(_))
+    }
+    pub(crate) fn is_up(&self) -> bool {
+        matches!(self, Kind::Up | Kind::SecondaryUp | Kind::ButtonUp(_))
+    }
     /// Without a position it lands where the pointer is, not at the last press.
     pub(crate) fn at_pointer(&self) -> bool {
-        matches!(self, Kind::Wheel(..) | Kind::Fling(..) | Kind::WheelEvent(_) | Kind::Magnify(_) | Kind::Rotate(_) | Kind::SmartMagnify)
+        matches!(
+            self,
+            Kind::Wheel(..)
+                | Kind::Fling(..)
+                | Kind::WheelEvent(_)
+                | Kind::Magnify(_)
+                | Kind::Rotate(_)
+                | Kind::SmartMagnify
+        )
     }
 }
 
 /// The canvas input of a script (`canvas_input.rs`) at window point (x, y); false for any
 /// other kind.
-pub(crate) fn canvas_input<S: 'static>(rt: &mut Runtime<S>, kind: &Kind, (x, y): (f32, f32)) -> bool {
+pub(crate) fn canvas_input<S: 'static>(
+    rt: &mut Runtime<S>,
+    kind: &Kind,
+    (x, y): (f32, f32),
+) -> bool {
     match kind {
         Kind::WheelEvent(ev) => rt.wheel_event(ev.at(x, y)),
         Kind::Magnify(ev) => rt.magnify_event(ev.at(x, y)),
@@ -368,7 +453,9 @@ pub(crate) fn canvas_input<S: 'static>(rt: &mut Runtime<S>, kind: &Kind, (x, y):
         Kind::SmartMagnify => rt.smart_magnify(x, y),
         Kind::ButtonDown(b) => rt.button_down(x, y, *b),
         Kind::ButtonUp(b) => rt.button_up(x, y, *b),
-        Kind::KeyUp(k) => { rt.key_up(k.clone()); }
+        Kind::KeyUp(k) => {
+            rt.key_up(k.clone());
+        }
         Kind::PhysicalKey(event, k, base) => rt.physical_key_input(*event, k.clone(), *base),
         _ => return false,
     }
@@ -385,7 +472,11 @@ pub(crate) enum FileStep {
 /// A scripted wheel delta: vertical-only ones take the plain vertical path, unless an
 /// `on_wheel` handler may take them.
 pub(crate) fn wheel<S: 'static>(rt: &mut Runtime<S>, (x, y): (f32, f32), dx: f32, dy: f32) {
-    if dx == 0.0 && !rt.hears_wheel() { rt.wheel(x, y, dy) } else { rt.wheel_xy(x, y, dx, dy) }
+    if dx == 0.0 && !rt.hears_wheel() {
+        rt.wheel(x, y, dy)
+    } else {
+        rt.wheel_xy(x, y, dx, dy)
+    }
 }
 
 fn script_phase(e: &Value) -> crate::GesturePhase {
@@ -393,13 +484,19 @@ fn script_phase(e: &Value) -> crate::GesturePhase {
         "began" => crate::GesturePhase::Began,
         "moved" => crate::GesturePhase::Moved,
         "ended" => crate::GesturePhase::Ended,
-        other => die(&format!("unknown gesture phase {other}; use began, moved or ended")),
+        other => die(&format!(
+            "unknown gesture phase {other}; use began, moved or ended"
+        )),
     }
 }
 
 /// A scripted release velocity: vertical-only ones take the plain vertical path.
 pub(crate) fn fling<S: 'static>(rt: &mut Runtime<S>, (x, y): (f32, f32), vx: f32, vy: f32) {
-    if vx == 0.0 { rt.fling(x, y, vy) } else { rt.fling_xy(x, y, vx, vy) }
+    if vx == 0.0 {
+        rt.fling(x, y, vy)
+    } else {
+        rt.fling_xy(x, y, vx, vy)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -433,9 +530,13 @@ impl Ev {
             Kind::Up => pointer(PointerAction::Up),
             Kind::SecondaryDown => pointer(PointerAction::SecondaryDown),
             Kind::SecondaryUp => pointer(PointerAction::SecondaryUp),
-            Kind::Key(key, repeat) => ScriptEvent::Key { key: key.clone(), repeat: *repeat },
+            Kind::Key(key, repeat) => ScriptEvent::Key {
+                key: key.clone(),
+                repeat: *repeat,
+            },
             Kind::PhysicalKey(event, key, _) => ScriptEvent::Key {
-                key: key.clone(), repeat: matches!(event, crate::PhysicalInput::Key { repeat: true, .. }),
+                key: key.clone(),
+                repeat: matches!(event, crate::PhysicalInput::Key { repeat: true, .. }),
             },
             Kind::Paste(content) if content.is_rich() => ScriptEvent::PasteContent(content.clone()),
             Kind::Paste(content) => ScriptEvent::Paste(content.text().to_owned()),
@@ -443,8 +544,14 @@ impl Ev {
             Kind::Wheel(dx, dy) => pointer(PointerAction::ScrollXy(*dx, *dy)),
             Kind::Fling(0.0, v) => pointer(PointerAction::Fling(*v)),
             Kind::Fling(vx, vy) => pointer(PointerAction::FlingXy(*vx, *vy)),
-            Kind::Files(FileStep::Hover(paths)) => ScriptEvent::DragFiles { paths: paths.clone(), at: at() },
-            Kind::Files(FileStep::Drop(paths)) => ScriptEvent::DropFiles { paths: paths.clone(), at: at() },
+            Kind::Files(FileStep::Hover(paths)) => ScriptEvent::DragFiles {
+                paths: paths.clone(),
+                at: at(),
+            },
+            Kind::Files(FileStep::Drop(paths)) => ScriptEvent::DropFiles {
+                paths: paths.clone(),
+                at: at(),
+            },
             Kind::Files(FileStep::Leave) => ScriptEvent::DragFilesLeave,
             Kind::WheelEvent(ev) => pointer(PointerAction::Wheel(*ev)),
             Kind::Magnify(ev) => pointer(PointerAction::Magnify(*ev)),
@@ -461,29 +568,38 @@ impl Ev {
 
 pub(crate) fn read_script(args: &Args) -> Option<Value> {
     args.script.as_ref().map(|path| {
-        let text = std::fs::read_to_string(path).unwrap_or_else(|e| die(&format!("{}: {e}", path.display())));
+        let text = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| die(&format!("{}: {e}", path.display())));
         serde_json::from_str(&text).unwrap_or_else(|e| die(&format!("{}: {e}", path.display())))
     })
 }
 
 pub(crate) fn load_script(script: &Value) -> Vec<Ev> {
-    let list = match script { Value::Object(o) => o.get("events").cloned().unwrap_or_else(|| json!([])), v => v.clone() };
+    let list = match script {
+        Value::Object(o) => o.get("events").cloned().unwrap_or_else(|| json!([])),
+        v => v.clone(),
+    };
     parse_script(list)
 }
 
 /// The script's displays and pointer, which headless `place()` resolves against. Without
 /// scripted displays, a `--desktop` run has one display the size of its output: `--size`, else
 /// the backdrop's pixels at `--scale`.
-pub(crate) fn desktop(args: &Args, script: Option<&Value>) -> crate::desktop::displays::VirtualDesktop {
+pub(crate) fn desktop(
+    args: &Args,
+    script: Option<&Value>,
+) -> crate::desktop::displays::VirtualDesktop {
     let scale = f64::from(args.scale.unwrap_or(2.0));
     let size = args.desktop.as_ref().map(|path| match args.size {
         Some((w, h)) => (f64::from(w), f64::from(h)),
         None => {
-            let (w, h) = ::image::image_dimensions(path).unwrap_or_else(|e| die(&format!("{}: {e}", path.display())));
+            let (w, h) = ::image::image_dimensions(path)
+                .unwrap_or_else(|e| die(&format!("{}: {e}", path.display())));
             (f64::from(w) / scale, f64::from(h) / scale)
         }
     });
-    crate::desktop::displays::VirtualDesktop::from_script_sized(script, scale, size).unwrap_or_else(|e| die(&e))
+    crate::desktop::displays::VirtualDesktop::from_script_sized(script, scale, size)
+        .unwrap_or_else(|e| die(&e))
 }
 
 /// Feeds a script's file drag step to `rt`, at `at` in window points.

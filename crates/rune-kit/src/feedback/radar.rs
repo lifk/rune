@@ -39,7 +39,8 @@ type Stops = Vec<(f64, f64)>;
 
 fn layout() -> Vec<Dot> {
     let trail = trail();
-    let cells: Vec<(i32, i32)> = (0..SPAN * SPAN).map(|i| (i % SPAN - (SPAN - 1) / 2, i / SPAN - (SPAN - 1) / 2)).collect();
+    let cells: Vec<(i32, i32)> =
+        (0..SPAN * SPAN).map(|i| (i % SPAN - (SPAN - 1) / 2, i / SPAN - (SPAN - 1) / 2)).collect();
     let steady = |c: (i32, i32)| c == (0, 0);
     let ring = |(gx, gy): (i32, i32)| gx.abs().max(gy.abs());
     // Each dot's shape depends on how far it sits from its neighbours on its ring, in loop fractions.
@@ -49,7 +50,8 @@ fn layout() -> Vec<Dot> {
             if steady(c) {
                 return None;
             }
-            let others: Vec<f64> = cells.iter().filter(|&&o| o != c && !steady(o) && ring(o) == ring(c)).map(|&o| angle(o)).collect();
+            let others: Vec<f64> =
+                cells.iter().filter(|&&o| o != c && !steady(o) && ring(o) == ring(c)).map(|&o| angle(o)).collect();
             let behind = others.iter().map(|&o| frac(angle(c) - o)).fold(f64::INFINITY, f64::min);
             let ahead = others.iter().map(|&o| frac(o - angle(c))).fold(f64::INFINITY, f64::min);
             Some((round(behind), round(ahead)))
@@ -61,11 +63,15 @@ fn layout() -> Vec<Dot> {
             unique.push(*key);
         }
     }
-    let shapes: Vec<Stops> = unique.iter().map(|&(behind, ahead)| head_stops(&trail, behind * 100.0, ahead * 100.0)).collect();
+    let shapes: Vec<Stops> =
+        unique.iter().map(|&(behind, ahead)| head_stops(&trail, behind * 100.0, ahead * 100.0)).collect();
     let frames: Vec<&'static [(f32, f32)]> = shapes
         .iter()
         .map(|stops| {
-            let frames: Vec<(f32, f32)> = stops.iter().map(|&(percent, level)| ((round(percent) / 100.0) as f32, round(DIM + (1.0 - DIM) * level) as f32)).collect();
+            let frames: Vec<(f32, f32)> = stops
+                .iter()
+                .map(|&(percent, level)| ((round(percent) / 100.0) as f32, round(DIM + (1.0 - DIM) * level) as f32))
+                .collect();
             &*Box::leak(frames.into_boxed_slice())
         })
         .collect();
@@ -85,7 +91,13 @@ fn layout() -> Vec<Dot> {
                 still,
                 // Every dot shares one loop on the wall clock, so all spinners on screen stay in
                 // phase (`syncSpinPhase`); a dot lights `at` of the way around.
-                cycle: key.map(|_| Cycle { period: LOOP, phase: round(at) as f32, stops: frames[shape], still, fps: FPS }),
+                cycle: key.map(|_| Cycle {
+                    period: LOOP,
+                    phase: round(at) as f32,
+                    stops: frames[shape],
+                    still,
+                    fps: FPS,
+                }),
             }
         })
         .collect()

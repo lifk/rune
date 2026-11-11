@@ -46,7 +46,10 @@ impl MaterialDraw {
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub(crate) fn points(&self, scale: f32) -> ([f64; 4], f64) {
         let s = f64::from(scale.max(1e-3));
-        (self.rect.map(|v| f64::from(v) / s), f64::from(self.radius) / s)
+        (
+            self.rect.map(|v| f64::from(v) / s),
+            f64::from(self.radius) / s,
+        )
     }
 }
 
@@ -54,7 +57,10 @@ impl MaterialDraw {
 /// of the same material, else none (the caller makes one). `views` holds each view's material
 /// and the element it showed last; `draws` each draw's material and element.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-pub(crate) fn assign(views: &[(SystemMaterial, Option<NodeId>)], draws: &[(SystemMaterial, NodeId)]) -> Vec<Option<usize>> {
+pub(crate) fn assign(
+    views: &[(SystemMaterial, Option<NodeId>)],
+    draws: &[(SystemMaterial, NodeId)],
+) -> Vec<Option<usize>> {
     let mut taken = vec![false; views.len()];
     let mut out = vec![None; draws.len()];
     for (slot, &(material, id)) in out.iter_mut().zip(draws) {
@@ -64,7 +70,9 @@ pub(crate) fn assign(views: &[(SystemMaterial, Option<NodeId>)], draws: &[(Syste
         }
     }
     for (slot, &(material, _)) in out.iter_mut().zip(draws) {
-        if slot.is_some() { continue; }
+        if slot.is_some() {
+            continue;
+        }
         if let Some(v) = (0..views.len()).find(|&v| !taken[v] && views[v].0 == material) {
             taken[v] = true;
             *slot = Some(v);
@@ -111,21 +119,44 @@ impl PresentFlag {
 
     fn write(&mut self) -> Option<bool> {
         let on = self.moving || self.materials || self.live;
-        (on != self.written).then(|| { self.written = on; on })
+        (on != self.written).then(|| {
+            self.written = on;
+            on
+        })
     }
 }
 
 /// One corner radius for a rect: native materials take a single radius, so this uses the
 /// largest corner, clamped to half the shorter side as Rune's own rounded rects are.
 pub(crate) fn clamp_radius(radii: [f32; 4], width: f32, height: f32) -> f32 {
-    radii.into_iter().fold(0.0f32, f32::max).min(width.min(height) * 0.5).max(0.0)
+    radii
+        .into_iter()
+        .fold(0.0f32, f32::max)
+        .min(width.min(height) * 0.5)
+        .max(0.0)
 }
 
 /// What a material element paints in Rune's own surface when no native view backs it: its
 /// fill, or a neutral tint close to the material's average look when it has none.
 pub(crate) fn fallback_fill(fill: Color, dark: bool) -> Color {
-    if fill.a > 0.0 { return fill; }
-    if dark { Color { r: 0.16, g: 0.16, b: 0.17, a: 0.94 } } else { Color { r: 0.96, g: 0.96, b: 0.97, a: 0.94 } }
+    if fill.a > 0.0 {
+        return fill;
+    }
+    if dark {
+        Color {
+            r: 0.16,
+            g: 0.16,
+            b: 0.17,
+            a: 0.94,
+        }
+    } else {
+        Color {
+            r: 0.96,
+            g: 0.96,
+            b: 0.97,
+            a: 0.94,
+        }
+    }
 }
 
 /// How the shell hosts materials, from `RUNE_SYSTEM_MATERIAL`: unset for native views synced

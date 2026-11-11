@@ -55,14 +55,24 @@ pub(super) struct Motion {
 /// `p`'s motion toward `rest`, the rect the scene gives while the node is moving. An anchored
 /// element is placed from its anchor, not its frame, so its frame's motion doesn't move it; a
 /// growth row draws its bottom edge at its top plus its current height.
-pub(super) fn motion(p: &Presented, rest: Option<Rect>, s: f32, anchored: bool, growth_row: bool) -> Option<Motion> {
+pub(super) fn motion(
+    p: &Presented,
+    rest: Option<Rect>,
+    s: f32,
+    anchored: bool,
+    growth_row: bool,
+) -> Option<Motion> {
     let rest = rest.filter(|_| !anchored)?;
     let (a, b) = (p.rect.edges(), rest.edges());
     let mut by: [f32; 4] = core::array::from_fn(|k| (a[k] - b[k]) * s);
     if growth_row {
         by[3] = by[1];
     }
-    Some(Motion { by, rest: b, k: 1.0 })
+    Some(Motion {
+        by,
+        rest: b,
+        k: 1.0,
+    })
 }
 
 /// How far a gliding box's top (device px) sits below its nearest whole pixel: its glyphs lay
@@ -100,7 +110,11 @@ impl Glide {
     /// How much of edge `k`'s glide is left, 1 to 0. An edge that doesn't move goes with its
     /// parent's (`follow`), so its centring eases as the parent's edges glide around it.
     fn left(&self, k: usize, m: f32, follow: f32) -> f32 {
-        if self.span[k].abs() > 1.0 / 64.0 { (m / self.span[k]).clamp(-1.0, 1.0) } else { follow }
+        if self.span[k].abs() > 1.0 / 64.0 {
+            (m / self.span[k]).clamp(-1.0, 1.0)
+        } else {
+            follow
+        }
     }
 }
 
@@ -192,7 +206,12 @@ struct LayerSnap {
 
 const IDENTITY: [f32; 4] = [1.0, 0.0, 1.0, 0.0];
 
-const NO_LAYER: LayerSnap = LayerSnap { to: 0.0, near: 0.0, outs: [(IDENTITY, 0.0); 2], rigid: [0.0; 2] };
+const NO_LAYER: LayerSnap = LayerSnap {
+    to: 0.0,
+    near: 0.0,
+    outs: [(IDENTITY, 0.0); 2],
+    rigid: [0.0; 2],
+};
 
 /// The largest distance between matching edges.
 fn far(a: [f32; 4], b: [f32; 4]) -> f32 {
@@ -212,7 +231,13 @@ fn affine(from: [f32; 4], to: [f32; 4]) -> [f32; 4] {
 
 /// How far `map` moves a point of a window `size` across at most (device px).
 fn reach(map: [f32; 4], size: [f32; 2]) -> f32 {
-    (0..2).map(|a| map[a * 2 + 1].abs().max(((map[a * 2] - 1.0) * size[a] + map[a * 2 + 1]).abs())).fold(0.0, f32::max)
+    (0..2)
+        .map(|a| {
+            map[a * 2 + 1]
+                .abs()
+                .max(((map[a * 2] - 1.0) * size[a] + map[a * 2 + 1]).abs())
+        })
+        .fold(0.0, f32::max)
 }
 
 impl Glides {
@@ -242,12 +267,29 @@ impl Glides {
     /// same rect before the scales on it and above it (device px edges), and `rigid` its rigid
     /// translation (device px). `cached` content snaps without easing, as its raster isn't
     /// redrawn while the correction eases. The returned index goes in `Inherit::layer`.
-    pub(super) fn layer(&mut self, id: NodeId, (r, unscaled): ([f32; 4], [f32; 4]), rigid: [f32; 2], cached: bool) -> u32 {
+    pub(super) fn layer(
+        &mut self,
+        id: NodeId,
+        (r, unscaled): ([f32; 4], [f32; 4]),
+        rigid: [f32; 2],
+        cached: bool,
+    ) -> u32 {
         let cur: [f32; 4] = core::array::from_fn(|k| r[k] - rigid[k % 2]);
         let (t, frame, size) = (self.t, self.frame, self.size);
-        let l = self.layers.entry(id).or_insert(Layer { rect: cur, t, seen: frame, moving: false, since: f64::NEG_INFINITY, outs: [(cur, 0.0); 2] });
+        let l = self.layers.entry(id).or_insert(Layer {
+            rect: cur,
+            t,
+            seen: frame,
+            moving: false,
+            since: f64::NEG_INFINITY,
+            outs: [(cur, 0.0); 2],
+        });
         let eased = |since: f64| {
-            let x = if cached { 1.0 } else { ((t - since) / SETTLE).clamp(0.0, 1.0) as f32 };
+            let x = if cached {
+                1.0
+            } else {
+                ((t - since) / SETTLE).clamp(0.0, 1.0) as f32
+            };
             x * x * (3.0 - 2.0 * x)
         };
         let to;
@@ -276,9 +318,20 @@ impl Glides {
             }
         }
         l.seen = frame;
-        let outs = l.outs.map(|(rest, w)| if w > 0.0 { (affine(cur, rest), w * (1.0 - to)) } else { (IDENTITY, 0.0) });
+        let outs = l.outs.map(|(rest, w)| {
+            if w > 0.0 {
+                (affine(cur, rest), w * (1.0 - to))
+            } else {
+                (IDENTITY, 0.0)
+            }
+        });
         let near = ((1.0 - far(r, unscaled)) / (1.0 - 1.0 / 16.0)).clamp(0.0, 1.0);
-        self.now.push(LayerSnap { to, near, outs, rigid });
+        self.now.push(LayerSnap {
+            to,
+            near,
+            outs,
+            rigid,
+        });
         self.now.len() as u32
     }
 
@@ -286,30 +339,71 @@ impl Glides {
     /// `rigid` from `Inherit::rigid` in device px and `parent` from `Inherit::parent`, and its
     /// resting edges for its children.
     #[inline]
-    pub(super) fn at_rest(&mut self, id: NodeId, r: [f32; 4], rigid: [f32; 2], parent: Option<Parent>) -> ([f32; 4], Option<Parent>) {
+    pub(super) fn at_rest(
+        &mut self,
+        id: NodeId,
+        r: [f32; 4],
+        rigid: [f32; 2],
+        parent: Option<Parent>,
+    ) -> ([f32; 4], Option<Parent>) {
         // Centred in a parent that still glides, it goes with the parent's glide.
-        let gliding = |p: &Parent| p.left != [0.0; 4] && (0..2).any(|a| resting(p.rest, a, (r[a] - rigid[a], r[a + 2] - rigid[a])).is_some());
+        let gliding = |p: &Parent| {
+            p.left != [0.0; 4]
+                && (0..2)
+                    .any(|a| resting(p.rest, a, (r[a] - rigid[a], r[a + 2] - rigid[a])).is_some())
+        };
         if let Some(p) = parent.filter(gliding) {
-            let (out, parent) = self.glide(id, Motion { by: [0.0; 4], rest: r, k: 1.0 }, r, rigid, Some(p));
+            let (out, parent) = self.glide(
+                id,
+                Motion {
+                    by: [0.0; 4],
+                    rest: r,
+                    k: 1.0,
+                },
+                r,
+                rigid,
+                Some(p),
+            );
             return (out, Some(parent));
         }
         if !self.glides.is_empty() {
             self.glides.remove(&id);
         }
         let (out, rest) = snap(r, [0.0; 4], rigid, parent.map(|p| p.rest), |_, c| c);
-        (out, Some(Parent { rest, now: rest, left: [0.0; 4] }))
+        (
+            out,
+            Some(Parent {
+                rest,
+                now: rest,
+                left: [0.0; 4],
+            }),
+        )
     }
 
     /// Node `id`'s paint rect `r` (device px edges) snapped. `unscaled` is the same rect before
     /// the scales on it and above it, `motion` from [`motion`], and `rigid` and `parent` as in
     /// [`Self::at_rest`]. `layer` is `Inherit::layer` and `sc` the node's scale. Its resting
     /// edges come back only where it snaps on the plain grid.
-    pub(super) fn snapped(&mut self, id: NodeId, motion: Option<Motion>, (r, unscaled): ([f32; 4], [f32; 4]), rigid: [f32; 2], (layer, sc): (u32, f32), parent: Option<Parent>) -> ([f32; 4], Option<Parent>) {
+    pub(super) fn snapped(
+        &mut self,
+        id: NodeId,
+        motion: Option<Motion>,
+        (r, unscaled): ([f32; 4], [f32; 4]),
+        rigid: [f32; 2],
+        (layer, sc): (u32, f32),
+        parent: Option<Parent>,
+    ) -> ([f32; 4], Option<Parent>) {
         // Snapping to the unscaled grid fades in over the last pixel scaling moves the edges, so
         // a scale settling at 1 lands on the grid without a jump. In a layer that is how far
         // its scale moves the layer's edges, the same for every box in it.
-        let l = layer.checked_sub(1).map_or(NO_LAYER, |i| self.now[i as usize]);
-        let weight = if layer == 0 { ((1.0 - far(r, unscaled)) / (1.0 - 1.0 / 16.0)).clamp(0.0, 1.0) } else { l.near };
+        let l = layer
+            .checked_sub(1)
+            .map_or(NO_LAYER, |i| self.now[i as usize]);
+        let weight = if layer == 0 {
+            ((1.0 - far(r, unscaled)) / (1.0 - 1.0 / 16.0)).clamp(0.0, 1.0)
+        } else {
+            l.near
+        };
         let mut out = r;
         let plain = layer == 0 && weight >= 1.0;
         let parent = parent.filter(|_| plain);
@@ -353,7 +447,20 @@ impl Glides {
             }
         }
         let at = match motion {
-            Some(m) if l.to > 0.0 => self.glide(id, Motion { by: m.by.map(|v| v * sc), k: sc, ..m }, r, rigid, None).0,
+            Some(m) if l.to > 0.0 => {
+                self.glide(
+                    id,
+                    Motion {
+                        by: m.by.map(|v| v * sc),
+                        k: sc,
+                        ..m
+                    },
+                    r,
+                    rigid,
+                    None,
+                )
+                .0
+            }
             _ if l.to > 0.0 => self.at_rest(id, r, rigid, None).0,
             // Moving: where holding still would take it, to know if it has anywhere to go.
             _ => snap(r, [0.0; 4], rigid, None, |_, c| c).0,
@@ -369,7 +476,14 @@ impl Glides {
         (out, None)
     }
 
-    fn glide(&mut self, id: NodeId, m: Motion, r: [f32; 4], rigid: [f32; 2], parent: Option<Parent>) -> ([f32; 4], Parent) {
+    fn glide(
+        &mut self,
+        id: NodeId,
+        m: Motion,
+        r: [f32; 4],
+        rigid: [f32; 2],
+        parent: Option<Parent>,
+    ) -> ([f32; 4], Parent) {
         let free: [f32; 4] = core::array::from_fn(|k| r[k] - rigid[k % 2]);
         let (follow, parent_rest) = parent.map_or(([0.0; 4], [0.0; 4]), |p| (p.left, p.rest.exact));
         let mut g = match self.glides.get(&id) {
@@ -387,11 +501,23 @@ impl Glides {
             prev => {
                 // A new rest: start from the correction drawn with now, so nothing jumps.
                 let from = match prev {
-                    Some(g) => core::array::from_fn(|k| g.at(k, g.to[k], free[k] - g.rest_px[k], g.follow[k])),
+                    Some(g) => core::array::from_fn(|k| {
+                        g.at(k, g.to[k], free[k] - g.rest_px[k], g.follow[k])
+                    }),
                     None => start(r, rigid, parent.map(|p| p.now)),
                 };
                 let rest_px = core::array::from_fn(|k| free[k] - m.by[k]);
-                Glide { rest: m.rest, k: m.k, rest_px, from, to: from, span: m.by, seen: 0, follow, parent: parent_rest }
+                Glide {
+                    rest: m.rest,
+                    k: m.k,
+                    rest_px,
+                    from,
+                    to: from,
+                    span: m.by,
+                    seen: 0,
+                    follow,
+                    parent: parent_rest,
+                }
             }
         };
         let (out, rest) = snap(r, m.by, rigid, parent.map(|p| p.rest), |k, c| {
@@ -400,8 +526,18 @@ impl Glides {
         });
         (g.seen, g.follow, g.parent) = (self.frame, follow, parent_rest);
         self.glides.insert(id, g);
-        let now = Rest { exact: free, at: core::array::from_fn(|k| out[k] - round(rigid[k % 2])) };
-        (out, Parent { rest, now, left: core::array::from_fn(|k| g.left(k, m.by[k], follow[k])) })
+        let now = Rest {
+            exact: free,
+            at: core::array::from_fn(|k| out[k] - round(rigid[k % 2])),
+        };
+        (
+            out,
+            Parent {
+                rest,
+                now,
+                left: core::array::from_fn(|k| g.left(k, m.by[k], follow[k])),
+            },
+        )
     }
 }
 
@@ -416,9 +552,18 @@ fn round(v: f32) -> f32 {
 /// parent's resting rounding match. Each edge's correction toward its resting rounding passes
 /// through `ease(edge, correction)`.
 #[inline]
-pub(super) fn snap(r: [f32; 4], motion: [f32; 4], rigid: [f32; 2], parent: Option<Rest>, mut ease: impl FnMut(usize, f32) -> f32) -> ([f32; 4], Rest) {
+pub(super) fn snap(
+    r: [f32; 4],
+    motion: [f32; 4],
+    rigid: [f32; 2],
+    parent: Option<Rest>,
+    mut ease: impl FnMut(usize, f32) -> f32,
+) -> ([f32; 4], Rest) {
     let mut out = r;
-    let mut rest = Rest { exact: [0.0; 4], at: [0.0; 4] };
+    let mut rest = Rest {
+        exact: [0.0; 4],
+        at: [0.0; 4],
+    };
     // A scaled layer's edges and its scaled rigid translation each land a little off the 1/64 px
     // grid, so their difference wobbles by up to 1/128 px frame to frame even while the content
     // holds still against the scroll. Back on the grid it holds, and an edge resting on a half
@@ -426,17 +571,22 @@ pub(super) fn snap(r: [f32; 4], motion: [f32; 4], rigid: [f32; 2], parent: Optio
     let grid = |v: f32| (v * 64.0).round() / 64.0;
     for axis in 0..2 {
         let (a, b) = (axis, axis + 2);
-        let (rest_a, rest_b) = (grid(r[a] - motion[a] - rigid[axis]), grid(r[b] - motion[b] - rigid[axis]));
+        let (rest_a, rest_b) = (
+            grid(r[a] - motion[a] - rigid[axis]),
+            grid(r[b] - motion[b] - rigid[axis]),
+        );
         (rest.exact[a], rest.exact[b]) = (rest_a, rest_b);
         (rest.at[a], rest.at[b]) = (rest_a, rest_b);
         if rest_b - rest_a < 0.5 {
             continue;
         }
         let shift = round(rigid[axis]);
-        let (lo, hi) = parent.and_then(|p| resting(p, axis, (rest_a, rest_b))).unwrap_or_else(|| {
-            let lo = round(rest_a);
-            (lo, round(rest_b).max(lo + 1.0))
-        });
+        let (lo, hi) = parent
+            .and_then(|p| resting(p, axis, (rest_a, rest_b)))
+            .unwrap_or_else(|| {
+                let lo = round(rest_a);
+                (lo, round(rest_b).max(lo + 1.0))
+            });
         (rest.at[a], rest.at[b]) = (lo, hi);
         for (k, rest, at) in [(a, rest_a, lo), (b, rest_b, hi)] {
             // Built from the rounded edge, so a box at rest lands exactly on whole pixels.
@@ -463,7 +613,12 @@ pub(super) fn line_width(w: f32) -> f32 {
 /// cost a pixel of size for nothing.
 pub(super) fn frames(v: &crate::el::Visual) -> bool {
     let border = v.border_width() > 0.0 && (v.border().a > 0.0 || v.border_bottom.is_some());
-    v.fill.a > 0.0 || v.hover().a > 0.0 || v.press().a > 0.0 || v.gradient.is_some() || v.radial.is_some() || border
+    v.fill.a > 0.0
+        || v.hover().a > 0.0
+        || v.press().a > 0.0
+        || v.gradient.is_some()
+        || v.radial.is_some()
+        || border
 }
 
 /// The correction a box at rest last frame drew with, now that it starts to glide from `r`:
@@ -503,8 +658,16 @@ fn resting(parent: Rest, axis: usize, (ra, rb): (f32, f32)) -> Option<(f32, f32)
 
 /// Edges `lo..hi` on the axis of edges `a` and `b` with equal whole-pixel gaps to `parent`'s
 /// drawn edges, if `ra..rb` is centred in its exact ones to within `slack` px.
-fn centred(parent: Rest, (a, b): (usize, usize), (ra, rb): (f32, f32), slack: f32) -> Option<(f32, f32)> {
-    let ([pa, pb], [qa, qb]) = ([parent.exact[a], parent.exact[b]], [parent.at[a], parent.at[b]]);
+fn centred(
+    parent: Rest,
+    (a, b): (usize, usize),
+    (ra, rb): (f32, f32),
+    slack: f32,
+) -> Option<(f32, f32)> {
+    let ([pa, pb], [qa, qb]) = (
+        [parent.exact[a], parent.exact[b]],
+        [parent.at[a], parent.at[b]],
+    );
     if ((ra - pa) - (pb - rb)).abs() >= slack {
         return None;
     }

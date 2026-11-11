@@ -39,7 +39,11 @@ pub(super) unsafe fn string(s: *mut AnyObject) -> Option<String> {
         return None;
     }
     let utf8: *const std::ffi::c_char = unsafe { msg_send![s, UTF8String] };
-    (!utf8.is_null()).then(|| unsafe { std::ffi::CStr::from_ptr(utf8) }.to_string_lossy().into_owned())
+    (!utf8.is_null()).then(|| {
+        unsafe { std::ffi::CStr::from_ptr(utf8) }
+            .to_string_lossy()
+            .into_owned()
+    })
 }
 
 pub(super) fn post(n: Notification) {
@@ -81,7 +85,8 @@ pub(super) unsafe fn dictionary(info: &[(String, String)]) -> *mut AnyObject {
 pub(super) fn remove(ids: &[&str]) {
     objc2::rc::autoreleasepool(|_| unsafe {
         let items: Vec<*mut AnyObject> = ids.iter().map(|id| ns(id)).collect();
-        let array: *mut AnyObject = msg_send![class!(NSArray), arrayWithObjects: items.as_ptr(), count: items.len()];
+        let array: *mut AnyObject =
+            msg_send![class!(NSArray), arrayWithObjects: items.as_ptr(), count: items.len()];
         let center = center();
         let _: () = msg_send![center, removeDeliveredNotificationsWithIdentifiers: array];
         let _: () = msg_send![center, removePendingNotificationRequestsWithIdentifiers: array];
@@ -103,9 +108,13 @@ pub(super) unsafe fn click(response: *mut AnyObject) -> Click {
             for i in 0..n {
                 let key: *mut AnyObject = msg_send![keys, objectAtIndex: i];
                 let value: *mut AnyObject = msg_send![info, objectForKey: key];
-                let is_string = |o: *mut AnyObject| -> bool { msg_send![o, isKindOfClass: class!(NSString)] };
+                let is_string =
+                    |o: *mut AnyObject| -> bool { msg_send![o, isKindOfClass: class!(NSString)] };
                 if is_string(key) && !value.is_null() && is_string(value) {
-                    pairs.push((string(key).unwrap_or_default(), string(value).unwrap_or_default()));
+                    pairs.push((
+                        string(key).unwrap_or_default(),
+                        string(value).unwrap_or_default(),
+                    ));
                 }
             }
             pairs.sort();
@@ -114,13 +123,25 @@ pub(super) unsafe fn click(response: *mut AnyObject) -> Click {
     }
 }
 
-pub(super) extern "C" fn did_receive(_this: *mut AnyObject, _cmd: Sel, _center: *mut AnyObject, response: *mut AnyObject, done: &Block<dyn Fn()>) {
+pub(super) extern "C" fn did_receive(
+    _this: *mut AnyObject,
+    _cmd: Sel,
+    _center: *mut AnyObject,
+    response: *mut AnyObject,
+    done: &Block<dyn Fn()>,
+) {
     let click = objc2::rc::autoreleasepool(|_| unsafe { click(response) });
     super::deliver(click);
     done.call(());
 }
 
-extern "C" fn will_present(_this: *mut AnyObject, _cmd: Sel, _center: *mut AnyObject, _notification: *mut AnyObject, done: &Block<dyn Fn(usize)>) {
+extern "C" fn will_present(
+    _this: *mut AnyObject,
+    _cmd: Sel,
+    _center: *mut AnyObject,
+    _notification: *mut AnyObject,
+    done: &Block<dyn Fn(usize)>,
+) {
     done.call((PRESENT_LIST_BANNER,));
 }
 

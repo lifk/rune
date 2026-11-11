@@ -97,7 +97,10 @@ impl ScriptOptions {
     /// before `loadHotState`: a host that calls a setup function the module hands it does it
     /// here, so hot state lands on what that setup made. An error fails the start, and a reload
     /// keeps the running VM.
-    pub fn start(mut self, start: impl Fn(&Lua, &Table, u64) -> mlua::Result<()> + 'static) -> Self {
+    pub fn start(
+        mut self,
+        start: impl Fn(&Lua, &Table, u64) -> mlua::Result<()> + 'static,
+    ) -> Self {
         self.start = Some(Rc::new(start));
         self
     }
@@ -106,7 +109,10 @@ impl ScriptOptions {
     /// gets the app's state and the transaction, and must call `run` once. A host whose
     /// bindings reach its own state sets it up around `run`, then carries out what the script
     /// asked for in the same transaction.
-    pub fn around(mut self, around: impl Fn(&mut dyn Any, Option<&mut Tx>, &mut dyn FnMut(Option<&mut Tx>)) + 'static) -> Self {
+    pub fn around(
+        mut self,
+        around: impl Fn(&mut dyn Any, Option<&mut Tx>, &mut dyn FnMut(Option<&mut Tx>)) + 'static,
+    ) -> Self {
         self.around = Some(Rc::new(around));
         self
     }

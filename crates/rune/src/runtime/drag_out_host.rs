@@ -10,12 +10,20 @@ impl<S: 'static> Runtime<S> {
     }
 
     /// Where the host reports how a drag-out ended; delivered to `on_drag_end` next frame.
-    pub(crate) fn drag_end_sink(&self) -> crate::drag_out::DragEnds { self.drag_ends.clone() }
-    pub(crate) fn drag_ends_pending(&self) -> bool { !self.drag_ends.borrow().is_empty() }
+    pub(crate) fn drag_end_sink(&self) -> crate::drag_out::DragEnds {
+        self.drag_ends.clone()
+    }
+    pub(crate) fn drag_ends_pending(&self) -> bool {
+        !self.drag_ends.borrow().is_empty()
+    }
 
     /// Whether this host can start OS drags. Without, `drag_out` elements act as if they had
     /// none.
-    pub(crate) fn set_os_drag(&mut self, supported: bool) { self.os_drag = supported; }
+    pub(crate) fn set_os_drag(&mut self, supported: bool) {
+        self.os_drag = supported;
+    }
 
-    pub(super) fn drags_out(&self, n: &Node) -> bool { self.os_drag && n.handlers.get().is_some_and(|h| h.drag_out.is_some()) }
+    pub(super) fn drags_out(&self, n: &Node) -> bool {
+        self.os_drag && n.handlers.get().is_some_and(|h| h.drag_out.is_some())
+    }
 }

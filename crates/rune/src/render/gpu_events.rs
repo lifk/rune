@@ -32,12 +32,17 @@ pub fn on_gpu(f: impl Fn(GpuEvent) + Send + Sync + 'static) {
 
 pub(crate) fn starting() {
     WAITING.store(true, Ordering::Release);
-    if let Some(hook) = HOOK.get() { hook(GpuEvent::Starting); }
+    if let Some(hook) = HOOK.get() {
+        hook(GpuEvent::Starting);
+    }
 }
 
 /// After every present; reports only the first after a `starting`.
 pub(crate) fn presented() {
-    if WAITING.load(Ordering::Relaxed) && WAITING.swap(false, Ordering::AcqRel) && let Some(hook) = HOOK.get() {
+    if WAITING.load(Ordering::Relaxed)
+        && WAITING.swap(false, Ordering::AcqRel)
+        && let Some(hook) = HOOK.get()
+    {
         hook(GpuEvent::Drew);
     }
 }

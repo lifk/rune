@@ -3,15 +3,27 @@
 use super::*;
 
 /// Tiles `--strip`'s frames, `cols` to a row, into one PNG.
-pub(crate) fn write_strip(p: &std::path::Path, strip: &[Vec<u8>], (wp, hp): (u32, u32), crops_px: &[[u32; 4]], gap: u32, cols: usize) {
-    if strip.is_empty() { return; }
+pub(crate) fn write_strip(
+    p: &std::path::Path,
+    strip: &[Vec<u8>],
+    (wp, hp): (u32, u32),
+    crops_px: &[[u32; 4]],
+    gap: u32,
+    cols: usize,
+) {
+    if strip.is_empty() {
+        return;
+    }
     let (cw, ch) = tile_size(wp, hp, crops_px, gap);
     let cols = strip.len().min(cols) as u32;
     let rows = (strip.len() as u32).div_ceil(cols);
     let (sw, sh) = (cols * cw + (cols - 1) * gap, rows * ch + (rows - 1) * gap);
     let mut img: Vec<u8> = [128, 128, 128, 255].repeat((sw * sh) as usize);
     for (i, f) in strip.iter().enumerate() {
-        let (cx, cy) = ((i as u32 % cols) * (cw + gap), (i as u32 / cols) * (ch + gap));
+        let (cx, cy) = (
+            (i as u32 % cols) * (cw + gap),
+            (i as u32 / cols) * (ch + gap),
+        );
         for y in 0..ch {
             let dst = (((cy + y) * sw + cx) * 4) as usize;
             let src = (y * cw * 4) as usize;

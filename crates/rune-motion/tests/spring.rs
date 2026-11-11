@@ -23,11 +23,11 @@ fn integrate(s: Spring, x0: f64, v0: f64, target: f64, t_end: f64) -> (f64, f64)
 #[test]
 fn closed_form_matches_ode_integration_in_every_regime() {
     let springs = [
-        Spring::new(0.3, 0.0),   // critical (Kit's default)
-        Spring::new(0.5, 0.3),   // under (SwiftUI .bouncy)
-        Spring::new(0.4, 0.7),   // very bouncy
-        Spring::new(0.35, -0.5), // over
-        Spring::new(0.6, 0.0005), // near-critical, under
+        Spring::new(0.3, 0.0),      // critical (Kit's default)
+        Spring::new(0.5, 0.3),      // under (SwiftUI .bouncy)
+        Spring::new(0.4, 0.7),      // very bouncy
+        Spring::new(0.35, -0.5),    // over
+        Spring::new(0.6, 0.0005),   // near-critical, under
         Spring::new(0.25, -0.0005), // near-critical, over
     ];
     let starts = [(0.0f32, 0.0f32), (0.0, 25.0), (0.7, -8.0)];
@@ -37,9 +37,15 @@ fn closed_form_matches_ode_integration_in_every_regime() {
                 let (x, v) = s.sample(x0, v0, 1.0, t);
                 let (rx, rv) = integrate(s, x0 as f64, v0 as f64, 1.0, t as f64);
                 // Position within 1e-4 per unit of travel; velocity scaled by ω.
-                assert!((x as f64 - rx).abs() < 1e-4, "{s:?} x0={x0} v0={v0} t={t}: x {x} vs {rx}");
+                assert!(
+                    (x as f64 - rx).abs() < 1e-4,
+                    "{s:?} x0={x0} v0={v0} t={t}: x {x} vs {rx}"
+                );
                 let vtol = 1e-4 * s.omega() as f64 + 1e-4 * v0.abs() as f64;
-                assert!((v as f64 - rv).abs() < vtol, "{s:?} x0={x0} v0={v0} t={t}: v {v} vs {rv}");
+                assert!(
+                    (v as f64 - rv).abs() < vtol,
+                    "{s:?} x0={x0} v0={v0} t={t}: v {v} vs {rv}"
+                );
             }
         }
     }
@@ -49,7 +55,11 @@ fn closed_form_matches_ode_integration_in_every_regime() {
 fn swiftui_parameter_mapping() {
     // Spring(duration: 0.5, bounce: 0): stiffness (2π/0.5)² ≈ 157.914, damping 4π ≈ 25.133.
     let s = Spring::new(0.5, 0.0);
-    assert!((s.stiffness() - 157.913_67).abs() < 1e-2, "{}", s.stiffness());
+    assert!(
+        (s.stiffness() - 157.913_67).abs() < 1e-2,
+        "{}",
+        s.stiffness()
+    );
     assert!((s.damping() - 25.132_74).abs() < 1e-3, "{}", s.damping());
     assert_eq!(Spring::BOUNCY.zeta(), 0.7);
     assert!((Spring::SNAPPY.zeta() - 0.85).abs() < 1e-6);
@@ -83,7 +93,11 @@ fn kit_tokens_match_kit_motion_json() {
     ];
     for ((name, ed, eb, xd, xb), (n, pair)) in expect.iter().zip(motion::ALL) {
         assert_eq!(name, n);
-        assert_eq!((pair.enter.duration, pair.enter.bounce), (*ed, *eb), "{name}");
+        assert_eq!(
+            (pair.enter.duration, pair.enter.bounce),
+            (*ed, *eb),
+            "{name}"
+        );
         assert_eq!((pair.exit.duration, pair.exit.bounce), (*xd, *xb), "{name}");
         if *name != "instant" {
             // Exits run 10–25 % shorter (instant is already at the floor).
@@ -95,7 +109,12 @@ fn kit_tokens_match_kit_motion_json() {
 
 #[test]
 fn settle_time_bounds_the_whole_tail() {
-    for s in [Spring::new(0.3, 0.0), Spring::new(0.5, 0.3), Spring::new(0.4, -0.4), Spring::new(0.3, 0.9)] {
+    for s in [
+        Spring::new(0.3, 0.0),
+        Spring::new(0.5, 0.3),
+        Spring::new(0.4, -0.4),
+        Spring::new(0.3, 0.9),
+    ] {
         let ts = s.settling_duration(1e-3);
         assert!(ts > 0.0 && ts < 20.0, "{s:?} {ts}");
         for i in 0..2000 {
@@ -143,8 +162,17 @@ fn animated_value_retargets_keeping_velocity() {
 /// lane restart can't drift the numbers.
 #[test]
 fn animated_retarget_golden() {
-    let tween = Curve::Tween { duration: 0.3, easing: Easing::EASE_OUT };
-    let curves = [Curve::Spring(motion::GLIDE), Curve::Spring(Spring::new(0.5, 0.3)), tween, Curve::Decay(Decay::IOS_NORMAL), Curve::Instant];
+    let tween = Curve::Tween {
+        duration: 0.3,
+        easing: Easing::EASE_OUT,
+    };
+    let curves = [
+        Curve::Spring(motion::GLIDE),
+        Curve::Spring(Spring::new(0.5, 0.3)),
+        tween,
+        Curve::Decay(Decay::IOS_NORMAL),
+        Curve::Instant,
+    ];
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     let mut mix = |x: f32| {
         h ^= u64::from(x.to_bits());
@@ -152,10 +180,23 @@ fn animated_retarget_golden() {
     };
     for (n, &c) in curves.iter().enumerate() {
         let mut a = Animated::new(Vec2::new(0.0, 10.0));
-        a.animate_to(Vec2::new(100.0, -40.0), Anim::new(Curve::Spring(motion::SNAP)), 0.0);
+        a.animate_to(
+            Vec2::new(100.0, -40.0),
+            Anim::new(Curve::Spring(motion::SNAP)),
+            0.0,
+        );
         a.animate_to(Vec2::new(-30.0, 60.0), Anim::new(c), 0.07);
-        a.animate_to(Vec2::new(5.0, 5.0), Anim::new(c).velocity(Velocity::Uniform(250.0)), 0.13);
-        a.release(Vec2::new(-800.0, 400.0), Vec2::new(20.0 * n as f32, 0.0), c, 0.2);
+        a.animate_to(
+            Vec2::new(5.0, 5.0),
+            Anim::new(c).velocity(Velocity::Uniform(250.0)),
+            0.13,
+        );
+        a.release(
+            Vec2::new(-800.0, 400.0),
+            Vec2::new(20.0 * n as f32, 0.0),
+            c,
+            0.2,
+        );
         for k in 0..40 {
             let t = 0.2 + f64::from(k) * 0.025;
             let (x, v) = (a.sample(t), a.velocity(t));
@@ -182,9 +223,18 @@ fn the_none_spring_is_an_instant_curve_everywhere_a_spring_converts() {
     assert_eq!(Anim::from(Spring::NONE).curve, Curve::Instant);
     assert_eq!(Anim::from(SpringPair::NONE).curve, Curve::Instant);
     // Reduce Motion keeps it instant; a short spring would become a fade.
-    assert_eq!(PropClass::Presence.reduce(Spring::NONE.into()), Curve::Instant);
+    assert_eq!(
+        PropClass::Presence.reduce(Spring::NONE.into()),
+        Curve::Instant
+    );
     let t = Transition::none();
-    assert_eq!((t.insertion, t.removal, t.springs), (Effect::IDENTITY, Effect::IDENTITY, SpringPair::NONE));
+    assert_eq!(
+        (t.insertion, t.removal, t.springs),
+        (Effect::IDENTITY, Effect::IDENTITY, SpringPair::NONE)
+    );
     // Any other spring, however short, is still a spring.
-    assert_eq!(Curve::from(Spring::new(0.001, 0.0)), Curve::Spring(Spring::new(0.001, 0.0)));
+    assert_eq!(
+        Curve::from(Spring::new(0.001, 0.0)),
+        Curve::Spring(Spring::new(0.001, 0.0))
+    );
 }

@@ -38,16 +38,30 @@ impl Script {
     /// Renders `f(view, args...)`, memoized as `id` on `version`: while `version` holds (and
     /// the script hasn't reloaded) the subtree is reused without entering the VM. A render
     /// error shows the error card, with Reload.
-    pub fn render_fn<S: 'static>(&self, id: &str, version: u64, dark: bool, f: &Function, args: impl IntoLuaMulti) -> El {
+    pub fn render_fn<S: 'static>(
+        &self,
+        id: &str,
+        version: u64,
+        dark: bool,
+        f: &Function,
+        args: impl IntoLuaMulti,
+    ) -> El {
         let i = &self.inner;
         i.dark.set(dark);
         let id = format!("{}{id}", i.prefix);
-        rune::memo::memo_with_hash(id.clone(), mix(version, i.salt.get()), || i.render_with::<S>(dark, f, args).key(id))
+        rune::memo::memo_with_hash(id.clone(), mix(version, i.salt.get()), || {
+            i.render_with::<S>(dark, f, args).key(id)
+        })
     }
 
     /// Runs `f(args...)` as a task, so it may wait: a command's `run`, a signal from the host.
     /// With `tx`, the deadline it sets arms on the transaction.
-    pub fn spawn_fn(&self, f: &Function, args: impl IntoLuaMulti, tx: Option<&mut Tx>) -> Result<(), ScriptError> {
+    pub fn spawn_fn(
+        &self,
+        f: &Function,
+        args: impl IntoLuaMulti,
+        tx: Option<&mut Tx>,
+    ) -> Result<(), ScriptError> {
         let ran = self.inner.enter(tx, |vm| {
             let thread = vm.lua.create_thread(f.clone())?;
             task::run(&vm.lua, &thread, args);
@@ -59,8 +73,14 @@ impl Script {
     /// Calls `f(args...)` and returns its result, at once and without letting it wait: a
     /// query a host makes while it draws (a pill's `show`, a link handler's `match`). It leaves
     /// the script's version where it was.
-    pub fn eval_fn<R: FromLuaMulti>(&self, f: &Function, args: impl IntoLuaMulti) -> Result<R, ScriptError> {
-        let Some(vm) = self.inner.vm() else { return Err(self.inner.not_running()) };
+    pub fn eval_fn<R: FromLuaMulti>(
+        &self,
+        f: &Function,
+        args: impl IntoLuaMulti,
+    ) -> Result<R, ScriptError> {
+        let Some(vm) = self.inner.vm() else {
+            return Err(self.inner.not_running());
+        };
         let out = self.inner.timed(&vm, |_| f.call::<R>(args));
         self.inner.note_schedule(&vm);
         out.map_err(|e| {
@@ -82,8 +102,16 @@ impl Script {
 
     /// [`Script::reload`] with sources the host compiled itself, off the UI thread (`compile` is
     /// how long that took, for the report).
-    pub fn reload_compiled(&self, sources: Sources, compiled: Compiled, compile: Duration) -> Result<Reload, ScriptError> {
-        let mut report = self.inner.swap(compiled).inspect_err(|e| self.inner.log(LogLevel::Error, &e.message))?;
+    pub fn reload_compiled(
+        &self,
+        sources: Sources,
+        compiled: Compiled,
+        compile: Duration,
+    ) -> Result<Reload, ScriptError> {
+        let mut report = self
+            .inner
+            .swap(compiled)
+            .inspect_err(|e| self.inner.log(LogLevel::Error, &e.message))?;
         report.compile = compile;
         *self.inner.sources.borrow_mut() = sources;
         self.inner.note_reload(report);
@@ -93,12 +121,22 @@ impl Script {
 
 impl Inner {
     pub(crate) fn not_running(&self) -> ScriptError {
-        self.failed.borrow().clone().unwrap_or_else(|| ScriptError::new(ErrorKind::Missing, "not running"))
+        self.failed
+            .borrow()
+            .clone()
+            .unwrap_or_else(|| ScriptError::new(ErrorKind::Missing, "not running"))
     }
 
     /// Runs `f` inside the host's [`ScriptOptions::around`](crate::ScriptOptions::around) hook.
-    pub(crate) fn around_write<S: 'static>(&self, s: &mut S, tx: Option<&mut Tx>, f: impl FnOnce(Option<&mut Tx>)) {
-        let Some(hook) = self.options.around.clone() else { return f(tx) };
+    pub(crate) fn around_write<S: 'static>(
+        &self,
+        s: &mut S,
+        tx: Option<&mut Tx>,
+        f: impl FnOnce(Option<&mut Tx>),
+    ) {
+        let Some(hook) = self.options.around.clone() else {
+            return f(tx);
+        };
         let mut f = Some(f);
         hook(s, tx, &mut |tx| {
             if let Some(f) = f.take() {
@@ -110,7 +148,9 @@ impl Inner {
     /// Runs `f` inside the host's [`ScriptOptions::around_read`](crate::ScriptOptions::around_read)
     /// hook; `None` if the hook didn't run it.
     pub(crate) fn around_read<S: 'static, R>(&self, s: &S, f: impl FnOnce() -> R) -> Option<R> {
-        let Some(hook) = self.options.around_read.clone() else { return Some(f()) };
+        let Some(hook) = self.options.around_read.clone() else {
+            return Some(f());
+        };
         let (mut f, mut out) = (Some(f), None);
         hook(s, &mut || {
             if let Some(f) = f.take() {
@@ -122,11 +162,21 @@ impl Inner {
 
     fn render_with<S: 'static>(&self, dark: bool, f: &Function, args: impl IntoLuaMulti) -> El {
         let attach = attach::<S>();
-        let card = |message: &str| error_card(message, &self.options.palette, dark, attach, self.weak.clone());
+        let card = |message: &str| {
+            error_card(
+                message,
+                &self.options.palette,
+                dark,
+                attach,
+                self.weak.clone(),
+            )
+        };
         if let Some(err) = self.failed.borrow().as_ref() {
             return card(&err.message);
         }
-        let Some(vm) = self.vm() else { return card("the script isn't running") };
+        let Some(vm) = self.vm() else {
+            return card("the script isn't running");
+        };
         let env = self.env(&vm, dark);
         let built = with_frame(attach, env.clone(), || {
             self.timed(&vm, |vm| {

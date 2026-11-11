@@ -44,14 +44,22 @@ fn speed_of(v: f32) -> f32 {
 
 #[test]
 fn cancelling_the_speed_slider_restores_its_value_before_a_track_press() {
-    let mut rt = rune::Runtime::new(Settings::default(), view, (620.0, 520.0), rune::Env::new(true, 1.0));
+    let mut rt = rune::Runtime::new(
+        Settings::default(),
+        view,
+        (620.0, 520.0),
+        rune::Env::new(true, 1.0),
+    );
     rt.frame(0.0);
     let (x, y) = rt.find("slider").unwrap();
     rt.pointer_down(x + 60.0, y);
     rt.pointer_move(x + 70.0, y);
     rt.frame(1.0 / 60.0);
     assert!(rt.state.speed > 0.5);
-    rt.key(rune::KeyEvent { key: rune::Key::Escape, mods: rune::Mods::default() });
+    rt.key(rune::KeyEvent {
+        key: rune::Key::Escape,
+        mods: rune::Mods::default(),
+    });
     rt.frame(1.0 / 60.0);
     assert_eq!(rt.state.speed, 0.5);
     rt.pointer_up(x + 70.0, y);
@@ -75,7 +83,11 @@ fn view(s: &Settings, cx: &mut Cx<Settings>) -> El {
     };
     cx.reduced_motion(s.reduce_motion);
     cx.time_scale(speed_of(s.speed));
-    let p = Paint { t: tok::theme(dark), accent: tok::accent(s.accent, dark), hair: 1.0 / cx.env().scale };
+    let p = Paint {
+        t: tok::theme(dark),
+        accent: tok::accent(s.accent, dark),
+        hair: 1.0 / cx.env().scale,
+    };
     let t = p.t;
 
     col()
@@ -83,12 +95,12 @@ fn view(s: &Settings, cx: &mut Cx<Settings>) -> El {
         .role("window")
         .fill(t.bg)
         .child(
-            row()
-                .key("titlebar")
-                .h(40.0)
-                .w_full()
-                .center()
-                .child(text("Settings").key("title").font(type_::TITLE).color(t.text)),
+            row().key("titlebar").h(40.0).w_full().center().child(
+                text("Settings")
+                    .key("title")
+                    .font(type_::TITLE)
+                    .color(t.text),
+            ),
         )
         .child(
             col()
@@ -105,7 +117,13 @@ fn view(s: &Settings, cx: &mut Cx<Settings>) -> El {
                     "Appearance",
                     [
                         setting_row(p, "theme", "Theme", None, segmented(p, s.appearance)),
-                        setting_row(p, "accent", "Accent colour", None, swatches(p, s.accent, dark)),
+                        setting_row(
+                            p,
+                            "accent",
+                            "Accent colour",
+                            None,
+                            swatches(p, s.accent, dark),
+                        ),
                     ],
                 ))
                 .child(section(
@@ -116,8 +134,12 @@ fn view(s: &Settings, cx: &mut Cx<Settings>) -> El {
                         toggle_row(p, "login", "Launch at login", s.launch_at_login, |s| {
                             s.launch_at_login = !s.launch_at_login
                         }),
-                        toggle_row(p, "menubar", "Show in menu bar", s.menu_bar, |s| s.menu_bar = !s.menu_bar),
-                        toggle_row(p, "sounds", "Play sounds", s.sounds, |s| s.sounds = !s.sounds),
+                        toggle_row(p, "menubar", "Show in menu bar", s.menu_bar, |s| {
+                            s.menu_bar = !s.menu_bar
+                        }),
+                        toggle_row(p, "sounds", "Play sounds", s.sounds, |s| {
+                            s.sounds = !s.sounds
+                        }),
                     ],
                 ))
                 .child(section(
@@ -125,7 +147,13 @@ fn view(s: &Settings, cx: &mut Cx<Settings>) -> El {
                     "motion",
                     "Motion",
                     [
-                        setting_row(p, "speed", "Animation speed", None, speed_control(p, s.speed)),
+                        setting_row(
+                            p,
+                            "speed",
+                            "Animation speed",
+                            None,
+                            speed_control(p, s.speed),
+                        ),
                         toggle_row(p, "reduce", "Reduce motion", s.reduce_motion, |s| {
                             s.reduce_motion = !s.reduce_motion
                         }),
@@ -146,17 +174,36 @@ fn section<const N: usize>(p: Paint, key: &str, title: &str, rows: [El; N]) -> E
     for (i, r) in rows.into_iter().enumerate() {
         card = card.child(r);
         if i + 1 < N {
-            card = card.child(el().key(format!("sep{i}")).h(p.hair).ml(space::S3).mr(space::S3).fill(p.t.separator).a11y_hidden());
+            card = card.child(
+                el().key(format!("sep{i}"))
+                    .h(p.hair)
+                    .ml(space::S3)
+                    .mr(space::S3)
+                    .fill(p.t.separator)
+                    .a11y_hidden(),
+            );
         }
     }
     col()
         .key(key)
         .gap(space::S2)
-        .child(text(title).key("header").font(type_::SECTION).color(p.t.text_secondary).ml(space::S3))
+        .child(
+            text(title)
+                .key("header")
+                .font(type_::SECTION)
+                .color(p.t.text_secondary)
+                .ml(space::S3),
+        )
         .child(card)
 }
 
-fn setting_row(p: Paint, key: &str, label: &str, on_press: Option<fn(&mut Settings)>, control: El) -> El {
+fn setting_row(
+    p: Paint,
+    key: &str,
+    label: &str,
+    on_press: Option<fn(&mut Settings)>,
+    control: El,
+) -> El {
     let mut r = row()
         .key(key)
         .h(44.0)
@@ -165,16 +212,28 @@ fn setting_row(p: Paint, key: &str, label: &str, on_press: Option<fn(&mut Settin
         .justify_between()
         .radius(radius::MD)
         .label(label)
-        .child(text(label).key("label").font(type_::BODY).color(p.t.text).a11y_hidden())
+        .child(
+            text(label)
+                .key("label")
+                .font(type_::BODY)
+                .color(p.t.text)
+                .a11y_hidden(),
+        )
         .child(control);
     if let Some(f) = on_press {
-        r = r.hover(p.t.hover).press(p.t.press).focusable(true).on_press(f);
+        r = r
+            .hover(p.t.hover)
+            .press(p.t.press)
+            .focusable(true)
+            .on_press(f);
     }
     r
 }
 
 fn toggle_row(p: Paint, key: &str, label: &str, on: bool, flip: fn(&mut Settings)) -> El {
-    setting_row(p, key, label, Some(flip), toggle(p, on).a11y_hidden()).role("switch").checked(on)
+    setting_row(p, key, label, Some(flip), toggle(p, on).a11y_hidden())
+        .role("switch")
+        .checked(on)
 }
 
 fn toggle(p: Paint, on: bool) -> El {
@@ -197,13 +256,19 @@ fn toggle(p: Paint, on: bool) -> El {
         )
 }
 
-const APPEARANCES: [(Appearance, &str); 3] =
-    [(Appearance::Auto, "Auto"), (Appearance::Light, "Light"), (Appearance::Dark, "Dark")];
+const APPEARANCES: [(Appearance, &str); 3] = [
+    (Appearance::Auto, "Auto"),
+    (Appearance::Light, "Light"),
+    (Appearance::Dark, "Dark"),
+];
 
 fn segmented(p: Paint, current: Appearance) -> El {
     let (w, h, pad) = (205.0, 28.0, 2.0);
     let seg = (w - 2.0 * pad) / 3.0;
-    let idx = APPEARANCES.iter().position(|(a, _)| *a == current).unwrap_or(0);
+    let idx = APPEARANCES
+        .iter()
+        .position(|(a, _)| *a == current)
+        .unwrap_or(0);
     let mut segs = row().key("segments");
     for (i, (a, name)) in APPEARANCES.into_iter().enumerate() {
         let selected = i == idx;
@@ -216,7 +281,11 @@ fn segmented(p: Paint, current: Appearance) -> El {
                 .size(seg, h - 2.0 * pad)
                 .center()
                 .radius(radius::SM)
-                .hover(if selected { Color::TRANSPARENT } else { p.t.hover })
+                .hover(if selected {
+                    Color::TRANSPARENT
+                } else {
+                    p.t.hover
+                })
                 .on_press_tx(move |s: &mut Settings, tx| {
                     s.appearance = a;
                     tx.color_motion(motion::CALM);
@@ -225,7 +294,11 @@ fn segmented(p: Paint, current: Appearance) -> El {
                     text(name)
                         .key("label")
                         .font(type_::LABEL)
-                        .color(if selected { p.t.text } else { p.t.text_secondary })
+                        .color(if selected {
+                            p.t.text
+                        } else {
+                            p.t.text_secondary
+                        })
                         .a11y_hidden(),
                 ),
         );
@@ -254,11 +327,19 @@ fn segmented(p: Paint, current: Appearance) -> El {
 fn swatches(p: Paint, current: usize, dark: bool) -> El {
     let (d, gap, ring_w) = (18.0, 12.0, 2.0);
     let ring = d + 2.0 * (ring_w + 2.0);
-    let mut r = row().key("swatches").role("radiogroup").label("Accent colour").gap(gap).motion(motion::SNAPPY);
+    let mut r = row()
+        .key("swatches")
+        .role("radiogroup")
+        .label("Accent colour")
+        .gap(gap)
+        .motion(motion::SNAPPY);
     r = r.child(
         el().key("ring")
             .size(ring, ring)
-            .absolute(current as f32 * (d + gap) - (ring - d) / 2.0, -(ring - d) / 2.0)
+            .absolute(
+                current as f32 * (d + gap) - (ring - d) / 2.0,
+                -(ring - d) / 2.0,
+            )
             .radius(ring / 2.0)
             .border(ring_w, p.accent)
             .lead(Spring::new(0.22, 0.0), Spring::new(0.28, 0.0))
@@ -297,7 +378,9 @@ fn speed_control(p: Paint, v: f32) -> El {
                 .range_value(f64::from(v), 0.0, 1.0)
                 .range_step(0.05)
                 .a11y_value(format!("{:.2}×", speed_of(v)))
-                .on_step(|s: &mut Settings, steps, _| s.speed = (s.speed + steps as f32 * 0.05).clamp(0.0, 1.0))
+                .on_step(|s: &mut Settings, steps, _| {
+                    s.speed = (s.speed + steps as f32 * 0.05).clamp(0.0, 1.0)
+                })
                 .size(w, h)
                 .motion(motion::SNAPPY)
                 .on_drag(move |s: &mut Settings, d: &mut Drag, tx| match d.phase {
@@ -311,11 +394,19 @@ fn speed_control(p: Paint, v: f32) -> El {
                     }
                     Phase::Move => {
                         let knob = k / 2.0 + d.data * travel;
-                        let grab = if (d.start_x - knob).abs() <= k / 2.0 + 2.0 { d.start_x - knob } else { 0.0 };
+                        let grab = if (d.start_x - knob).abs() <= k / 2.0 + 2.0 {
+                            d.start_x - knob
+                        } else {
+                            0.0
+                        };
                         s.speed = to_value(d.x - grab);
                         tx.instant();
                     }
-                    Phase::Up => { if d.cancelled() { s.speed = d.data; } }
+                    Phase::Up => {
+                        if d.cancelled() {
+                            s.speed = d.data;
+                        }
+                    }
                 })
                 .child(
                     el().key("track")

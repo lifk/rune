@@ -37,7 +37,9 @@ impl TextSystem {
     /// [`measure`](super::measure) back to the launch families.
     pub(crate) fn for_window(fonts: &[&'static [u8]], families: (&str, &str)) -> Self {
         CHOSEN.with_borrow(|(n, chosen)| {
-            let families = chosen.as_ref().map_or(families, |(sans, mono)| (sans.as_str(), mono.as_str()));
+            let families = chosen
+                .as_ref()
+                .map_or(families, |(sans, mono)| (sans.as_str(), mono.as_str()));
             let mut text = TextSystem::new(fonts, families);
             text.chosen = *n;
             text
@@ -95,7 +97,9 @@ impl TextSystem {
                 return false;
             }
             self.chosen = *n;
-            chosen.as_ref().is_some_and(|(sans, mono)| self.set_families(sans, mono))
+            chosen
+                .as_ref()
+                .is_some_and(|(sans, mono)| self.set_families(sans, mono))
         })
     }
 }

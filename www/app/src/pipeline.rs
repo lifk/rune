@@ -37,7 +37,11 @@ fn passes(i: usize) -> f64 {
     let (mut lo, mut hi) = (0.0, 1.0);
     for _ in 0..18 {
         let m = (lo + hi) / 2.0;
-        if smootherstep(m) < target { lo = m } else { hi = m }
+        if smootherstep(m) < target {
+            lo = m
+        } else {
+            hi = m
+        }
     }
     lo * TRAVEL
 }
@@ -64,7 +68,11 @@ pub struct Light {
 }
 
 impl Light {
-    const DARK: Light = Light { heat: [0.0; 7], head: 0.0, comet: 0.0 };
+    const DARK: Light = Light {
+        heat: [0.0; 7],
+        head: 0.0,
+        comet: 0.0,
+    };
 }
 
 impl Pipeline {
@@ -95,21 +103,44 @@ impl Pipeline {
     pub fn light(&self) -> Light {
         if let Some(f) = self.fade {
             let s = self.t - f;
-            let h = if s < 0.75 { smootherstep(s / 0.15) } else { 1.0 - smootherstep((s - 0.75) / 0.15) } as f32;
-            return Light { heat: [h; 7], ..Light::DARK };
+            let h = if s < 0.75 {
+                smootherstep(s / 0.15)
+            } else {
+                1.0 - smootherstep((s - 0.75) / 0.15)
+            } as f32;
+            return Light {
+                heat: [h; 7],
+                ..Light::DARK
+            };
         }
-        let Some(start) = self.start else { return Light::DARK };
+        let Some(start) = self.start else {
+            return Light::DARK;
+        };
         let t = self.t - start;
         let tail = t - TRAVEL;
-        let comet = if tail < 0.0 { 1.0 } else { (-tail / TAU).exp() as f32 };
+        let comet = if tail < 0.0 {
+            1.0
+        } else {
+            (-tail / TAU).exp() as f32
+        };
         let mut heat = [0.0; 7];
         for (i, h) in heat.iter_mut().enumerate() {
             let since = t - passes(i);
             let tau = if i == STEPS.len() - 1 { TAU * 2.5 } else { TAU };
-            let v = if since < 0.0 { 0.0 } else if since < RISE { since / RISE } else { (-(since - RISE) / tau).exp() };
+            let v = if since < 0.0 {
+                0.0
+            } else if since < RISE {
+                since / RISE
+            } else {
+                (-(since - RISE) / tau).exp()
+            };
             *h = if v > 0.004 { v as f32 } else { 0.0 };
         }
-        Light { heat, head: smootherstep(t / TRAVEL) as f32, comet: if comet > 0.004 { comet } else { 0.0 } }
+        Light {
+            heat,
+            head: smootherstep(t / TRAVEL) as f32,
+            comet: if comet > 0.004 { comet } else { 0.0 },
+        }
     }
 
     /// Advances to `now`. True while the light is on.
@@ -158,12 +189,28 @@ fn along(c: &[[f32; 2]], p: f32) -> [f32; 2] {
 
 fn step(i: usize, heat: f32, stacked: bool) -> El {
     let (name, note) = STEPS[i];
-    let body = if stacked { row().justify_between().gap(16.0) } else { col().gap(4.0).min_h(96.0).w(0.0).grow(1.0) };
+    let body = if stacked {
+        row().justify_between().gap(16.0)
+    } else {
+        col().gap(4.0).min_h(96.0).w(0.0).grow(1.0)
+    };
     let glow = ink().alpha(0.35);
-    body.key(format!("pl-{}", name.to_lowercase())).role("listitem").padding(12.0).radius(R2).fill(rune::oklch(0.15, 0.004, 265.0)).border(1.0, line())
-        .child(el().key("heat").pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).radius(R2)
-            .fill(ink().alpha(0.18)).border(1.0, ink().alpha(0.7)).shadow(0.0, 24.0, glow)
-            .opacity(heat).a11y_hidden())
+    body.key(format!("pl-{}", name.to_lowercase()))
+        .role("listitem")
+        .padding(12.0)
+        .radius(R2)
+        .fill(rune::oklch(0.15, 0.004, 265.0))
+        .border(1.0, line())
+        .child(
+            el().key("heat")
+                .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+                .radius(R2)
+                .fill(ink().alpha(0.18))
+                .border(1.0, ink().alpha(0.7))
+                .shadow(0.0, 24.0, glow)
+                .opacity(heat)
+                .a11y_hidden(),
+        )
         .child(text(name).key("name").font(TEXT_14_MEDIUM).color(fg()))
         .child(text(note).key("note").font(MONO_12).color(fg3()).wrap())
 }
@@ -174,19 +221,45 @@ pub fn pipeline(p: &Pipeline, size: Option<[f32; 2]>, bp: Bp, reduced: bool) -> 
     let [w, h] = size.unwrap_or([1000.0, 96.0]);
     let c = centers(w, h, stacked);
     let (a, b) = (c[0], c[STEPS.len() - 1]);
-    let wire = if stacked { el().size(1.0, b[1] - a[1]) } else { el().size(b[0] - a[0], 1.0) };
+    let wire = if stacked {
+        el().size(1.0, b[1] - a[1])
+    } else {
+        el().size(b[0] - a[0], 1.0)
+    };
     let head = along(&c, light.head);
-    let comet = el().key("comet").size(COMET, COMET).radius(COMET / 2.0)
-        .radial_gradient([0.5, 0.5], COMET / 2.0, [(0.0, glint()), (0.2, ink().alpha(0.6)), (1.0, Color::TRANSPARENT)])
+    let comet = el()
+        .key("comet")
+        .size(COMET, COMET)
+        .radius(COMET / 2.0)
+        .radial_gradient(
+            [0.5, 0.5],
+            COMET / 2.0,
+            [
+                (0.0, glint()),
+                (0.2, ink().alpha(0.6)),
+                (1.0, Color::TRANSPARENT),
+            ],
+        )
         .absolute(head[0] - COMET / 2.0, head[1] - COMET / 2.0)
-        .opacity(light.comet).a11y_hidden();
-    let body = if stacked { col().gap(GAP_COL) } else { row().gap(GAP_ROW) };
-    let mut steps = body.key("pl").role("list").label("One frame, step by step").w_full();
+        .opacity(light.comet)
+        .a11y_hidden();
+    let body = if stacked {
+        col().gap(GAP_COL)
+    } else {
+        row().gap(GAP_ROW)
+    };
+    let mut steps = body
+        .key("pl")
+        .role("list")
+        .label("One frame, step by step")
+        .w_full();
     for i in 0..STEPS.len() {
         steps = steps.child(step(i, light.heat[i], stacked));
     }
     // The wire and the light run behind the steps, outside the list so it holds only steps.
-    let diagram = col().key("pl-box").w_full()
+    let diagram = col()
+        .key("pl-box")
+        .w_full()
         .on_press(move |s: &mut State| {
             let now = s.clock_now();
             s.pipeline.play(now, reduced);
@@ -195,12 +268,29 @@ pub fn pipeline(p: &Pipeline, size: Option<[f32; 2]>, bp: Bp, reduced: bool) -> 
             let now = s.clock_now();
             s.pipeline.set_visible(on, now, reduced);
         })
-        .child(wire.key("wire").fill(line2()).absolute(a[0], a[1]).a11y_hidden())
+        .child(
+            wire.key("wire")
+                .fill(line2())
+                .absolute(a[0], a[1])
+                .a11y_hidden(),
+        )
         .child(comet)
         .child(steps);
-    col().key("pipeline").role("figure").w_full().mt(32.0)
+    col()
+        .key("pipeline")
+        .role("figure")
+        .w_full()
+        .mt(32.0)
         .child(diagram)
-        .child(text("Click the diagram to run the frame again.").key("caption").font(TEXT_13).color(fg3()).wrap().max_w(MEASURE).mt(12.0))
+        .child(
+            text("Click the diagram to run the frame again.")
+                .key("caption")
+                .font(TEXT_13)
+                .color(fg3())
+                .wrap()
+                .max_w(MEASURE)
+                .mt(12.0),
+        )
 }
 
 #[cfg(test)]
@@ -216,7 +306,10 @@ mod tests {
         let mid = p.light();
         assert!(mid.heat[0] > 0.0 && mid.heat[6] == 0.0, "{mid:?}");
         assert!(p.tick(1.0 + TRAVEL + 0.1));
-        assert!(!p.tick(1.0 + TRAVEL + 6.0), "it stops asking for frames once cool");
+        assert!(
+            !p.tick(1.0 + TRAVEL + 6.0),
+            "it stops asking for frames once cool"
+        );
         assert_eq!(p.light(), Light::DARK);
         p.set_visible(false, 9.0, false);
         p.set_visible(true, 10.0, false);

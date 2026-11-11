@@ -9,12 +9,19 @@ pub(crate) struct AppIme<S> {
 }
 
 impl<S> Default for AppIme<S> {
-    fn default() -> Self { Self { hook: None, composing: false } }
+    fn default() -> Self {
+        Self {
+            hook: None,
+            composing: false,
+        }
+    }
 }
 
 impl<S> AppIme<S> {
     /// The app's editor has a composition open: Return and Escape belong to the input method.
-    pub(super) fn composing(&self) -> bool { self.hook.is_some() && self.composing }
+    pub(super) fn composing(&self) -> bool {
+        self.hook.is_some() && self.composing
+    }
 }
 
 /// An `El::ime_cursor` element's drawn rect, device pixels, as the window's IME area in points.
@@ -27,16 +34,27 @@ impl<S: 'static> Runtime<S> {
     /// composition the app has open ends there even after a field took focus, and the input
     /// method turning on or off is only the app's to hear.
     pub(super) fn run_ime(&mut self, ev: Ime, one: &mut Tx) -> bool {
-        let app = self.app_ime.composing() || matches!(ev, Ime::Enabled | Ime::Disabled) || self.focused_input().is_none();
-        let active = self.composing() || matches!(&ev, Ime::Preedit(s, _) | Ime::Commit(s) if !s.is_empty());
-        let ran = if app { self.app_ime_event(&ev, one) } else { self.with_focused(|e| e.ime(&ev), one) };
+        let app = self.app_ime.composing()
+            || matches!(ev, Ime::Enabled | Ime::Disabled)
+            || self.focused_input().is_none();
+        let active =
+            self.composing() || matches!(&ev, Ime::Preedit(s, _) | Ime::Commit(s) if !s.is_empty());
+        let ran = if app {
+            self.app_ime_event(&ev, one)
+        } else {
+            self.with_focused(|e| e.ime(&ev), one)
+        };
         // The key that confirmed or cancelled a composition comes back up unheard.
-        if ran && active { self.ime_eat_key_up = true; }
+        if ran && active {
+            self.ime_eat_key_up = true;
+        }
         ran
     }
 
     fn app_ime_event(&mut self, ev: &Ime, one: &mut Tx) -> bool {
-        let Some(f) = self.app_ime.hook else { return false };
+        let Some(f) = self.app_ime.hook else {
+            return false;
+        };
         match ev {
             Ime::Preedit(s, _) => self.app_ime.composing = !s.is_empty(),
             Ime::Commit(_) => self.app_ime.composing = false,

@@ -74,31 +74,49 @@ impl AppDirs {
     }
 
     /// The folder name these paths end in: the app id with characters a folder can't hold as `_`.
-    pub fn id(&self) -> &str { &self.id }
+    pub fn id(&self) -> &str {
+        &self.id
+    }
 
     /// Settings the user chose, roaming with the profile on Windows.
-    pub fn config(&self) -> &Path { &self.config }
+    pub fn config(&self) -> &Path {
+        &self.config
+    }
 
     /// Documents and records the app keeps, roaming with the profile on Windows.
-    pub fn data(&self) -> &Path { &self.data }
+    pub fn data(&self) -> &Path {
+        &self.data
+    }
 
     /// Files the app can rebuild, kept on this machine and safe to delete.
-    pub fn cache(&self) -> &Path { &self.cache }
+    pub fn cache(&self) -> &Path {
+        &self.cache
+    }
 
     /// Machine-local state that should survive a restart (window places, history, locks).
-    pub fn state(&self) -> &Path { &self.state }
+    pub fn state(&self) -> &Path {
+        &self.state
+    }
 
     /// Log files.
-    pub fn logs(&self) -> &Path { &self.logs }
+    pub fn logs(&self) -> &Path {
+        &self.logs
+    }
 
     /// The user's home folder, if one was found (never moved by [`ROOT_ENV`]).
-    pub fn home(&self) -> Option<&Path> { self.bases.home.as_deref() }
+    pub fn home(&self) -> Option<&Path> {
+        self.bases.home.as_deref()
+    }
 
     /// Where the user's downloads go (`<root>/downloads` under [`ROOT_ENV`]).
-    pub fn downloads(&self) -> Option<&Path> { self.bases.downloads.as_deref() }
+    pub fn downloads(&self) -> Option<&Path> {
+        self.bases.downloads.as_deref()
+    }
 
     /// Whether [`ROOT_ENV`] (or [`rooted`](Self::rooted)) placed these folders.
-    pub fn is_rooted(&self) -> bool { self.bases.rooted }
+    pub fn is_rooted(&self) -> bool {
+        self.bases.rooted
+    }
 }
 
 /// The user's home folder from the process environment: `HOME`, or `USERPROFILE` (then
@@ -119,7 +137,9 @@ pub fn home_from(var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
         })
     }
     #[cfg(not(target_os = "windows"))]
-    { set("HOME") }
+    {
+        set("HOME")
+    }
 }
 
 /// The base a [`crate::prefs::Prefs`] app folder goes in, without the id.
@@ -135,9 +155,19 @@ struct Place {
 }
 
 impl Place {
-    fn at(base: PathBuf) -> Place { Place { base, tail: None } }
-    #[cfg_attr(any(target_arch = "wasm32", target_os = "macos", target_os = "ios"), allow(dead_code))]
-    fn nested(base: PathBuf, tail: &'static str) -> Place { Place { base, tail: Some(tail) } }
+    fn at(base: PathBuf) -> Place {
+        Place { base, tail: None }
+    }
+    #[cfg_attr(
+        any(target_arch = "wasm32", target_os = "macos", target_os = "ios"),
+        allow(dead_code)
+    )]
+    fn nested(base: PathBuf, tail: &'static str) -> Place {
+        Place {
+            base,
+            tail: Some(tail),
+        }
+    }
     fn path(&self, id: &str) -> PathBuf {
         let dir = self.base.join(id);
         match self.tail {
@@ -196,9 +226,14 @@ impl Bases {
     }
 
     #[cfg(target_arch = "wasm32")]
-    fn platform(_set: &impl Fn(&str) -> Option<PathBuf>, _home: Option<PathBuf>) -> Option<Bases> { None }
+    fn platform(_set: &impl Fn(&str) -> Option<PathBuf>, _home: Option<PathBuf>) -> Option<Bases> {
+        None
+    }
 
-    #[cfg(all(not(target_arch = "wasm32"), any(target_os = "macos", target_os = "ios")))]
+    #[cfg(all(
+        not(target_arch = "wasm32"),
+        any(target_os = "macos", target_os = "ios")
+    ))]
     fn platform(_set: &impl Fn(&str) -> Option<PathBuf>, home: Option<PathBuf>) -> Option<Bases> {
         let library = home.as_ref()?.join("Library");
         let support = library.join("Application Support");
@@ -216,7 +251,9 @@ impl Bases {
 
     #[cfg(all(not(target_arch = "wasm32"), target_os = "windows"))]
     fn platform(set: &impl Fn(&str) -> Option<PathBuf>, home: Option<PathBuf>) -> Option<Bases> {
-        let app_data = |k: &str, leaf: &str| set(k).or_else(|| home.as_ref().map(|h| h.join("AppData").join(leaf)));
+        let app_data = |k: &str, leaf: &str| {
+            set(k).or_else(|| home.as_ref().map(|h| h.join("AppData").join(leaf)))
+        };
         let roaming = app_data("APPDATA", "Roaming")?;
         let local = app_data("LOCALAPPDATA", "Local")?;
         Some(Bases {
@@ -231,10 +268,16 @@ impl Bases {
         })
     }
 
-    #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "macos", target_os = "ios", target_os = "windows"))))]
+    #[cfg(all(
+        not(target_arch = "wasm32"),
+        not(any(target_os = "macos", target_os = "ios", target_os = "windows"))
+    ))]
     fn platform(set: &impl Fn(&str) -> Option<PathBuf>, home: Option<PathBuf>) -> Option<Bases> {
         let xdg = |k: &str, fallback: &[&str]| {
-            set(k).filter(|p| p.is_absolute()).or_else(|| home.as_ref().map(|h| fallback.iter().fold(h.clone(), |p, part| p.join(part))))
+            set(k).filter(|p| p.is_absolute()).or_else(|| {
+                home.as_ref()
+                    .map(|h| fallback.iter().fold(h.clone(), |p, part| p.join(part)))
+            })
         };
         let state = xdg("XDG_STATE_HOME", &[".local", "state"])?;
         Some(Bases {

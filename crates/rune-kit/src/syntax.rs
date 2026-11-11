@@ -246,7 +246,11 @@ impl Lexers {
         if let Some(s) = self.stream.as_mut().filter(|s| s.lang() == lang && s.continues(code)) {
             return s.highlight(code);
         }
-        if self.last.as_ref().is_some_and(|(l, prev)| *l == lang && code.len() > prev.len() && code.starts_with(prev.as_str())) {
+        if self
+            .last
+            .as_ref()
+            .is_some_and(|(l, prev)| *l == lang && code.len() > prev.len() && code.starts_with(prev.as_str()))
+        {
             self.last = None;
             return self.stream.insert(Stream::new(lang)).highlight(code);
         }
@@ -313,9 +317,7 @@ impl Highlighter {
         let code = &code[..coloured_len(code)];
         let key = hash_of((self.id, lang, code));
         if let Some(out) = CACHE.with_borrow_mut(|c| {
-            c.get(&key)
-                .filter(|e| e.id == self.id && e.lang.as_deref() == lang && e.src == code)
-                .map(|e| e.out.clone())
+            c.get(&key).filter(|e| e.id == self.id && e.lang.as_deref() == lang && e.src == code).map(|e| e.out.clone())
         }) {
             return out;
         }
@@ -325,7 +327,11 @@ impl Highlighter {
         };
         let bytes = code.len() + out.len() * size_of::<Highlight>() + 96;
         CACHE.with_borrow_mut(|c| {
-            c.insert(key, Entry { id: self.id, lang: lang.map(Into::into), src: code.to_owned(), out: out.clone() }, bytes);
+            c.insert(
+                key,
+                Entry { id: self.id, lang: lang.map(Into::into), src: code.to_owned(), out: out.clone() },
+                bytes,
+            );
         });
         out
     }
@@ -351,7 +357,9 @@ impl fmt::Debug for Highlighter {
 /// An app highlighter's ranges, sorted, in bounds, on character boundaries and not
 /// overlapping, at most [`MAX_TOKENS`] of them.
 fn tidy(mut v: Vec<Highlight>, src: &str) -> Vec<Highlight> {
-    v.retain(|(r, _)| r.start < r.end && r.end <= src.len() && src.is_char_boundary(r.start) && src.is_char_boundary(r.end));
+    v.retain(|(r, _)| {
+        r.start < r.end && r.end <= src.len() && src.is_char_boundary(r.start) && src.is_char_boundary(r.end)
+    });
     v.sort_by_key(|(r, _)| r.start);
     let mut last = 0;
     v.retain(|(r, _)| {
@@ -524,8 +532,15 @@ mod tests {
     fn an_app_highlighters_ranges_are_tidied() {
         let h = Highlighter::new(|_, _| {
             let k = |s: Syntax| Paint::Kind(s);
-            vec![(6..9, k(Syntax::Number)), (0..3, k(Syntax::Keyword)), (2..5, k(Syntax::String)), (4..4, k(Syntax::Type)),
-                (9..40, k(Syntax::Comment)), (11..12, k(Syntax::Comment)), (13..15, k(Syntax::Type))]
+            vec![
+                (6..9, k(Syntax::Number)),
+                (0..3, k(Syntax::Keyword)),
+                (2..5, k(Syntax::String)),
+                (4..4, k(Syntax::Type)),
+                (9..40, k(Syntax::Comment)),
+                (11..12, k(Syntax::Comment)),
+                (13..15, k(Syntax::Type)),
+            ]
         });
         // "é" is bytes 10..12, so 11..12 starts inside it.
         let got: Vec<_> = h.highlight(None, "let x = 1 é ok").iter().map(|(r, _)| r.clone()).collect();
@@ -534,10 +549,21 @@ mod tests {
 
     #[test]
     fn builtin_knows_its_languages_and_leaves_the_rest_plain() {
-        for (name, code) in [("rust", "x = 1"), ("TS", "x = 1"), ("tsx", "x = 1"), ("py", "x = 1"), ("Go", "x = 1"),
-            ("json", "1"), ("swift", "x = 1"), ("bash", "x"), ("sql", "1"), ("html", "<a>"), ("css", "a{b:1}"), ("yml", "a: 1"),
-            ("diff", "+a")]
-        {
+        for (name, code) in [
+            ("rust", "x = 1"),
+            ("TS", "x = 1"),
+            ("tsx", "x = 1"),
+            ("py", "x = 1"),
+            ("Go", "x = 1"),
+            ("json", "1"),
+            ("swift", "x = 1"),
+            ("bash", "x"),
+            ("sql", "1"),
+            ("html", "<a>"),
+            ("css", "a{b:1}"),
+            ("yml", "a: 1"),
+            ("diff", "+a"),
+        ] {
             assert!(known(name), "{name}");
             assert!(!builtin(Some(name), code).is_empty(), "{name}");
         }

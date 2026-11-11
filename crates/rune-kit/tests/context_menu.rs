@@ -2,7 +2,9 @@ use rune::{Cx, El, Env, PointerPress, Runtime, el};
 use rune_kit::{Kit, MenuItem, context_menu, root};
 
 #[derive(Default)]
-struct State { point: Option<PointerPress> }
+struct State {
+    point: Option<PointerPress>,
+}
 
 fn view(s: &State, _: &mut Cx<State>) -> El {
     let k = Kit::neutral(true);
@@ -22,7 +24,9 @@ fn context_menu_opens_at_pointer_and_stays_inside_viewport() {
     rt.secondary_down(290.0, 190.0);
     rt.secondary_up(290.0, 190.0);
     rt.frame(0.0);
-    for _ in 0..120 { rt.frame(1.0 / 120.0); }
+    for _ in 0..120 {
+        rt.frame(1.0 / 120.0);
+    }
     let menu = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("context-menu")).unwrap();
     assert!(menu.rect[0] >= 0.0 && menu.rect[1] >= 0.0);
     assert!(menu.rect[0] + menu.rect[2] <= 300.01);
@@ -39,11 +43,17 @@ mod keyboard {
     use rune_kit::{Kit, MenuItem, context_menu, root};
 
     #[derive(Default)]
-    struct State { point: Option<PointerPress>, row_keys: bool }
+    struct State {
+        point: Option<PointerPress>,
+        row_keys: bool,
+    }
 
     fn view(s: &State, _: &mut Cx<State>) -> El {
         let k = Kit::neutral(true);
-        let row = el().key("row").size(200.0, 40.0).focusable(true)
+        let row = el()
+            .key("row")
+            .size(200.0, 40.0)
+            .focusable(true)
             .on_key(|s: &mut State, ev, _| s.row_keys && ev.key == Key::Function(10))
             .on_secondary_press(|s: &mut State, p, _| s.point = Some(p));
         let mut layer = Vec::new();
@@ -56,7 +66,9 @@ mod keyboard {
 
     fn settle(rt: &mut Runtime<State>) {
         rt.frame(0.0);
-        for _ in 0..60 { rt.frame(1.0 / 60.0); }
+        for _ in 0..60 {
+            rt.frame(1.0 / 60.0);
+        }
     }
 
     fn press(rt: &mut Runtime<State>, key: Key, shift: bool) {

@@ -21,7 +21,12 @@ fn centres(s: &Scene) -> HashMap<String, [f32; 2]> {
     s.pieces
         .iter()
         .filter(|p| p.key.starts_with("n:") && !p.key.contains('.'))
-        .map(|p| (p.key.clone(), [p.at[0] + p.size[0] / 2.0, p.at[1] + p.size[1] / 2.0]))
+        .map(|p| {
+            (
+                p.key.clone(),
+                [p.at[0] + p.size[0] / 2.0, p.at[1] + p.size[1] / 2.0],
+            )
+        })
         .collect()
 }
 
@@ -29,7 +34,13 @@ fn centres(s: &Scene) -> HashMap<String, [f32; 2]> {
 fn stream(src: &str) -> Vec<Rc<Scene>> {
     let lines: Vec<&str> = src.lines().collect();
     (2..=lines.len())
-        .filter_map(|k| growing_scene(&(lines[..k].join("\n") + "\n"), &DiagramStyle::neutral(true), None))
+        .filter_map(|k| {
+            growing_scene(
+                &(lines[..k].join("\n") + "\n"),
+                &DiagramStyle::neutral(true),
+                None,
+            )
+        })
         .collect()
 }
 
@@ -94,9 +105,17 @@ fn a_streaming_diagram_only_grows() {
     for src in [RETRIES, DEPLOY, CONNECTION] {
         let scenes = stream(src);
         let sizes: Vec<[f32; 2]> = scenes.iter().map(|s| s.size).collect();
-        assert!(sizes.windows(2).all(|w| w[1][0] >= w[0][0] - 0.01 && w[1][1] >= w[0][1] - 0.01), "it never shrinks: {sizes:?}\n{src}");
+        assert!(
+            sizes
+                .windows(2)
+                .all(|w| w[1][0] >= w[0][0] - 0.01 && w[1][1] >= w[0][1] - 0.01),
+            "it never shrinks: {sizes:?}\n{src}"
+        );
         let (back, which) = worst_reversal(&scenes.iter().map(|s| &**s).collect::<Vec<_>>());
-        assert!(back <= 1.0, "no node doubles back more than a point: {back} at {which}\n{src}");
+        assert!(
+            back <= 1.0,
+            "no node doubles back more than a point: {back} at {which}\n{src}"
+        );
     }
 }
 
@@ -106,7 +125,11 @@ fn a_finished_stream_lays_out_as_if_it_never_streamed() {
     let before = scene(RETRIES, &paint, None).unwrap();
     let streamed = stream(RETRIES);
     let after = scene(RETRIES, &paint, None).unwrap();
-    assert_eq!(centres(&before), centres(&after), "a streaming build leaves nothing behind for the next build");
+    assert_eq!(
+        centres(&before),
+        centres(&after),
+        "a streaming build leaves nothing behind for the next build"
+    );
     assert_eq!(before.size, after.size);
     assert!(!streamed.is_empty());
 }
@@ -124,7 +147,11 @@ fn a_growing_build_is_the_same_however_many_lines_arrived_at_once() {
 #[test]
 fn nodes_keep_their_places_by_name_when_one_before_them_becomes_a_subgraph() {
     // `S` starts as a node and turns into a frame, so `W` and `Y` each move up the node list.
-    let scenes = stream("graph TD\n  X -->|in| S\n  S --> W\n  W -->|out| Y\n  subgraph S\n    D\n  end\n");
+    let scenes =
+        stream("graph TD\n  X -->|in| S\n  S --> W\n  W -->|out| Y\n  subgraph S\n    D\n  end\n");
     let (back, which) = worst_reversal(&scenes.iter().map(|s| &**s).collect::<Vec<_>>());
-    assert!(back <= 1.0, "no node doubles back more than a point: {back} at {which}");
+    assert!(
+        back <= 1.0,
+        "no node doubles back more than a point: {back} at {which}"
+    );
 }

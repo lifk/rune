@@ -27,7 +27,12 @@ thread_local! {
 pub(crate) type Built = (Option<Rc<Scene>>, Option<Rc<steady::Memory>>);
 
 /// `src`'s scene, from the cache or built and kept; held to `prev` when it is `Some`.
-pub(crate) fn built(src: &str, style: &DiagramStyle, hover: Option<(Hover, Color)>, prev: Option<Option<Rc<steady::Memory>>>) -> Built {
+pub(crate) fn built(
+    src: &str,
+    style: &DiagramStyle,
+    hover: Option<(Hover, Color)>,
+    prev: Option<Option<Rc<steady::Memory>>>,
+) -> Built {
     let key = scene_key(src, style, hover, prev.is_some());
     if let Some(b) = SCENES.with_borrow(|c| c.map.get(&key).cloned()) {
         return b;
@@ -45,9 +50,18 @@ pub(crate) fn built(src: &str, style: &DiagramStyle, hover: Option<(Hover, Color
     b
 }
 
-fn build(src: &str, style: &DiagramStyle, hover: Option<(Hover, Color)>, prev: Option<Option<Rc<steady::Memory>>>) -> Built {
+fn build(
+    src: &str,
+    style: &DiagramStyle,
+    hover: Option<(Hover, Color)>,
+    prev: Option<Option<Rc<steady::Memory>>>,
+) -> Built {
     // Defensive: a bug in layout must cost a diagram, not the app.
-    let safe = || std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| scene(src, style, hover))).ok().flatten();
+    let safe = || {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| scene(src, style, hover)))
+            .ok()
+            .flatten()
+    };
     match prev {
         None => (safe().map(Rc::new), None),
         Some(prev) => {
@@ -80,14 +94,25 @@ const MAX_HELD_LINES: usize = 64;
 
 /// `src` laid out held to the same source a line shorter, laid out held to the one a line
 /// shorter again, and so on, so it lays out the same however many lines each build added.
-pub(crate) fn growing(src: &str, style: &DiagramStyle, hover: Option<(Hover, Color)>) -> Option<Rc<Scene>> {
+pub(crate) fn growing(
+    src: &str,
+    style: &DiagramStyle,
+    hover: Option<(Hover, Color)>,
+) -> Option<Rc<Scene>> {
     let mut chain = vec![src.trim_end()];
     let mut prev = None;
-    if let Some(b) = SCENES.with_borrow(|c| c.map.get(&scene_key(chain[0], style, hover, true)).cloned()) {
+    if let Some(b) =
+        SCENES.with_borrow(|c| c.map.get(&scene_key(chain[0], style, hover, true)).cloned())
+    {
         return b.0;
     }
-    while let Some(shorter) = chain.last().and_then(|s| s.rfind('\n').map(|i| s[..i].trim_end())) {
-        if let Some(b) = SCENES.with_borrow(|c| c.map.get(&scene_key(shorter, style, hover, true)).cloned()) {
+    while let Some(shorter) = chain
+        .last()
+        .and_then(|s| s.rfind('\n').map(|i| s[..i].trim_end()))
+    {
+        if let Some(b) =
+            SCENES.with_borrow(|c| c.map.get(&scene_key(shorter, style, hover, true)).cloned())
+        {
             prev = b.1;
             break;
         }

@@ -74,7 +74,10 @@ pub(crate) fn step(state: State, event: Event) -> (State, Vec<Effect>) {
     match (state, event) {
         (Done, _) | (_, Exited) => (Done, vec![]),
         (Closed, _) => (Closed, vec![]),
-        (Running | Quitting(Hooks::Owed), Start { ending }) => (Quitting(Hooks::Owed), [vec![RunHooks], close(ending)].concat()),
+        (Running | Quitting(Hooks::Owed), Start { ending }) => (
+            Quitting(Hooks::Owed),
+            [vec![RunHooks], close(ending)].concat(),
+        ),
         (Quitting(Hooks::Ran), Start { ending }) => (Quitting(Hooks::Ran), close(ending)),
         (Quitting(_), HooksRan) => (Quitting(Hooks::Ran), vec![]),
         (Quitting(_), WindowsClosed) => (Closed, vec![]),
@@ -93,7 +96,9 @@ pub(crate) fn send(event: Event) -> Vec<Effect> {
     effects
 }
 
-pub(crate) fn state() -> State { *STATE.lock().unwrap_or_else(|e| e.into_inner()) }
+pub(crate) fn state() -> State {
+    *STATE.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 /// Whether the app is quitting: a quit started and the system didn't cancel it. A window's
 /// `on_close` that runs while this holds closes because the app ends, so it keeps what it would
@@ -111,7 +116,10 @@ pub(crate) fn install(send: impl Fn(bool) -> bool + 'static) {
     #[cfg(target_os = "windows")]
     win32::install(send);
     #[cfg(target_os = "macos")]
-    { let _ = send; mac::install(); }
+    {
+        let _ = send;
+        mac::install();
+    }
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     let _ = send;
 }
@@ -130,13 +138,19 @@ thread_local! {
 
 /// Marks the loop handling an event until the guard drops.
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
-pub(crate) fn handling() -> Handling { Handling(LOOP.replace(Loop::Handling)) }
+pub(crate) fn handling() -> Handling {
+    Handling(LOOP.replace(Loop::Handling))
+}
 
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
-pub(crate) fn loop_state() -> Loop { LOOP.get() }
+pub(crate) fn loop_state() -> Loop {
+    LOOP.get()
+}
 
 pub(crate) struct Handling(Loop);
 
 impl Drop for Handling {
-    fn drop(&mut self) { LOOP.set(self.0); }
+    fn drop(&mut self) {
+        LOOP.set(self.0);
+    }
 }

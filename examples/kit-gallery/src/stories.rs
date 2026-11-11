@@ -15,14 +15,36 @@ mod inputs;
 mod markdown;
 mod overlays;
 
-use controls::{button_all_states, button_icon, button_playground, button_sizes, button_variants, checkbox_basic, checkbox_custom_icon, checkbox_hidden_label, checkbox_states, icon_button_all_states, icon_button_playground, icon_button_sizes, icon_button_variants, radio_basic, radio_controlled, radio_states, switch_appearances, switch_basic, switch_hidden_label, switch_sizes, switch_states, switch_web};
-use display::{accordion_basic, accordion_multiple, accordion_single, badge_accent, badge_appearances, badge_basic, badge_high_contrast, badge_subtle, card_error, card_info, card_normal, card_success, card_warning, collapsible_basic, collapsible_ghost, keybind_all, keybind_multiple, keybind_playground, keybind_symbols, keybind_variants, list_active_icon, list_basic, list_divider, list_empty, list_grouped, list_no_search, list_with_add, loader_basic, loader_sizes, progress_basic, progress_indeterminate, progress_no_label, rolling_text_basic, scroll_view_thumb, segmented_basic, segmented_controlled, spinner_basic, spinner_sizes};
-use inputs::{field_direct_child, field_invalid, field_text_input, field_textarea, select_disabled, select_grouped, select_invalid, select_playground, select_states, select_with_field, text_input_appearances, text_input_controlled, text_input_copy, text_input_playground, text_input_states, text_input_with_field, textarea_controlled, textarea_playground, textarea_states, textarea_with_field};
-use markdown::{
-    markdown_basic, markdown_code, markdown_diagrams, markdown_lenient, markdown_mermaid_charts, markdown_mermaid_data, markdown_mermaid_flows, markdown_mermaid_git, markdown_mermaid_hover, markdown_mermaid_maps, markdown_mermaid_shapes, markdown_mermaid_streaming, markdown_mermaid_systems, markdown_stream_tail, markdown_streaming, markdown_table_styles,
-    markdown_walkthrough,
+use controls::{
+    button_all_states, button_icon, button_playground, button_sizes, button_variants, checkbox_basic,
+    checkbox_custom_icon, checkbox_hidden_label, checkbox_states, icon_button_all_states, icon_button_playground,
+    icon_button_sizes, icon_button_variants, radio_basic, radio_controlled, radio_states, switch_appearances,
+    switch_basic, switch_hidden_label, switch_sizes, switch_states, switch_web,
 };
-use overlays::{hover_card_basic, menu_appearances, menu_basic, menu_checkbox, menu_radio, menu_rich, menu_submenu, popover_basic, popover_controlled, toast_all, tooltip_keybind, tooltip_path, tooltip_simple, tooltip_title_description};
+use display::{
+    accordion_basic, accordion_multiple, accordion_single, badge_accent, badge_appearances, badge_basic,
+    badge_high_contrast, badge_subtle, card_error, card_info, card_normal, card_success, card_warning,
+    collapsible_basic, collapsible_ghost, keybind_all, keybind_multiple, keybind_playground, keybind_symbols,
+    keybind_variants, list_active_icon, list_basic, list_divider, list_empty, list_grouped, list_no_search,
+    list_with_add, loader_basic, loader_sizes, progress_basic, progress_indeterminate, progress_no_label,
+    rolling_text_basic, scroll_view_thumb, segmented_basic, segmented_controlled, spinner_basic, spinner_sizes,
+};
+use inputs::{
+    field_direct_child, field_invalid, field_text_input, field_textarea, select_disabled, select_grouped,
+    select_invalid, select_playground, select_states, select_with_field, text_input_appearances, text_input_controlled,
+    text_input_copy, text_input_playground, text_input_states, text_input_with_field, textarea_controlled,
+    textarea_playground, textarea_states, textarea_with_field,
+};
+use markdown::{
+    markdown_basic, markdown_code, markdown_diagrams, markdown_lenient, markdown_mermaid_charts, markdown_mermaid_data,
+    markdown_mermaid_flows, markdown_mermaid_git, markdown_mermaid_hover, markdown_mermaid_maps,
+    markdown_mermaid_shapes, markdown_mermaid_streaming, markdown_mermaid_systems, markdown_stream_tail,
+    markdown_streaming, markdown_table_styles, markdown_walkthrough,
+};
+use overlays::{
+    hover_card_basic, menu_appearances, menu_basic, menu_checkbox, menu_radio, menu_rich, menu_submenu, popover_basic,
+    popover_controlled, toast_all, tooltip_keybind, tooltip_path, tooltip_simple, tooltip_title_description,
+};
 
 type Story = fn(&G, &Kit, &mut Vec<El>) -> El;
 
@@ -223,11 +245,15 @@ fn popup_list_composer(s: &G, k: &Kit, layer: &mut Vec<El>) -> El {
         ("share", "/share", "Create a read-only link", k.glyph.lock, "", true),
     ];
     let q = s.edits[7].text.trim_start_matches('/').to_lowercase();
-    let filtered: Vec<_> = entries.into_iter().filter(|(_, label, desc, ..)| {
-        q.is_empty() || label.to_lowercase().contains(&q) || desc.to_lowercase().contains(&q)
-    }).collect();
+    let filtered: Vec<_> = entries
+        .into_iter()
+        .filter(|(_, label, desc, ..)| {
+            q.is_empty() || label.to_lowercase().contains(&q) || desc.to_lowercase().contains(&q)
+        })
+        .collect();
     let count = filtered.len();
-    let active = s.pick.get("popup-list").and_then(|v| v.parse::<usize>().ok()).unwrap_or(0).min(count.saturating_sub(1));
+    let active =
+        s.pick.get("popup-list").and_then(|v| v.parse::<usize>().ok()).unwrap_or(0).min(count.saturating_sub(1));
     let items = filtered.into_iter().map(|(id, label, desc, glyph, hint, disabled)| {
         let mut item = PopupItem::new(id, label)
             .description(desc)
@@ -243,7 +269,9 @@ fn popup_list_composer(s: &G, k: &Kit, layer: &mut Vec<El>) -> El {
         .width(320.0)
         .items(items)
         .active((count > 0).then_some(active))
-        .on_active(|s: &mut G, i| { s.pick.insert("popup-list".into(), i.to_string()); })
+        .on_active(|s: &mut G, i| {
+            s.pick.insert("popup-list".into(), i.to_string());
+        })
         .on_choose(|s: &mut G, id, _| {
             s.edits[7] = TextEdit::new(format!("/{id} "));
             s.edits[7].focused = true;
@@ -255,37 +283,68 @@ fn popup_list_composer(s: &G, k: &Kit, layer: &mut Vec<El>) -> El {
         .placeholder("Type / for commands or @ to mention…")
         .animate_edit_layout()
         .on_edit(|s: &mut G| &mut s.edits[7])
-        .on_change(|s: &mut G, _| { s.open = Some("popup-list".into()); s.pick.insert("popup-list".into(), "0".into()); })
+        .on_change(|s: &mut G, _| {
+            s.open = Some("popup-list".into());
+            s.pick.insert("popup-list".into(), "0".into());
+        })
         .build(k)
         .key("composer")
 }
 
 fn dialog_basic(s: &G, k: &Kit, layer: &mut Vec<El>) -> El {
-    Dialog::new("dialog", "Dialog").description("Description").open(is_open(s, "dialog"))
-        .on_close(close).child(body_text(k, "Dialog body content.")).build(k, layer);
+    Dialog::new("dialog", "Dialog")
+        .description("Description")
+        .open(is_open(s, "dialog"))
+        .on_close(close)
+        .child(body_text(k, "Dialog body content."))
+        .build(k, layer);
     Button::new("Open dialog").on_press(toggle("dialog")).build(k).key("opener")
 }
 
 fn dialog_fit(s: &G, k: &Kit, layer: &mut Vec<El>) -> El {
-    let actions = row().w_full().padding(16.0).gap(8.0).justify_end()
+    let actions = row()
+        .w_full()
+        .padding(16.0)
+        .gap(8.0)
+        .justify_end()
         .child(Button::new("Cancel").variant(ButtonVariant::Ghost).on_press(close).build(k))
         .child(Button::new("Delete").on_press(close).build(k));
-    Dialog::new("dialog-fit", "Delete item?").description("This cannot be undone.").width(400.0).fit()
-        .open(is_open(s, "dialog-fit")).on_close(close).child(actions).build(k, layer);
+    Dialog::new("dialog-fit", "Delete item?")
+        .description("This cannot be undone.")
+        .width(400.0)
+        .fit()
+        .open(is_open(s, "dialog-fit"))
+        .on_close(close)
+        .child(actions)
+        .build(k, layer);
     Button::new("Open confirmation").on_press(toggle("dialog-fit")).build(k).key("opener")
 }
 
 fn motion_focus_modal(s: &G, k: &Kit, layer: &mut Vec<El>) -> El {
-    Dialog::new("dialog", "Loading").open(is_open(s, "dialog")).on_close(close)
-        .child(row().gap(16.0).child(Spinner::new().build(k).key("spinner"))
-            .child(Loader::new().build(k).key("loader")))
-        .child(Button::new("Done").on_press(close).build(k).key("done")).build(k, layer);
-    col().gap(16.0)
+    Dialog::new("dialog", "Loading")
+        .open(is_open(s, "dialog"))
+        .on_close(close)
+        .child(
+            row().gap(16.0).child(Spinner::new().build(k).key("spinner")).child(Loader::new().build(k).key("loader")),
+        )
+        .child(Button::new("Done").on_press(close).build(k).key("done"))
+        .build(k, layer);
+    col()
+        .gap(16.0)
         .child(Button::new("Open dialog").on_press(toggle("dialog")).build(k).key("opener"))
         .child(Switch::new(s.is("switch")).label("Sync").on_toggle(|s: &mut G| s.flip("switch")).build(k).key("switch"))
-        .child(Checkbox::new(s.is("check")).label("Remember").on_toggle(|s: &mut G| s.flip("check")).build(k).key("check"))
-        .child(SegmentedControl::new(&["First", "Second"], Some(if s.is("second") { 1 } else { 0 }))
-            .on_pick(|s: &mut G, i, _| { if s.is("second") != (i == 1) { s.flip("second"); } }).build(k))
+        .child(
+            Checkbox::new(s.is("check")).label("Remember").on_toggle(|s: &mut G| s.flip("check")).build(k).key("check"),
+        )
+        .child(
+            SegmentedControl::new(&["First", "Second"], Some(if s.is("second") { 1 } else { 0 }))
+                .on_pick(|s: &mut G, i, _| {
+                    if s.is("second") != (i == 1) {
+                        s.flip("second");
+                    }
+                })
+                .build(k),
+        )
 }
 
 /// Five rows that rise and fade in one after another (`El::enter_delay` with a `Stagger`) and
@@ -294,12 +353,20 @@ fn motion_stagger_list(s: &G, k: &Kit, _: &mut Vec<El>) -> El {
     const ROWS: [&str; 5] = ["Inbox", "Drafts", "Sent", "Archive", "Trash"];
     let stagger = Stagger::new(0.05);
     let rows = ROWS.iter().enumerate().filter(|_| s.is("rows")).map(|(i, label)| {
-        row().key(*label).w(240.0).h(36.0).px(12.0).center_y().fill(k.c.surface_base).radius(k.radius.md)
+        row()
+            .key(*label)
+            .w(240.0)
+            .h(36.0)
+            .px(12.0)
+            .center_y()
+            .fill(k.c.surface_base)
+            .radius(k.radius.md)
             .child(text(*label).font(k.ty.ui).color(k.c.text_base))
             .transition(Transition::offset(0.0, 12.0).combined(Transition::opacity()))
             .enter_delay(stagger.delay(i, ROWS.len()))
     });
-    col().gap(8.0)
+    col()
+        .gap(8.0)
         .child(Button::new("Show rows").on_press(|s: &mut G| s.flip("rows")).build(k).key("opener"))
         .child(col().key("rows").gap(4.0).children(rows))
 }
@@ -368,19 +435,51 @@ const SERVE: &str = "opencode serve --port 4096 --hostname 0.0.0.0";
 /// highlight a selection, and an icon-only copy button that explains itself on hover.
 fn text_selectable_help(s: &G, k: &Kit, _: &mut Vec<El>) -> El {
     let c = &k.c;
-    col().w(480.0).gap(8.0)
+    col()
+        .w(480.0)
+        .gap(8.0)
         .child(caption(k, "Run the server from a terminal"))
         .child(
-            row().key("command-row").h(36.0).pl(12.0).pr(4.0).gap(8.0).center_y()
-                .fill(c.surface_base).radius(k.radius.md).border(1.0, c.border_weak)
-                .child(text(SERVE).key("command").font(k.ty.mono).color(c.text_base).grow(1.0).shrink()
-                    .selectable(true).selection_color(k.selection()))
-                .child(IconButton::new(&ic::COPY).variant(IconButtonVariant::Ghost).control_size(ControlSize::Small)
-                    .label("Copy command").on_press_tx(|_: &mut G, tx: &mut Tx| tx.copy(SERVE)).build(k)
-                    .key("copy").help("Copy command")),
+            row()
+                .key("command-row")
+                .h(36.0)
+                .pl(12.0)
+                .pr(4.0)
+                .gap(8.0)
+                .center_y()
+                .fill(c.surface_base)
+                .radius(k.radius.md)
+                .border(1.0, c.border_weak)
+                .child(
+                    text(SERVE)
+                        .key("command")
+                        .font(k.ty.mono)
+                        .color(c.text_base)
+                        .grow(1.0)
+                        .shrink()
+                        .selectable(true)
+                        .selection_color(k.selection()),
+                )
+                .child(
+                    IconButton::new(&ic::COPY)
+                        .variant(IconButtonVariant::Ghost)
+                        .control_size(ControlSize::Small)
+                        .label("Copy command")
+                        .on_press_tx(|_: &mut G, tx: &mut Tx| tx.copy(SERVE))
+                        .build(k)
+                        .key("copy")
+                        .help("Copy command"),
+                ),
         )
-        .child(row().w(280.0).child(TextInput::new(&s.edits[7]).placeholder("Selected like a field")
-            .on_edit(|s: &mut G| &mut s.edits[7]).build(k).key("field")))
+        .child(
+            row().w(280.0).child(
+                TextInput::new(&s.edits[7])
+                    .placeholder("Selected like a field")
+                    .on_edit(|s: &mut G| &mut s.edits[7])
+                    .build(k)
+                    .key("field"),
+            ),
+        )
 }
 
 const LONG_PATH: &str = "~/Projects/rune/crates/rune-kit/src/components/settings/appearance_panel.rs";
@@ -389,10 +488,16 @@ const LONG_PATH: &str = "~/Projects/rune/crates/rune-kit/src/components/settings
 /// with a `Type::caption` line under it.
 fn text_truncate_middle(_: &G, k: &Kit, _: &mut Vec<El>) -> El {
     let c = &k.c;
-    let path = |w: f32, cut: fn(El) -> El, how: &str| col().w(w)
-        .child(cut(text(LONG_PATH).font(k.ty.ui).color(c.text_base)).selectable(true).selection_color(k.selection()))
-        .child(text(format!("{how}, {w} pt")).font(k.ty.caption()).color(c.text_weak));
-    col().gap(12.0)
+    let path = |w: f32, cut: fn(El) -> El, how: &str| {
+        col()
+            .w(w)
+            .child(
+                cut(text(LONG_PATH).font(k.ty.ui).color(c.text_base)).selectable(true).selection_color(k.selection()),
+            )
+            .child(text(format!("{how}, {w} pt")).font(k.ty.caption()).color(c.text_weak))
+    };
+    col()
+        .gap(12.0)
         .child(path(360.0, El::truncate_middle, "Middle"))
         .child(path(240.0, El::truncate_middle, "Middle"))
         .child(path(160.0, El::truncate_middle, "Middle"))
@@ -407,9 +512,11 @@ fn scroll_bar_basic(_: &G, k: &Kit, _: &mut Vec<El>) -> El {
 /// A feed whose button lengthens or shortens what follows its rows, so its thumb glides to each
 /// new length.
 fn scroll_bar_grow(s: &G, k: &Kit, _: &mut Vec<El>) -> El {
-    col().gap(8.0)
-        .child(Button::new("Change rows").on_press(flip("more")).build(k).key("more"))
-        .child(scroll_feed(k, 12, Some(if s.is("more") { 600.0 } else { 0.0 })))
+    col().gap(8.0).child(Button::new("Change rows").on_press(flip("more")).build(k).key("more")).child(scroll_feed(
+        k,
+        12,
+        Some(if s.is("more") { 600.0 } else { 0.0 }),
+    ))
 }
 
 fn scroll_feed(k: &Kit, rows: usize, tail: Option<f32>) -> El {

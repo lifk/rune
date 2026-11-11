@@ -45,7 +45,10 @@ impl Lang {
     /// `typescript`, `c++`, `dockerfile`, `text`), as its `isSupportedLanguage` accepts them.
     pub fn from_name(name: &str) -> Option<Lang> {
         let name = name.to_ascii_lowercase();
-        langs::ALIASES.binary_search_by(|(k, _)| (*k).cmp(name.as_str())).ok().map(|i| Lang(langs::ALIASES[i].1))
+        langs::ALIASES
+            .binary_search_by(|(k, _)| (*k).cmp(name.as_str()))
+            .ok()
+            .map(|i| Lang(langs::ALIASES[i].1))
     }
 
     /// The language's main name (`typescript`, `cpp`, `plain`).
@@ -60,7 +63,10 @@ impl Lang {
 
     /// Every name and alias of a language with a lexer, with its language.
     pub fn aliases() -> impl Iterator<Item = (&'static str, Lang)> {
-        langs::ALIASES.iter().filter(|(_, l)| *l != 0).map(|&(k, l)| (k, Lang(l)))
+        langs::ALIASES
+            .iter()
+            .filter(|(_, l)| *l != 0)
+            .map(|&(k, l)| (k, Lang(l)))
     }
 }
 
@@ -85,7 +91,10 @@ impl Token {
     }
 
     pub fn from_name(name: &str) -> Option<Token> {
-        langs::TOKENS.iter().position(|t| *t == name).map(|i| Token(i as u8))
+        langs::TOKENS
+            .iter()
+            .position(|t| *t == name)
+            .map(|i| Token(i as u8))
     }
 
     pub fn all() -> impl Iterator<Item = Token> {
@@ -165,7 +174,13 @@ pub struct Stream {
 
 impl Stream {
     pub fn new(lang: Lang) -> Stream {
-        Stream { lang, wasm: Wasm::new(), text: String::new(), runs: Vec::new(), tail: None }
+        Stream {
+            lang,
+            wasm: Wasm::new(),
+            text: String::new(),
+            runs: Vec::new(),
+            tail: None,
+        }
     }
 
     pub fn lang(&self) -> Lang {
@@ -203,7 +218,11 @@ impl Stream {
         if lines > self.text.len() {
             let (at, chunk) = (self.text.len(), &src[self.text.len()..lines]);
             let r = records(&mut self.wasm, self.lang, chunk, Some(at == 0));
-            self.runs.extend(runs(chunk, &r).into_iter().map(|(range, t)| (range.start + at..range.end + at, t)));
+            self.runs.extend(
+                runs(chunk, &r)
+                    .into_iter()
+                    .map(|(range, t)| (range.start + at..range.end + at, t)),
+            );
             self.text.push_str(chunk);
         }
         let mut out = self.runs.clone();
@@ -212,7 +231,11 @@ impl Stream {
             (**tail).clone_from(&self.wasm);
             let chunk = &src[lines..];
             let r = records(tail, self.lang, chunk, Some(lines == 0));
-            out.extend(runs(chunk, &r).into_iter().map(|(range, t)| (range.start + lines..range.end + lines, t)));
+            out.extend(
+                runs(chunk, &r)
+                    .into_iter()
+                    .map(|(range, t)| (range.start + lines..range.end + lines, t)),
+            );
         }
         out
     }
@@ -235,15 +258,24 @@ fn records(w: &mut Wasm, lang: Lang, src: &str, stream: Option<bool>) -> Vec<u32
         None => w.highlight(),
         Some(first) => w.highlight_stream(first as i32),
     }
-    let word = |at: usize| u32::from_le_bytes([w.mem[at], w.mem[at + 1], w.mem[at + 2], w.mem[at + 3]]) as usize;
+    let word = |at: usize| {
+        u32::from_le_bytes([w.mem[at], w.mem[at + 1], w.mem[at + 2], w.mem[at + 3]]) as usize
+    };
     let (at, n) = (word(6), word(10));
-    w.mem[at..at + n].chunks_exact(4).map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect()
+    w.mem[at..at + n]
+        .chunks_exact(4)
+        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect()
 }
 
 /// The records' runs as byte ranges of `src`, typed runs only.
 fn runs(src: &str, records: &[u32]) -> Vec<(Range<usize>, Token)> {
     let mut out = Vec::with_capacity(records.len() / 2);
-    let mut cursor = Utf16Cursor { src, byte: 0, unit: 0 };
+    let mut cursor = Utf16Cursor {
+        src,
+        byte: 0,
+        unit: 0,
+    };
     let mut start = 0usize;
     for pair in records.chunks_exact(2) {
         let (end, ty) = (pair[0] as usize, pair[1]);
@@ -270,7 +302,11 @@ struct Utf16Cursor<'a> {
 impl Utf16Cursor<'_> {
     fn byte_at(&mut self, unit: usize) -> usize {
         if unit < self.unit {
-            *self = Utf16Cursor { src: self.src, byte: 0, unit: 0 };
+            *self = Utf16Cursor {
+                src: self.src,
+                byte: 0,
+                unit: 0,
+            };
         }
         for c in self.src[self.byte..].chars() {
             if self.unit >= unit {

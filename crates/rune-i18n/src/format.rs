@@ -3,8 +3,8 @@
 use std::sync::OnceLock;
 
 use fixed_decimal::{Decimal, FloatPrecision, SignedRoundingMode, UnsignedRoundingMode};
-use icu_decimal::options::DecimalFormatterOptions;
 use icu_decimal::DecimalFormatter;
+use icu_decimal::options::DecimalFormatterOptions;
 use icu_list::ListFormatter;
 use icu_list::options::{ListFormatterOptions, ListLength};
 use icu_locale::Locale;
@@ -23,7 +23,14 @@ pub enum PluralCategory {
 }
 
 impl PluralCategory {
-    pub const ALL: [PluralCategory; 6] = [Self::Zero, Self::One, Self::Two, Self::Few, Self::Many, Self::Other];
+    pub const ALL: [PluralCategory; 6] = [
+        Self::Zero,
+        Self::One,
+        Self::Two,
+        Self::Few,
+        Self::Many,
+        Self::Other,
+    ];
 
     /// The suffix a catalog key carries for this category (`one` in `files.one`).
     pub const fn suffix(self) -> &'static str {
@@ -79,7 +86,9 @@ impl Formats {
                 .or_else(|_| PluralRules::try_new_cardinal(Locale::UNKNOWN.into()))
                 .ok()
         });
-        rules.as_ref().map_or(PluralCategory::Other, |rules| PluralCategory::from_icu(rules.category_for(count)))
+        rules.as_ref().map_or(PluralCategory::Other, |rules| {
+            PluralCategory::from_icu(rules.category_for(count))
+        })
     }
 
     /// `n` with the locale's digits and grouping, as `Intl.NumberFormat(locale)` shows an integer.
@@ -93,7 +102,10 @@ impl Formats {
         let Ok(mut value) = Decimal::try_from_f64(n, FloatPrecision::RoundTrip) else {
             return format!("{n}");
         };
-        value.round_with_mode(-i16::from(max_fraction), SignedRoundingMode::Unsigned(UnsignedRoundingMode::HalfExpand));
+        value.round_with_mode(
+            -i16::from(max_fraction),
+            SignedRoundingMode::Unsigned(UnsignedRoundingMode::HalfExpand),
+        );
         value.absolute.trim_end();
         self.format(&value)
     }
@@ -115,7 +127,12 @@ impl Formats {
     fn format(&self, value: &Decimal) -> String {
         let formatter = self.decimal.get_or_init(|| {
             DecimalFormatter::try_new((&self.locale).into(), DecimalFormatterOptions::default())
-                .or_else(|_| DecimalFormatter::try_new(Locale::UNKNOWN.into(), DecimalFormatterOptions::default()))
+                .or_else(|_| {
+                    DecimalFormatter::try_new(
+                        Locale::UNKNOWN.into(),
+                        DecimalFormatterOptions::default(),
+                    )
+                })
                 .ok()
         });
         match formatter {

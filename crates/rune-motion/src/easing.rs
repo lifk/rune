@@ -71,8 +71,20 @@ pub struct CubicBezier {
 
 impl CubicBezier {
     pub const fn new(x1: f32, y1: f32, x2: f32, y2: f32) -> Self {
-        let x1 = if x1 < 0.0 { 0.0 } else if x1 > 1.0 { 1.0 } else { x1 };
-        let x2 = if x2 < 0.0 { 0.0 } else if x2 > 1.0 { 1.0 } else { x2 };
+        let x1 = if x1 < 0.0 {
+            0.0
+        } else if x1 > 1.0 {
+            1.0
+        } else {
+            x1
+        };
+        let x2 = if x2 < 0.0 {
+            0.0
+        } else if x2 > 1.0 {
+            1.0
+        } else {
+            x2
+        };
         CubicBezier { x1, y1, x2, y2 }
     }
 
@@ -171,7 +183,9 @@ fn piecewise(x: f32, stops: &[[f32; 2]]) -> (f32, f32) {
         [only] => (only[1], 0.0),
         _ => {
             let x = x.clamp(stops[0][0], stops[stops.len() - 1][0]);
-            let i = stops.partition_point(|s| s[0] <= x).clamp(1, stops.len() - 1);
+            let i = stops
+                .partition_point(|s| s[0] <= x)
+                .clamp(1, stops.len() - 1);
             let [x0, y0] = stops[i - 1];
             let [x1, y1] = stops[i];
             let dx = x1 - x0;

@@ -8,7 +8,11 @@ fn first_seen_and_previous_values_are_stable_for_every_pass_of_one_commit() {
         let _commit = enter();
         for _ in 0..4 {
             assert!(!*snapshot("item", &seen));
-            assert_eq!(*snapshot("item", &count), 9, "types have separate histories");
+            assert_eq!(
+                *snapshot("item", &count),
+                9,
+                "types have separate histories"
+            );
             seen = true;
             count = 8;
         }

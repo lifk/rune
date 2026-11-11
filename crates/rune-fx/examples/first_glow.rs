@@ -18,7 +18,17 @@ fn main() {
     let new = start.elapsed();
     fx.add_format(&gpu.device, wgpu::TextureFormat::Rgba16Float);
     let add_format = start.elapsed() - new;
-    fx.prepare(&gpu.device, &gpu.queue, &FxFrame { viewport: [96, 96], scale: 1.0, layers: &layers, backdrop: None, sources: &[] });
+    fx.prepare(
+        &gpu.device,
+        &gpu.queue,
+        &FxFrame {
+            viewport: [96, 96],
+            scale: 1.0,
+            layers: &layers,
+            backdrop: None,
+            sources: &[],
+        },
+    );
     let mut encoder = gpu.device.create_command_encoder(&Default::default());
     {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -26,7 +36,10 @@ fn main() {
                 view: &target.view,
                 depth_slice: None,
                 resolve_target: None,
-                ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store },
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: wgpu::StoreOp::Store,
+                },
             })],
             ..Default::default()
         });

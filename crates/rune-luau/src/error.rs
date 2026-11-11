@@ -29,7 +29,10 @@ pub(crate) const WATCHDOG: &str = "script ran longer than its time limit (watchd
 
 impl ScriptError {
     pub(crate) fn new(kind: ErrorKind, message: impl Into<String>) -> Self {
-        ScriptError { kind, message: message.into() }
+        ScriptError {
+            kind,
+            message: message.into(),
+        }
     }
 
     /// The first line of the message: `init.luau:12: attempt to index nil`.
@@ -49,7 +52,9 @@ impl std::error::Error for ScriptError {}
 impl From<mlua::Error> for ScriptError {
     fn from(err: mlua::Error) -> Self {
         match err {
-            mlua::Error::SyntaxError { message, .. } => ScriptError::new(ErrorKind::Syntax, message),
+            mlua::Error::SyntaxError { message, .. } => {
+                ScriptError::new(ErrorKind::Syntax, message)
+            }
             mlua::Error::MemoryError(message) => ScriptError::new(ErrorKind::Memory, message),
             mlua::Error::CallbackError { traceback, cause } => {
                 let inner = ScriptError::from((*cause).clone());
@@ -61,7 +66,11 @@ impl From<mlua::Error> for ScriptError {
             }
             other => {
                 let message = other.to_string();
-                let kind = if message.contains(WATCHDOG) { ErrorKind::Timeout } else { ErrorKind::Runtime };
+                let kind = if message.contains(WATCHDOG) {
+                    ErrorKind::Timeout
+                } else {
+                    ErrorKind::Runtime
+                };
                 ScriptError::new(kind, message)
             }
         }

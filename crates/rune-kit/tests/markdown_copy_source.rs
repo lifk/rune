@@ -9,7 +9,9 @@ use rune_kit::{Kit, Markdown};
 const SRC: &str = "# Title\n\nHello **world** and [link](https://x.dev/a).\n\n- alpha\n- [x] beta\n\n```rust\nfn main() {}\n```\n\nLast *line*.\n";
 
 #[derive(Default)]
-struct S { source: bool }
+struct S {
+    source: bool,
+}
 
 fn view(s: &S, _: &mut Cx<S>) -> El {
     let k = Kit::neutral(true);
@@ -24,9 +26,15 @@ fn runtime(source: bool) -> (Runtime<S>, rune::clipboard::MemoryClipboard) {
     (rt, clipboard)
 }
 
-fn tick<T: 'static>(rt: &mut Runtime<T>) { rt.frame(1.0 / 60.0); }
+fn tick<T: 'static>(rt: &mut Runtime<T>) {
+    rt.frame(1.0 / 60.0);
+}
 
-fn copy<T: 'static>(rt: &mut Runtime<T>, clipboard: &rune::clipboard::MemoryClipboard, f: impl FnOnce(&mut rune::Tx)) -> String {
+fn copy<T: 'static>(
+    rt: &mut Runtime<T>,
+    clipboard: &rune::clipboard::MemoryClipboard,
+    f: impl FnOnce(&mut rune::Tx),
+) -> String {
     rt.update(|_, tx| f(tx));
     tick(rt);
     rt.key(KeyEvent { key: Key::Command('c'), mods: Mods { cmd: true, ..Mods::default() } });
@@ -38,8 +46,15 @@ fn copy<T: 'static>(rt: &mut Runtime<T>, clipboard: &rune::clipboard::MemoryClip
 fn copying_takes_the_source_of_whole_blocks() {
     let (mut rt, clipboard) = runtime(true);
     assert_eq!(copy(&mut rt, &clipboard, |tx| tx.select_all_text("note")), SRC, "everything: the source verbatim");
-    assert_eq!(rt.selected_text().as_deref().map(|t| t.starts_with("Title\n\nHello world")), Some(true), "selected as drawn");
-    assert_eq!(copy(&mut rt, &clipboard, |tx| tx.select_all_text("note/b1")), "Hello **world** and [link](https://x.dev/a).");
+    assert_eq!(
+        rt.selected_text().as_deref().map(|t| t.starts_with("Title\n\nHello world")),
+        Some(true),
+        "selected as drawn"
+    );
+    assert_eq!(
+        copy(&mut rt, &clipboard, |tx| tx.select_all_text("note/b1")),
+        "Hello **world** and [link](https://x.dev/a)."
+    );
     assert_eq!(copy(&mut rt, &clipboard, |tx| tx.select_all_text("note/b2")), "- alpha\n- [x] beta", "a whole list");
     assert_eq!(copy(&mut rt, &clipboard, |tx| tx.select_all_text("note/b3")), "```rust\nfn main() {}\n```");
     // Part of a paragraph or of a list: as drawn.
@@ -51,7 +66,9 @@ fn copying_takes_the_source_of_whole_blocks() {
 #[test]
 fn a_drag_across_blocks_copies_each_whole() {
     let (mut rt, clipboard) = runtime(true);
-    let find = |rt: &Runtime<S>, end: &str| rt.elements().into_iter().find(|e| e.path.ends_with(end)).unwrap_or_else(|| panic!("{end}"));
+    let find = |rt: &Runtime<S>, end: &str| {
+        rt.elements().into_iter().find(|e| e.path.ends_with(end)).unwrap_or_else(|| panic!("{end}"))
+    };
     let (para, last) = (find(&rt, "note/b1"), find(&rt, "note/b4"));
     let (x0, y0) = (para.rect[0] + 30.0, para.rect[1] + para.rect[3] / 2.0);
     let (x1, y1) = (last.rect[0] + 10.0, last.rect[1] + last.rect[3] / 2.0);
@@ -65,7 +82,11 @@ fn a_drag_across_blocks_copies_each_whole() {
     }
     rt.pointer_up(x1, y1);
     tick(&mut rt);
-    assert!(rt.selected_text().is_some_and(|t| t.contains("alpha") && !t.starts_with("Hello")), "{:?}", rt.selected_text());
+    assert!(
+        rt.selected_text().is_some_and(|t| t.contains("alpha") && !t.starts_with("Hello")),
+        "{:?}",
+        rt.selected_text()
+    );
     rt.key(KeyEvent { key: Key::Command('c'), mods: Mods { cmd: true, ..Mods::default() } });
     tick(&mut rt);
     assert_eq!(clipboard.text().as_deref().map(String::as_str), Some(&SRC[9..]).map(|s| s.trim_end()));
@@ -79,7 +100,10 @@ fn without_copy_source_copying_takes_the_drawn_text() {
 }
 
 #[derive(Default)]
-struct Keys { takes: bool, keys: Vec<Key> }
+struct Keys {
+    takes: bool,
+    keys: Vec<Key>,
+}
 
 fn short(_: &Keys, _: &mut Cx<Keys>) -> El {
     col().w_full().padding(10.0).child(Markdown::new("a\n\nb").selectable(true).build(&Kit::neutral(true)).key("note"))
@@ -89,7 +113,10 @@ fn short(_: &Keys, _: &mut Cx<Keys>) -> El {
 fn an_apps_on_key_sees_cmd_a_before_a_clicked_note() {
     for takes in [true, false] {
         let mut rt = Runtime::new(Keys { takes, keys: Vec::new() }, short, (300.0, 200.0), Env::new(true, 2.0));
-        rt.on_key = Some(|s, ev, _| { s.keys.push(ev.key.clone()); s.takes && ev.key == Key::Command('a') });
+        rt.on_key = Some(|s, ev, _| {
+            s.keys.push(ev.key.clone());
+            s.takes && ev.key == Key::Command('a')
+        });
         rt.frame(0.0);
         let a = rt.elements().into_iter().find(|e| e.path.ends_with("note/b0")).expect("the first paragraph");
         let (x, y) = (a.rect[0] + 3.0, a.rect[1] + a.rect[3] / 2.0);
@@ -108,9 +135,14 @@ fn an_apps_on_key_sees_cmd_a_before_a_clicked_note() {
 #[test]
 fn inline_code_rule_and_crlf_blocks_copy_cleanly() {
     #[derive(Default)]
-    struct Doc { src: &'static str }
+    struct Doc {
+        src: &'static str,
+    }
     fn doc_view(s: &Doc, _: &mut Cx<Doc>) -> El {
-        col().w_full().padding(10.0).child(Markdown::new(s.src).selectable(true).copy_source(true).build(&Kit::neutral(true)).key("note"))
+        col()
+            .w_full()
+            .padding(10.0)
+            .child(Markdown::new(s.src).selectable(true).copy_source(true).build(&Kit::neutral(true)).key("note"))
     }
     let run = |src: &'static str| {
         let mut rt = Runtime::new(Doc { src }, doc_view, (480.0, 800.0), Env::new(true, 2.0));

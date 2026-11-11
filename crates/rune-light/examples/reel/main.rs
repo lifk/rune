@@ -16,8 +16,14 @@ use rune::color::{Color, oklch, oklcha};
 use rune::render::{Instance, KIND_GLYPH, KIND_RECT, KIND_SHADOW, NO_CLIP, Renderer};
 use rune::text::TextSystem;
 use rune::tok::TextStyle;
-use rune_fx::{DistortParams, ElectricParams, ElectricStyle, Fx, FxFrame, FxLayer, FxOptions, FxRenderer, Shape, rgb};
-use rune_light::{CASCADES, Gi, Glass, GlassLight, GlassRenderer, GlassSettings, LightRenderer, Prim, Scene, Settings, TextPolicy, Timings};
+use rune_fx::{
+    DistortParams, ElectricParams, ElectricStyle, Fx, FxFrame, FxLayer, FxOptions, FxRenderer,
+    Shape, rgb,
+};
+use rune_light::{
+    CASCADES, Gi, Glass, GlassLight, GlassRenderer, GlassSettings, LightRenderer, Prim, Scene,
+    Settings, TextPolicy, Timings,
+};
 
 mod frame;
 mod gpu;
@@ -63,7 +69,10 @@ impl Spring {
         let b = (v0 + z * w * d0) / wd;
         let e = (-z * w * t).exp();
         let (s, c) = (wd * t).sin_cos();
-        (e * (a * c + b * s), e * ((b * wd - z * w * a) * c - (a * wd + z * w * b) * s))
+        (
+            e * (a * c + b * s),
+            e * ((b * wd - z * w * a) * c - (a * wd + z * w * b) * s),
+        )
     }
 }
 
@@ -74,12 +83,16 @@ struct Keys {
 }
 
 fn keys(init: f32, k: &[(f32, f32, Spring)]) -> Keys {
-    Keys { init, keys: k.to_vec() }
+    Keys {
+        init,
+        keys: k.to_vec(),
+    }
 }
 
 impl Keys {
     fn at(&self, t: f32) -> f32 {
-        let (mut x, mut v, mut t0, mut target, mut spring) = (self.init, 0.0, 0.0, self.init, sp(0.3, 0.0));
+        let (mut x, mut v, mut t0, mut target, mut spring) =
+            (self.init, 0.0, 0.0, self.init, sp(0.3, 0.0));
         for &(tk, tg, s) in &self.keys {
             if tk > t {
                 break;
@@ -138,7 +151,10 @@ const FOV_D: f32 = 3200.0; // camera distance in px: pixel-exact at rest
 
 fn project(c: &Cam, x: f32, y: f32, z: f32) -> [f32; 4] {
     // Layer plane centred on the frame, z up toward the viewer; yaw spins it in its plane, pitch tips its top away.
-    let (x, y) = ((x - W as f32 * 0.5) * c.scale, (y - H as f32 * 0.5) * c.scale);
+    let (x, y) = (
+        (x - W as f32 * 0.5) * c.scale,
+        (y - H as f32 * 0.5) * c.scale,
+    );
     let z = z * c.scale;
     let (sy, cy) = c.yaw.sin_cos();
     let (x, y) = (x * cy - y * sy, x * sy + y * cy);
@@ -149,11 +165,19 @@ fn project(c: &Cam, x: f32, y: f32, z: f32) -> [f32; 4] {
     let x2 = x + c.tx;
     let y2 = y2 + c.ty;
     let w = z2 + FOV_D;
-    [x2 * FOV_D / (W as f32 * 0.5), -y2 * FOV_D / (H as f32 * 0.5), 0.5 * w, w]
+    [
+        x2 * FOV_D / (W as f32 * 0.5),
+        -y2 * FOV_D / (H as f32 * 0.5),
+        0.5 * w,
+        w,
+    ]
 }
 
 fn to_screen(c: [f32; 4]) -> [f32; 2] {
-    [(c[0] / c[3] + 1.0) * 0.5 * W as f32, (1.0 - c[1] / c[3]) * 0.5 * H as f32]
+    [
+        (c[0] / c[3] + 1.0) * 0.5 * W as f32,
+        (1.0 - c[1] / c[3]) * 0.5 * H as f32,
+    ]
 }
 
 fn main() {
@@ -177,20 +201,29 @@ fn main() {
                 to = args[i + 1].parse().unwrap();
                 i += 1;
             }
-            s if cmd == "stills" && times.is_empty() => times = s.split(',').filter_map(|x| x.parse().ok()).collect(),
+            s if cmd == "stills" && times.is_empty() => {
+                times = s.split(',').filter_map(|x| x.parse().ok()).collect()
+            }
             _ => {}
         }
         i += 1;
     }
     std::fs::create_dir_all(&out).unwrap();
     let mut ctx = Ctx::new();
-    let bench_out = PathBuf::from(std::env::var("REEL_BENCH").unwrap_or_else(|_| "demo/reel".into()));
+    let bench_out =
+        PathBuf::from(std::env::var("REEL_BENCH").unwrap_or_else(|_| "demo/reel".into()));
     let reel = Reel {
         bench: load_bench(&bench_out),
         // Highlighted probes: in the gap under the progress bar, and between the chat and the right panel.
         hp: [
-            [dpx(620.0, 421.0, 0.0, 0.0)[0], dpx(620.0, 421.0, 0.0, 0.0)[1]],
-            [dpx(912.0, 300.0, 0.0, 0.0)[0], dpx(912.0, 300.0, 0.0, 0.0)[1]],
+            [
+                dpx(620.0, 421.0, 0.0, 0.0)[0],
+                dpx(620.0, 421.0, 0.0, 0.0)[1],
+            ],
+            [
+                dpx(912.0, 300.0, 0.0, 0.0)[0],
+                dpx(912.0, 300.0, 0.0, 0.0)[1],
+            ],
         ],
     };
     match cmd {
@@ -202,7 +235,12 @@ fn main() {
             for t in times {
                 let (view, _) = reel.frame(&mut ctx, t, false);
                 let (_, _, rgba) = ctx.encode(&view, true, false);
-                write_png(&out.join(format!("still-{t:05.2}.png")), W, H, &rgba.unwrap());
+                write_png(
+                    &out.join(format!("still-{t:05.2}.png")),
+                    W,
+                    H,
+                    &rgba.unwrap(),
+                );
                 eprintln!("still {t}");
             }
         }

@@ -4,11 +4,11 @@
 
 use rune::{Color, El, TextStyle, Tx, col, el, row, spacer, text};
 
+use crate::icons;
 use crate::rows::{CHIP, Ctx, PAD, VALUE, card};
 use crate::side::{INSET, section_key};
 use crate::tree::{Head, Node, Plan, Section, Sub};
 use crate::view::tool;
-use crate::icons;
 use crate::{Group, Knobs, Style};
 
 const PAGE_H: f32 = 34.0;
@@ -25,7 +25,14 @@ pub(crate) fn list<S: 'static>(cx: Ctx<'_, S>, groups: &'static [Group], plan: &
         l = l.child(section(cx, groups, s));
     }
     if plan.sections.iter().all(|s| s.subs.is_empty()) {
-        l = l.child(text("Nothing matches").key("knobs-none").font(GROUP).color(cx.st.fg3).px(PAD).h(GROUP_H));
+        l = l.child(
+            text("Nothing matches")
+                .key("knobs-none")
+                .font(GROUP)
+                .color(cx.st.fg3)
+                .px(PAD)
+                .h(GROUP_H),
+        );
     }
     l
 }
@@ -46,7 +53,19 @@ fn section<S: 'static>(cx: Ctx<'_, S>, groups: &'static [Group], s: &Section) ->
     };
     match s.head {
         Head::Bare => subs(col().key("knobs-bare").w_full(), 0.0),
-        Head::Caption(c) => subs(col().key(format!("knobs-cap-{c}")).w_full().child(row().key("cap").w_full().h(28.0).px(PAD).items_end().pb(6.0).child(text(c.to_uppercase()).font(CAPTION).color(st.fg3))), 0.0),
+        Head::Caption(c) => subs(
+            col().key(format!("knobs-cap-{c}")).w_full().child(
+                row()
+                    .key("cap")
+                    .w_full()
+                    .h(28.0)
+                    .px(PAD)
+                    .items_end()
+                    .pb(6.0)
+                    .child(text(c.to_uppercase()).font(CAPTION).color(st.fg3)),
+            ),
+            0.0,
+        ),
         Head::Page(p) => {
             let i = groups.iter().position(|g| g.page() == p).unwrap_or(0);
             let on = k.kbd && k.at() == Some(Node::Page(p));
@@ -71,11 +90,25 @@ fn section<S: 'static>(cx: Ctx<'_, S>, groups: &'static [Group], s: &Section) ->
                     k.at = Some(Node::Page(p));
                     k.kbd = true;
                 })
-                .child(text(p).font(PAGE).color(if s.seen { st.fg } else { st.fg2 }).truncate_fade().shrink())
+                .child(
+                    text(p)
+                        .font(PAGE)
+                        .color(if s.seen { st.fg } else { st.fg2 })
+                        .truncate_fade()
+                        .shrink(),
+                )
                 .children(s.seen.then(|| dot(st)))
                 .child(spacer())
-                .child(text(n.to_string()).font(VALUE).color(if s.open { st.fg3 } else { st.fg2 }));
-            col().key(format!("knobs-page-{i}")).w_full().child(header).child(subs(body(s.open), PAGE_H))
+                .child(
+                    text(n.to_string())
+                        .font(VALUE)
+                        .color(if s.open { st.fg3 } else { st.fg2 }),
+                );
+            col()
+                .key(format!("knobs-page-{i}"))
+                .w_full()
+                .child(header)
+                .child(subs(body(s.open), PAGE_H))
         }
     }
 }
@@ -95,7 +128,11 @@ fn group<S: 'static>(cx: Ctx<'_, S>, groups: &'static [Group], sub: &Sub, sticky
     let current = k.group.as_deref() == Some(name);
     let lit = current || k.hover.as_deref() == Some(name);
     let on = k.kbd && k.at() == Some(Node::Group(gi));
-    let title = if sub.full && !g.under.is_empty() { format!("{} · {}", g.under, name) } else { name.to_owned() };
+    let title = if sub.full && !g.under.is_empty() {
+        format!("{} · {}", g.under, name)
+    } else {
+        name.to_owned()
+    };
     let open = sub.open;
     let header = row()
         .key("head")
@@ -133,7 +170,13 @@ fn group<S: 'static>(cx: Ctx<'_, S>, groups: &'static [Group], sub: &Sub, sticky
             tx.instant();
             lens(s).reset(g);
         })
-        .child(text(title).font(GROUP).color(if lit { st.fg } else { st.fg2 }).truncate_fade().shrink())
+        .child(
+            text(title)
+                .font(GROUP)
+                .color(if lit { st.fg } else { st.fg2 })
+                .truncate_fade()
+                .shrink(),
+        )
         .children((sub.seen && !sub.full).then(|| dot(st)))
         .child(spacer());
     // Hovered, the header offers Random and Reset for its group in place of its count.
@@ -141,21 +184,50 @@ fn group<S: 'static>(cx: Ctx<'_, S>, groups: &'static [Group], sub: &Sub, sticky
         header
             .gap(2.0)
             .pr(PAD - 6.0)
-            .child(tool(st, "random", &icons::RANDOM, "Random", true, lens, move |k, _| k.random(g)))
-            .child(tool(st, "reset", &icons::RESET, "Reset", k.can_reset(g), lens, move |k, _| k.reset(g)))
+            .child(tool(
+                st,
+                "random",
+                &icons::RANDOM,
+                "Random",
+                true,
+                lens,
+                move |k, _| k.random(g),
+            ))
+            .child(tool(
+                st,
+                "reset",
+                &icons::RESET,
+                "Reset",
+                k.can_reset(g),
+                lens,
+                move |k, _| k.reset(g),
+            ))
     } else {
-        header.child(text(sub.knobs.len().to_string()).font(VALUE).color(if open { st.fg3 } else { st.fg2 }))
+        header.child(
+            text(sub.knobs.len().to_string())
+                .font(VALUE)
+                .color(if open { st.fg3 } else { st.fg2 }),
+        )
     };
     let mark = match k.at() {
         Some(Node::Knob(g, i)) if k.kbd && g == gi => Some(i),
         _ => None,
     };
-    col().key(section_key(gi)).w_full().child(header).child(body(open).child(card(cx, g, gi, &sub.knobs, mark).mb(INSET)))
+    col()
+        .key(section_key(gi))
+        .w_full()
+        .child(header)
+        .child(body(open).child(card(cx, g, gi, &sub.knobs, mark).mb(INSET)))
 }
 
 /// The Tabs layout's pages: the one showing underlined, pages with nothing on screen dimmer.
 pub(crate) fn tabs<S: 'static>(st: Style, lens: fn(&mut S) -> &mut Knobs, plan: &Plan) -> El {
-    let mut r = row().key("knobs-tabs").w_full().flex_wrap().gap(14.0).px(PAD);
+    let mut r = row()
+        .key("knobs-tabs")
+        .w_full()
+        .flex_wrap()
+        .gap(14.0)
+        .px(PAD);
     for (i, (p, seen)) in plan.tabs.iter().enumerate() {
         let on = plan.tab == Some(*p);
         let p = *p;
@@ -172,9 +244,19 @@ pub(crate) fn tabs<S: 'static>(st: Style, lens: fn(&mut S) -> &mut Knobs, plan: 
                     k.at = None;
                 })
                 .child(spacer())
-                .child(text(p).font(CHIP).color(if on { st.fg } else if *seen { st.fg2 } else { st.fg3 }))
+                .child(text(p).font(CHIP).color(if on {
+                    st.fg
+                } else if *seen {
+                    st.fg2
+                } else {
+                    st.fg3
+                }))
                 .child(spacer())
-                .child(el().key("bar").w_full().h(1.5).radius(1.0).fill(if on { st.handle } else { Color::TRANSPARENT })),
+                .child(el().key("bar").w_full().h(1.5).radius(1.0).fill(if on {
+                    st.handle
+                } else {
+                    Color::TRANSPARENT
+                })),
         );
     }
     r

@@ -55,14 +55,18 @@ mod tests {
 
     #[test]
     fn a_seed_names_one_sequence() {
-        let a: Vec<u64> = (0..4).map({
-            let mut r = Rng::new(7);
-            move |_| r.next_u64()
-        }).collect();
-        let b: Vec<u64> = (0..4).map({
-            let mut r = Rng::new(7);
-            move |_| r.next_u64()
-        }).collect();
+        let a: Vec<u64> = (0..4)
+            .map({
+                let mut r = Rng::new(7);
+                move |_| r.next_u64()
+            })
+            .collect();
+        let b: Vec<u64> = (0..4)
+            .map({
+                let mut r = Rng::new(7);
+                move |_| r.next_u64()
+            })
+            .collect();
         assert_eq!(a, b);
         assert_ne!(Rng::new(8).next_u64(), a[0]);
     }

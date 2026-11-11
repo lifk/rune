@@ -50,8 +50,13 @@ const REPO: &[(&str, u32, u32, Status)] = &[
 fn state() -> State {
     let big = std::env::args().any(|a| a == "--big");
     let mut files = if big {
-        let paths: Vec<String> = (0..500).flat_map(|d| (0..100).map(move |f| format!("pkg{:03}/src/module{f}.rs", d))).collect();
-        FileTree::new().build(paths.into_iter().enumerate().map(|(i, p)| (p, Change { added: (i % 37) as u32, removed: (i % 11) as u32, status: Status::Modified })))
+        let paths: Vec<String> =
+            (0..500).flat_map(|d| (0..100).map(move |f| format!("pkg{:03}/src/module{f}.rs", d))).collect();
+        FileTree::new().build(
+            paths.into_iter().enumerate().map(|(i, p)| {
+                (p, Change { added: (i % 37) as u32, removed: (i % 11) as u32, status: Status::Modified })
+            }),
+        )
     } else {
         FileTree::new().build(REPO.iter().map(|&(p, added, removed, status)| (p, Change { added, removed, status })))
     };
@@ -91,7 +96,8 @@ fn view(s: &State, cx: &mut Cx<State>) -> El {
                     if ch.status == Status::Deleted {
                         item = item.label_color(c.text_faint);
                     }
-                    item.changes(ch.added, ch.removed).trailing(text(letter).key("status").font(status_font).color(color).w(10.0))
+                    item.changes(ch.added, ch.removed)
+                        .trailing(text(letter).key("status").font(status_font).color(color).w(10.0))
                 }
                 None => item,
             }
@@ -113,24 +119,18 @@ fn view(s: &State, cx: &mut Cx<State>) -> El {
             }
         })
         .build(&k);
-    let sidebar = col()
-        .key("sidebar")
-        .w(300.0)
-        .h_full()
-        .padding(8.0)
-        .gap(8.0)
-        .fill(k.c.bg_base)
-        .child(filter)
-        .child(tree);
+    let sidebar =
+        col().key("sidebar").w(300.0).h_full().padding(8.0).gap(8.0).fill(k.c.bg_base).child(filter).child(tree);
     let selected = s.files.cursor().map(str::to_owned);
     let detail = match selected.as_deref() {
         Some(id) => {
             let (a, r) = totals(&s.files, id);
             let n = s.files.get(id).unwrap();
-            col()
-                .gap(6.0)
-                .child(text(n.path.clone()).font(k.ty.ui_medium).color(k.c.text_base))
-                .child(text(format!("{} · +{a} \u{2212}{r}", if n.dir { "Folder" } else { "File" })).font(k.ty.text_small).color(k.c.text_muted))
+            col().gap(6.0).child(text(n.path.clone()).font(k.ty.ui_medium).color(k.c.text_base)).child(
+                text(format!("{} · +{a} \u{2212}{r}", if n.dir { "Folder" } else { "File" }))
+                    .font(k.ty.text_small)
+                    .color(k.c.text_muted),
+            )
         }
         None => col().child(text("Select a file").font(k.ty.ui).color(k.c.text_muted)),
     };

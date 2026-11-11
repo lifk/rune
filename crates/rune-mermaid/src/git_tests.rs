@@ -16,8 +16,11 @@ fn branches_merges_and_cherry_picks() {
     let names: Vec<&str> = g.branches.iter().map(|b| b.name.as_str()).collect();
     assert_eq!(names, ["main", "develop", "feature/x"]);
     assert_eq!(g.branches[1].order, Some(2.0));
-    let shape: Vec<(Option<&str>, Kind, usize, &[usize])> =
-        g.commits.iter().map(|c| (c.id.as_deref(), c.kind, c.branch, c.parents.as_slice())).collect();
+    let shape: Vec<(Option<&str>, Kind, usize, &[usize])> = g
+        .commits
+        .iter()
+        .map(|c| (c.id.as_deref(), c.kind, c.branch, c.parents.as_slice()))
+        .collect();
     assert_eq!(
         shape,
         [
@@ -47,7 +50,10 @@ fn flows_and_bounds() {
 
 #[test]
 fn draws_lanes_ids_and_tags() {
-    for src in ["gitGraph\ncommit id: \"A\" tag: \"v1\"\nbranch dev\ncommit id: \"B\"\ncheckout main\nmerge dev", "gitGraph TB:\ncommit id: \"A\"\nbranch dev\ncommit id: \"B\" tag: \"t\""] {
+    for src in [
+        "gitGraph\ncommit id: \"A\" tag: \"v1\"\nbranch dev\ncommit id: \"B\"\ncheckout main\nmerge dev",
+        "gitGraph TB:\ncommit id: \"A\"\nbranch dev\ncommit id: \"B\" tag: \"t\"",
+    ] {
         let s = crate::scene(src, &DiagramStyle::neutral(false), None).unwrap();
         let texts: Vec<&str> = s.labels.iter().map(|l| l.text.as_str()).collect();
         for t in ["main", "dev", "A", "B"] {

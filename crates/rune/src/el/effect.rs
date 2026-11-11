@@ -15,7 +15,9 @@ pub(crate) struct EffectSlot {
 impl PartialEq for EffectSlot {
     // Bitwise, so a NaN-packed payload still lets a memoized row be reused.
     fn eq(&self, o: &Self) -> bool {
-        self.bleed == o.bleed && self.backdrop == o.backdrop && self.data.map(f32::to_bits) == o.data.map(f32::to_bits)
+        self.bleed == o.bleed
+            && self.backdrop == o.backdrop
+            && self.data.map(f32::to_bits) == o.data.map(f32::to_bits)
     }
 }
 
@@ -44,13 +46,20 @@ impl El {
         if mark != 0 || !self.vis.cold.is_empty() {
             self.vis.cold_mut().mark = mark;
         }
-        self.vis.cold_mut().effect.get_or_insert_with(EffectSlot::default);
+        self.vis
+            .cold_mut()
+            .effect
+            .get_or_insert_with(EffectSlot::default);
         self
     }
     /// Points past the rect an effect slot may paint (a glow's reach). Grows the bounds of an
     /// enclosing isolated layer; the clip still applies.
     pub fn effect_bleed(mut self, pt: f32) -> Self {
-        self.vis.cold_mut().effect.get_or_insert_with(EffectSlot::default).bleed = pt.max(0.0);
+        self.vis
+            .cold_mut()
+            .effect
+            .get_or_insert_with(EffectSlot::default)
+            .bleed = pt.max(0.0);
         self
     }
     /// Request a backdrop copy up to this effect slot (`EffectSite::backdrop`) when drawn with
@@ -58,7 +67,11 @@ impl El {
     /// Ordinary slots (`false`, the default) stay inside the open render pass with no copy.
     /// A target without `COPY_SRC` usage can't be copied: the slot draws in the open pass with `backdrop == None`.
     pub fn effect_backdrop(mut self, on: bool) -> Self {
-        self.vis.cold_mut().effect.get_or_insert_with(EffectSlot::default).backdrop = on;
+        self.vis
+            .cold_mut()
+            .effect
+            .get_or_insert_with(EffectSlot::default)
+            .backdrop = on;
         self
     }
     /// Four floats this effect slot hands its compositor as `EffectSite::data`, such as which
@@ -67,7 +80,11 @@ impl El {
     /// it was last built with through its exit transition, with no bookkeeping in the app.
     /// Makes the element an effect slot if it isn't one yet (tag 0 unless `El::effect` sets one).
     pub fn effect_data(mut self, data: [f32; 4]) -> Self {
-        self.vis.cold_mut().effect.get_or_insert_with(EffectSlot::default).data = data;
+        self.vis
+            .cold_mut()
+            .effect
+            .get_or_insert_with(EffectSlot::default)
+            .data = data;
         self
     }
 }

@@ -16,7 +16,8 @@ fn view(_: &(), cx: &mut Cx<()>) -> El {
     c.child(Button::new("Button").build(&k).key("default"))
         .child(IconButton::new(k.glyph.copy).build(&k).key("icon-default"))
         .children([ButtonSize::Small, ButtonSize::Normal, ButtonSize::Large].into_iter().enumerate().map(|(i, s)| {
-            col().child(Button::new("Button").size(s).build(&k).key(format!("legacy-{i}")))
+            col()
+                .child(Button::new("Button").size(s).build(&k).key(format!("legacy-{i}")))
                 .child(IconButton::new(k.glyph.copy).size(s).build(&k).key(format!("legacy-icon-{i}")))
         }))
 }
@@ -49,7 +50,9 @@ fn switches(_: &(), cx: &mut Cx<()>) -> El {
     let k = Kit::neutral(cx.system_dark());
     let mut c = col().items_start();
     for (i, s) in SIZES.into_iter().enumerate() {
-        for (j, (on, st)) in [(false, State::Rest), (true, State::Rest), (false, State::Pressed)].into_iter().enumerate() {
+        for (j, (on, st)) in
+            [(false, State::Rest), (true, State::Rest), (false, State::Pressed)].into_iter().enumerate()
+        {
             c = c.child(Switch::new(on).control_size(s).state(st).build(&k).key(format!("switch-{i}-{j}")));
         }
     }
@@ -65,11 +68,17 @@ fn switches_have_appkit_capsule_tracks_and_pill_knobs() {
     let els = rt.elements();
     let parts = |key: &str| {
         let i = els.iter().position(|e| e.key.as_deref() == Some(key)).unwrap();
-        let under = |k: &str| els.iter().find(|e| e.key.as_deref() == Some(k) && e.path.starts_with(&els[i].path)).unwrap();
+        let under =
+            |k: &str| els.iter().find(|e| e.key.as_deref() == Some(k) && e.path.starts_with(&els[i].path)).unwrap();
         (under("control").clone(), under("thumb").clone())
     };
-    let measured = [(36.0, 16.0, 21.0, 14.0, 1.0), (44.0, 20.0, 26.0, 16.0, 2.0), (54.0, 24.0, 32.0, 20.0, 2.0),
-        (64.0, 28.0, 38.0, 24.0, 2.0), (80.0, 36.0, 48.0, 30.0, 3.0)];
+    let measured = [
+        (36.0, 16.0, 21.0, 14.0, 1.0),
+        (44.0, 20.0, 26.0, 16.0, 2.0),
+        (54.0, 24.0, 32.0, 20.0, 2.0),
+        (64.0, 28.0, 38.0, 24.0, 2.0),
+        (80.0, 36.0, 48.0, 30.0, 3.0),
+    ];
     for (i, (tw, th, kw, kh, inset)) in measured.into_iter().enumerate() {
         let (track, off) = parts(&format!("switch-{i}-0"));
         assert_eq!((track.rect[2], track.rect[3], track.radius), (tw, th, th / 2.0), "track {i}");

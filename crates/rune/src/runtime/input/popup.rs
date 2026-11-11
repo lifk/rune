@@ -8,11 +8,16 @@ pub(crate) enum Popups {
     /// None is open: the first, if any, waits for the host to open it.
     Queued(VecDeque<Request>),
     /// `open` is showing (or couldn't, and waits for its `None`); `next` wait behind it.
-    Showing { open: Request, next: VecDeque<Request> },
+    Showing {
+        open: Request,
+        next: VecDeque<Request>,
+    },
 }
 
 impl Default for Popups {
-    fn default() -> Self { Popups::Queued(VecDeque::new()) }
+    fn default() -> Self {
+        Popups::Queued(VecDeque::new())
+    }
 }
 
 impl Popups {
@@ -28,7 +33,9 @@ impl Popups {
         }
     }
     pub(crate) fn extend(&mut self, requests: impl IntoIterator<Item = Request>) {
-        for r in requests { self.push_back(r); }
+        for r in requests {
+            self.push_back(r);
+        }
     }
     pub(crate) fn len(&self) -> usize {
         match self {
@@ -36,15 +43,22 @@ impl Popups {
             Popups::Showing { next, .. } => next.len() + 1,
         }
     }
-    pub(crate) fn is_empty(&self) -> bool { self.len() == 0 }
+    pub(crate) fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     /// The first is showing.
-    pub(crate) fn is_open(&self) -> bool { matches!(self, Popups::Showing { .. }) }
+    pub(crate) fn is_open(&self) -> bool {
+        matches!(self, Popups::Showing { .. })
+    }
 
     /// The host opens the first: it shows from now until it's answered.
     fn open_first(&mut self) -> Option<&Request> {
         if let Popups::Queued(queue) = self {
             let open = queue.pop_front()?;
-            *self = Popups::Showing { open, next: std::mem::take(queue) };
+            *self = Popups::Showing {
+                open,
+                next: std::mem::take(queue),
+            };
         }
         self.front()
     }
@@ -67,7 +81,9 @@ impl Popups {
 
 impl<S: 'static> Runtime<S> {
     /// The pop-up menu showing, or the next to show, from [`Tx::popup_menu`].
-    pub fn popup_menu(&self) -> Option<&PopupMenu> { self.popups.front().map(|r| &r.menu) }
+    pub fn popup_menu(&self) -> Option<&PopupMenu> {
+        self.popups.front().map(|r| &r.menu)
+    }
 
     /// Answers the pop-up menu showing (or next to show) as if the user picked `picked`, or
     /// dismissed it with `None`. Its callback runs now and the next frame commits it, as for
@@ -75,10 +91,17 @@ impl<S: 'static> Runtime<S> {
     pub fn resolve_popup(&mut self, picked: Option<&str>) -> Result<(), PopupMenuError> {
         let request = self.popups.front().ok_or(PopupMenuError::NotOpen)?;
         if let Some(id) = picked {
-            let item = request.menu.find(id).ok_or_else(|| PopupMenuError::UnknownItem(id.into()))?;
-            if !item.enabled { return Err(PopupMenuError::Disabled(id.into())); }
+            let item = request
+                .menu
+                .find(id)
+                .ok_or_else(|| PopupMenuError::UnknownItem(id.into()))?;
+            if !item.enabled {
+                return Err(PopupMenuError::Disabled(id.into()));
+            }
         }
-        let Some(request) = self.popups.answer_first() else { return Err(PopupMenuError::NotOpen) };
+        let Some(request) = self.popups.answer_first() else {
+            return Err(PopupMenuError::NotOpen);
+        };
         match picked {
             Some(id) => self.trace_event(format_args!("popup-menu:pick:{id}")),
             None => self.trace_event("popup-menu:cancel"),
@@ -98,9 +121,13 @@ impl<S: 'static> Runtime<S> {
     /// open (its anchor element is gone, or its ids repeat): answer it with `None`. Nothing while
     /// a menu is open, so menus show one at a time.
     pub(crate) fn take_popup(&mut self) -> Option<Option<Show>> {
-        if self.popups.is_open() { return None; }
+        if self.popups.is_open() {
+            return None;
+        }
         let rect = match &self.popups.front()?.anchor {
-            PopupAnchor::Key(key) => self.anchor_rect(key).ok_or_else(|| format!("no element keyed {key:?} to anchor to")),
+            PopupAnchor::Key(key) => self
+                .anchor_rect(key)
+                .ok_or_else(|| format!("no element keyed {key:?} to anchor to")),
             &PopupAnchor::Point(x, y) => Ok([x, y, 0.0, 0.0]),
         };
         let request = self.popups.open_first()?;
@@ -109,7 +136,9 @@ impl<S: 'static> Runtime<S> {
                 let show = Show::new(request.menu.clone(), &request.anchor, rect);
                 self.trace_event("popup-menu:open");
                 // Asked for outside a frame (an update): the next frame drops the hover.
-                if self.release_pointer_for_popup() { self.dirty = true; }
+                if self.release_pointer_for_popup() {
+                    self.dirty = true;
+                }
                 Some(Some(show))
             }
             Err(problem) => {
@@ -122,8 +151,12 @@ impl<S: 'static> Runtime<S> {
     /// The next menu anchors to an element and the runtime has changes the next frame commits
     /// (a pick that asked for another menu over what it mounted): open it after that frame.
     pub(crate) fn popup_waits_for_layout(&self) -> bool {
-        !self.popups.is_open() && (self.dirty || self.relayout)
-            && self.popups.front().is_some_and(|r| matches!(r.anchor, PopupAnchor::Key(_)))
+        !self.popups.is_open()
+            && (self.dirty || self.relayout)
+            && self
+                .popups
+                .front()
+                .is_some_and(|r| matches!(r.anchor, PopupAnchor::Key(_)))
     }
 
     /// A menu is about to take the mouse: press, capture and hover end now, as if the pointer
@@ -140,9 +173,14 @@ impl<S: 'static> Runtime<S> {
     /// for another menu is answered too, up to a bound against one that always asks again.
     pub(crate) fn cancel_popups(&mut self) {
         for _ in 0..64 {
-            if self.resolve_popup(None).is_err() { return; }
+            if self.resolve_popup(None).is_err() {
+                return;
+            }
         }
-        eprintln!("rune: pop-up menu callbacks kept asking for menus while their window went away; dropping {}", self.popups.len());
+        eprintln!(
+            "rune: pop-up menu callbacks kept asking for menus while their window went away; dropping {}",
+            self.popups.len()
+        );
         self.popups = Popups::default();
     }
 
@@ -157,8 +195,15 @@ impl<S: 'static> Runtime<S> {
     /// Drawn rect of the element a menu anchors to, matched as [`Runtime::find`] matches.
     fn anchor_rect(&self, key: &str) -> Option<[f32; 4]> {
         let suffix = format!("/{key}");
-        let matches = |n: &Node| if key.contains('/') { n.path == key || n.path.ends_with(&suffix) } else { n.key.as_deref() == Some(key) };
-        let i = (0..self.nodes.len()).find(|&i| matches(&self.nodes[i]) && !self.subtree_exiting(i))?;
+        let matches = |n: &Node| {
+            if key.contains('/') {
+                n.path == key || n.path.ends_with(&suffix)
+            } else {
+                n.key.as_deref() == Some(key)
+            }
+        };
+        let i =
+            (0..self.nodes.len()).find(|&i| matches(&self.nodes[i]) && !self.subtree_exiting(i))?;
         self.drawn.get(i).copied()
     }
 

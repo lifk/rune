@@ -24,8 +24,11 @@ fn register(s: &mut State, next: Option<&Shortcut>) -> Result<(), ShortcutError>
     let handle = s.handle.as_ref().ok_or(ShortcutError::NotRunning)?;
     let new = next.map(|shortcut| handle.register_shortcut(shortcut.clone(), |s, _| s.activations += 1)).transpose()?;
     if let Some(old) = s.registration
-        && let Err(error) = handle.unregister_shortcut(old) {
-        if let Some(new) = new { handle.unregister_shortcut(new)?; }
+        && let Err(error) = handle.unregister_shortcut(old)
+    {
+        if let Some(new) = new {
+            handle.unregister_shortcut(new)?;
+        }
         return Err(error);
     }
     s.registration = new;
@@ -38,9 +41,19 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
         (Some(chord), Some(owner)) => format!("{} is used by {owner}.", chord.keycaps().join(" ")),
         _ => shortcut_error_message(error, chord),
     };
-    col().padding(24.0).gap(16.0).w_full().h_full().fill(k.c.page)
+    col()
+        .padding(24.0)
+        .gap(16.0)
+        .w_full()
+        .h_full()
+        .fill(k.c.page)
         .child(text("Launcher shortcut").font(k.ty.ui_compact).color(k.c.text_base))
-        .child(ShortcutRecorder::new("shortcut", &s.recorder, |s: &mut State| &mut s.recorder).on_change(change).error_message(message).build(&k))
+        .child(
+            ShortcutRecorder::new("shortcut", &s.recorder, |s: &mut State| &mut s.recorder)
+                .on_change(change)
+                .error_message(message)
+                .build(&k),
+        )
         .child(text(format!("Activations: {}", s.activations)).font(k.ty.ui_compact).color(k.c.text_muted))
 }
 fn main() {

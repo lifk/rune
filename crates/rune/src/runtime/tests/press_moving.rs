@@ -6,11 +6,21 @@ struct State {
 }
 
 fn view(s: &State, _: &mut Cx<State>) -> El {
-    el().child(el().key("button").size(40.0, 20.0).absolute(s.x, 0.0).on_press(|s: &mut State| s.pressed += 1))
+    el().child(
+        el().key("button")
+            .size(40.0, 20.0)
+            .absolute(s.x, 0.0)
+            .on_press(|s: &mut State| s.pressed += 1),
+    )
 }
 
 fn press_then_slide(move_after: Option<(f32, f32)>) -> u32 {
-    let mut rt = Runtime::new(State { x: 0.0, pressed: 0 }, view, (300.0, 100.0), Env::new(true, 2.0));
+    let mut rt = Runtime::new(
+        State { x: 0.0, pressed: 0 },
+        view,
+        (300.0, 100.0),
+        Env::new(true, 2.0),
+    );
     rt.frame(0.0);
     rt.pointer_move(20.0, 10.0);
     rt.pointer_down(20.0, 10.0);

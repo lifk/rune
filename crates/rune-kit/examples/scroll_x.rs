@@ -24,20 +24,37 @@ const TABLE: &str = "| Clip | Codec | Resolution | Frame rate | Duration | Keyfr
 fn view(_: &(), _: &mut Cx<()>) -> El {
     let k = Kit::neutral(true);
     let tile = |i: usize| {
-        col().key(format!("tile{i}")).w(132.0).h(96.0).radius(10.0).padding(10.0).justify_end()
+        col()
+            .key(format!("tile{i}"))
+            .w(132.0)
+            .h(96.0)
+            .radius(10.0)
+            .padding(10.0)
+            .justify_end()
             .fill(oklch(0.62, 0.13, 25.0 + 31.0 * i as f32))
             .child(text(format!("Clip {}", i + 1)).font(type_::TITLE).color(rune::Color::WHITE))
     };
-    let strip = col().key("strip").w_full().h(96.0).scroll_x().scroll_edge_fade(16.0)
+    let strip = col()
+        .key("strip")
+        .w_full()
+        .h(96.0)
+        .scroll_x()
+        .scroll_edge_fade(16.0)
         .child((0..12).fold(row().gap(10.0), |r, i| r.child(tile(i))));
     let md = |key: &str, src: &str| col().key(key).w_full().child(Markdown::new(src).scroll_wide(true).build(&k));
-    let page = col().w_full().padding(20.0).gap(16.0)
+    let page = col()
+        .w_full()
+        .padding(20.0)
+        .gap(16.0)
         .child(text("Filmstrip").font(type_::TITLE).color(k.c.text_base))
         .child(strip)
         .child(md("code", CODE))
         .child(md("table", TABLE))
         .child(el().h(240.0));
-    col().w_full().h_full().fill(k.c.page)
+    col()
+        .w_full()
+        .h_full()
+        .fill(k.c.page)
         .child(col().key("page").w_full().h_full().scroll(ScrollSpec { stick_bottom: false }).child(page))
 }
 

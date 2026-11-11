@@ -4,7 +4,7 @@
 use std::rc::Rc;
 use std::time::Duration;
 
-use rune::{Anim, Color, Curve, Cursor, Drag, Easing, El, Phase, Spring, Transition, Tx, col, el, row};
+use rune::{Anim, Color, Cursor, Curve, Drag, Easing, El, Phase, Spring, Transition, Tx, col, el, row};
 
 use super::pane::{PaneMotion, PaneState, Peek, SidebarPeek};
 use super::toolbar::{TOOLBAR_HEIGHT, Toolbar};
@@ -172,7 +172,12 @@ impl SplitView {
         self
     }
     /// The trailing pane, resized from its leading edge.
-    pub fn inspector<S: 'static>(mut self, state: &PaneState, access: fn(&mut S) -> &mut PaneState, content: El) -> Self {
+    pub fn inspector<S: 'static>(
+        mut self,
+        state: &PaneState,
+        access: fn(&mut S) -> &mut PaneState,
+        content: El,
+    ) -> Self {
         self.inspector = Some(pane(*state, access, content, -1.0, false));
         self
     }
@@ -280,10 +285,13 @@ impl SplitView {
                     // A tween ends where it says; a spring's exit would run on unseen for a while.
                     let dot = el().key("sidebar-toggle-unread").size(7.0, 7.0).radius(3.5).fill(c.bg_accent);
                     let fade = Curve::tween(DOT_FADE, Easing::EASE_IN_OUT);
-                    button = button.child(dot.absolute(side - 5.0, -2.0).opacity(if open { 0.0 } else { 1.0 }).opacity_motion(fade));
+                    button = button.child(
+                        dot.absolute(side - 5.0, -2.0).opacity(if open { 0.0 } else { 1.0 }).opacity_motion(fade),
+                    );
                 }
                 let x = if open && t.in_header { s.width() - self.padding[1] - side } else { lights };
-                let mut b = tg(button).key("sidebar-toggle").absolute(x, top + (TOOLBAR_HEIGHT - side) / 2.0).motion(spring);
+                let mut b =
+                    tg(button).key("sidebar-toggle").absolute(x, top + (TOOLBAR_HEIGHT - side) / 2.0).motion(spring);
                 if let (Some(pk), Some(h)) = (peek, &hover)
                     && !open
                 {
@@ -297,11 +305,17 @@ impl SplitView {
             if let (Some(pk), Some(h)) = (peek, &hover) {
                 let instant = Transition::none();
                 if shown {
-                    let hold = el().key("sidebar-peek-hold").pin(Some(0.0), Some(0.0), None, Some(0.0)).w(s.width() + pk.margin);
+                    let hold = el()
+                        .key("sidebar-peek-hold")
+                        .pin(Some(0.0), Some(0.0), None, Some(0.0))
+                        .w(s.width() + pk.margin);
                     zones.push(h(hold.transition(instant), Duration::ZERO, pk.grace, false));
                 } else if !open && !s.is_resizing() {
                     let below = pk.below.unwrap_or(top + TOOLBAR_HEIGHT);
-                    let edge = el().key("sidebar-peek-edge").pin(Some(0.0), Some(below), None, Some(0.0)).w(self.frame + pk.edge);
+                    let edge = el()
+                        .key("sidebar-peek-edge")
+                        .pin(Some(0.0), Some(below), None, Some(0.0))
+                        .w(self.frame + pk.edge);
                     zones.push(h(edge.transition(instant), pk.edge_delay, Duration::ZERO, true));
                 }
             }
@@ -314,16 +328,17 @@ impl SplitView {
             } else {
                 0.0
             };
-            let mut band = row()
-                .key("sidebar-titlebar")
-                .w_full()
-                .h(top + TOOLBAR_HEIGHT)
-                .pt(top)
-                .center_y()
-                .window_drag()
-                .child(el().key("sidebar-titlebar-clear").w((clear - self.padding[0]).max(0.0)).motion(spring).a11y_hidden());
+            let mut band =
+                row().key("sidebar-titlebar").w_full().h(top + TOOLBAR_HEIGHT).pt(top).center_y().window_drag().child(
+                    el().key("sidebar-titlebar-clear")
+                        .w((clear - self.padding[0]).max(0.0))
+                        .motion(spring)
+                        .a11y_hidden(),
+                );
             if toggle && t.in_header {
-                band = band.child(el().key("sidebar-spacer").grow(1.0).a11y_hidden()).child(el().key("sidebar-toggle-slot").w(side).ml(8.0).a11y_hidden());
+                band = band
+                    .child(el().key("sidebar-spacer").grow(1.0).a11y_hidden())
+                    .child(el().key("sidebar-toggle-slot").w(side).ml(8.0).a11y_hidden());
             }
             let content = Contents { pad: self.padding, slide: peek.is_some(), peek, band: Some(band) };
             dock(&d, "sidebar-pane", p, true, content)
@@ -331,7 +346,13 @@ impl SplitView {
         let toolbar = self
             .toolbar
             .unwrap_or_default()
-            .padding(if sidebar_open { 12.0 } else if self.in_panel { (past_toggle - self.frame).max(12.0) } else { past_toggle })
+            .padding(if sidebar_open {
+                12.0
+            } else if self.in_panel {
+                (past_toggle - self.frame).max(12.0)
+            } else {
+                past_toggle
+            })
             .build(k)
             .motion(spring);
         let (toolbar, above) = if self.in_panel { (Some(toolbar), None) } else { (None, Some(toolbar)) };
@@ -360,7 +381,15 @@ impl SplitView {
             below = below.child(dock(&d, "inspector-pane", p, false, content));
         }
         let strip = self.in_panel.then(|| el().key("titlebar-strip").w_full().h(self.frame).window_drag());
-        let main = col().key("main-column").grow(1.0).min_w(0.0).h_full().motion(spring).children(above).children(strip).child(below);
+        let main = col()
+            .key("main-column")
+            .grow(1.0)
+            .min_w(0.0)
+            .h_full()
+            .motion(spring)
+            .children(above)
+            .children(strip)
+            .child(below);
         let mut split = row().key("split").w_full().h_full().motion(spring);
         if let Some(s) = sidebar {
             split = split.child(s);
@@ -391,14 +420,7 @@ pub struct Page {
 
 impl Page {
     pub fn new(main: El) -> Page {
-        Page {
-            main,
-            toolbar: Toolbar::new(),
-            inset: 0.0,
-            toggle: SidebarToggle::new(),
-            frame: 8.0,
-            in_panel: false,
-        }
+        Page { main, toolbar: Toolbar::new(), inset: 0.0, toggle: SidebarToggle::new(), frame: 8.0, in_panel: false }
     }
     /// A centred title in the toolbar band.
     pub fn title(mut self, t: impl Into<String>) -> Self {
@@ -464,7 +486,13 @@ impl Page {
 }
 
 /// Handlers for a pane's grip and toggle, typed by the app's state.
-fn pane<S: 'static>(state: PaneState, access: fn(&mut S) -> &mut PaneState, content: El, sign: f32, toggle: bool) -> Pane {
+fn pane<S: 'static>(
+    state: PaneState,
+    access: fn(&mut S) -> &mut PaneState,
+    content: El,
+    sign: f32,
+    toggle: bool,
+) -> Pane {
     let drag: Apply = Box::new(move |e: El| {
         e.on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| {
             let p = access(s);
@@ -554,7 +582,11 @@ fn dock(d: &Dock, key: &str, p: Pane, leading: bool, content: Contents) -> El {
     let phase = if content.peek.is_some() { s.peek_phase() } else { Peek::None };
     let floating = phase != Peek::None;
     let fade_peek = |pk: &SidebarPeek| -> Anim {
-        if d.reduced && pk.reduced_fade > 0.0 { Curve::tween(pk.reduced_fade, Easing::EASE_IN_OUT).into() } else { Anim::INSTANT }
+        if d.reduced && pk.reduced_fade > 0.0 {
+            Curve::tween(pk.reduced_fade, Easing::EASE_IN_OUT).into()
+        } else {
+            Anim::INSTANT
+        }
     };
     let (opacity, fade) = match (open, phase, &content.peek) {
         (false, Peek::Shown, Some(pk)) => (1.0, fade_peek(pk)),
@@ -609,8 +641,14 @@ fn dock(d: &Dock, key: &str, p: Pane, leading: bool, content: Contents) -> El {
     let body = body
         .children(content.band)
         .child(col().key("pane-body").w_full().grow(1.0).min_h(0.0).child(p.content.w_full().h_full()));
-    let mut slot = el().key(key).role("region").label(if leading { "Sidebar" } else { "Inspector" })
-        .w(s.shown_width()).h_full().motion(spring).child(body);
+    let mut slot = el()
+        .key(key)
+        .role("region")
+        .label(if leading { "Sidebar" } else { "Inspector" })
+        .w(s.shown_width())
+        .h_full()
+        .motion(spring)
+        .child(body);
     if !floating {
         slot = slot.clip_soft(0.0);
     }
@@ -621,12 +659,36 @@ fn dock(d: &Dock, key: &str, p: Pane, leading: bool, content: Contents) -> El {
         let instant = Transition::none();
         if leading {
             slot = slot
-                .child(el().key("pane-open-main").size(0.0, 0.0).a11y_hidden().transition(instant).focus_return("main-column"))
-                .child(el().key("pane-open").size(0.0, 0.0).a11y_hidden().transition(instant).focus_return("sidebar-toggle"));
+                .child(
+                    el().key("pane-open-main")
+                        .size(0.0, 0.0)
+                        .a11y_hidden()
+                        .transition(instant)
+                        .focus_return("main-column"),
+                )
+                .child(
+                    el().key("pane-open")
+                        .size(0.0, 0.0)
+                        .a11y_hidden()
+                        .transition(instant)
+                        .focus_return("sidebar-toggle"),
+                );
         } else {
             slot = slot
-                .child(el().key("pane-open").size(0.0, 0.0).a11y_hidden().transition(instant).focus_return("sidebar-toggle"))
-                .child(el().key("pane-open-main").size(0.0, 0.0).a11y_hidden().transition(instant).focus_return("main-pane"));
+                .child(
+                    el().key("pane-open")
+                        .size(0.0, 0.0)
+                        .a11y_hidden()
+                        .transition(instant)
+                        .focus_return("sidebar-toggle"),
+                )
+                .child(
+                    el().key("pane-open-main")
+                        .size(0.0, 0.0)
+                        .a11y_hidden()
+                        .transition(instant)
+                        .focus_return("main-pane"),
+                );
         }
     }
     if open || s.is_resizing() {
@@ -642,7 +704,11 @@ fn dock(d: &Dock, key: &str, p: Pane, leading: bool, content: Contents) -> El {
             .fill(Color::TRANSPARENT)
             .opacity(0.02)
             .transition(Transition::none());
-        grip = if leading { grip.pin(None, Some(0.0), Some(0.0), Some(0.0)) } else { grip.pin(Some(0.0), Some(0.0), None, Some(0.0)) };
+        grip = if leading {
+            grip.pin(None, Some(0.0), Some(0.0), Some(0.0))
+        } else {
+            grip.pin(Some(0.0), Some(0.0), None, Some(0.0))
+        };
         if floating {
             grip = grip.raise();
         }

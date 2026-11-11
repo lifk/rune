@@ -43,11 +43,18 @@ pub struct Track {
 
 impl Track {
     pub fn at(v: f32) -> Track {
-        Track { t0: 0.0, x0: v, v0: 0.0, target: v, spring: Spring::new(0.3, 0.0) }
+        Track {
+            t0: 0.0,
+            x0: v,
+            v0: 0.0,
+            target: v,
+            spring: Spring::new(0.3, 0.0),
+        }
     }
 
     pub fn sample(&self, t: f64) -> (f32, f32) {
-        self.spring.sample(self.x0, self.v0, self.target, (t - self.t0).max(0.0) as f32)
+        self.spring
+            .sample(self.x0, self.v0, self.target, (t - self.t0).max(0.0) as f32)
     }
 
     pub fn value(&self, t: f64) -> f32 {
@@ -56,7 +63,13 @@ impl Track {
 
     pub fn retarget(&mut self, t: f64, target: f32, spring: Spring) {
         let (x, v) = self.sample(t);
-        *self = Track { t0: t, x0: x, v0: v, target, spring };
+        *self = Track {
+            t0: t,
+            x0: x,
+            v0: v,
+            target,
+            spring,
+        };
     }
 }
 
@@ -86,25 +99,59 @@ fn inst(rect: [f32; 4], r: f32, fill: Color, border: Option<(Color, f32)>) -> In
 
 impl<'a> Ui<'a> {
     fn new(ts: &'a mut TextSystem, clear: Color) -> Self {
-        Ui { ts, base: Vec::new(), text: Vec::new(), prims: Vec::new(), clear }
+        Ui {
+            ts,
+            base: Vec::new(),
+            text: Vec::new(),
+            prims: Vec::new(),
+            clear,
+        }
     }
 
     /// A rect in points. `light` configures its lighting primitive; return `None` to skip it (pure decoration).
-    fn rect(&mut self, x: f32, y: f32, w: f32, h: f32, r: f32, fill: Color, border: Option<(Color, f32)>, light: impl FnOnce(Prim) -> Prim) {
+    fn rect(
+        &mut self,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        r: f32,
+        fill: Color,
+        border: Option<(Color, f32)>,
+        light: impl FnOnce(Prim) -> Prim,
+    ) {
         let rect = [x * sc(), y * sc(), w * sc(), h * sc()];
-        self.base.push(inst(rect, r * sc(), fill, border.map(|(c, bw)| (c, bw * sc()))));
-        self.prims.push(light(Prim::from_rune(rect, [r * sc(); 4]).albedo([fill.r, fill.g, fill.b])));
+        self.base.push(inst(
+            rect,
+            r * sc(),
+            fill,
+            border.map(|(c, bw)| (c, bw * sc())),
+        ));
+        self.prims.push(light(
+            Prim::from_rune(rect, [r * sc(); 4]).albedo([fill.r, fill.g, fill.b]),
+        ));
     }
 
     /// Paint only (no lighting primitive): hairlines, icons.
     fn paint(&mut self, x: f32, y: f32, w: f32, h: f32, r: f32, fill: Color) {
-        self.base.push(inst([x * sc(), y * sc(), w * sc(), h * sc()], r * sc(), fill, None));
+        self.base.push(inst(
+            [x * sc(), y * sc(), w * sc(), h * sc()],
+            r * sc(),
+            fill,
+            None,
+        ));
     }
 
     fn text(&mut self, x: f32, y: f32, s: &str, size: f32, weight: f32, color: Color) -> f32 {
         let style = TextStyle::new(size, weight);
         let mut quads = Vec::new();
-        self.ts.glyphs(s, style, sc(), [(x * sc()).round(), (y * sc()).round()], &mut quads);
+        self.ts.glyphs(
+            s,
+            style,
+            sc(),
+            [(x * sc()).round(), (y * sc()).round()],
+            &mut quads,
+        );
         for q in quads {
             self.text.push(Instance {
                 rect: q.rect,
@@ -120,7 +167,16 @@ impl<'a> Ui<'a> {
         self.ts.measure(s, style, sc()).0
     }
 
-    fn lines(&mut self, x: f32, y: f32, lh: f32, lines: &[&str], size: f32, weight: f32, color: Color) {
+    fn lines(
+        &mut self,
+        x: f32,
+        y: f32,
+        lh: f32,
+        lines: &[&str],
+        size: f32,
+        weight: f32,
+        color: Color,
+    ) {
         for (i, l) in lines.iter().enumerate() {
             self.text(x, y + i as f32 * lh, l, size, weight, color);
         }
@@ -147,19 +203,32 @@ struct Ctx {
 
 impl Ctx {
     fn new() -> Ctx {
-        let Gpu { adapter, device, queue, .. } = Gpu::headless();
+        let Gpu {
+            adapter,
+            device,
+            queue,
+            ..
+        } = Gpu::headless();
         let timestamps = device.features().contains(wgpu::Features::TIMESTAMP_QUERY);
-        eprintln!("adapter: {:?}, timestamps: {timestamps}", adapter.get_info().name);
+        eprintln!(
+            "adapter: {:?}, timestamps: {timestamps}",
+            adapter.get_info().name
+        );
         let mk = |label| {
             device
                 .create_texture(&wgpu::TextureDescriptor {
                     label: Some(label),
-                    size: wgpu::Extent3d { width: W, height: H, depth_or_array_layers: 1 },
+                    size: wgpu::Extent3d {
+                        width: W,
+                        height: H,
+                        depth_or_array_layers: 1,
+                    },
                     mip_level_count: 1,
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
                     format: wgpu::TextureFormat::Rgba16Float,
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                        | wgpu::TextureUsages::TEXTURE_BINDING,
                     view_formats: &[],
                 })
                 .create_view(&Default::default())
@@ -169,25 +238,57 @@ impl Ctx {
         let out = Offscreen::with_format(&device, W, H, wgpu::TextureFormat::Rgba8Unorm);
         let rune = Renderer::new(&device, wgpu::TextureFormat::Rgba16Float);
         let light = LightRenderer::new(&device, &queue, W, H, wgpu::TextureFormat::Rgba8Unorm);
-        Ctx { device, queue, rune, ts: TextSystem::default(), light, base, text, out, timestamps }
+        Ctx {
+            device,
+            queue,
+            rune,
+            ts: TextSystem::default(),
+            light,
+            base,
+            text,
+            out,
+            timestamps,
+        }
     }
 
     fn draw_ui(&mut self, base: &[Instance], text: &[Instance], clear: Color) {
-        self.rune.prepare(&self.device, &self.queue, &mut self.ts.atlas, base, (W, H));
+        self.rune
+            .prepare(&self.device, &self.queue, &mut self.ts.atlas, base, (W, H));
         let mut enc = self.device.create_command_encoder(&Default::default());
-        self.rune.draw(&mut enc, &self.base, [clear.r, clear.g, clear.b, 1.0]);
+        self.rune
+            .draw(&mut enc, &self.base, [clear.r, clear.g, clear.b, 1.0]);
         self.queue.submit([enc.finish()]);
-        self.rune.prepare(&self.device, &self.queue, &mut self.ts.atlas, text, (W, H));
+        self.rune
+            .prepare(&self.device, &self.queue, &mut self.ts.atlas, text, (W, H));
         let mut enc = self.device.create_command_encoder(&Default::default());
         self.rune.draw(&mut enc, &self.text, [0.0; 4]);
         self.queue.submit([enc.finish()]);
     }
 
     /// Lights the UI already drawn; returns sRGB RGBA8 pixels.
-    fn light_frame(&mut self, prims: &[Prim], lights: &[Light], settings: Settings, read: bool) -> Option<Vec<u8>> {
+    fn light_frame(
+        &mut self,
+        prims: &[Prim],
+        lights: &[Light],
+        settings: Settings,
+        read: bool,
+    ) -> Option<Vec<u8>> {
         let mut enc = self.device.create_command_encoder(&Default::default());
-        let scene = Scene { prims, lights, settings, emission: None };
-        self.light.render(&self.device, &self.queue, &mut enc, &scene, &self.base, &self.text, &self.out.view);
+        let scene = Scene {
+            prims,
+            lights,
+            settings,
+            emission: None,
+        };
+        self.light.render(
+            &self.device,
+            &self.queue,
+            &mut enc,
+            &scene,
+            &self.base,
+            &self.text,
+            &self.out.view,
+        );
         if read {
             self.out.copy(&mut enc);
         }
@@ -220,11 +321,13 @@ fn downscale(src: &[u8], w: u32, h: u32, k: u32) -> Vec<u8> {
     out
 }
 
-
 #[path = "light_demos/mod.rs"]
 mod demos;
-pub use demos::{DOT_HUES, DOT0, Frame, Hit, N_CTL, Panel, SLIDER, TOGGLE0, accent_for, chat_scene, flashlight_scene, lin};
 use demos::Demo;
+pub use demos::{
+    DOT_HUES, DOT0, Frame, Hit, N_CTL, Panel, SLIDER, TOGGLE0, accent_for, chat_scene,
+    flashlight_scene, lin,
+};
 
 // ---------------------------------------------------------------- driver
 
@@ -243,9 +346,43 @@ fn render_demo(ctx: &mut Ctx, demo: &mut dyn Demo, out: &Path, frames: Option<u3
     let n = frames.unwrap_or((demo.seconds() * FPS as f32).round() as u32);
     let mp4 = out.join(format!("{name}.mp4"));
     let mut ff = Command::new("ffmpeg")
-        .args(["-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", &format!("{W}x{H}"), "-framerate", &FPS.to_string(), "-i", "-"])
-        .args(["-vf", "scale=out_color_matrix=bt709:out_range=tv", "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p"])
-        .args(["-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-movflags", "+faststart"])
+        .args([
+            "-y",
+            "-loglevel",
+            "error",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgba",
+            "-s",
+            &format!("{W}x{H}"),
+            "-framerate",
+            &FPS.to_string(),
+            "-i",
+            "-",
+        ])
+        .args([
+            "-vf",
+            "scale=out_color_matrix=bt709:out_range=tv",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+        ])
+        .args([
+            "-colorspace",
+            "bt709",
+            "-color_primaries",
+            "bt709",
+            "-color_trc",
+            "bt709",
+            "-movflags",
+            "+faststart",
+        ])
         .arg(&mp4)
         .stdin(Stdio::piped())
         .spawn()
@@ -286,7 +423,11 @@ fn render_demo(ctx: &mut Ctx, demo: &mut dyn Demo, out: &Path, frames: Option<u3
         img[i] = 255;
     }
     write_png(&out.join(format!("{name}-strip.png")), tw, sh, &img).unwrap();
-    eprintln!("{name}: {n} frames in {:.1}s → {}", t0.elapsed().as_secs_f32(), mp4.display());
+    eprintln!(
+        "{name}: {n} frames in {:.1}s → {}",
+        t0.elapsed().as_secs_f32(),
+        mp4.display()
+    );
 }
 
 fn median(v: &mut [f64]) -> f64 {
@@ -307,8 +448,28 @@ fn bench(ctx: &mut Ctx, out: &Path) {
         for j in 0..10 {
             let x = 30.0 + j as f32 * 124.0;
             let y = 20.0 + i as f32 * 78.0;
-            ui.rect(x, y, 104.0 + (i * 7 % 13) as f32, 56.0, 14.0, card, None, |p| p.raised(7.0 * sc()).bevel(6.0 * sc(), 2.0 * sc()).gloss(0.5, 0.4));
-            ui.text(x + 12.0, y + 18.0, "Message", 13.0, 400.0, oklch(0.9, 0.0, 0.0));
+            ui.rect(
+                x,
+                y,
+                104.0 + (i * 7 % 13) as f32,
+                56.0,
+                14.0,
+                card,
+                None,
+                |p| {
+                    p.raised(7.0 * sc())
+                        .bevel(6.0 * sc(), 2.0 * sc())
+                        .gloss(0.5, 0.4)
+                },
+            );
+            ui.text(
+                x + 12.0,
+                y + 18.0,
+                "Message",
+                13.0,
+                400.0,
+                oklch(0.9, 0.0, 0.0),
+            );
         }
     }
     let (prims, base, text, clear) = (ui.prims, ui.base, ui.text, ui.clear);
@@ -329,10 +490,14 @@ fn bench(ctx: &mut Ctx, out: &Path) {
             let lights: Vec<Light> = (0..*nl)
                 .map(|k| {
                     let a = t * 0.8 + k as f32 * 1.7;
-                    let l = Light::point((640.0 + 420.0 * a.cos()) * sc(), (400.0 + 260.0 * a.sin()) * sc(), 60.0 * sc())
-                        .intensity(1.5)
-                        .radius(10.0 * sc())
-                        .range(1200.0 * sc());
+                    let l = Light::point(
+                        (640.0 + 420.0 * a.cos()) * sc(),
+                        (400.0 + 260.0 * a.sin()) * sc(),
+                        60.0 * sc(),
+                    )
+                    .intensity(1.5)
+                    .radius(10.0 * sc())
+                    .range(1200.0 * sc());
                     if *shafts { l.shafts(0.4) } else { l }
                 })
                 .collect();
@@ -345,7 +510,10 @@ fn bench(ctx: &mut Ctx, out: &Path) {
                 }
             }
             let s = Settings {
-                gi: gi.then(|| Gi { bounce: if *nl > 0 { 0.25 } else { 0.0 }, ..Default::default() }),
+                gi: gi.then(|| Gi {
+                    bounce: if *nl > 0 { 0.25 } else { 0.0 },
+                    ..Default::default()
+                }),
                 ..Default::default()
             };
             ctx.light_frame(&p, &lights, s, false);
@@ -360,7 +528,11 @@ fn bench(ctx: &mut Ctx, out: &Path) {
         let wall = {
             let lights: Vec<Light> = (0..*nl)
                 .map(|k| {
-                    let l = Light::point((300.0 + k as f32 * 90.0) * sc(), 400.0 * sc(), 60.0 * sc()).intensity(1.5).radius(10.0 * sc()).range(1200.0 * sc());
+                    let l =
+                        Light::point((300.0 + k as f32 * 90.0) * sc(), 400.0 * sc(), 60.0 * sc())
+                            .intensity(1.5)
+                            .radius(10.0 * sc())
+                            .range(1200.0 * sc());
                     if *shafts { l.shafts(0.4) } else { l }
                 })
                 .collect();
@@ -372,19 +544,32 @@ fn bench(ctx: &mut Ctx, out: &Path) {
                     }
                 }
             }
-            let s = Settings { gi: gi.then(|| Gi { bounce: if *nl > 0 { 0.25 } else { 0.0 }, ..Default::default() }), ..Default::default() };
+            let s = Settings {
+                gi: gi.then(|| Gi {
+                    bounce: if *nl > 0 { 0.25 } else { 0.0 },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
             ctx.light_frame(&p, &lights, s, false);
-            ctx.device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+            ctx.device
+                .poll(wgpu::PollType::wait_indefinitely())
+                .unwrap();
             let t0 = std::time::Instant::now();
             for _ in 0..120 {
                 ctx.light_frame(&p, &lights, s, false);
             }
-            ctx.device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+            ctx.device
+                .poll(wgpu::PollType::wait_indefinitely())
+                .unwrap();
             t0.elapsed().as_secs_f64() * 1000.0 / 120.0
         };
         let col = |i: usize| median(&mut runs.iter().map(|r| r[i]).collect::<Vec<_>>());
         let (fi, sh, gi_t) = (col(0), col(1), col(2));
-        println!("{label:>24}: field {fi:.3}  shadows {sh:.3}  gi {gi_t:.3} ms (timestamps)   whole lighting frame {wall:.3} ms (wall, GPU-bound)  ({} prims)", prims.len());
+        println!(
+            "{label:>24}: field {fi:.3}  shadows {sh:.3}  gi {gi_t:.3} ms (timestamps)   whole lighting frame {wall:.3} ms (wall, GPU-bound)  ({} prims)",
+            prims.len()
+        );
         report += &format!(
             "  \"{label}\": {{\"field\": {fi:.4}, \"shadows\": {sh:.4}, \"gi\": {gi_t:.4}, \"frame_wall\": {wall:.4}}}{}\n",
             if ci + 1 < cfgs.len() { "," } else { "" }
@@ -410,11 +595,20 @@ fn f16(h: u16) -> f32 {
 fn verify(ctx: &mut Ctx) {
     // Two raised cards and a floating popover; one light low and to the side, so the floor has long penumbrae.
     let prims = vec![
-        Prim::rect(600.0, 500.0, 400.0, 200.0).radius(28.0).raised(14.0),
-        Prim::rect(1200.0, 650.0, 300.0, 300.0).radius(60.0).raised(24.0),
-        Prim::rect(1500.0, 300.0, 360.0, 160.0).radius(20.0).floating(40.0, 48.0),
+        Prim::rect(600.0, 500.0, 400.0, 200.0)
+            .radius(28.0)
+            .raised(14.0),
+        Prim::rect(1200.0, 650.0, 300.0, 300.0)
+            .radius(60.0)
+            .raised(24.0),
+        Prim::rect(1500.0, 300.0, 360.0, 160.0)
+            .radius(20.0)
+            .floating(40.0, 48.0),
     ];
-    let light = Light::point(400.0, 420.0, 120.0).intensity(1.5).radius(24.0).range(6000.0);
+    let light = Light::point(400.0, 420.0, 120.0)
+        .intensity(1.5)
+        .radius(24.0)
+        .range(6000.0);
     let mut ts = TextSystem::default();
     let ui = Ui::new(&mut ts, oklch(0.2, 0.0, 0.0));
     let (base, text, clear) = (ui.base, ui.text, ui.clear);
@@ -431,14 +625,32 @@ fn verify(ctx: &mut Ctx) {
     });
     let mut enc = ctx.device.create_command_encoder(&Default::default());
     enc.copy_texture_to_buffer(
-        wgpu::TexelCopyTextureInfo { texture: ctx.light.visibility_texture(), mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
-        wgpu::TexelCopyBufferInfo { buffer: &buf, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(row), rows_per_image: Some(fh) } },
-        wgpu::Extent3d { width: fw, height: fh, depth_or_array_layers: 1 },
+        wgpu::TexelCopyTextureInfo {
+            texture: ctx.light.visibility_texture(),
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyBufferInfo {
+            buffer: &buf,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(row),
+                rows_per_image: Some(fh),
+            },
+        },
+        wgpu::Extent3d {
+            width: fw,
+            height: fh,
+            depth_or_array_layers: 1,
+        },
     );
     ctx.queue.submit([enc.finish()]);
     let slice = buf.slice(..);
     slice.map_async(wgpu::MapMode::Read, |r| r.unwrap());
-    ctx.device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+    ctx.device
+        .poll(wgpu::PollType::wait_indefinitely())
+        .unwrap();
     let data = slice.get_mapped_range().unwrap().to_vec();
     let gpu = |x: u32, y: u32| {
         let i = (y * row + x * 8) as usize;
@@ -447,7 +659,11 @@ fn verify(ctx: &mut Ctx) {
     // A grid of field texels over the whole frame: the estimator must match the GPU everywhere; in penumbrae
     // (ground truth strictly between 0 and 1) we report how far the fast estimate is from brute force.
     let top_z = |p: [f32; 2]| {
-        prims.iter().rev().find(|pr| cpu::field(&[(**pr).raised(1.0).floating(pr.z[0], pr.z[1])], p)[0] < 0.0).map_or(0.0, |pr| pr.z[1])
+        prims
+            .iter()
+            .rev()
+            .find(|pr| cpu::field(&[(**pr).raised(1.0).floating(pr.z[0], pr.z[1])], p)[0] < 0.0)
+            .map_or(0.0, |pr| pr.z[1])
     };
     let (mut max_est, mut sum_est, mut n_all) = (0.0f32, 0.0f32, 0u32);
     let (mut sum_pen, mut n_pen, mut max_pen) = (0.0f32, 0u32, 0.0f32);
@@ -459,7 +675,10 @@ fn verify(ctx: &mut Ctx) {
             let pxy = [(x as f32 + 0.5) * 2.0, (y as f32 + 0.5) * 2.0];
             let z = top_z(pxy);
             // Skip receivers within 3 px of an edge (the receiver height is ambiguous there by construction).
-            if prims.iter().any(|pr| (cpu::field(std::slice::from_ref(pr), pxy)[0]).abs() < 3.0) {
+            if prims
+                .iter()
+                .any(|pr| (cpu::field(std::slice::from_ref(pr), pxy)[0]).abs() < 3.0)
+            {
                 continue;
             }
             let p = [pxy[0], pxy[1], z + 0.35];
@@ -525,7 +744,10 @@ fn main() {
             }
         }
         name => {
-            let d = demos.iter_mut().find(|d| d.name() == name).unwrap_or_else(|| panic!("unknown demo {name}"));
+            let d = demos
+                .iter_mut()
+                .find(|d| d.name() == name)
+                .unwrap_or_else(|| panic!("unknown demo {name}"));
             render_demo(&mut ctx, d.as_mut(), &out, frames);
         }
     }

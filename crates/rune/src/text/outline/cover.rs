@@ -6,7 +6,15 @@ use super::store::OutlineStore;
 /// `outline_coverage`: how much of a pixel `2 * hw` rest px square at `local` (rest px from the
 /// pen, y up) the glyph of record `rec` covers, `scale` rest px a font unit, dilated by `r` rest
 /// px and hinted by record `hint` (0: none).
-pub(crate) fn coverage(store: &OutlineStore, rec: u32, hint: u32, local: [f32; 2], scale: f32, r: f32, hw: f32) -> f32 {
+pub(crate) fn coverage(
+    store: &OutlineStore,
+    rec: u32,
+    hint: u32,
+    local: [f32; 2],
+    scale: f32,
+    r: f32,
+    hw: f32,
+) -> f32 {
     let t = |i: u32| store.texel(i);
     let f = f32::from_bits;
     let head = t(rec);
@@ -17,25 +25,41 @@ pub(crate) fn coverage(store: &OutlineStore, rec: u32, hint: u32, local: [f32; 2
     let (b0, b1) = if count > 1 {
         let last = (count - 1) as f32;
         let band = |u: f32| ((u / scale - y0) * inv_h).floor().clamp(0.0, last) as u32;
-        (band(local[1] - hw - 2.0 * r - reach), band(local[1] + hw + reach))
+        (
+            band(local[1] - hw - 2.0 * r - reach),
+            band(local[1] + hw + reach),
+        )
     } else {
         (0, 0)
     };
     let mut acc = 0.0f32;
     for band in b0..=b1 {
-        let (e0, e1) = if count > 1 { ((y0 + band as f32 / inv_h) * scale, (y0 + (band + 1) as f32 / inv_h) * scale) } else { (-3.0e38, 3.0e38) };
+        let (e0, e1) = if count > 1 {
+            (
+                (y0 + band as f32 / inv_h) * scale,
+                (y0 + (band + 1) as f32 / inv_h) * scale,
+            )
+        } else {
+            (-3.0e38, 3.0e38)
+        };
         let entry = t(head[0] + band);
         let sorted = entry[1] > super::build::SORT_MIN as u32;
         for k in 0..entry[1] {
             let (t0, t1) = (t(entry[0] + 2 * k), t(entry[0] + 2 * k + 1));
             if f(t1[3]) * scale + r - local[0] <= -hw {
-                if sorted { break; }
+                if sorted {
+                    break;
+                }
                 continue;
             }
             let code = t1[2];
             let (oa, ob) = (moved(code & 15, r), moved((code >> 4) & 15, r));
             let at = |x: u32, y: u32, o: [f32; 2]| [f(x) * scale + o[0], f(y) * scale + o[1]];
-            let (mut p0, mut p1, mut p2) = (at(t0[0], t0[1], oa), at(t0[2], t0[3], oa), at(t1[0], t1[1], ob));
+            let (mut p0, mut p1, mut p2) = (
+                at(t0[0], t0[1], oa),
+                at(t0[2], t0[3], oa),
+                at(t1[0], t1[1], ob),
+            );
             let (mut wlo, mut whi) = (-hw, hw);
             let (be0, be1) = (hy(e0 + oa[1]), hy(e1 + oa[1]));
             (p0[1], p1[1], p2[1]) = (hy(p0[1]), hy(p1[1]), hy(p2[1]));
@@ -67,15 +91,25 @@ fn moved(code: u32, r: f32) -> [f32; 2] {
 }
 
 fn hint_y(y: f32, a: [f32; 4], b: [f32; 4], c: [f32; 4]) -> f32 {
-    if y < a[1] { return y; }
-    if y <= a[2] { return (y - a[1]) * c[0] + a[1]; }
-    if y <= b[0] { return (y - a[2]) * c[1] + a[3]; }
-    if y <= b[2] { return y + (b[1] - b[0]); }
+    if y < a[1] {
+        return y;
+    }
+    if y <= a[2] {
+        return (y - a[1]) * c[0] + a[1];
+    }
+    if y <= b[0] {
+        return (y - a[2]) * c[1] + a[3];
+    }
+    if y <= b[2] {
+        return y + (b[1] - b[0]);
+    }
     (y - b[2]) * c[2] + b[3]
 }
 
 fn inside(a2: [f32; 2], a1: [f32; 2], x0: f32, ta: f32, tb: f32, hx: f32) -> f32 {
-    if tb <= ta { return 0.0; }
+    if tb <= ta {
+        return 0.0;
+    }
     let tm = 0.5 * (ta + tb);
     let d = 0.5 * (tb - ta);
     let x_mid = (a2[0] * tm + a1[0]) * tm + x0 + hx;
@@ -90,7 +124,24 @@ fn integrate(q1: [f32; 2], q2: [f32; 2], q3: [f32; 2], lo: f32, hi: f32, hx: f32
     let (y_rising, x_rising) = (q3[1] >= q1[1], q3[0] >= q1[0]);
     let lane = |k: usize| -> f32 {
         let (axis, rising) = if k < 2 { (1, y_rising) } else { (0, x_rising) };
-        let v = match k { 0 => if y_rising { lo } else { hi }, 1 => if y_rising { hi } else { lo }, 2 => -hx, _ => hx };
+        let v = match k {
+            0 => {
+                if y_rising {
+                    lo
+                } else {
+                    hi
+                }
+            }
+            1 => {
+                if y_rising {
+                    hi
+                } else {
+                    lo
+                }
+            }
+            2 => -hx,
+            _ => hx,
+        };
         let (a2, a1) = (a2[axis], a1[axis]);
         let sg = if rising { 1.0 } else { -1.0 };
         let c = q1[axis] - v;
@@ -100,11 +151,23 @@ fn integrate(q1: [f32; 2], q2: [f32; 2], q3: [f32; 2], lo: f32, hi: f32, hx: f32
         let qq = -0.5 * (a1 + if a1 >= 0.0 { sq } else { -sq });
         let use_r1 = (a1 < 0.0) == rising;
         let (num, den) = if use_r1 { (qq, a2) } else { (c, qq) };
-        let t_raw = if den != 0.0 { (num / den).clamp(0.0, 1.0) } else { 0.0 };
-        if sat0 { 0.0 } else if sat1 { 1.0 } else { t_raw }
+        let t_raw = if den != 0.0 {
+            (num / den).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        if sat0 {
+            0.0
+        } else if sat1 {
+            1.0
+        } else {
+            t_raw
+        }
     };
     let t = [lane(0), lane(1), lane(2), lane(3)];
-    if t[1] <= t[0] { return 0.0; }
+    if t[1] <= t[0] {
+        return 0.0;
+    }
     let tc = [t[2].clamp(t[0], t[1]), t[3].clamp(t[0], t[1])];
     let t1 = if x_rising { tc[0] } else { tc[1] };
     let t2 = (if x_rising { tc[1] } else { tc[0] }).max(t1);

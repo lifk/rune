@@ -4,7 +4,9 @@ pub(crate) struct SecureInput(bool);
 
 impl SecureInput {
     pub(crate) fn set(&mut self, active: bool) {
-        if active == self.0 { return; }
+        if active == self.0 {
+            return;
+        }
         #[cfg(target_os = "macos")]
         unsafe {
             if active {
@@ -15,12 +17,16 @@ impl SecureInput {
             }
         }
         #[cfg(not(target_os = "macos"))]
-        { self.0 = active; }
+        {
+            self.0 = active;
+        }
     }
 }
 
 impl Drop for SecureInput {
-    fn drop(&mut self) { self.set(false); }
+    fn drop(&mut self) {
+        self.set(false);
+    }
 }
 
 #[cfg(target_os = "macos")]

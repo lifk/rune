@@ -45,11 +45,22 @@ pub struct TextAtlas {
 impl TextAtlas {
     pub fn new() -> TextAtlas {
         let fonts = vec![
-            FontRef::try_from_slice(include_bytes!("../../../rune/assets/Inter-Regular.ttf")).unwrap(),
-            FontRef::try_from_slice(include_bytes!("../../../rune/assets/Inter-Medium.ttf")).unwrap(),
-            FontRef::try_from_slice(include_bytes!("../../../rune/assets/Inter-SemiBold.ttf")).unwrap(),
+            FontRef::try_from_slice(include_bytes!("../../../rune/assets/Inter-Regular.ttf"))
+                .unwrap(),
+            FontRef::try_from_slice(include_bytes!("../../../rune/assets/Inter-Medium.ttf"))
+                .unwrap(),
+            FontRef::try_from_slice(include_bytes!("../../../rune/assets/Inter-SemiBold.ttf"))
+                .unwrap(),
         ];
-        TextAtlas { fonts, data: vec![0; (ATLAS * ATLAS) as usize], map: HashMap::new(), x: 1, y: 1, row_h: 0, dirty: true }
+        TextAtlas {
+            fonts,
+            data: vec![0; (ATLAS * ATLAS) as usize],
+            map: HashMap::new(),
+            x: 1,
+            y: 1,
+            row_h: 0,
+            dirty: true,
+        }
     }
 
     /// Rasterise (once) and return the region. `weight`: 0 regular, 1 medium, 2 semibold.
@@ -69,7 +80,10 @@ impl TextAtlas {
             if let Some(p) = prev {
                 pen += sf.kern(p, id);
             }
-            glyphs.push(id.with_scale_and_position(PxScale::from(size_px), ab_glyph::point(pen, sf.ascent())));
+            glyphs.push(id.with_scale_and_position(
+                PxScale::from(size_px),
+                ab_glyph::point(pen, sf.ascent()),
+            ));
             pen += sf.h_advance(id) + tracking;
             prev = Some(id);
         }
@@ -171,8 +185,16 @@ impl UiRenderer {
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("ui"),
             layout: Some(&layout),
-            vertex: wgpu::VertexState { module: &module, entry_point: Some("vs"), compilation_options: Default::default(), buffers: &[] },
-            primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleStrip, ..Default::default() },
+            vertex: wgpu::VertexState {
+                module: &module,
+                entry_point: Some("vs"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                ..Default::default()
+            },
             depth_stencil: None,
             multisample: Default::default(),
             fragment: Some(wgpu::FragmentState {
@@ -190,7 +212,11 @@ impl UiRenderer {
         });
         let atlas_tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("atlas"),
-            size: wgpu::Extent3d { width: ATLAS, height: ATLAS, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: ATLAS,
+                height: ATLAS,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -206,7 +232,16 @@ impl UiRenderer {
         });
         let cap = 1024;
         let buf = Self::buffer(device, cap);
-        UiRenderer { pipeline, bgl, bg: None, buf, cap, atlas_tex, atlas_view, sampler }
+        UiRenderer {
+            pipeline,
+            bgl,
+            bg: None,
+            buf,
+            cap,
+            atlas_tex,
+            atlas_view,
+            sampler,
+        }
     }
 
     fn buffer(device: &wgpu::Device, cap: usize) -> wgpu::Buffer {
@@ -218,13 +253,32 @@ impl UiRenderer {
         })
     }
 
-    pub fn prepare(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, atlas: &mut TextAtlas, insts: &[UiInst]) {
+    pub fn prepare(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        atlas: &mut TextAtlas,
+        insts: &[UiInst],
+    ) {
         if atlas.dirty {
             queue.write_texture(
-                wgpu::TexelCopyTextureInfo { texture: &self.atlas_tex, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.atlas_tex,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
                 &atlas.data,
-                wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(ATLAS), rows_per_image: None },
-                wgpu::Extent3d { width: ATLAS, height: ATLAS, depth_or_array_layers: 1 },
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(ATLAS),
+                    rows_per_image: None,
+                },
+                wgpu::Extent3d {
+                    width: ATLAS,
+                    height: ATLAS,
+                    depth_or_array_layers: 1,
+                },
             );
             atlas.dirty = false;
         }
@@ -235,9 +289,18 @@ impl UiRenderer {
                 label: Some("ui"),
                 layout: &self.bgl,
                 entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: self.buf.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&self.atlas_view) },
-                    wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&self.sampler) },
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: self.buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&self.atlas_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
                 ],
             }));
         }

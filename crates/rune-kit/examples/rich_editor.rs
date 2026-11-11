@@ -100,13 +100,7 @@ fn code_block_spans(edit: &TextEdit, theme: &SyntaxTheme) -> Vec<Span> {
     out
 }
 
-fn bar_btn(
-    k: &Kit,
-    key: &str,
-    label: &str,
-    active: bool,
-    on_press: impl Fn(&mut State) + 'static,
-) -> El {
+fn bar_btn(k: &Kit, key: &str, label: &str, active: bool, on_press: impl Fn(&mut State) + 'static) -> El {
     Button::new(label)
         .control_size(ControlSize::Small)
         .variant(if active { ButtonVariant::Contrast } else { ButtonVariant::Ghost })

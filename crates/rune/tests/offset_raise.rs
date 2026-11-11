@@ -22,11 +22,17 @@ fn view(s: &S, _: &mut Cx<S>) -> El {
     if s.raise {
         a = a.raise();
     }
-    let b = el().key("b").size(100.0, 40.0).on_press(|s: &mut S| s.pressed.push("b"));
+    let b = el()
+        .key("b")
+        .size(100.0, 40.0)
+        .on_press(|s: &mut S| s.pressed.push("b"));
     let mut root = col().w_full().h_full().child(a).child(b);
     if s.show {
         root = root.child(
-            el().key("zone").size(200.0, 200.0).absolute(0.0, 0.0).on_hover_change(|s: &mut S, inside, _| s.hover.push(inside)),
+            el().key("zone")
+                .size(200.0, 200.0)
+                .absolute(0.0, 0.0)
+                .on_hover_change(|s: &mut S, inside, _| s.hover.push(inside)),
         );
     }
     root
@@ -39,7 +45,11 @@ fn app() -> Runtime<S> {
 }
 
 fn rect(rt: &Runtime<S>, key: &str) -> [f32; 4] {
-    rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key)).unwrap().rect
+    rt.elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some(key))
+        .unwrap()
+        .rect
 }
 
 fn click(rt: &mut Runtime<S>, x: f32, y: f32) {
@@ -83,7 +93,11 @@ fn a_raised_element_paints_and_takes_presses_above_later_siblings() {
     rt.set_system_reduced_motion(true);
     rt.frame(0.0);
     click(&mut rt, 50.0, 50.0);
-    assert_eq!(rt.state.pressed, ["a"], "the raised element is on top where they overlap");
+    assert_eq!(
+        rt.state.pressed,
+        ["a"],
+        "the raised element is on top where they overlap"
+    );
     let order: Vec<_> = rt.elements().into_iter().filter_map(|e| e.key).collect();
     assert_eq!(&order[..2], ["a", "b"], "tree order is unchanged");
 
@@ -102,7 +116,11 @@ fn hover_change_hears_an_element_that_appears_under_a_still_pointer() {
     for _ in 0..30 {
         rt.frame(1.0 / 60.0);
     }
-    assert_eq!(rt.state.hover, [true], "the pointer is inside without moving");
+    assert_eq!(
+        rt.state.hover,
+        [true],
+        "the pointer is inside without moving"
+    );
 }
 
 mod reorder {
@@ -117,14 +135,20 @@ mod reorder {
     }
 
     fn row(s: &S, slot: usize) -> El {
-        el().key(format!("r{}", s.order[slot])).w_full().h(40.0).motion(Spring::new(0.3, 0.0)).offset(0.0, s.shift[slot])
+        el().key(format!("r{}", s.order[slot]))
+            .w_full()
+            .h(40.0)
+            .motion(Spring::new(0.3, 0.0))
+            .offset(0.0, s.shift[slot])
     }
 
     fn view(s: &S, _: &mut Cx<S>) -> El {
         let list = col().key("list").w_full();
         let list = match s.list {
             0 => list.children((0..s.order.len()).map(|i| row(s, i))),
-            1 => list.growth(GrowthSpec::default()).children((0..s.order.len()).map(|i| row(s, i))),
+            1 => list
+                .growth(GrowthSpec::default())
+                .children((0..s.order.len()).map(|i| row(s, i))),
             _ => list.growth(GrowthSpec::default()).virtual_rows(
                 s.order.len(),
                 40.0,
@@ -132,16 +156,37 @@ mod reorder {
                 |s: &S, i| row(s, i),
             ),
         };
-        col().w_full().h_full().child(col().w_full().h_full().scroll(ScrollSpec { stick_bottom: false }).child(list))
+        col().w_full().h_full().child(
+            col()
+                .w_full()
+                .h_full()
+                .scroll(ScrollSpec {
+                    stick_bottom: false,
+                })
+                .child(list),
+        )
     }
 
     fn y(rt: &Runtime<S>, k: &str) -> f32 {
-        rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k)).unwrap().rect[1]
+        rt.elements()
+            .into_iter()
+            .find(|e| e.key.as_deref() == Some(k))
+            .unwrap()
+            .rect[1]
     }
 
     /// Drag `r0` 50 points down past `r1`, which steps up, then drop it in slot 1.
     fn drop_reordered(list: u8) {
-        let mut rt = Runtime::new(S { order: vec![0, 1, 2, 3], shift: vec![0.0; 4], list }, view, (200.0, 400.0), Env::new(true, 1.0));
+        let mut rt = Runtime::new(
+            S {
+                order: vec![0, 1, 2, 3],
+                shift: vec![0.0; 4],
+                list,
+            },
+            view,
+            (200.0, 400.0),
+            Env::new(true, 1.0),
+        );
         rt.frame(0.0);
         rt.update(|s, tx| {
             tx.instant();
@@ -157,8 +202,14 @@ mod reorder {
         for _ in 0..90 {
             rt.frame(1.0 / 60.0);
             let (r0, r1) = (y(&rt, "r0"), y(&rt, "r1"));
-            assert!(r0 <= last + 0.01 && r0 >= 39.99, "list {list}: r0 slides from 50 to 40, at {r0}");
-            assert!(r1.abs() < 0.01, "list {list}: r1 stays where it was drawn, at {r1}");
+            assert!(
+                r0 <= last + 0.01 && r0 >= 39.99,
+                "list {list}: r0 slides from 50 to 40, at {r0}"
+            );
+            assert!(
+                r1.abs() < 0.01,
+                "list {list}: r1 stays where it was drawn, at {r1}"
+            );
             last = r0;
         }
         assert!((last - 40.0).abs() < 0.01);
@@ -173,19 +224,46 @@ mod reorder {
 
     #[test]
     fn a_drop_mid_spring_in_five_thousand_virtual_rows_preserves_the_drawn_position() {
-        let mut rt = Runtime::new(S { order: (0..5000).collect(), shift: vec![0.0; 5000], list: 2 }, view, (200.0, 400.0), Env::new(true, 1.0));
+        let mut rt = Runtime::new(
+            S {
+                order: (0..5000).collect(),
+                shift: vec![0.0; 5000],
+                list: 2,
+            },
+            view,
+            (200.0, 400.0),
+            Env::new(true, 1.0),
+        );
         rt.frame(0.0);
-        rt.update(|s, _| { s.shift[0] = 85.0; s.shift[1] = -40.0; s.shift[2] = -40.0; });
+        rt.update(|s, _| {
+            s.shift[0] = 85.0;
+            s.shift[1] = -40.0;
+            s.shift[2] = -40.0;
+        });
         rt.frame(1.0 / 120.0);
         rt.frame(1.0 / 120.0);
         let before: Vec<_> = ["r0", "r1", "r2"].map(|k| y(&rt, k)).into();
-        rt.update(|s, _| { s.order.remove(0); s.order.insert(2, 0); s.shift.fill(0.0); });
+        rt.update(|s, _| {
+            s.order.remove(0);
+            s.order.insert(2, 0);
+            s.shift.fill(0.0);
+        });
         rt.frame(0.0);
         for (i, key) in ["r0", "r1", "r2"].iter().enumerate() {
-            assert!((y(&rt, key) - before[i]).abs() < 0.1, "{key} jumped on drop: {} -> {}", before[i], y(&rt, key));
+            assert!(
+                (y(&rt, key) - before[i]).abs() < 0.1,
+                "{key} jumped on drop: {} -> {}",
+                before[i],
+                y(&rt, key)
+            );
         }
-        for _ in 0..120 { rt.frame(1.0 / 120.0); }
-        assert_eq!([y(&rt, "r0"), y(&rt, "r1"), y(&rt, "r2")], [80.0, 0.0, 40.0]);
+        for _ in 0..120 {
+            rt.frame(1.0 / 120.0);
+        }
+        assert_eq!(
+            [y(&rt, "r0"), y(&rt, "r1"), y(&rt, "r2")],
+            [80.0, 0.0, 40.0]
+        );
     }
 }
 
@@ -198,20 +276,35 @@ mod drag_animated {
     }
 
     fn view(s: &S, _: &mut Cx<S>) -> El {
-        let handle = el().key("handle").size(100.0, 40.0).on_drag(|s: &mut S, d: &mut Drag, tx: &mut Tx| {
-            if d.phase == Phase::Move {
-                if s.animated {
-                    tx.animated();
-                }
-                s.shift = 40.0;
-            }
-        });
-        let other = el().key("other").size(100.0, 40.0).motion(Spring::new(0.3, 0.0)).offset(0.0, s.shift);
+        let handle =
+            el().key("handle")
+                .size(100.0, 40.0)
+                .on_drag(|s: &mut S, d: &mut Drag, tx: &mut Tx| {
+                    if d.phase == Phase::Move {
+                        if s.animated {
+                            tx.animated();
+                        }
+                        s.shift = 40.0;
+                    }
+                });
+        let other = el()
+            .key("other")
+            .size(100.0, 40.0)
+            .motion(Spring::new(0.3, 0.0))
+            .offset(0.0, s.shift);
         col().w_full().h_full().child(handle).child(other)
     }
 
     fn moved_after_a_drag(animated: bool) -> f32 {
-        let mut rt = Runtime::new(S { animated, shift: 0.0 }, view, (200.0, 200.0), Env::new(true, 1.0));
+        let mut rt = Runtime::new(
+            S {
+                animated,
+                shift: 0.0,
+            },
+            view,
+            (200.0, 200.0),
+            Env::new(true, 1.0),
+        );
         rt.frame(0.0);
         rt.pointer_move(50.0, 20.0);
         rt.pointer_down(50.0, 20.0);
@@ -219,7 +312,12 @@ mod drag_animated {
         rt.frame(1.0 / 60.0);
         rt.frame(1.0 / 60.0);
         rt.pointer_up(50.0, 60.0);
-        rt.elements().into_iter().find(|e| e.key.as_deref() == Some("other")).unwrap().rect[1] - 40.0
+        rt.elements()
+            .into_iter()
+            .find(|e| e.key.as_deref() == Some("other"))
+            .unwrap()
+            .rect[1]
+            - 40.0
     }
 
     #[test]
@@ -232,23 +330,56 @@ mod drag_animated {
     #[test]
     fn a_live_only_drag_cannot_make_another_handlers_commit_instant() {
         fn live_view(s: &S, _: &mut Cx<S>) -> El {
-            col().w_full().h_full()
+            col()
+                .w_full()
+                .h_full()
                 .child(el().size(100.0, 40.0).on_drag(|_: &mut S, d, tx| {
-                    if d.phase == Phase::Move { tx.live_only(); }
+                    if d.phase == Phase::Move {
+                        tx.live_only();
+                    }
                 }))
-                .child(el().key("other").size(100.0, 40.0).offset(0.0, s.shift).motion(Spring::new(0.3, 0.0)))
+                .child(
+                    el().key("other")
+                        .size(100.0, 40.0)
+                        .offset(0.0, s.shift)
+                        .motion(Spring::new(0.3, 0.0)),
+                )
         }
-        let mut rt = Runtime::new(S { animated: false, shift: 0.0 }, live_view, (200.0, 200.0), Env::new(true, 1.0));
+        let mut rt = Runtime::new(
+            S {
+                animated: false,
+                shift: 0.0,
+            },
+            live_view,
+            (200.0, 200.0),
+            Env::new(true, 1.0),
+        );
         rt.check_live_only(false);
-        rt.on_key = Some(|s, _, tx| { s.shift = 40.0; tx.motion(Spring::new(0.6, 0.0)); true });
+        rt.on_key = Some(|s, _, tx| {
+            s.shift = 40.0;
+            tx.motion(Spring::new(0.6, 0.0));
+            true
+        });
         rt.frame(0.0);
         rt.pointer_down(20.0, 20.0);
         rt.frame(0.0);
         rt.pointer_move(20.0, 30.0);
-        rt.key(rune::KeyEvent { key: rune::Key::Enter, mods: rune::Mods::default() });
+        rt.key(rune::KeyEvent {
+            key: rune::Key::Enter,
+            mods: rune::Mods::default(),
+        });
         rt.frame(1.0 / 60.0);
-        let shift = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("other")).unwrap().rect[1] - 40.0;
-        assert!(shift > 0.0 && shift < 10.0, "the key's spring must survive a live-only Move: {shift}");
+        let shift = rt
+            .elements()
+            .into_iter()
+            .find(|e| e.key.as_deref() == Some("other"))
+            .unwrap()
+            .rect[1]
+            - 40.0;
+        assert!(
+            shift > 0.0 && shift < 10.0,
+            "the key's spring must survive a live-only Move: {shift}"
+        );
         assert_eq!(rt.live_only_events(), 1);
     }
 }
@@ -271,7 +402,11 @@ mod double_press_on_a_drag {
                 }
             })
             .on_double_press(|s: &mut S| s.wide = true);
-        let pane = el().key("pane").h(40.0).w(if s.wide { 200.0 } else { 100.0 }).motion(Spring::new(0.3, 0.0));
+        let pane = el()
+            .key("pane")
+            .h(40.0)
+            .w(if s.wide { 200.0 } else { 100.0 })
+            .motion(Spring::new(0.3, 0.0));
         col().w_full().h_full().child(grip).child(pane)
     }
 
@@ -286,7 +421,12 @@ mod double_press_on_a_drag {
         }
         rt.frame(1.0 / 60.0);
         assert!(rt.state.wide, "double pressed");
-        let w = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("pane")).unwrap().rect[2];
+        let w = rt
+            .elements()
+            .into_iter()
+            .find(|e| e.key.as_deref() == Some("pane"))
+            .unwrap()
+            .rect[2];
         assert!(w > 100.0 && w < 200.0, "on its spring, not at once: {w}");
     }
 }

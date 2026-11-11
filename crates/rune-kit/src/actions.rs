@@ -8,7 +8,9 @@ use crate::{Acts, ControlSize, Kit, RollingText, State, over, press_over, shadow
 /// or 28. For a `Button`, `Small` is `ControlSize::Regular`, `Normal` is `ControlSize::Large`
 /// and `Large` sits between `Large` (28) and `ExtraLarge` (36). For an `IconButton` the names
 /// match: `Small`, `Regular` and `Large`.
-#[deprecated(note = "use `control_size(ControlSize::..)`: for a Button, Small → Regular, Normal → Large, Large → Large or ExtraLarge; for an IconButton, Small → Small, Normal → Regular, Large → Large")]
+#[deprecated(
+    note = "use `control_size(ControlSize::..)`: for a Button, Small → Regular, Normal → Large, Large → Large or ExtraLarge; for an IconButton, Small → Small, Normal → Regular, Large → Large"
+)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ButtonSize {
     Small,
@@ -359,18 +361,24 @@ impl Button {
         // The label says what the icon and text inside show: they stay out of the tree.
         if let Some(i) = self.icon {
             let mut ic = icon(i, icon_size).key("icon").color(icon_c).a11y_hidden();
-            if matches!(self.look, Label::Rolling(_)) { ic = ic.width_leads(); }
+            if matches!(self.look, Label::Rolling(_)) {
+                ic = ic.width_leads();
+            }
             e = e.child(ic);
         }
         e = match self.look {
             Label::Text => e.child(text(self.label).key("label").font(font).color(ink).a11y_hidden()),
             // The button's edges spring on the label's own curve, so the padding holds while
             // the label grows or shrinks.
-            Label::Rolling(key) => e.motion(RollingText::SPRING).width_leads()
+            Label::Rolling(key) => e
+                .motion(RollingText::SPRING)
+                .width_leads()
                 .child(RollingText::new(key, self.label).font(font).color(ink).build(k).a11y_hidden()),
             Label::Custom(f) => e.child(f(font, ink).a11y_hidden()),
         };
-        if self.state == State::Disabled { e = e.layer_opacity(disabled_alpha); }
+        if self.state == State::Disabled {
+            e = e.layer_opacity(disabled_alpha);
+        }
         self.acts.apply(e.disabled(!enabled), enabled)
     }
 }
@@ -504,7 +512,9 @@ impl IconButton {
         if self.state == State::Pressed && self.variant == IconButtonVariant::GhostMuted {
             s.icon = k.c.icon_base;
         }
-        if self.expanded == Some(true) && matches!(self.variant, IconButtonVariant::Ghost | IconButtonVariant::GhostMuted) {
+        if self.expanded == Some(true)
+            && matches!(self.variant, IconButtonVariant::Ghost | IconButtonVariant::GhostMuted)
+        {
             s.fill = s.pressed;
             s.icon = if self.variant == IconButtonVariant::GhostMuted { k.c.icon_base } else { s.icon };
         }
@@ -523,7 +533,9 @@ impl IconButton {
             e = e.help(t);
         }
         e = paint(k, e, s, self.state, true).child(icon(self.icon, glyph).key("icon").color(ink).a11y_hidden());
-        if self.state == State::Disabled { e = e.layer_opacity(disabled_alpha); }
+        if self.state == State::Disabled {
+            e = e.layer_opacity(disabled_alpha);
+        }
         self.acts.apply(e.disabled(!enabled), enabled)
     }
 }

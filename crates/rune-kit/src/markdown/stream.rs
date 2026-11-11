@@ -16,8 +16,8 @@
 //! Every change is at the end of the source, so source offsets (block starts, highlights, task
 //! markers) mean the same in the parse. A finished document never comes here.
 
-use super::*;
 use super::parser::{ParsedDoc, Scope, Tail, parse_doc_tail};
+use super::*;
 
 /// [`parse_doc`] of `src` as a stream's current text.
 pub(super) fn parse_streaming(src: &str, autolink: bool) -> ParsedDoc {
@@ -76,7 +76,8 @@ fn held_table(src: &str, tail: Tail, last: Option<&Block>) -> Option<usize> {
     let header = |at: usize| {
         let s = start(at.checked_sub(1)?);
         let above = s.checked_sub(1).map(start);
-        (piped(&body[s..at - 1]) && !delim(&body[s..at - 1]) && above.is_none_or(|a| !piped(&body[a..s - 1]))).then_some(s)
+        (piped(&body[s..at - 1]) && !delim(&body[s..at - 1]) && above.is_none_or(|a| !piped(&body[a..s - 1])))
+            .then_some(s)
     };
     let line = start(body.len());
     if !piped(&body[line..]) {
@@ -174,7 +175,11 @@ fn close_tail(run: &str, base: usize, scope: Scope) -> Option<Patch> {
                             stack.truncate(p + 1);
                             let title = run[i + 2..].split_once(char::is_whitespace).map(|t| t.1.trim_start());
                             stack[p].ch = match title.and_then(|t| t.bytes().next()) {
-                                Some(q @ (b'"' | b'\'')) if !title.is_some_and(|t| t.len() > 1 && t.ends_with(q as char)) => q,
+                                Some(q @ (b'"' | b'\''))
+                                    if !title.is_some_and(|t| t.len() > 1 && t.ends_with(q as char)) =>
+                                {
+                                    q
+                                }
                                 _ => b'(',
                             };
                             break;
@@ -261,7 +266,12 @@ fn close_tail(run: &str, base: usize, scope: Scope) -> Option<Patch> {
         }
         markers.push(base + o.at..base + o.at + o.n);
     }
-    (cut < run.len() || !closers.is_empty()).then_some(Patch { cut: base + cut, closers, markers, code: code.is_some() })
+    (cut < run.len() || !closers.is_empty()).then_some(Patch {
+        cut: base + cut,
+        closers,
+        markers,
+        code: code.is_some(),
+    })
 }
 
 fn run_len(b: &[u8], i: usize) -> usize {
@@ -321,7 +331,9 @@ fn drop_closing_pad(doc: &mut ParsedDoc) {
     let (Some(b), Some(m)) = (doc.0.last_mut(), doc.5.last_mut()) else { return };
     let Some((inl, map)) = last_inline(b, m) else { return };
     let len = inl.text.len();
-    let Some(k) = inl.spans.iter().position(|s| s.2 == Style::CodePad && s.1 == len && s.0 + PAD.len() == len) else { return };
+    let Some(k) = inl.spans.iter().position(|s| s.2 == Style::CodePad && s.1 == len && s.0 + PAD.len() == len) else {
+        return;
+    };
     inl.spans.remove(k);
     let cut = len - PAD.len();
     inl.text.truncate(cut);
@@ -340,7 +352,9 @@ fn drop_closing_pad(doc: &mut ParsedDoc) {
 fn last_inline<'a>(b: &'a mut Block, m: &'a mut BlockMap) -> Option<(&'a mut Inline, &'a mut SpanMap)> {
     match (b, m) {
         (Block::Para(i) | Block::Heading(_, i), BlockMap::Inline(m)) => Some((i, m)),
-        (Block::List { items, .. }, BlockMap::List(maps)) => last_inline(items.last_mut()?.last_mut()?, maps.last_mut()?.last_mut()?),
+        (Block::List { items, .. }, BlockMap::List(maps)) => {
+            last_inline(items.last_mut()?.last_mut()?, maps.last_mut()?.last_mut()?)
+        }
         (Block::Quote(inner), BlockMap::Quote(maps)) => last_inline(inner.last_mut()?, maps.last_mut()?),
         (Block::Table(t), BlockMap::Table { head, rows }) => match (t.rows.last_mut(), rows.last_mut()) {
             (Some(r), Some(m)) => Some((r.last_mut()?, m.last_mut()?)),

@@ -95,7 +95,10 @@ impl Checkbox {
             control = control.hover(c.surface_hover);
         }
         let disabled = self.state == State::Disabled;
-        let mut root = row().role("checkbox").gap(12.0).center_y()
+        let mut root = row()
+            .role("checkbox")
+            .gap(12.0)
+            .center_y()
             .child(control.focus_ring(1.0, 0.0, c.border_active).a11y_hidden());
         root = if self.indeterminate { root.checked_mixed() } else { root.checked(self.checked) };
         if let Some(d) = &self.description {

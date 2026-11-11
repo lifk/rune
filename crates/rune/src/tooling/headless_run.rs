@@ -37,11 +37,15 @@ pub struct WindowFrame {
 
 impl HeadlessRun {
     /// The `--desktop` backdrop, when the run composites every window over it.
-    pub fn desktop(&self) -> Option<&Path> { self.desktop.as_deref() }
+    pub fn desktop(&self) -> Option<&Path> {
+        self.desktop.as_deref()
+    }
 
     /// A `--desktop` run's window frames so far: each window at the start, then one entry
     /// whenever one moves, resizes, shows, hides or takes keys. Empty otherwise.
-    pub fn window_frames(&self) -> Vec<WindowFrame> { self.windows.lock().unwrap().clone() }
+    pub fn window_frames(&self) -> Vec<WindowFrame> {
+        self.windows.lock().unwrap().clone()
+    }
 
     /// Each window as it stands at time `t` in a `--desktop` run, in the order the app made them.
     pub fn windows_at(&self, t: f64) -> Vec<WindowFrame> {
@@ -57,41 +61,64 @@ impl HeadlessRun {
     }
 
     /// The `--script` file.
-    pub fn script(&self) -> Option<&Path> { self.script.as_deref() }
+    pub fn script(&self) -> Option<&Path> {
+        self.script.as_deref()
+    }
 
     /// The script's events in time order, expanded as Rune feeds them: a `tap` is a move, a
     /// down and an up; `type` is one key per character at its `every` interval.
-    pub fn events(&self) -> &[TimedEvent] { &self.events }
+    pub fn events(&self) -> &[TimedEvent] {
+        &self.events
+    }
 
     /// The script's `mark` events, in time order: (name, seconds).
     pub fn marks(&self) -> impl Iterator<Item = (&str, f64)> {
-        self.events.iter().filter_map(|e| match &e.event { ScriptEvent::Mark(name) => Some((name.as_str(), e.t)), _ => None })
+        self.events.iter().filter_map(|e| match &e.event {
+            ScriptEvent::Mark(name) => Some((name.as_str(), e.t)),
+            _ => None,
+        })
     }
 
     /// The time of the first mark called `name`.
-    pub fn mark(&self, name: &str) -> Option<f64> { self.marks().find(|(n, _)| *n == name).map(|(_, t)| t) }
+    pub fn mark(&self, name: &str) -> Option<f64> {
+        self.marks().find(|(n, _)| *n == name).map(|(_, t)| t)
+    }
 
     /// The time of the script's last event (marks included), or 0 without one.
-    pub fn script_end(&self) -> f64 { self.events.last().map_or(0.0, |e| e.t) }
+    pub fn script_end(&self) -> f64 {
+        self.events.last().map_or(0.0, |e| e.t)
+    }
 
     /// Device pixels per point (`--scale`, default 2).
-    pub fn scale(&self) -> f32 { self.scale }
+    pub fn scale(&self) -> f32 {
+        self.scale
+    }
 
     /// Frames per virtual second (`--fps`, default 60).
-    pub fn fps(&self) -> f64 { self.fps }
+    pub fn fps(&self) -> f64 {
+        self.fps
+    }
 
     /// The rendered window's viewport in points (`--size`, or the window's own size); the whole
     /// output with `--desktop`.
-    pub fn size(&self) -> (f32, f32) { self.size }
+    pub fn size(&self) -> (f32, f32) {
+        self.size
+    }
 
     /// Seconds of virtual time at the first dumped frame (`--start`, marks resolved).
-    pub fn start(&self) -> f64 { self.start }
+    pub fn start(&self) -> f64 {
+        self.start
+    }
 
     /// Frames written to `--video` or `--out` (0 for a `--snap` or `--tree` run).
-    pub fn frames(&self) -> usize { self.frames }
+    pub fn frames(&self) -> usize {
+        self.frames
+    }
 
     /// Seconds of virtual time at the last frame the run renders.
-    pub fn end(&self) -> f64 { self.end }
+    pub fn end(&self) -> f64 {
+        self.end
+    }
 }
 
 /// A script event at its time in seconds.
@@ -109,7 +136,10 @@ pub enum ScriptEvent {
     /// `{"type": "mark", "name": …}`: a named point in time with no input effect.
     Mark(String),
     /// A logical key; `repeat` is a held key's auto-repeat.
-    Key { key: KeyEvent, repeat: bool },
+    Key {
+        key: KeyEvent,
+        repeat: bool,
+    },
     /// `{"type": "key-up"}`: a logical key's release.
     KeyUp(KeyEvent),
     Paste(String),
@@ -119,7 +149,10 @@ pub enum ScriptEvent {
     Shortcut(crate::Shortcut),
     /// A hardware key or modifier change (`{"physical": …}`).
     Physical(crate::PhysicalInput),
-    Pointer { action: PointerAction, at: ScriptPoint },
+    Pointer {
+        action: PointerAction,
+        at: ScriptPoint,
+    },
     /// The window gaining (true) or losing focus.
     Focus(bool),
     /// `{"reopen": true}`: the app reopened, as a click on its macOS Dock icon does.
@@ -128,7 +161,10 @@ pub enum ScriptEvent {
     OpenUrl(String),
     /// `{"type": "resize", "dw": …, "dh": …, "dur": …}`: a person resizing the window, one step
     /// a frame, (dw, dh) points from its size when the resize began.
-    Resize { dw: f32, dh: f32 },
+    Resize {
+        dw: f32,
+        dh: f32,
+    },
     /// A native menu item fired by name.
     Menu(String),
     /// A pop-up menu's picked item id, or None when the script dismisses it.
@@ -137,9 +173,15 @@ pub enum ScriptEvent {
     /// for `{"type": "file-dialog-cancel"}`.
     FileDialog(Option<std::path::PathBuf>),
     /// `{"drag_files": …}`: a file drag from another app moved over the window.
-    DragFiles { paths: Vec<std::path::PathBuf>, at: ScriptPoint },
+    DragFiles {
+        paths: Vec<std::path::PathBuf>,
+        at: ScriptPoint,
+    },
     /// `{"drop_files": …}`: files dropped on the window.
-    DropFiles { paths: Vec<std::path::PathBuf>, at: ScriptPoint },
+    DropFiles {
+        paths: Vec<std::path::PathBuf>,
+        at: ScriptPoint,
+    },
     /// `{"drag_files": "leave"}`: the file drag left the window.
     DragFilesLeave,
 }

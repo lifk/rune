@@ -6,7 +6,9 @@ use rune::{Cx, El, Env, Runtime, col, el};
 
 fn view(_: &Vec<bool>, _: &mut Cx<Vec<bool>>) -> El {
     col().w_full().h_full().child(
-        el().key("zone").w(16.0).h(100.0)
+        el().key("zone")
+            .w(16.0)
+            .h(100.0)
             .on_hover_change(|s: &mut Vec<bool>, inside, _| s.push(inside))
             .hover_delays(Duration::from_millis(40), Duration::from_millis(100)),
     )
@@ -87,14 +89,21 @@ fn blur_cancels_pending_enters_and_ends_shown_hover_without_a_grace() {
     rt.frame(0.02);
     rt.window_focus(false);
     rt.frame(0.2);
-    assert!(rt.state.is_empty(), "a pending enter cannot open under a still pointer once blurred");
+    assert!(
+        rt.state.is_empty(),
+        "a pending enter cannot open under a still pointer once blurred"
+    );
     rt.window_focus(true);
     rt.pointer_move(8.0, 50.0);
     rt.frame(0.05);
     assert_eq!(rt.state, [true]);
     rt.window_focus(false);
     rt.frame(0.0);
-    assert_eq!(rt.state, [true, false], "blur ends even a hover with exit grace");
+    assert_eq!(
+        rt.state,
+        [true, false],
+        "blur ends even a hover with exit grace"
+    );
 }
 
 /// A window behind another still hears the pointer (macOS sends it moves too), so a tooltip
@@ -132,22 +141,46 @@ fn leaving_the_window_cancels_a_pending_enter() {
 
 /// `gone`: `None` keeps the zone; `Some(instant)` removes it, at once when `instant`, else
 /// through its exit.
-struct Leaving { gone: Option<bool>, heard: Vec<bool> }
+struct Leaving {
+    gone: Option<bool>,
+    heard: Vec<bool>,
+}
 
 fn leaving_view(s: &Leaving, _: &mut Cx<Leaving>) -> El {
-    let zone = el().key("zone").w(16.0).h(100.0)
+    let zone = el()
+        .key("zone")
+        .w(16.0)
+        .h(100.0)
         .on_hover_change(|s: &mut Leaving, inside, _| s.heard.push(inside))
         .hover_delays(Duration::from_millis(40), Duration::from_millis(100));
-    col().w_full().h_full().children(s.gone.is_none().then_some(zone))
+    col()
+        .w_full()
+        .h_full()
+        .children(s.gone.is_none().then_some(zone))
 }
 
 fn leaving(rest: f64, instant: bool) -> Vec<bool> {
-    let mut rt = Runtime::new(Leaving { gone: None, heard: Vec::new() }, leaving_view, (200.0, 200.0), Env::new(true, 1.0));
+    let mut rt = Runtime::new(
+        Leaving {
+            gone: None,
+            heard: Vec::new(),
+        },
+        leaving_view,
+        (200.0, 200.0),
+        Env::new(true, 1.0),
+    );
     rt.frame(0.0);
     rt.pointer_move(8.0, 50.0);
     rt.frame(rest);
-    rt.update(move |s, tx| { s.gone = Some(instant); if instant { tx.instant(); } });
-    for _ in 0..60 { rt.frame(1.0 / 60.0); }
+    rt.update(move |s, tx| {
+        s.gone = Some(instant);
+        if instant {
+            tx.instant();
+        }
+    });
+    for _ in 0..60 {
+        rt.frame(1.0 / 60.0);
+    }
     rt.state.heard
 }
 

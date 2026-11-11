@@ -48,24 +48,70 @@ impl Scene {
 
     fn meta(self) -> (&'static str, &'static str, &'static str) {
         match self {
-            Scene::Lamp => ("lamp", "Lamp", "Drag the lamp. Every bubble casts a soft shadow from the analytic field."),
-            Scene::Flashlight => ("flashlight", "Flashlight", "Move the pointer. The torch is held low and to the right, so shadows swing."),
-            Scene::Gi => ("gi", "Emissive light", "Glowing elements light their neighbours. Click the record button or the progress bar."),
-            Scene::Keys => ("keys", "Raised keys", "Move the pointer to sweep the light. Press a key."),
-            Scene::GodRays => ("godrays", "God rays", "Move the pointer. The light sits behind the grid and shines through the gaps."),
-            Scene::Glow => ("glow", "Glow", "Click the neon card to switch it off: lights cool, never cut."),
-            Scene::Pulses => ("pulses", "Pulses", "Click anywhere for a ripple. Press send to ping the inbox."),
+            Scene::Lamp => (
+                "lamp",
+                "Lamp",
+                "Drag the lamp. Every bubble casts a soft shadow from the analytic field.",
+            ),
+            Scene::Flashlight => (
+                "flashlight",
+                "Flashlight",
+                "Move the pointer. The torch is held low and to the right, so shadows swing.",
+            ),
+            Scene::Gi => (
+                "gi",
+                "Emissive light",
+                "Glowing elements light their neighbours. Click the record button or the progress bar.",
+            ),
+            Scene::Keys => (
+                "keys",
+                "Raised keys",
+                "Move the pointer to sweep the light. Press a key.",
+            ),
+            Scene::GodRays => (
+                "godrays",
+                "God rays",
+                "Move the pointer. The light sits behind the grid and shines through the gaps.",
+            ),
+            Scene::Glow => (
+                "glow",
+                "Glow",
+                "Click the neon card to switch it off: lights cool, never cut.",
+            ),
+            Scene::Pulses => (
+                "pulses",
+                "Pulses",
+                "Click anywhere for a ripple. Press send to ping the inbox.",
+            ),
             Scene::Electric => ("electric", "Electricity", "Hover the charged button."),
-            Scene::Fire => ("fire", "Fire", "Flames, a plasma border and heat haze over a button."),
-            Scene::Motion => ("motion", "Motion blur", "Drag the card and fling it. It glides on a spring with shutter blur."),
-            Scene::Lens => ("lens", "Liquid glass", "Drag the glass over the page. Click anywhere for a shockwave."),
+            Scene::Fire => (
+                "fire",
+                "Fire",
+                "Flames, a plasma border and heat haze over a button.",
+            ),
+            Scene::Motion => (
+                "motion",
+                "Motion blur",
+                "Drag the card and fling it. It glides on a spring with shutter blur.",
+            ),
+            Scene::Lens => (
+                "lens",
+                "Liquid glass",
+                "Drag the glass over the page. Click anywhere for a shockwave.",
+            ),
             Scene::Extras => ("extras", "Extras", "Shimmer, sparkles, aurora and grain."),
         }
     }
 
-    pub fn id(self) -> &'static str { self.meta().0 }
-    pub fn title(self) -> &'static str { self.meta().1 }
-    pub fn hint(self) -> &'static str { self.meta().2 }
+    pub fn id(self) -> &'static str {
+        self.meta().0
+    }
+    pub fn title(self) -> &'static str {
+        self.meta().1
+    }
+    pub fn hint(self) -> &'static str {
+        self.meta().2
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -90,22 +136,60 @@ pub struct KnobSpec {
 pub const FX_COLORS: &[u32] = &[0x22d3ee, 0x8b5cf6, 0xff5fa2, 0xff8a2a, 0x34d399, 0x60a5fa];
 pub const LAMP_COLORS: &[u32] = &[0xffc78c, 0xff9a4d, 0xfff3e6, 0xb3ccff, 0xff8fb0, 0x9dffd0];
 
-fn sl(id: &'static str, label: &'static str, min: f32, max: f32, default: f32, dec: u8) -> KnobSpec {
-    KnobSpec { id, label, min, max, default, kind: Kind::Slider(dec) }
+fn sl(
+    id: &'static str,
+    label: &'static str,
+    min: f32,
+    max: f32,
+    default: f32,
+    dec: u8,
+) -> KnobSpec {
+    KnobSpec {
+        id,
+        label,
+        min,
+        max,
+        default,
+        kind: Kind::Slider(dec),
+    }
 }
 
 fn tg(id: &'static str, label: &'static str, on: bool) -> KnobSpec {
-    KnobSpec { id, label, min: 0.0, max: 1.0, default: if on { 1.0 } else { 0.0 }, kind: Kind::Toggle }
+    KnobSpec {
+        id,
+        label,
+        min: 0.0,
+        max: 1.0,
+        default: if on { 1.0 } else { 0.0 },
+        kind: Kind::Toggle,
+    }
 }
 
 fn sw(id: &'static str, label: &'static str, palette: &'static [u32]) -> KnobSpec {
-    KnobSpec { id, label, min: 0.0, max: (palette.len() - 1) as f32, default: 0.0, kind: Kind::Swatch(palette) }
+    KnobSpec {
+        id,
+        label,
+        min: 0.0,
+        max: (palette.len() - 1) as f32,
+        default: 0.0,
+        kind: Kind::Swatch(palette),
+    }
 }
 
 /// A slider over an effect's own knob: its range and default come from the typed params.
 fn fx(knobs: &'static [Knob], name: &'static str, label: &'static str, dec: u8) -> KnobSpec {
-    let k = knobs.iter().find(|k| k.name == name).unwrap_or_else(|| panic!("no knob {name}"));
-    KnobSpec { id: k.name, label, min: k.min, max: k.max, default: k.default, kind: Kind::Slider(dec) }
+    let k = knobs
+        .iter()
+        .find(|k| k.name == name)
+        .unwrap_or_else(|| panic!("no knob {name}"));
+    KnobSpec {
+        id: k.name,
+        label,
+        min: k.min,
+        max: k.max,
+        default: k.default,
+        kind: Kind::Slider(dec),
+    }
 }
 
 pub fn specs(scene: Scene) -> &'static [KnobSpec] {
@@ -213,7 +297,9 @@ fn build(scene: Scene) -> Vec<KnobSpec> {
 }
 
 pub fn defaults() -> Vec<Vec<f32>> {
-    ALL.iter().map(|s| specs(*s).iter().map(|k| k.default).collect()).collect()
+    ALL.iter()
+        .map(|s| specs(*s).iter().map(|k| k.default).collect())
+        .collect()
 }
 
 /// Linear RGB of an sRGB hex colour.

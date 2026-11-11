@@ -9,12 +9,21 @@ use crate::{DiagramStyle, Hover, scene};
 fn painted(ops: &[Op], surface: Color, p: [f32; 2]) -> Color {
     ops.iter().fold(surface, |under, op| match op {
         Op::Fill(points, color) => (0..inside_count(points, p)).fold(under, |u, _| over(*color, u)),
-        Op::Stroke { points, closed, width, cap, color } => {
-            let mut segs: Vec<([f32; 2], [f32; 2])> = points.windows(2).map(|w| (w[0], w[1])).collect();
+        Op::Stroke {
+            points,
+            closed,
+            width,
+            cap,
+            color,
+        } => {
+            let mut segs: Vec<([f32; 2], [f32; 2])> =
+                points.windows(2).map(|w| (w[0], w[1])).collect();
             if *closed && points.len() > 2 {
                 segs.push((points[points.len() - 1], points[0]));
             }
-            segs.iter().filter(|(a, b)| covers(*a, *b, *width, *cap, p)).fold(under, |u, _| over(*color, u))
+            segs.iter()
+                .filter(|(a, b)| covers(*a, *b, *width, *cap, p))
+                .fold(under, |u, _| over(*color, u))
         }
     })
 }
@@ -24,7 +33,9 @@ fn inside_count(points: &[[f32; 2]], p: [f32; 2]) -> usize {
     let mut j = points.len() - 1;
     for i in 0..points.len() {
         let (a, c) = (points[i], points[j]);
-        if (a[1] > p[1]) != (c[1] > p[1]) && p[0] < (c[0] - a[0]) * (p[1] - a[1]) / (c[1] - a[1]) + a[0] {
+        if (a[1] > p[1]) != (c[1] > p[1])
+            && p[0] < (c[0] - a[0]) * (p[1] - a[1]) / (c[1] - a[1]) + a[0]
+        {
             odd = !odd;
         }
         j = i;
@@ -56,17 +67,30 @@ fn a_line_is_no_brighter_at_its_joints_under_its_head_or_round_a_corner() {
     let at = |p| painted(&ops, paint.surface, p);
     let mut checked = 0;
     for op in &ops {
-        let Op::Stroke { points, closed, .. } = op else { continue };
-        let longest = points.windows(2).max_by(|a, b| dist(a[0], a[1]).total_cmp(&dist(b[0], b[1]))).expect("a segment");
+        let Op::Stroke { points, closed, .. } = op else {
+            continue;
+        };
+        let longest = points
+            .windows(2)
+            .max_by(|a, b| dist(a[0], a[1]).total_cmp(&dist(b[0], b[1])))
+            .expect("a segment");
         let body = at(lerp(longest[0], longest[1], 0.5));
         // Every joint, and an open line's ends, where it runs under its arrowhead.
         for &p in points.iter().skip(if *closed { 0 } else { 1 }) {
             let lift = brighter(at(p), body);
-            assert!(lift < 0.002, "brighter by {lift} at {p:?} than along the stroke ({:?} vs {:?})", at(p), body);
+            assert!(
+                lift < 0.002,
+                "brighter by {lift} at {p:?} than along the stroke ({:?} vs {:?})",
+                at(p),
+                body
+            );
             checked += 1;
         }
     }
-    assert!(checked > 40, "edges and rounded node corners were checked: {checked}");
+    assert!(
+        checked > 40,
+        "edges and rounded node corners were checked: {checked}"
+    );
 }
 
 #[test]
@@ -86,11 +110,17 @@ fn every_diagram_draws_its_ink_opaque_over_an_opaque_surface() {
         let paint = DiagramStyle::neutral(dark);
         assert_eq!(paint.surface.a, 1.0);
         for src in sources {
-            let ops = scene(src, &paint, None).unwrap_or_else(|| panic!("draws {src:?}")).ops;
+            let ops = scene(src, &paint, None)
+                .unwrap_or_else(|| panic!("draws {src:?}"))
+                .ops;
             for op in &ops {
                 match op {
-                    Op::Stroke { color, .. } => assert_eq!(color.a, 1.0, "a translucent stroke in {src:?}"),
-                    Op::Fill(points, color) if points.len() == 3 => assert_eq!(color.a, 1.0, "a translucent arrowhead in {src:?}"),
+                    Op::Stroke { color, .. } => {
+                        assert_eq!(color.a, 1.0, "a translucent stroke in {src:?}")
+                    }
+                    Op::Fill(points, color) if points.len() == 3 => {
+                        assert_eq!(color.a, 1.0, "a translucent arrowhead in {src:?}")
+                    }
                     _ => {}
                 }
             }
@@ -100,34 +130,65 @@ fn every_diagram_draws_its_ink_opaque_over_an_opaque_surface() {
 
 #[test]
 fn ink_takes_the_colour_of_the_fills_beneath_it() {
-    let surface = Color { r: 0.02, g: 0.02, b: 0.02, a: 1.0 };
+    let surface = Color {
+        r: 0.02,
+        g: 0.02,
+        b: 0.02,
+        a: 1.0,
+    };
     let tint = Color::WHITE.alpha(0.1);
     let ink = Color::WHITE.alpha(0.5);
     let mut c = Canvas::default();
-    c.fill(vec![[0.0, 0.0], [100.0, 0.0], [100.0, 100.0], [0.0, 100.0]], tint);
+    c.fill(
+        vec![[0.0, 0.0], [100.0, 0.0], [100.0, 100.0], [0.0, 100.0]],
+        tint,
+    );
     c.stroke(vec![[10.0, 50.0], [90.0, 50.0]], false, 1.0, ink);
     c.stroke(vec![[110.0, 50.0], [190.0, 50.0]], false, 1.0, ink);
     c.fill(vec![[150.0, 40.0], [160.0, 50.0], [150.0, 60.0]], ink);
     flatten(&mut c.ops, &mut [], surface);
-    let colors: Vec<Color> = c.ops.iter().map(|op| match op {
-        Op::Fill(_, c) | Op::Stroke { color: c, .. } => *c,
-    }).collect();
+    let colors: Vec<Color> = c
+        .ops
+        .iter()
+        .map(|op| match op {
+            Op::Fill(_, c) | Op::Stroke { color: c, .. } => *c,
+        })
+        .collect();
     assert_eq!(colors[0], tint, "an area keeps its alpha");
-    assert_eq!(colors[1], over(ink, over(tint, surface)), "ink inside the tint");
+    assert_eq!(
+        colors[1],
+        over(ink, over(tint, surface)),
+        "ink inside the tint"
+    );
     assert_eq!(colors[2], over(ink, surface), "ink on the surface");
-    assert_eq!(colors[3], colors[2], "a head in the line's colour matches its line");
+    assert_eq!(
+        colors[3], colors[2],
+        "a head in the line's colour matches its line"
+    );
 }
 
 #[test]
 fn hover_traces_light_in_opaque_ink_too() {
     let paint = DiagramStyle::neutral(true);
-    let Some(crate::Parsed { diagram: crate::Diagram::Flowchart(f), .. }) = crate::parse(FLOW) else { panic!() };
-    let mut c = crate::flowchart::draw_canvas(&f, &paint, Some((Hover::Edges, paint.text.alpha(0.9)))).expect("draws");
+    let Some(crate::Parsed {
+        diagram: crate::Diagram::Flowchart(f),
+        ..
+    }) = crate::parse(FLOW)
+    else {
+        panic!()
+    };
+    let mut c =
+        crate::flowchart::draw_canvas(&f, &paint, Some((Hover::Edges, paint.text.alpha(0.9))))
+            .expect("draws");
     flatten(&mut c.ops, &mut c.traces, paint.surface);
-    let strokes = c.traces.iter().flat_map(|t| &t.ops).filter_map(|op| match op {
-        Op::Stroke { color, .. } => Some(color.a),
-        _ => None,
-    });
+    let strokes = c
+        .traces
+        .iter()
+        .flat_map(|t| &t.ops)
+        .filter_map(|op| match op {
+            Op::Stroke { color, .. } => Some(color.a),
+            _ => None,
+        });
     assert!(strokes.clone().count() >= 3);
     assert!(strokes.into_iter().all(|a| a == 1.0));
 }

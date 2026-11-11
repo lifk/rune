@@ -37,7 +37,11 @@ pub(crate) enum ModalFocus {
 
 pub(crate) enum ModalEvent {
     /// A modal mounted; `restore` is the focus it hands back on closing.
-    Opened { path: String, restore: Option<String>, opened: Opened },
+    Opened {
+        path: String,
+        restore: Option<String>,
+        opened: Opened,
+    },
     /// The top modal's element is gone. `kept` is focus the closing change already put outside
     /// it (a field the handler focused), which stays.
     TopRemoved { kept: bool },
@@ -72,22 +76,56 @@ impl ModalFocus {
     pub(crate) fn step(self, event: ModalEvent) -> (Self, Vec<ModalEffect>) {
         match (self, event) {
             (state, ModalEvent::Opened { path, .. }) if state.holds(&path) => (state, vec![]),
-            (Self::Closed, ModalEvent::Opened { path, restore, opened }) => {
-                (Self::Open(vec![ModalLayer { path, restore, opened }]), vec![ModalEffect::CancelGestures])
-            }
-            (Self::Open(mut layers), ModalEvent::Opened { path, restore, opened }) => {
-                layers.push(ModalLayer { path, restore, opened });
+            (
+                Self::Closed,
+                ModalEvent::Opened {
+                    path,
+                    restore,
+                    opened,
+                },
+            ) => (
+                Self::Open(vec![ModalLayer {
+                    path,
+                    restore,
+                    opened,
+                }]),
+                vec![ModalEffect::CancelGestures],
+            ),
+            (
+                Self::Open(mut layers),
+                ModalEvent::Opened {
+                    path,
+                    restore,
+                    opened,
+                },
+            ) => {
+                layers.push(ModalLayer {
+                    path,
+                    restore,
+                    opened,
+                });
                 (Self::Open(layers), vec![ModalEffect::CancelGestures])
             }
             (Self::Open(mut layers), ModalEvent::TopRemoved { kept }) => {
                 let closed = layers.pop();
-                let state = if layers.is_empty() { Self::Closed } else { Self::Open(layers) };
-                let effects = closed.filter(|_| !kept)
-                    .map(|l| ModalEffect::Return { restore: l.restore, ring: l.opened == Opened::Dialog })
-                    .into_iter().collect();
+                let state = if layers.is_empty() {
+                    Self::Closed
+                } else {
+                    Self::Open(layers)
+                };
+                let effects = closed
+                    .filter(|_| !kept)
+                    .map(|l| ModalEffect::Return {
+                        restore: l.restore,
+                        ring: l.opened == Opened::Dialog,
+                    })
+                    .into_iter()
+                    .collect();
                 (state, effects)
             }
-            (state @ Self::Open(_), ModalEvent::FocusOutside) => (state, vec![ModalEffect::FocusInitial]),
+            (state @ Self::Open(_), ModalEvent::FocusOutside) => {
+                (state, vec![ModalEffect::FocusInitial])
+            }
             (state, _) => (state, vec![]),
         }
     }
@@ -98,9 +136,20 @@ impl<S: 'static> Runtime<S> {
     /// a modal that opened, and focus that left the top modal.
     pub(super) fn sync_modals(&mut self) {
         // Exiting visuals are already inert, so a closing modal counts as gone.
-        while let Some(top) = self.modal_focus.top().map(str::to_owned).filter(|p| self.node(p).is_none()) {
-            let inside = |f: &str| f.strip_prefix(top.as_str()).is_some_and(|rest| rest.is_empty() || rest.starts_with('/'));
-            let kept = self.focus.path().is_some_and(|f| !inside(f) && self.node(f).is_some());
+        while let Some(top) = self
+            .modal_focus
+            .top()
+            .map(str::to_owned)
+            .filter(|p| self.node(p).is_none())
+        {
+            let inside = |f: &str| {
+                f.strip_prefix(top.as_str())
+                    .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+            };
+            let kept = self
+                .focus
+                .path()
+                .is_some_and(|f| !inside(f) && self.node(f).is_some());
             self.modal_step(ModalEvent::TopRemoved { kept });
         }
         let Some(i) = self.active_modal() else { return };
@@ -108,11 +157,26 @@ impl<S: 'static> Runtime<S> {
         // A field in the modal that asked for focus took it earlier in this commit; closing
         // returns to what had focus before.
         let inside = self.focused_index().is_some_and(|j| self.allowed(j));
-        let restore = if inside { self.focus_before_commit.clone() } else { self.focus.owned() };
+        let restore = if inside {
+            self.focus_before_commit.clone()
+        } else {
+            self.focus.owned()
+        };
         let menu = |j: usize| MENU_ROLES.contains(&self.nodes[j].role);
-        let is_menu = menu(i) || (i + 1..self.nodes.len()).take_while(|&j| self.nodes[j].parent.is_some_and(|p| p >= i)).any(|j| self.nodes[j].parent == Some(i) && menu(j));
-        let opened = if is_menu && !self.focus.keyboard() { Opened::PointerMenu } else { Opened::Dialog };
-        self.modal_step(ModalEvent::Opened { path, restore, opened });
+        let is_menu = menu(i)
+            || (i + 1..self.nodes.len())
+                .take_while(|&j| self.nodes[j].parent.is_some_and(|p| p >= i))
+                .any(|j| self.nodes[j].parent == Some(i) && menu(j));
+        let opened = if is_menu && !self.focus.keyboard() {
+            Opened::PointerMenu
+        } else {
+            Opened::Dialog
+        };
+        self.modal_step(ModalEvent::Opened {
+            path,
+            restore,
+            opened,
+        });
         if !self.focused_index().is_some_and(|j| self.allowed(j)) {
             self.modal_step(ModalEvent::FocusOutside);
         }
@@ -147,12 +211,17 @@ impl<S: 'static> Runtime<S> {
     fn modal_initial_focus(&self) -> Option<String> {
         let i = self.active_modal()?;
         let inside = |j: usize| self.modal_member(j) && j > i;
-        let autofocus = (i..self.nodes.len()).find(|&j| inside(j) && self.nodes[j].focus.autofocus && self.can_focus(j));
+        let autofocus = (i..self.nodes.len())
+            .find(|&j| inside(j) && self.nodes[j].focus.autofocus && self.can_focus(j));
         let first = if self.defaults.web_focus {
-            (i..self.nodes.len()).find(|&j| inside(j) && self.nodes[j].input.is_some() && self.can_focus(j))
+            (i..self.nodes.len())
+                .find(|&j| inside(j) && self.nodes[j].input.is_some() && self.can_focus(j))
         } else {
             self.tab_order().first().copied()
         };
-        Some(autofocus.or(first).map_or_else(|| self.nodes[i].path.clone(), |j| self.nodes[j].path.clone()))
+        Some(autofocus.or(first).map_or_else(
+            || self.nodes[i].path.clone(),
+            |j| self.nodes[j].path.clone(),
+        ))
     }
 }

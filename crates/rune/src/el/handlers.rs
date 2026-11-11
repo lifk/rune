@@ -12,7 +12,10 @@ impl El {
         self
     }
     /// [`El::on_press_tx`] in place.
-    pub fn set_on_press_tx<S: 'static>(&mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> &mut Self {
+    pub fn set_on_press_tx<S: 'static>(
+        &mut self,
+        f: impl Fn(&mut S, &mut Tx) + 'static,
+    ) -> &mut Self {
         self.handlers.on_press = Some(Rc::new(move |s, tx| f(downcast::<S>(s), tx)));
         if self.role == RoleTag::GROUP {
             self.role = RoleTag::BUTTON;
@@ -62,8 +65,14 @@ impl El {
     /// and the element behaves as if it had no `drag_out`. Headless tools record `drag-out
     /// <path>` in the trace and `dragOut` in the tree instead. Overlay panels start the same
     /// session; see [`crate::drag_out`] for how far that path is tested.
-    pub fn drag_out<S: 'static>(mut self, f: impl Fn(&S) -> Option<crate::DragItem> + 'static) -> Self {
-        self.handlers.drag_out = Some(Rc::new(move |s| f(s.cast::<S>().expect("handler registered for a different state type than the app's"))));
+    pub fn drag_out<S: 'static>(
+        mut self,
+        f: impl Fn(&S) -> Option<crate::DragItem> + 'static,
+    ) -> Self {
+        self.handlers.drag_out = Some(Rc::new(move |s| {
+            f(s.cast::<S>()
+                .expect("handler registered for a different state type than the app's"))
+        }));
         self
     }
     /// How far (points, straight-line) the pointer travels from the press before this
@@ -97,8 +106,13 @@ impl El {
         self
     }
     /// Called once when a [`El::drag_out`] drag ends, with what the drop did.
-    pub fn on_drag_end<S: 'static>(mut self, f: impl Fn(&mut S, crate::DragOutcome, &mut Tx) + 'static) -> Self {
-        self.handlers.on_drag_end = Some(Rc::new(move |s, outcome, tx| f(downcast::<S>(s), outcome, tx)));
+    pub fn on_drag_end<S: 'static>(
+        mut self,
+        f: impl Fn(&mut S, crate::DragOutcome, &mut Tx) + 'static,
+    ) -> Self {
+        self.handlers.on_drag_end = Some(Rc::new(move |s, outcome, tx| {
+            f(downcast::<S>(s), outcome, tx)
+        }));
         self
     }
 }

@@ -48,7 +48,15 @@ fn suffix<T: Eq>(a: &[T], b: &[T]) -> usize {
     a.iter().rev().zip(b.iter().rev()).take_while(|(x, y)| x == y).count()
 }
 
-fn conquer<T: Eq>(a: &[T], mut ra: Range<usize>, b: &[T], mut rb: Range<usize>, v: &mut Vs, ca: &mut [bool], cb: &mut [bool]) {
+fn conquer<T: Eq>(
+    a: &[T],
+    mut ra: Range<usize>,
+    b: &[T],
+    mut rb: Range<usize>,
+    v: &mut Vs,
+    ca: &mut [bool],
+    cb: &mut [bool],
+) {
     let p = prefix(&a[ra.clone()], &b[rb.clone()]);
     ra.start += p;
     rb.start += p;

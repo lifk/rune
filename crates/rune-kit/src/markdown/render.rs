@@ -71,7 +71,13 @@ impl Lead {
         match self {
             Lead::Bullet => "- ".into(),
             Lead::Number(n) => format!("{n}. "),
-            Lead::Task(done) => if done { "- [x] ".into() } else { "- [ ] ".into() },
+            Lead::Task(done) => {
+                if done {
+                    "- [x] ".into()
+                } else {
+                    "- [ ] ".into()
+                }
+            }
         }
     }
 
@@ -99,16 +105,25 @@ pub(super) fn rendered_keys(n: usize, keys: &[String]) -> Vec<String> {
 /// `starts`) that `sel` touches, `None` for part of one block.
 pub(super) fn source_copy(src: &str, starts: &[usize], names: &[String], sel: &rune::TextSelection) -> Option<String> {
     // The longest key that is the path or its first segments: an app's key may hold a `/`.
-    let block_of = |path: &str| names.iter().enumerate()
-        .filter(|(_, k)| path == k.as_str() || path.strip_prefix(k.as_str()).is_some_and(|rest| rest.starts_with('/')))
-        .max_by_key(|(_, k)| k.len()).map(|(b, _)| b);
+    let block_of = |path: &str| {
+        names
+            .iter()
+            .enumerate()
+            .filter(|(_, k)| {
+                path == k.as_str() || path.strip_prefix(k.as_str()).is_some_and(|rest| rest.starts_with('/'))
+            })
+            .max_by_key(|(_, k)| k.len())
+            .map(|(b, _)| b)
+    };
     let mut touched: Option<(usize, usize)> = None;
     for t in sel.texts().iter().filter(|t| t.is_selected()) {
         let Some(b) = block_of(t.path()) else { continue };
         touched = Some(touched.map_or((b, b), |(first, _)| (first, b)));
     }
     let (first, last) = touched?;
-    if first == last && !sel.texts().iter().filter(|t| block_of(t.path()) == Some(first)).all(|t| t.is_whole() || t.is_empty()) {
+    if first == last
+        && !sel.texts().iter().filter(|t| block_of(t.path()) == Some(first)).all(|t| t.is_whole() || t.is_empty())
+    {
         return None;
     }
     if (first == 0 && last + 1 >= starts.len()) || sel.texts().iter().all(|t| t.is_whole() || t.is_empty()) {
@@ -219,7 +234,11 @@ impl Renderer {
         let links: Vec<Span> = if inl.links.is_empty() {
             Vec::new()
         } else {
-            inl.spans.iter().filter(|s| matches!(s.2, Style::Link)).map(|&(a, b, _)| self.link_span(a, b, inl)).collect()
+            inl.spans
+                .iter()
+                .filter(|s| matches!(s.2, Style::Link))
+                .map(|&(a, b, _)| self.link_span(a, b, inl))
+                .collect()
         };
         let mut next_link = 0;
         let mut out = Vec::with_capacity(inl.spans.len());
@@ -305,7 +324,9 @@ impl Renderer {
         }
         e = e.text_highlights(self.text_highlights_for(&inl.text, map));
         let e = self.select(self.wire_link(self.link_icons(e, inl), inl));
-        if !self.selectable { return e; }
+        if !self.selectable {
+            return e;
+        }
         inl.spans.iter().filter(|s| matches!(s.2, Style::CodePad)).fold(e, |e, s| e.uncopied(s.0..s.1))
     }
 
@@ -322,11 +343,15 @@ impl Renderer {
     pub(super) fn para(&self, inl: &Inline, map: Option<&SpanMap>, style: TextStyle, color: Color) -> El {
         // Lines keep their own 22.4 points, as a page's do, so a long list doesn't drift a
         // point per item.
-        let e = self.with_reveal(rich(inl.text.clone(), self.spans(inl, style)).font(style).color(color).exact_lines()).w_full();
+        let e = self
+            .with_reveal(rich(inl.text.clone(), self.spans(inl, style)).font(style).color(color).exact_lines())
+            .w_full();
         // A copy puts a blank line around a paragraph, one newline around a list item's first
         // with its marker before it.
         let e = match self.flow.get().lead {
-            Some((cols, lead, before)) => e.copy_prefix(format!("{}{}", " ".repeat(cols.into()), lead.marker())).copy_breaks(before, 1),
+            Some((cols, lead, before)) => {
+                e.copy_prefix(format!("{}{}", " ".repeat(cols.into()), lead.marker())).copy_breaks(before, 1)
+            }
             None => e.copy_breaks(2, 2),
         };
         self.select_inline(e, inl, map)
@@ -340,7 +365,14 @@ impl Renderer {
         self.blocks_in(blocks, maps, keys, top_level, false)
     }
 
-    pub(super) fn blocks_in(&self, blocks: &[Block], maps: &[BlockMap], keys: &[String], top_level: bool, in_item: bool) -> El {
+    pub(super) fn blocks_in(
+        &self,
+        blocks: &[Block],
+        maps: &[BlockMap],
+        keys: &[String],
+        top_level: bool,
+        in_item: bool,
+    ) -> El {
         let mut c = col().w_full();
         let mut prev_mb = 0.0f32;
         let mut after_heading = false;
@@ -386,22 +418,33 @@ impl Renderer {
     pub(super) fn code(&self, code: &str, source: Option<&Source>, map: Option<&SpanMap>) -> El {
         let s = &self.s;
         let highlights = self.text_highlights_for(code, map);
-        let shell = s.shell.filter(|_| source.and_then(|src| src.lang.as_deref()).is_some_and(|l| SHELLS.iter().any(|sh| l.eq_ignore_ascii_case(sh))));
-        let plain = source.and_then(|src| src.lang.as_deref()).is_none_or(|l| PLAIN_TEXT.iter().any(|p| l.eq_ignore_ascii_case(p)));
+        let shell = s.shell.filter(|_| {
+            source
+                .and_then(|src| src.lang.as_deref())
+                .is_some_and(|l| SHELLS.iter().any(|sh| l.eq_ignore_ascii_case(sh)))
+        });
+        let plain = source
+            .and_then(|src| src.lang.as_deref())
+            .is_none_or(|l| PLAIN_TEXT.iter().any(|p| l.eq_ignore_ascii_case(p)));
         let (fill, border, ink) = match shell {
             Some(sh) => (sh.fill, sh.border, sh.text),
-            None if plain => (s.code_block_fill, s.code_block_border, s.plain_code_text.or(s.code_text).unwrap_or(s.text)),
+            None if plain => {
+                (s.code_block_fill, s.code_block_border, s.plain_code_text.or(s.code_text).unwrap_or(s.text))
+            }
             None => (s.code_block_fill, s.code_block_border, s.code_text.unwrap_or(s.text)),
         };
         let spans = if shell.is_some() { Vec::new() } else { self.syntax_spans(code, source) };
-        let body = self.with_reveal(tabbed(code, spans, highlights, s.code_block).font(s.code_block).color(ink)).copy_breaks(2, 2);
+        let body = self
+            .with_reveal(tabbed(code, spans, highlights, s.code_block).font(s.code_block).color(ink))
+            .copy_breaks(2, 2);
         let frame = col().role("code").w_full().radius(6.0).fill(fill).border(0.5, border);
         if self.scroll_wide {
             // The text sizes to its longest line inside the viewport, which scrolls under the
             // padding so lines run to the frame's edge.
             let viewport = col().key("scroll").w_full().scroll_x();
             let viewport = if s.wide_fade > 0.0 { viewport.scroll_edge_fade(s.wide_fade) } else { viewport };
-            return frame.child(viewport.child(col().px(s.code_block_pad[0]).py(s.code_block_pad[1]).child(self.select(body))));
+            return frame
+                .child(viewport.child(col().px(s.code_block_pad[0]).py(s.code_block_pad[1]).child(self.select(body))));
         }
         frame.px(s.code_block_pad[0]).py(s.code_block_pad[1]).child(self.select(body.w_full()))
     }
@@ -423,7 +466,13 @@ impl Renderer {
     pub(super) fn diff(&self, src: &str, map: Option<&SpanMap>) -> El {
         let s = &self.s;
         let all_hl = self.text_highlights_for(src, map);
-        let mut c = col().role("code").w_full().py(s.code_block_pad[1]).radius(6.0).fill(s.code_block_fill).border(0.5, s.code_block_border);
+        let mut c = col()
+            .role("code")
+            .w_full()
+            .py(s.code_block_pad[1])
+            .radius(6.0)
+            .fill(s.code_block_fill)
+            .border(0.5, s.code_block_border);
         let mut line_start = 0usize;
         let last = src.split('\n').count() - 1;
         for (n, line) in src.split('\n').enumerate() {
@@ -447,12 +496,15 @@ impl Renderer {
                 _ => (None, s.text),
             };
             let shown = if line.is_empty() { " " } else { line };
-            let mut r = row()
-                .key(format!("l{n}"))
-                .w_full()
-                .px(s.code_block_pad[0])
-                .child(self.select(self.with_reveal(tabbed(shown, Vec::new(), line_hl, s.code_block).font(s.code_block).color(color).wrap()).w_full()
-                    .copy_breaks(if n == 0 { 2 } else { 1 }, if n == last { 2 } else { 1 })));
+            let mut r = row().key(format!("l{n}")).w_full().px(s.code_block_pad[0]).child(
+                self.select(
+                    self.with_reveal(
+                        tabbed(shown, Vec::new(), line_hl, s.code_block).font(s.code_block).color(color).wrap(),
+                    )
+                    .w_full()
+                    .copy_breaks(if n == 0 { 2 } else { 1 }, if n == last { 2 } else { 1 }),
+                ),
+            );
             if let Some(t) = tint {
                 r = r.fill(t);
             }
@@ -493,14 +545,18 @@ impl Renderer {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn task_item(&self, (k, n): (usize, usize), indent: f32, item: &[Block], item_maps: &[BlockMap], item_idx: usize, checked: bool) -> El {
+    fn task_item(
+        &self,
+        (k, n): (usize, usize),
+        indent: f32,
+        item: &[Block],
+        item_maps: &[BlockMap],
+        item_idx: usize,
+        checked: bool,
+    ) -> El {
         let t = &self.s.task;
         let interactive = self.on_task.is_some() && !self.tasks_read_only;
-        let (fill, border) = if checked {
-            (t.fill_on, t.border_on)
-        } else {
-            (t.fill_off, t.border_off)
-        };
+        let (fill, border) = if checked { (t.fill_on, t.border_on) } else { (t.fill_off, t.border_off) };
         let mut control = el()
             .key("control")
             .size(t.size, t.size)
@@ -549,14 +605,25 @@ impl Renderer {
         };
         match b {
             Block::Para(inl) => self.para(inl, inl_map, s.body, self.flow.get().ink.unwrap_or(s.text)),
-            Block::Heading(l, inl) => self.para(inl, inl_map, s.headings[(*l as usize).clamp(1, 4) - 1], if *l >= 4 { s.muted } else { s.text }).role("heading").level(u32::from(*l)),
+            Block::Heading(l, inl) => self
+                .para(inl, inl_map, s.headings[(*l as usize).clamp(1, 4) - 1], if *l >= 4 { s.muted } else { s.text })
+                .role("heading")
+                .level(u32::from(*l)),
             Block::Code(code) => {
                 let n = self.next_source.get();
                 self.next_source.set(n + 1);
                 let source = self.sources.get(n).filter(|src| src.len == code.len());
                 let card = self.code(code, source, code_map);
                 match &self.code_frame {
-                    Some(f) => f(card.key("card"), &CodeFrame { index: n, source: code, language: source.and_then(|s| s.lang.as_deref()), open: source.is_some_and(|s| s.open) }),
+                    Some(f) => f(
+                        card.key("card"),
+                        &CodeFrame {
+                            index: n,
+                            source: code,
+                            language: source.and_then(|s| s.lang.as_deref()),
+                            open: source.is_some_and(|s| s.open),
+                        },
+                    ),
                     None => card,
                 }
             }
@@ -580,11 +647,21 @@ impl Renderer {
                 };
                 let flow = self.flow.get();
                 let indent = match s.list_nested {
-                    Some([bullets, numbers]) if flow.lists > 0 => if start.is_some() { numbers } else { bullets },
+                    Some([bullets, numbers]) if flow.lists > 0 => {
+                        if start.is_some() {
+                            numbers
+                        } else {
+                            bullets
+                        }
+                    }
                     _ => s.list_indent,
                 };
                 // Outside markers end a space's width before the text, as a browser sets "1. ".
-                let space = if s.list_outside { rune::text::measure("x x", &[], s.body, None).0 - rune::text::measure("xx", &[], s.body, None).0 } else { 0.0 };
+                let space = if s.list_outside {
+                    rune::text::measure("x x", &[], s.body, None).0 - rune::text::measure("xx", &[], s.body, None).0
+                } else {
+                    0.0
+                };
                 let mut c = col().role("list").w_full().gap(s.list_gap);
                 let n = items.len();
                 for (k, item) in items.iter().enumerate() {
@@ -597,7 +674,13 @@ impl Renderer {
                         (None, Some(n)) => Lead::Number(n + k as u64),
                         (None, None) => Lead::Bullet,
                     };
-                    self.flow.set(Flow { lists: flow.lists + 1, inset: flow.inset + indent, cols: flow.cols + lead.width(), lead: Some((flow.cols, lead, if k == 0 && flow.lists == 0 { 2 } else { 1 })), ..flow });
+                    self.flow.set(Flow {
+                        lists: flow.lists + 1,
+                        inset: flow.inset + indent,
+                        cols: flow.cols + lead.width(),
+                        lead: Some((flow.cols, lead, if k == 0 && flow.lists == 0 { 2 } else { 1 })),
+                        ..flow
+                    });
                     if let Some((checked, marker_offset)) = task {
                         c = c.child(self.task_item((k, n), indent, item, imap, marker_offset, checked));
                         continue;
@@ -607,7 +690,8 @@ impl Renderer {
                         None => "•".into(),
                     };
                     let marker = text(marker).font(s.body).color(s.muted).exact_lines().w(indent);
-                    let marker = if s.list_outside { marker.align(Align::End).pr(space) } else { marker.align(Align::Center) };
+                    let marker =
+                        if s.list_outside { marker.align(Align::End).pr(space) } else { marker.align(Align::Center) };
                     // The item's place in the list says what its marker shows.
                     c = c.child(
                         row()
@@ -639,7 +723,9 @@ impl Renderer {
                     .child(el().w(q.width).h_full().radius((q.width / 2.0).min(1.0)).fill(s.quote_rule))
                     .child(drawn.grow(1.0).shrink().pl(q.pad));
                 match &self.quote_frame {
-                    Some(f) => f(quote, &QuoteFrame { text: &self.plain_text(inner, first_task, Flow { lead: None, ..flow }) }),
+                    Some(f) => {
+                        f(quote, &QuoteFrame { text: &self.plain_text(inner, first_task, Flow { lead: None, ..flow }) })
+                    }
                     None => quote,
                 }
             }

@@ -76,7 +76,12 @@ fn pct(sorted: &[f64], p: f64) -> f64 {
 /// p50, p95, p99 and max of `v`.
 fn spread(mut v: Vec<f64>) -> [f64; 4] {
     v.sort_by(f64::total_cmp);
-    [pct(&v, 0.5), pct(&v, 0.95), pct(&v, 0.99), v.last().copied().unwrap_or(0.0)]
+    [
+        pct(&v, 0.5),
+        pct(&v, 0.95),
+        pct(&v, 0.99),
+        v.last().copied().unwrap_or(0.0),
+    ]
 }
 
 fn cpu_seconds() -> f64 {
@@ -85,9 +90,16 @@ fn cpu_seconds() -> f64 {
 
 /// This thread's CPU seconds, and the process's (user and system), cheaply enough for every frame.
 fn cpu_now() -> (f64, f64) {
-    let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+    let mut ts = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
     // SAFETY: both calls only write the struct they're given.
-    let thread = if unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts) } == 0 { ts.tv_sec as f64 + ts.tv_nsec as f64 * 1e-9 } else { f64::NAN };
+    let thread = if unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts) } == 0 {
+        ts.tv_sec as f64 + ts.tv_nsec as f64 * 1e-9
+    } else {
+        f64::NAN
+    };
     let mut ru = std::mem::MaybeUninit::<libc::rusage>::zeroed();
     // SAFETY: as above.
     let process = if unsafe { libc::getrusage(libc::RUSAGE_SELF, ru.as_mut_ptr()) } == 0 {
@@ -180,9 +192,20 @@ impl Meter {
         let s = self.seconds_at(start);
         let (show, load) = self.tag;
         let cpu = cpu_now();
-        let (cpu_ms, proc_ms) = (((cpu.0 - self.cpu_last.0) * 1000.0) as f32, ((cpu.1 - self.cpu_last.1) * 1000.0) as f32);
+        let (cpu_ms, proc_ms) = (
+            ((cpu.0 - self.cpu_last.0) * 1000.0) as f32,
+            ((cpu.1 - self.cpu_last.1) * 1000.0) as f32,
+        );
         self.cpu_last = cpu;
-        self.frames.push(Frame { start: s, work_ms: work_ms as f32, build_ms, show, load, cpu_ms, proc_ms });
+        self.frames.push(Frame {
+            start: s,
+            work_ms: work_ms as f32,
+            build_ms,
+            show,
+            load,
+            cpu_ms,
+            proc_ms,
+        });
         if s - self.footprint_at >= 0.5 {
             self.sample_memory(s);
         }
@@ -197,7 +220,9 @@ impl Meter {
     }
 
     fn counted(&self) -> &[Frame] {
-        let Some((from, to)) = self.window else { return &self.frames };
+        let Some((from, to)) = self.window else {
+            return &self.frames;
+        };
         let a = self.frames.partition_point(|f| f.start < from);
         let b = self.frames.partition_point(|f| f.start <= to);
         &self.frames[a..b]
@@ -220,18 +245,30 @@ impl Meter {
             }
         }
         let mb = |b: u64| b as f64 / 1_048_576.0;
-        let builds: Vec<f64> = frames.iter().filter(|f| !f.build_ms.is_nan()).map(|f| f.build_ms as f64).collect();
+        let builds: Vec<f64> = frames
+            .iter()
+            .filter(|f| !f.build_ms.is_nan())
+            .map(|f| f.build_ms as f64)
+            .collect();
         Summary {
             frames: frames.len(),
             seconds,
-            fps: if seconds > 0.0 { frames.len() as f64 / seconds } else { 0.0 },
+            fps: if seconds > 0.0 {
+                frames.len() as f64 / seconds
+            } else {
+                0.0
+            },
             interval_ms: spread(intervals),
             work_ms: spread(frames.iter().map(|f| f.work_ms as f64).collect()),
             build_ms: (!builds.is_empty()).then(|| spread(builds)),
             late,
             dropped,
             idle_gaps,
-            cpu_percent: if seconds > 0.0 { 100.0 * cpu_s / seconds } else { 0.0 },
+            cpu_percent: if seconds > 0.0 {
+                100.0 * cpu_s / seconds
+            } else {
+                0.0
+            },
             footprint_mb: mb(self.footprint_last),
             footprint_peak_mb: mb(self.footprint_peak),
             resident_mb: mb(self.resident_last),
@@ -273,7 +310,12 @@ impl Meter {
     /// The summary as JSON, with the build's notes.
     pub fn json(&mut self) -> String {
         let s = self.summary();
-        let arr = |v: [f64; 4]| format!("{{\"p50\": {:.3}, \"p95\": {:.3}, \"p99\": {:.3}, \"max\": {:.3}}}", v[0], v[1], v[2], v[3]);
+        let arr = |v: [f64; 4]| {
+            format!(
+                "{{\"p50\": {:.3}, \"p95\": {:.3}, \"p99\": {:.3}, \"max\": {:.3}}}",
+                v[0], v[1], v[2], v[3]
+            )
+        };
         let mut out = String::from("{\n");
         out.push_str(&format!("  \"framework\": \"{}\",\n", self.framework));
         out.push_str(&format!("  \"refresh_hz\": {:.2},\n", self.refresh_hz));
@@ -290,10 +332,16 @@ impl Meter {
         out.push_str(&format!("  \"idle_gaps\": {},\n", s.idle_gaps));
         out.push_str(&format!("  \"cpu_percent\": {:.2},\n", s.cpu_percent));
         out.push_str(&format!("  \"footprint_mb\": {:.2},\n", s.footprint_mb));
-        out.push_str(&format!("  \"footprint_peak_mb\": {:.2},\n", s.footprint_peak_mb));
+        out.push_str(&format!(
+            "  \"footprint_peak_mb\": {:.2},\n",
+            s.footprint_peak_mb
+        ));
         out.push_str(&format!("  \"resident_mb\": {:.2}", s.resident_mb));
         for (k, v) in &self.extra {
-            out.push_str(&format!(",\n  \"{k}\": \"{}\"", v.replace('\\', "\\\\").replace('"', "\\\"")));
+            out.push_str(&format!(
+                ",\n  \"{k}\": \"{}\"",
+                v.replace('\\', "\\\\").replace('"', "\\\"")
+            ));
         }
         out.push_str("\n}\n");
         out
@@ -301,7 +349,18 @@ impl Meter {
 
     /// The last `n` frames' show time and build time (work where the build can't split it).
     pub fn tail(&self, n: usize) -> impl Iterator<Item = (f32, f32)> + '_ {
-        self.frames[self.frames.len().saturating_sub(n)..].iter().map(|f| (f.show, if f.build_ms.is_nan() { f.work_ms } else { f.build_ms }))
+        self.frames[self.frames.len().saturating_sub(n)..]
+            .iter()
+            .map(|f| {
+                (
+                    f.show,
+                    if f.build_ms.is_nan() {
+                        f.work_ms
+                    } else {
+                        f.build_ms
+                    },
+                )
+            })
     }
 
     /// Every frame as CSV, one line each: `show_s,load,build_ms,work_ms,start_s,cpu_ms,proc_ms`
@@ -309,7 +368,10 @@ impl Meter {
     pub fn frames_csv(&self) -> String {
         let mut out = String::from("show_s,load,build_ms,work_ms,start_s,cpu_ms,proc_ms\n");
         for f in &self.frames {
-            out.push_str(&format!("{:.4},{},{:.4},{:.4},{:.4},{:.4},{:.4}\n", f.show, f.load, f.build_ms, f.work_ms, f.start, f.cpu_ms, f.proc_ms));
+            out.push_str(&format!(
+                "{:.4},{},{:.4},{:.4},{:.4},{:.4},{:.4}\n",
+                f.show, f.load, f.build_ms, f.work_ms, f.start, f.cpu_ms, f.proc_ms
+            ));
         }
         out
     }

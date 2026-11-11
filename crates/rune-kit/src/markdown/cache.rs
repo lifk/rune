@@ -58,12 +58,16 @@ fn cached(c: &mut Cache, src: &str, parse: fn(&str, bool) -> ParsedDoc) -> Doc {
         return hit.doc.clone();
     }
     let grown = c.last.clone().filter(|last| src.len() > last.len() && src.starts_with(&**last));
-    let parsed = grown.as_ref().and_then(|last| extend(c.docs.peek(&**last)?, last.len(), src, parse)).unwrap_or_else(|| {
-        #[cfg(test)]
-        PARSES.with(|p| p.set((p.get().0 + 1, p.get().1)));
-        let (blocks, sources, tasks, cuts, starts, maps) = parse(src, true);
-        Parsed { doc: (Rc::new(blocks), sources.into(), tasks.into(), starts.into(), maps.into()), cuts: cuts.into() }
-    });
+    let parsed =
+        grown.as_ref().and_then(|last| extend(c.docs.peek(&**last)?, last.len(), src, parse)).unwrap_or_else(|| {
+            #[cfg(test)]
+            PARSES.with(|p| p.set((p.get().0 + 1, p.get().1)));
+            let (blocks, sources, tasks, cuts, starts, maps) = parse(src, true);
+            Parsed {
+                doc: (Rc::new(blocks), sources.into(), tasks.into(), starts.into(), maps.into()),
+                cuts: cuts.into(),
+            }
+        });
     // A stream's earlier string is dead once it grows, unless something drew it this
     // commit; left in, a long stream would fill the budget with its prefixes.
     if let Some(last) = grown
@@ -98,11 +102,13 @@ fn extend(base: &Parsed, base_len: usize, src: &str, parse: fn(&str, bool) -> Pa
     let mut blocks = base.doc.0[..cut.blocks].to_vec();
     blocks.extend(tail);
     let sources: Rc<[Source]> = base.doc.1[..cut.sources].iter().cloned().chain(sources).collect();
-    let tasks = base.doc.2[..cut.tasks].iter().copied()
-        .chain(tasks.into_iter().map(|t| t.map(|(checked, at)| (checked, at + cut.at)))).collect();
+    let tasks = base.doc.2[..cut.tasks]
+        .iter()
+        .copied()
+        .chain(tasks.into_iter().map(|t| t.map(|(checked, at)| (checked, at + cut.at))))
+        .collect();
     let starts = base.doc.3[..cut.blocks].iter().copied().chain(starts.into_iter().map(|at| at + cut.at)).collect();
-    let maps = base.doc.4[..cut.blocks].iter().cloned()
-        .chain(maps.into_iter().map(|m| m.shift_src(cut.at))).collect();
+    let maps = base.doc.4[..cut.blocks].iter().cloned().chain(maps.into_iter().map(|m| m.shift_src(cut.at))).collect();
     let cuts = base.cuts[..i]
         .iter()
         .copied()

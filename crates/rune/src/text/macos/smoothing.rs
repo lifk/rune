@@ -16,8 +16,8 @@ use swash::FontRef;
 use swash::scale::ScaleContext;
 use swash::zeno::{Command, Format, Mask, Origin, PathData, Placement};
 
-use crate::text::{Atlas, Rasterized, Span};
 use crate::color::Color;
+use crate::text::{Atlas, Rasterized, Span};
 
 #[path = "flatten.rs"]
 mod flatten;
@@ -40,10 +40,18 @@ pub struct ApplePipeline {
 
 impl ApplePipeline {
     /// CoreText with font smoothing on, the macOS default.
-    pub const SMOOTHED: ApplePipeline = ApplePipeline { dilate: true, flatten: true, hint: true };
+    pub const SMOOTHED: ApplePipeline = ApplePipeline {
+        dilate: true,
+        flatten: true,
+        hint: true,
+    };
     /// CoreText with smoothing off (`CGContextSetShouldSmoothFonts(false)`, a browser's
     /// `-webkit-font-smoothing: antialiased`): it still flattens and autohints.
-    pub const UNSMOOTHED: ApplePipeline = ApplePipeline { dilate: false, flatten: true, hint: true };
+    pub const UNSMOOTHED: ApplePipeline = ApplePipeline {
+        dilate: false,
+        flatten: true,
+        hint: true,
+    };
 
     /// A glyph key's tag for this pipeline.
     fn bits(self) -> u8 {
@@ -96,7 +104,11 @@ pub(crate) struct Smoothing {
 
 impl Default for Smoothing {
     fn default() -> Self {
-        Smoothing { pipeline: crate::text::FontSmoothing::default().pipeline(), inks: Vec::new(), metrics: HashMap::new() }
+        Smoothing {
+            pipeline: crate::text::FontSmoothing::default().pipeline(),
+            inks: Vec::new(),
+            metrics: HashMap::new(),
+        }
     }
 }
 
@@ -133,36 +145,68 @@ impl Smoothing {
         let base = color_bucket(element);
         self.inks.clear();
         self.inks.push(base);
-        self.inks.extend(spans.iter().map(|s| s.color.map_or(base, color_bucket)));
+        self.inks
+            .extend(spans.iter().map(|s| s.color.map_or(base, color_bucket)));
     }
 
     /// Each `Ink`'s luminance bucket, as [`Self::set_inks`] last chose them.
-    pub(crate) fn inks(&self) -> &[u8] { &self.inks }
+    pub(crate) fn inks(&self) -> &[u8] {
+        &self.inks
+    }
 
     /// The dilation radius of a glyph in `ink` at `ppem` device px (0 without the dilation
     /// stage). The radius, not the bucket, keys the atlas: buckets that reach the cap share
     /// masks.
     pub(crate) fn radius(&self, ink: u16, ppem: f32) -> f64 {
-        if !self.pipeline.dilate { return 0.0; }
-        let bucket = self.inks.get(ink as usize).or(self.inks.first()).copied().unwrap_or(0);
+        if !self.pipeline.dilate {
+            return 0.0;
+        }
+        let bucket = self
+            .inks
+            .get(ink as usize)
+            .or(self.inks.first())
+            .copied()
+            .unwrap_or(0);
         radius_for_bucket(ppem as f64, bucket)
     }
 
     /// The y autohint `mask` applies to an upright glyph of face `key` at `ppem` dilated by
     /// `radius`, for a glyph drawn from its outline instead.
-    pub(crate) fn hint(&mut self, cx: &mut ScaleContext, font: FontRef<'_>, key: (u64, u32, u64), coords: &[i16], ppem: f64, radius: f64) -> Option<hint::HintTransform> {
+    pub(crate) fn hint(
+        &mut self,
+        cx: &mut ScaleContext,
+        font: FontRef<'_>,
+        key: (u64, u32, u64),
+        coords: &[i16],
+        ppem: f64,
+        radius: f64,
+    ) -> Option<hint::HintTransform> {
         if !self.pipeline.hint || !hint::eligible(ppem) {
             return None;
         }
         if self.metrics.len() >= MAX_FACES && !self.metrics.contains_key(&key) {
             self.metrics.clear();
         }
-        let metrics = (*self.metrics.entry(key).or_insert_with(|| truetype_metrics(font, coords, cx)))?;
-        autohint(metrics, ppem, if self.pipeline.dilate { radius } else { 0.0 })
+        let metrics = (*self
+            .metrics
+            .entry(key)
+            .or_insert_with(|| truetype_metrics(font, coords, cx)))?;
+        autohint(
+            metrics,
+            ppem,
+            if self.pipeline.dilate { radius } else { 0.0 },
+        )
     }
 
-    pub(crate) fn rasterize(&mut self, cx: &mut ScaleContext, atlas: &mut Atlas, job: Job<'_>) -> Rasterized {
-        let Some((data, at)) = self.mask(cx, &job) else { return Rasterized::Empty };
+    pub(crate) fn rasterize(
+        &mut self,
+        cx: &mut ScaleContext,
+        atlas: &mut Atlas,
+        job: Job<'_>,
+    ) -> Rasterized {
+        let Some((data, at)) = self.mask(cx, &job) else {
+            return Rasterized::Empty;
+        };
         if at.width == 0 || at.height == 0 || !data.iter().any(|&c| c != 0) {
             return Rasterized::Empty;
         }
@@ -173,26 +217,47 @@ impl Smoothing {
     }
 
     /// The glyph's coverage and placement (swash's convention: `top` is rows above the baseline).
-    pub(crate) fn mask(&mut self, cx: &mut ScaleContext, job: &Job<'_>) -> Option<(Vec<u8>, Placement)> {
+    pub(crate) fn mask(
+        &mut self,
+        cx: &mut ScaleContext,
+        job: &Job<'_>,
+    ) -> Option<(Vec<u8>, Placement)> {
         let pipeline = self.pipeline;
         let path = design_outline(cx, job.font, job.coords, job.glyph, job.ppem as f64)?;
-        let path = if job.skew == 0 { path } else {
+        let path = if job.skew == 0 {
+            path
+        } else {
             let t = (job.skew as f64).to_radians().tan();
-            path.into_iter().map(|c| c.map(|p| [p[1].mul_add(t, p[0]), p[1]])).collect()
+            path.into_iter()
+                .map(|c| c.map(|p| [p[1].mul_add(t, p[0]), p[1]]))
+                .collect()
         };
         // The autohinter needs an axis-aligned em matrix, which an oblique isn't.
         let metrics = if pipeline.hint && job.skew == 0 && hint::eligible(job.ppem as f64) {
             if self.metrics.len() >= MAX_FACES && !self.metrics.contains_key(&job.key) {
                 self.metrics.clear();
             }
-            *self.metrics.entry(job.key).or_insert_with(|| truetype_metrics(job.font, job.coords, cx))
+            *self
+                .metrics
+                .entry(job.key)
+                .or_insert_with(|| truetype_metrics(job.font, job.coords, cx))
         } else {
             None
         };
-        let mut path = prepare_outline(&path, pipeline, job.ppem as f64, job.radius, [job.phase_x as f64, 0.0], metrics);
+        let mut path = prepare_outline(
+            &path,
+            pipeline,
+            job.ppem as f64,
+            job.radius,
+            [job.phase_x as f64, 0.0],
+            metrics,
+        );
         if job.shift_y != 0.0 {
             let dy = -job.shift_y as f64;
-            path = path.into_iter().map(|c| c.map(|v| [v[0], v[1] + dy])).collect();
+            path = path
+                .into_iter()
+                .map(|c| c.map(|v| [v[0], v[1] + dy]))
+                .collect();
         }
         (!path.is_empty()).then(|| mask(&path))
     }
@@ -200,29 +265,66 @@ impl Smoothing {
 
 /// `glyph`'s unhinted outline at `ppem`, extracted at units-per-em and scaled in f64: swash's
 /// final-size extraction rounds early enough to move CoreGraphics' branch decisions.
-pub(crate) fn design_outline(cx: &mut ScaleContext, font: FontRef<'_>, coords: &[i16], glyph: u16, ppem: f64) -> Option<Path> {
+pub(crate) fn design_outline(
+    cx: &mut ScaleContext,
+    font: FontRef<'_>,
+    coords: &[i16],
+    glyph: u16,
+    ppem: f64,
+) -> Option<Path> {
     let upem = font.metrics(coords).units_per_em;
-    let mut scaler = cx.builder(font).size(upem as f32).hint(false).normalized_coords(coords.iter().copied()).build();
+    let mut scaler = cx
+        .builder(font)
+        .size(upem as f32)
+        .hint(false)
+        .normalized_coords(coords.iter().copied())
+        .build();
     let outline = scaler.scale_outline(glyph)?;
     let scale = ppem / upem as f64;
     let p = |v: swash::zeno::Point| [v.x as f64 * scale, v.y as f64 * scale];
-    Some(outline.path().commands().map(|c| match c {
-        Command::MoveTo(a) => Cmd::Move(p(a)),
-        Command::LineTo(a) => Cmd::Line(p(a)),
-        Command::QuadTo(a, b) => Cmd::Quad(p(a), p(b)),
-        Command::CurveTo(a, b, c) => Cmd::Cubic(p(a), p(b), p(c)),
-        Command::Close => Cmd::Close,
-    }).collect())
+    Some(
+        outline
+            .path()
+            .commands()
+            .map(|c| match c {
+                Command::MoveTo(a) => Cmd::Move(p(a)),
+                Command::LineTo(a) => Cmd::Line(p(a)),
+                Command::QuadTo(a, b) => Cmd::Quad(p(a), p(b)),
+                Command::CurveTo(a, b, c) => Cmd::Cubic(p(a), p(b), p(c)),
+                Command::Close => Cmd::Close,
+            })
+            .collect(),
+    )
 }
 
 /// Steps 2–5 of the recipe, each stage as `pipeline` selects: fractional origin first, then
 /// dilation by `radius`, the autohinter (with the same radius, 0 undilated) when `metrics` is
 /// given and the vertical phase is zero, and CoreGraphics' flattening into lines.
-pub(crate) fn prepare_outline(path: &[Cmd], pipeline: ApplePipeline, ppem: f64, radius: f64, phase: Point, metrics: Option<HintMetrics>) -> Path {
-    let moved: Path = path.iter().map(|c| c.map(|v| [v[0] + phase[0], v[1] + phase[1]])).collect();
-    let (mut out, radius) = if pipeline.dilate { (dilate(&moved, radius, radius), radius) } else { (moved, 0.0) };
-    if pipeline.hint && phase[1] == 0.0 && let Some(t) = metrics.and_then(|m| autohint(m, ppem, radius)) {
-        out = out.into_iter().map(|c| c.map(|v| [v[0], t.apply(v[1])])).collect();
+pub(crate) fn prepare_outline(
+    path: &[Cmd],
+    pipeline: ApplePipeline,
+    ppem: f64,
+    radius: f64,
+    phase: Point,
+    metrics: Option<HintMetrics>,
+) -> Path {
+    let moved: Path = path
+        .iter()
+        .map(|c| c.map(|v| [v[0] + phase[0], v[1] + phase[1]]))
+        .collect();
+    let (mut out, radius) = if pipeline.dilate {
+        (dilate(&moved, radius, radius), radius)
+    } else {
+        (moved, 0.0)
+    };
+    if pipeline.hint
+        && phase[1] == 0.0
+        && let Some(t) = metrics.and_then(|m| autohint(m, ppem, radius))
+    {
+        out = out
+            .into_iter()
+            .map(|c| c.map(|v| [v[0], t.apply(v[1])]))
+            .collect();
     }
     if pipeline.flatten { flatten(&out) } else { out }
 }
@@ -230,22 +332,33 @@ pub(crate) fn prepare_outline(path: &[Cmd], pipeline: ApplePipeline, ppem: f64, 
 /// Zeno coverage of a prepared (y-up) outline, flattened by zeno if it still has curves.
 pub(crate) fn mask(path: &[Cmd]) -> (Vec<u8>, Placement) {
     let p = |v: Point| swash::zeno::Point::new(v[0] as f32, v[1] as f32);
-    let cmds: Vec<Command> = path.iter().map(|c| match *c {
-        Cmd::Move(a) => Command::MoveTo(p(a)),
-        Cmd::Line(a) => Command::LineTo(p(a)),
-        Cmd::Quad(a, b) => Command::QuadTo(p(a), p(b)),
-        Cmd::Cubic(a, b, c) => Command::CurveTo(p(a), p(b), p(c)),
-        Cmd::Close => Command::Close,
-    }).collect();
+    let cmds: Vec<Command> = path
+        .iter()
+        .map(|c| match *c {
+            Cmd::Move(a) => Command::MoveTo(p(a)),
+            Cmd::Line(a) => Command::LineTo(p(a)),
+            Cmd::Quad(a, b) => Command::QuadTo(p(a), p(b)),
+            Cmd::Cubic(a, b, c) => Command::CurveTo(p(a), p(b), p(c)),
+            Cmd::Close => Command::Close,
+        })
+        .collect();
     // `inspect` sizes the mask first: zeno's `render` alone places a y-up mask's top at its
     // lowest point.
-    Mask::new(&cmds[..]).format(Format::Alpha).origin(Origin::BottomLeft).inspect(|_, _, _| {}).render()
+    Mask::new(&cmds[..])
+        .format(Format::Alpha)
+        .origin(Origin::BottomLeft)
+        .inspect(|_, _, _| {})
+        .render()
 }
 
 /// Encoded sRGB to linear; Rune's colours are already linear, so only the captures need it.
 #[cfg(test)]
 pub(crate) fn srgb_to_linear(v: f64) -> f64 {
-    if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+    if v <= 0.04045 {
+        v / 12.92
+    } else {
+        ((v + 0.055) / 1.055).powf(2.4)
+    }
 }
 
 /// The bucket (q × 4) of a linear-sRGB colour: Rec. 709 luminance rounded to quarters, half
@@ -270,7 +383,10 @@ fn f32p(p: Point) -> Point {
 }
 
 fn lerp(a: Point, b: Point, t: f64) -> Point {
-    [(b[0] - a[0]).mul_add(t, a[0]), (b[1] - a[1]).mul_add(t, a[1])]
+    [
+        (b[0] - a[0]).mul_add(t, a[0]),
+        (b[1] - a[1]).mul_add(t, a[1]),
+    ]
 }
 
 fn split(p: [Point; 4], t: f64) -> ([Point; 4], [Point; 4]) {
@@ -293,7 +409,11 @@ fn roots(p: [Point; 4], axis: usize) -> Vec<f64> {
         return vec![];
     }
     let mut ts = if a == 0.0 {
-        if b == 0.0 { vec![] } else { vec![(p0 - p1) * 0.5 / b] }
+        if b == 0.0 {
+            vec![]
+        } else {
+            vec![(p0 - p1) * 0.5 / b]
+        }
     } else if b == 0.0 && disc == 0.0 {
         vec![]
     } else {
@@ -424,11 +544,26 @@ struct Dilator {
 impl Dilator {
     /// One translated piece from `cur` to `to`, joined to the previous one by a line.
     fn emit(&mut self, to: Point, controls: Option<(Point, Point)>) {
-        let sign = |v: f32| if v > 0.0 { 1.0 } else if v < 0.0 { -1.0 } else { 0.0 };
+        let sign = |v: f32| {
+            if v > 0.0 {
+                1.0
+            } else if v < 0.0 {
+                -1.0
+            } else {
+                0.0
+            }
+        };
         let delta = [(to[0] - self.cur[0]) as f32, (to[1] - self.cur[1]) as f32];
         let (sx, sy, dy) = (sign(delta[1]) * self.dx, -sign(delta[0]) * self.dy, self.dy);
-        let start = [((self.cur[0] as f32 + sx) + 0.0) as f64, ((self.cur[1] as f32 + sy) + dy) as f64];
-        self.out.push(if self.started { Cmd::Line(start) } else { Cmd::Move(start) });
+        let start = [
+            ((self.cur[0] as f32 + sx) + 0.0) as f64,
+            ((self.cur[1] as f32 + sy) + dy) as f64,
+        ];
+        self.out.push(if self.started {
+            Cmd::Line(start)
+        } else {
+            Cmd::Move(start)
+        });
         self.started = true;
         let shift = |p: Point| [(sx as f64 + p[0]) + 0.0, (sy as f64 + p[1]) + dy as f64];
         self.out.push(match controls {
@@ -458,7 +593,14 @@ impl Dilator {
 /// CoreGraphics' direction-sign dilation by radii `dx`, `dy` (y also gains +dy). Quadratics
 /// become cubics; cubics split at x then y extrema; pieces join with bevel lines.
 pub(crate) fn dilate(path: &[Cmd], dx: f64, dy: f64) -> Path {
-    let mut d = Dilator { out: vec![], cur: [0.0; 2], first: [0.0; 2], started: false, dx: dx as f32, dy: dy as f32 };
+    let mut d = Dilator {
+        out: vec![],
+        cur: [0.0; 2],
+        first: [0.0; 2],
+        started: false,
+        dx: dx as f32,
+        dy: dy as f32,
+    };
     for c in normalize(path) {
         match c {
             Cmd::Move(p) => {
@@ -469,7 +611,10 @@ pub(crate) fn dilate(path: &[Cmd], dx: f64, dy: f64) -> Path {
             Cmd::Line(p) => d.emit(p, None),
             Cmd::Quad(q, p) => {
                 let qc = q.map(|x| (2.0 * x / 3.0) as f32);
-                let a = [(d.cur[0] as f32 / 3.0 + qc[0]) as f64, (d.cur[1] as f32 / 3.0 + qc[1]) as f64];
+                let a = [
+                    (d.cur[0] as f32 / 3.0 + qc[0]) as f64,
+                    (d.cur[1] as f32 / 3.0 + qc[1]) as f64,
+                ];
                 let b = [p[0] / 3.0 + qc[0] as f64, p[1] / 3.0 + qc[1] as f64];
                 d.cubic([d.cur, a, b, p]);
             }

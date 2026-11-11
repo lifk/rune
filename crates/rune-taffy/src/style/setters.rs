@@ -104,7 +104,14 @@ impl CompactStyle {
             self.len_tags &= !0xF000;
         } else {
             let lp = LengthPercentage::length(p);
-            self.modify_cold(|s| s.padding = Rect { left: lp, right: lp, top: lp, bottom: lp });
+            self.modify_cold(|s| {
+                s.padding = Rect {
+                    left: lp,
+                    right: lp,
+                    top: lp,
+                    bottom: lp,
+                }
+            });
         }
     }
 
@@ -199,7 +206,8 @@ impl CompactStyle {
 
     #[inline(always)]
     pub fn set_overflow(&mut self, x: Overflow, y: Overflow) {
-        self.box_flags = (self.box_flags & 0x0F) | (encode_overflow(x) << 4) | (encode_overflow(y) << 6);
+        self.box_flags =
+            (self.box_flags & 0x0F) | (encode_overflow(x) << 4) | (encode_overflow(y) << 6);
         if let Some(s) = &mut self.extra {
             s.overflow = Point { x, y };
         }
@@ -283,47 +291,74 @@ impl CompactStyle {
     /// content lay out inside.
     #[inline(always)]
     pub fn set_border(&mut self, [top, right, bottom, left]: [f32; 4]) {
-        if self.extra.is_none() && top == 0.0 && right == 0.0 && bottom == 0.0 && left == 0.0 { return; }
+        if self.extra.is_none() && top == 0.0 && right == 0.0 && bottom == 0.0 && left == 0.0 {
+            return;
+        }
         let l = LengthPercentage::length;
-        self.modify_cold(|s| s.border = Rect { left: l(left), right: l(right), top: l(top), bottom: l(bottom) });
+        self.modify_cold(|s| {
+            s.border = Rect {
+                left: l(left),
+                right: l(right),
+                top: l(top),
+                bottom: l(bottom),
+            }
+        });
     }
 
     #[inline(always)]
     pub fn set_margin_left(&mut self, m: f32) {
-        if self.extra.is_none() && m == 0.0 { return; }
+        if self.extra.is_none() && m == 0.0 {
+            return;
+        }
         self.modify_cold(|s| s.margin.left = LengthPercentageAuto::length(m));
     }
 
     #[inline(always)]
     pub fn set_margin_right(&mut self, m: f32) {
-        if self.extra.is_none() && m == 0.0 { return; }
+        if self.extra.is_none() && m == 0.0 {
+            return;
+        }
         self.modify_cold(|s| s.margin.right = LengthPercentageAuto::length(m));
     }
 
     #[inline(always)]
     pub fn set_margin_top(&mut self, m: f32) {
-        if self.extra.is_none() && m == 0.0 { return; }
+        if self.extra.is_none() && m == 0.0 {
+            return;
+        }
         self.modify_cold(|s| s.margin.top = LengthPercentageAuto::length(m));
     }
 
     #[inline(always)]
     pub fn set_margin_bottom(&mut self, m: f32) {
-        if self.extra.is_none() && m == 0.0 { return; }
+        if self.extra.is_none() && m == 0.0 {
+            return;
+        }
         self.modify_cold(|s| s.margin.bottom = LengthPercentageAuto::length(m));
     }
 
     #[inline(always)]
     pub fn set_margin_x(&mut self, m: f32) {
-        if self.extra.is_none() && m == 0.0 { return; }
+        if self.extra.is_none() && m == 0.0 {
+            return;
+        }
         let v = LengthPercentageAuto::length(m);
-        self.modify_cold(|s| { s.margin.left = v; s.margin.right = v; });
+        self.modify_cold(|s| {
+            s.margin.left = v;
+            s.margin.right = v;
+        });
     }
 
     #[inline(always)]
     pub fn set_margin_y(&mut self, m: f32) {
-        if self.extra.is_none() && m == 0.0 { return; }
+        if self.extra.is_none() && m == 0.0 {
+            return;
+        }
         let v = LengthPercentageAuto::length(m);
-        self.modify_cold(|s| { s.margin.top = v; s.margin.bottom = v; });
+        self.modify_cold(|s| {
+            s.margin.top = v;
+            s.margin.bottom = v;
+        });
     }
 
     /// Moves this style's outer box sizing and placement onto a fresh column wrapper style and
@@ -338,8 +373,13 @@ impl CompactStyle {
             outer.len_tags = (outer.len_tags & !0x0FFF) | (self.len_tags & 0x0FFF);
             outer.flex_grow_bf16 = self.flex_grow_bf16;
             outer.flex_shrink_bf16 = self.flex_shrink_bf16;
-            outer.mode_flags = (outer.mode_flags & !(MODE_DISPLAY_MASK | MODE_POS_MASK | MODE_BASIS_ZERO))
-                | (if hidden { encode_display(Display::None) } else { encode_display(Display::Flex) })
+            outer.mode_flags = (outer.mode_flags
+                & !(MODE_DISPLAY_MASK | MODE_POS_MASK | MODE_BASIS_ZERO))
+                | (if hidden {
+                    encode_display(Display::None)
+                } else {
+                    encode_display(Display::Flex)
+                })
                 | (self.mode_flags & (MODE_POS_MASK | MODE_BASIS_ZERO));
             outer.align_self_u8 = self.align_self_u8;
             outer.box_flags = (outer.box_flags & 0x0F) | (self.box_flags & 0xF0);
@@ -348,7 +388,8 @@ impl CompactStyle {
             self.len_tags = (self.len_tags & 0xF000) | 0b0000_1010_0000_1010;
             self.flex_grow_bf16 = ONE_BF16;
             self.flex_shrink_bf16 = ONE_BF16;
-            self.mode_flags = (self.mode_flags & !(MODE_DISPLAY_MASK | MODE_POS_MASK | MODE_BASIS_ZERO))
+            self.mode_flags = (self.mode_flags
+                & !(MODE_DISPLAY_MASK | MODE_POS_MASK | MODE_BASIS_ZERO))
                 | encode_display(Display::Flex)
                 | (1 << MODE_POS_SHIFT);
             self.align_self_u8 = ALIGN_SELF_NONE;
@@ -359,7 +400,11 @@ impl CompactStyle {
             None => self.to_style(),
         };
         let outer = Style {
-            display: if s.display == Display::None { Display::None } else { Display::Flex },
+            display: if s.display == Display::None {
+                Display::None
+            } else {
+                Display::Flex
+            },
             flex_direction: FlexDirection::Column,
             overflow: s.overflow,
             flex_shrink: s.flex_shrink,
@@ -388,9 +433,18 @@ impl CompactStyle {
             top: LengthPercentageAuto::AUTO,
             bottom: LengthPercentageAuto::AUTO,
         };
-        s.size = Size { width: Dimension::AUTO, height: Dimension::AUTO };
-        s.min_size = Size { width: LengthPercentageAuto::ZERO, height: LengthPercentageAuto::ZERO };
-        s.max_size = Size { width: LengthPercentageAuto::AUTO, height: LengthPercentageAuto::AUTO };
+        s.size = Size {
+            width: Dimension::AUTO,
+            height: Dimension::AUTO,
+        };
+        s.min_size = Size {
+            width: LengthPercentageAuto::ZERO,
+            height: LengthPercentageAuto::ZERO,
+        };
+        s.max_size = Size {
+            width: LengthPercentageAuto::AUTO,
+            height: LengthPercentageAuto::AUTO,
+        };
         s.margin = Rect {
             left: LengthPercentageAuto::ZERO,
             right: LengthPercentageAuto::ZERO,
@@ -403,8 +457,14 @@ impl CompactStyle {
         s.align_self = None;
         s.justify_self = None;
         s.aspect_ratio = None;
-        s.grid_row = Line { start: GridPlacement::Auto, end: GridPlacement::Auto };
-        s.grid_column = Line { start: GridPlacement::Auto, end: GridPlacement::Auto };
+        s.grid_row = Line {
+            start: GridPlacement::Auto,
+            end: GridPlacement::Auto,
+        };
+        s.grid_column = Line {
+            start: GridPlacement::Auto,
+            end: GridPlacement::Auto,
+        };
         *self = Self::from_style(s);
         Self::from_style(outer)
     }

@@ -52,7 +52,13 @@ pub fn fit_scroll(rows: El) -> El {
 /// let r = popover::anchor_rect([20.0, 250.0, 60.0, 270.0], (100.0, 80.0), Placement::BottomStart, 4.0, (400.0, 300.0));
 /// assert_eq!(r, [20.0, 166.0, 120.0, 246.0]);
 /// ```
-pub fn anchor_rect(trigger: [f32; 4], size: (f32, f32), placement: Placement, gap: f32, window: (f32, f32)) -> [f32; 4] {
+pub fn anchor_rect(
+    trigger: [f32; 4],
+    size: (f32, f32),
+    placement: Placement,
+    gap: f32,
+    window: (f32, f32),
+) -> [f32; 4] {
     let (side, align): (Side, _) = placement.split();
     rune::anchor_rect(trigger, size, side, align, gap, window)
 }

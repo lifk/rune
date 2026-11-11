@@ -38,7 +38,13 @@ pub fn exp(x: f32) -> f32 {
     let p = fma(r2, fma(r2, fma(r2, 1.0 / 720.0, c), b), a);
     let bits = ((k as i32 + 127) as u32) << 23;
     let y = p * f32::from_bits(bits);
-    if x < -87.0 { 0.0 } else if x > 88.0 { f32::INFINITY } else { y }
+    if x < -87.0 {
+        0.0
+    } else if x > 88.0 {
+        f32::INFINITY
+    } else {
+        y
+    }
 }
 
 /// `(sin x, cos x)` with an absolute error under 3e-7 for |x| < 1e5.
@@ -61,7 +67,10 @@ pub fn sin_cos(x: f32) -> (f32, f32) {
     let (sb, cb) = if swap { (c, s) } else { (s, c) };
     let sin_sign = (q & 2) << 30;
     let cos_sign = (q.wrapping_add(1) & 2) << 30;
-    (f32::from_bits(sb.to_bits() ^ sin_sign), f32::from_bits(cb.to_bits() ^ cos_sign))
+    (
+        f32::from_bits(sb.to_bits() ^ sin_sign),
+        f32::from_bits(cb.to_bits() ^ cos_sign),
+    )
 }
 
 /// `x = q·π/2 + r` with |r| ≤ π/4; returns the low bits of q and r.
@@ -96,7 +105,10 @@ mod tests {
         while x < 88.0 {
             let ours = exp(x) as f64;
             let theirs = (x as f64).exp();
-            assert!(((ours - theirs) / theirs).abs() < 4e-7, "exp({x}) = {ours}, std {theirs}");
+            assert!(
+                ((ours - theirs) / theirs).abs() < 4e-7,
+                "exp({x}) = {ours}, std {theirs}"
+            );
             x += 0.0137;
         }
         assert_eq!(exp(0.0), 1.0);
@@ -110,8 +122,16 @@ mod tests {
         while x < 2000.0 {
             let (s, c) = sin_cos(x);
             let xd = x as f64;
-            assert!((s as f64 - xd.sin()).abs() < 4e-7, "sin({x}) {s} vs {}", xd.sin());
-            assert!((c as f64 - xd.cos()).abs() < 4e-7, "cos({x}) {c} vs {}", xd.cos());
+            assert!(
+                (s as f64 - xd.sin()).abs() < 4e-7,
+                "sin({x}) {s} vs {}",
+                xd.sin()
+            );
+            assert!(
+                (c as f64 - xd.cos()).abs() < 4e-7,
+                "cos({x}) {c} vs {}",
+                xd.cos()
+            );
             x += 0.0731;
         }
     }

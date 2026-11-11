@@ -1,1 +1,3 @@
-fn main() { web_hello::start(); }
+fn main() {
+    web_hello::start();
+}

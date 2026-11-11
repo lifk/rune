@@ -17,7 +17,10 @@
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
-use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU64, AtomicUsize, Ordering::{Acquire, Relaxed, Release}};
+use std::sync::atomic::{
+    AtomicI64, AtomicPtr, AtomicU64, AtomicUsize,
+    Ordering::{Acquire, Relaxed, Release},
+};
 
 /// A block at least this big counts as "big": a buffer worth naming in a warning.
 pub const BIG: usize = 64 << 20;
@@ -32,7 +35,8 @@ static LARGEST: AtomicUsize = AtomicUsize::new(0);
 static BIG_LIVE: AtomicI64 = AtomicI64::new(0);
 static BIG_BLOCKS: AtomicI64 = AtomicI64::new(0);
 static TAG_NET: [AtomicI64; TAGS] = [const { AtomicI64::new(0) }; TAGS];
-static TAG_NAMES: [AtomicPtr<&'static str>; TAGS] = [const { AtomicPtr::new(std::ptr::null_mut()) }; TAGS];
+static TAG_NAMES: [AtomicPtr<&'static str>; TAGS] =
+    [const { AtomicPtr::new(std::ptr::null_mut()) }; TAGS];
 
 thread_local! {
     static TAG: Cell<u8> = const { Cell::new(0) };

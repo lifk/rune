@@ -60,12 +60,24 @@ fn default_input() -> Option<u32> {
     };
     let (mut device, mut size) = (0u32, 4u32);
     // kAudioObjectSystemObject is 1.
-    let status = unsafe { AudioObjectGetPropertyData(1, &address, 0, std::ptr::null(), &mut size, (&raw mut device).cast()) };
+    let status = unsafe {
+        AudioObjectGetPropertyData(
+            1,
+            &address,
+            0,
+            std::ptr::null(),
+            &mut size,
+            (&raw mut device).cast(),
+        )
+    };
     (status == 0 && device != 0).then_some(device)
 }
 
 pub(super) fn permission() -> MicPermission {
-    let (Some(audio), Some(device)) = (unsafe { AVMediaTypeAudio }, AnyClass::get(c"AVCaptureDevice")) else {
+    let (Some(audio), Some(device)) = (
+        unsafe { AVMediaTypeAudio },
+        AnyClass::get(c"AVCaptureDevice"),
+    ) else {
         return MicPermission::Restricted;
     };
     let status: isize = unsafe { msg_send![device, authorizationStatusForMediaType: audio] };
@@ -85,7 +97,10 @@ pub(super) fn request_permission(callback: Box<dyn FnOnce(MicPermission) + Send>
         return callback(MicPermission::Denied);
     }
     let current = permission();
-    let (Some(audio), Some(device)) = (unsafe { AVMediaTypeAudio }, AnyClass::get(c"AVCaptureDevice")) else {
+    let (Some(audio), Some(device)) = (
+        unsafe { AVMediaTypeAudio },
+        AnyClass::get(c"AVCaptureDevice"),
+    ) else {
         return callback(current);
     };
     if current != MicPermission::Undetermined {
@@ -94,7 +109,11 @@ pub(super) fn request_permission(callback: Box<dyn FnOnce(MicPermission) + Send>
     let callback = Mutex::new(Some(callback));
     let block = block2_metal::RcBlock::new(move |granted: Bool| {
         if let Some(callback) = callback.lock().unwrap().take() {
-            callback(if granted.as_bool() { MicPermission::Granted } else { MicPermission::Denied });
+            callback(if granted.as_bool() {
+                MicPermission::Granted
+            } else {
+                MicPermission::Denied
+            });
         }
     });
     unsafe {
@@ -113,7 +132,8 @@ pub(super) fn preflight() -> Result<(), String> {
             return Ok(());
         }
         let key = NSString::from_str("NSMicrophoneUsageDescription");
-        let value: Option<Retained<AnyObject>> = msg_send![&*bundle, objectForInfoDictionaryKey: &*key];
+        let value: Option<Retained<AnyObject>> =
+            msg_send![&*bundle, objectForInfoDictionaryKey: &*key];
         match value {
             Some(_) => Ok(()),
             None => Err("the app's Info.plist has no NSMicrophoneUsageDescription, so macOS won't let it record".into()),
@@ -133,11 +153,15 @@ fn number_bool(value: bool) -> Retained<AnyObject> {
 
 /// An AVAudioRecorder for `path`, not yet prepared or recording: no file and no capture.
 pub(super) fn make_recorder(path: &Path, opts: &Options) -> Result<Retained<AnyObject>, String> {
-    let class = AnyClass::get(c"AVAudioRecorder").ok_or("the system recorder (AVAudioRecorder) is unavailable")?;
+    let class = AnyClass::get(c"AVAudioRecorder")
+        .ok_or("the system recorder (AVAudioRecorder) is unavailable")?;
     let path = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
     let url = NSURL::fileURLWithPath(&NSString::from_str(&path.to_string_lossy()));
     let mut entries: Vec<(&NSString, Retained<AnyObject>)> = unsafe {
-        vec![(AVSampleRateKey, number_f64(opts.sample_rate as f64)), (AVNumberOfChannelsKey, number_u32(opts.channels as u32))]
+        vec![
+            (AVSampleRateKey, number_f64(opts.sample_rate as f64)),
+            (AVNumberOfChannelsKey, number_u32(opts.channels as u32)),
+        ]
     };
     unsafe {
         match opts.format {
@@ -159,8 +183,15 @@ pub(super) fn make_recorder(path: &Path, opts: &Options) -> Result<Retained<AnyO
     let settings = NSDictionary::<NSString, AnyObject>::from_slices(&keys, &values);
     unsafe {
         let recorder: Allocated<AnyObject> = msg_send![class, alloc];
-        let recorder: Result<Retained<AnyObject>, Retained<NSError>> = msg_send![recorder, initWithURL: &*url, settings: &*settings, error: _];
-        recorder.map_err(|e| format!("couldn't record to {}: {}", path.display(), e.localizedDescription()))
+        let recorder: Result<Retained<AnyObject>, Retained<NSError>> =
+            msg_send![recorder, initWithURL: &*url, settings: &*settings, error: _];
+        recorder.map_err(|e| {
+            format!(
+                "couldn't record to {}: {}",
+                path.display(),
+                e.localizedDescription()
+            )
+        })
     }
 }
 
@@ -179,7 +210,12 @@ pub(super) enum Command {
     Cancel(Sender<()>),
 }
 
-pub(super) fn start(shared: &Arc<Shared>, attempt: u64, path: &Path, opts: &Options) -> Result<Session, String> {
+pub(super) fn start(
+    shared: &Arc<Shared>,
+    attempt: u64,
+    path: &Path,
+    opts: &Options,
+) -> Result<Session, String> {
     let (commands, rx) = mpsc::channel();
     let (weak, path, opts) = (Arc::downgrade(shared), path.to_path_buf(), opts.clone());
     std::thread::Builder::new()
@@ -199,8 +235,12 @@ pub(super) fn resume(session: &Session) {
 
 pub(super) fn stop(session: Session) -> Result<f64, String> {
     let (reply, done) = mpsc::channel();
-    session.commands.send(Command::Stop(reply)).map_err(|_| "the recording already ended".to_string())?;
-    done.recv_timeout(REPLY_PATIENCE).unwrap_or_else(|_| Err("the recorder didn't stop".into()))
+    session
+        .commands
+        .send(Command::Stop(reply))
+        .map_err(|_| "the recording already ended".to_string())?;
+    done.recv_timeout(REPLY_PATIENCE)
+        .unwrap_or_else(|_| Err("the recorder didn't stop".into()))
 }
 
 /// The last handle dropped: stop and finalize the file (an m4a is unplayable until the
@@ -250,7 +290,13 @@ fn open(path: &Path, opts: &Options) -> Result<(Retained<AnyObject>, Option<u32>
     Ok((recorder, Some(device)))
 }
 
-fn run(weak: Weak<Shared>, attempt: u64, path: PathBuf, opts: Options, commands: Receiver<Command>) {
+fn run(
+    weak: Weak<Shared>,
+    attempt: u64,
+    path: PathBuf,
+    opts: Options,
+    commands: Receiver<Command>,
+) {
     ON_RECORDER_THREAD.set(true);
     let opened = autoreleasepool(|_| open(&path, &opts));
     let (recorder, device) = match opened {
@@ -270,7 +316,8 @@ fn run(weak: Weak<Shared>, attempt: u64, path: PathBuf, opts: Options, commands:
     let stop = || unsafe {
         let _: () = msg_send![recorder, stop];
     };
-    let (mut meter, mut last, mut ticks, mut paused, mut recorded) = (Meter::default(), Instant::now(), 0u32, false, 0f64);
+    let (mut meter, mut last, mut ticks, mut paused, mut recorded) =
+        (Meter::default(), Instant::now(), 0u32, false, 0f64);
     loop {
         let command = commands.recv_timeout(Recorder::METER_INTERVAL);
         let done = autoreleasepool(|_| match command {
@@ -308,7 +355,11 @@ fn run(weak: Weak<Shared>, attempt: u64, path: PathBuf, opts: Options, commands:
                 };
                 let (peak, average, recording): (f32, f32, Bool) = unsafe {
                     let _: () = msg_send![recorder, updateMeters];
-                    (msg_send![recorder, peakPowerForChannel: 0usize], msg_send![recorder, averagePowerForChannel: 0usize], msg_send![recorder, isRecording])
+                    (
+                        msg_send![recorder, peakPowerForChannel: 0usize],
+                        msg_send![recorder, averagePowerForChannel: 0usize],
+                        msg_send![recorder, isRecording],
+                    )
                 };
                 recorded = recorded.max(current_time());
                 let now = Instant::now();

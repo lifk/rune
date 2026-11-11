@@ -18,6 +18,8 @@ macro_rules! log_event {
 pub(crate) use log_event;
 
 pub(crate) fn push(events: &mut Vec<String>, event: String) {
-    if events.len() >= CAP { events.drain(..CAP / 2); }
+    if events.len() >= CAP {
+        events.drain(..CAP / 2);
+    }
     events.push(event);
 }

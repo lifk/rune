@@ -102,7 +102,14 @@ impl Sched {
         self.next += 1;
         let since = self.now();
         self.by_thread.insert(thread.to_pointer(), self.next);
-        self.parked.insert(self.next, Parked { thread, since, args });
+        self.parked.insert(
+            self.next,
+            Parked {
+                thread,
+                since,
+                args,
+            },
+        );
         self.timers.push(Reverse(Due(at, self.next)));
         self.changed = true;
     }
@@ -165,14 +172,16 @@ pub(crate) fn install(lua: &Lua) -> mlua::Result<(Table, Function)> {
     )?;
     task.raw_set(
         "delay",
-        lua.create_function(|lua, (seconds, target, args): (Option<f64>, Value, MultiValue)| {
-            let thread = thread_of(lua, target, "task.delay")?;
-            with(lua, |s| {
-                let at = s.now() + seconds.unwrap_or(0.0).max(0.0);
-                s.park(thread.clone(), at, Some(args));
-            });
-            Ok(thread)
-        })?,
+        lua.create_function(
+            |lua, (seconds, target, args): (Option<f64>, Value, MultiValue)| {
+                let thread = thread_of(lua, target, "task.delay")?;
+                with(lua, |s| {
+                    let at = s.now() + seconds.unwrap_or(0.0).max(0.0);
+                    s.park(thread.clone(), at, Some(args));
+                });
+                Ok(thread)
+            },
+        )?,
     )?;
     let forget = lua.create_function(|lua, thread: Thread| {
         with(lua, |s| s.forget(&thread));
@@ -190,7 +199,10 @@ fn thread_of(lua: &Lua, target: Value, name: &str) -> mlua::Result<Thread> {
     match target {
         Value::Function(f) => lua.create_thread(f),
         Value::Thread(t) => Ok(t),
-        other => Err(mlua::Error::runtime(format!("{name} needs a function or a thread, got {}", other.type_name()))),
+        other => Err(mlua::Error::runtime(format!(
+            "{name} needs a function or a thread, got {}",
+            other.type_name()
+        ))),
     }
 }
 
@@ -227,11 +239,16 @@ fn park(lua: &Lua, thread: &Thread, out: MultiValue) {
             return;
         }
         if tag == token(&JOB).0 {
-            s.jobs.insert(arg.unwrap_or_default() as u64, thread.clone());
+            s.jobs
+                .insert(arg.unwrap_or_default() as u64, thread.clone());
             return;
         }
         // `task.wait(seconds)`, or a bare `coroutine.yield()` in a task: resume next frame.
-        let wait = if tag == token(&WAIT).0 { arg.unwrap_or(0.0).max(0.0) } else { 0.0 };
+        let wait = if tag == token(&WAIT).0 {
+            arg.unwrap_or(0.0).max(0.0)
+        } else {
+            0.0
+        };
         let at = s.now() + wait;
         s.park(thread.clone(), at, None);
     });
@@ -244,8 +261,12 @@ pub(crate) fn poll(lua: &Lua, now: f64) -> usize {
     let Some((done, due)) = with(lua, |s| {
         s.clock = now;
         s.read_at = Instant::now();
-        let done: Vec<_> =
-            s.shared.take_completions().into_iter().filter_map(|(id, value)| Some((s.jobs.remove(&id)?, value))).collect();
+        let done: Vec<_> = s
+            .shared
+            .take_completions()
+            .into_iter()
+            .filter_map(|(id, value)| Some((s.jobs.remove(&id)?, value)))
+            .collect();
         let mut due = Vec::new();
         while let Some(Reverse(Due(at, seq))) = s.timers.peek().copied() {
             if at > now {
@@ -284,7 +305,10 @@ pub(crate) fn drain_defers(lua: &Lua) -> usize {
         }
         n += 1;
         if n >= 100_000 {
-            let err = ScriptError::new(crate::ErrorKind::Runtime, "task.defer: more than 100,000 deferred tasks in one batch");
+            let err = ScriptError::new(
+                crate::ErrorKind::Runtime,
+                "task.defer: more than 100,000 deferred tasks in one batch",
+            );
             with(lua, |s| {
                 s.defers.clear();
                 s.errors.push(err);

@@ -161,7 +161,10 @@ pub struct ToastEntry<O> {
 }
 
 pub enum ToastEvent<O> {
-    Shown { key: String, options: O },
+    Shown {
+        key: String,
+        options: O,
+    },
     /// One toast closed (its close button, its timer), or every toast (`None`).
     Dismissed(Option<u64>),
 }
@@ -173,11 +176,15 @@ pub enum ToastEffect {
 }
 
 impl<O> Default for ToastStack<O> {
-    fn default() -> Self { Self { issued: 0, entries: Vec::new() } }
+    fn default() -> Self {
+        Self { issued: 0, entries: Vec::new() }
+    }
 }
 
 impl<O> ToastStack<O> {
-    pub fn entries(&self) -> &[ToastEntry<O>] { &self.entries }
+    pub fn entries(&self) -> &[ToastEntry<O>] {
+        &self.entries
+    }
 
     pub fn step(&mut self, event: ToastEvent<O>) -> Effects<ToastEffect> {
         match event {

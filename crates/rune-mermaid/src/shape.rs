@@ -72,7 +72,9 @@ impl NodeShape {
             "rect" | "proc" | "process" | "rectangle" | "icon" | "image" => S::Rect,
             "rounded" | "event" => S::Round,
             "stadium" | "pill" | "terminal" => S::Stadium,
-            "fr-rect" | "framed-rectangle" | "subproc" | "subprocess" | "subroutine" => S::Subroutine,
+            "fr-rect" | "framed-rectangle" | "subproc" | "subprocess" | "subroutine" => {
+                S::Subroutine
+            }
             "cyl" | "cylinder" | "database" | "db" => S::Cylinder,
             "circle" | "circ" => S::Circle,
             "dbl-circ" | "double-circle" => S::DoubleCircle,
@@ -108,7 +110,9 @@ impl NodeShape {
             "flip-tri" | "flipped-triangle" | "manual-file" => S::FlippedTriangle,
             "fork" | "join" => S::Fork,
             "win-pane" | "internal-storage" | "window-pane" => S::WindowPane,
-            "lin-rect" | "lin-proc" | "lined-process" | "lined-rectangle" | "shaded-process" => S::LinedRect,
+            "lin-rect" | "lin-proc" | "lined-process" | "lined-rectangle" | "shaded-process" => {
+                S::LinedRect
+            }
             "notch-pent" | "loop-limit" | "notched-pentagon" => S::NotchedPentagon,
             "sl-rect" | "manual-input" | "sloped-rectangle" => S::SlopedRect,
             "st-rect" | "processes" | "procs" | "stacked-rectangle" => S::StackedRect,
@@ -122,7 +126,10 @@ impl NodeShape {
 
     /// Markers too small to hold their label, which they don't draw.
     fn unlabelled(self) -> bool {
-        matches!(self, S::SmallCircle | S::FilledCircle | S::FramedCircle | S::CrossedCircle | S::Fork)
+        matches!(
+            self,
+            S::SmallCircle | S::FilledCircle | S::FramedCircle | S::CrossedCircle | S::Fork
+        )
     }
 
     /// Shapes whose side facing the next rank is straight, so edges can meet it anywhere along it.
@@ -183,12 +190,21 @@ pub(crate) fn node_size(shape: NodeShape, t: [f32; 2]) -> [f32; 2] {
         S::Fork => [70.0, 10.0],
         S::Bang => [w * 1.5, h * 1.7],
         S::Cloud => [w * 1.35, h * 1.55],
-        S::Hourglass | S::Bolt => [t[0].max(GLYPH), if t[1] > 0.0 { GLYPH + 6.0 + t[1] } else { GLYPH }],
+        S::Hourglass | S::Bolt => [
+            t[0].max(GLYPH),
+            if t[1] > 0.0 {
+                GLYPH + 6.0 + t[1]
+            } else {
+                GLYPH
+            },
+        ],
         S::BraceLeft | S::BraceRight => [w + 6.0, h],
         S::Braces => [w + 18.0, h],
         S::Delay | S::CurvedTrapezoid | S::BowRect => [w + h / 2.0, h],
         S::DividedRect => [rect, h + 10.0],
-        S::Document | S::LinedDocument | S::TaggedDocument | S::Flag | S::SlopedRect => [rect + 8.0, h + 12.0],
+        S::Document | S::LinedDocument | S::TaggedDocument | S::Flag | S::SlopedRect => {
+            [rect + 8.0, h + 12.0]
+        }
         S::Documents => [rect + 8.0 + 2.0 * STACK, h + 12.0 + 2.0 * STACK],
         S::StackedRect => [rect + 2.0 * STACK, h + 2.0 * STACK],
         S::Triangle | S::FlippedTriangle => {
@@ -215,21 +231,37 @@ fn circle(t: [f32; 2], pad: f32) -> [f32; 2] {
 }
 
 /// Where the line from `c` toward `toward` leaves a node of `shape` and `size` centred at `c`.
-pub(crate) fn boundary(shape: NodeShape, c: [f32; 2], size: [f32; 2], toward: [f32; 2]) -> [f32; 2] {
+pub(crate) fn boundary(
+    shape: NodeShape,
+    c: [f32; 2],
+    size: [f32; 2],
+    toward: [f32; 2],
+) -> [f32; 2] {
     let (dx, dy) = (toward[0] - c[0], toward[1] - c[1]);
     if dx.abs() < 1e-3 && dy.abs() < 1e-3 {
         return c;
     }
     let (a, b) = (size[0] / 2.0, size[1] / 2.0);
     let rect = || {
-        let tx = if dx.abs() > 1e-3 { a / dx.abs() } else { f32::MAX };
-        let ty = if dy.abs() > 1e-3 { b / dy.abs() } else { f32::MAX };
+        let tx = if dx.abs() > 1e-3 {
+            a / dx.abs()
+        } else {
+            f32::MAX
+        };
+        let ty = if dy.abs() > 1e-3 {
+            b / dy.abs()
+        } else {
+            f32::MAX
+        };
         tx.min(ty)
     };
     let t = match shape {
-        S::Circle | S::DoubleCircle | S::SmallCircle | S::FilledCircle | S::FramedCircle | S::CrossedCircle => {
-            1.0 / ((dx / a).powi(2) + (dy / b).powi(2)).sqrt()
-        }
+        S::Circle
+        | S::DoubleCircle
+        | S::SmallCircle
+        | S::FilledCircle
+        | S::FramedCircle
+        | S::CrossedCircle => 1.0 / ((dx / a).powi(2) + (dy / b).powi(2)).sqrt(),
         S::Diamond => 1.0 / (dx.abs() / a + dy.abs() / b),
         S::Rect
         | S::Round
@@ -276,7 +308,12 @@ fn ray_exit(poly: &[[f32; 2]], c: [f32; 2], d: [f32; 2]) -> Option<f32> {
 
 /// The box a node takes: `(x0, y0, x1, y1)`.
 fn bounds(c: [f32; 2], s: [f32; 2]) -> (f32, f32, f32, f32) {
-    (c[0] - s[0] / 2.0, c[1] - s[1] / 2.0, c[0] + s[0] / 2.0, c[1] + s[1] / 2.0)
+    (
+        c[0] - s[0] / 2.0,
+        c[1] - s[1] / 2.0,
+        c[0] + s[0] / 2.0,
+        c[1] + s[1] / 2.0,
+    )
 }
 
 fn rect(x0: f32, y0: f32, x1: f32, y1: f32) -> Vec<[f32; 2]> {
@@ -289,7 +326,10 @@ fn wave(x0: f32, x1: f32, y: f32, amp: f32) -> Vec<[f32; 2]> {
     (0..=n)
         .map(|i| {
             let f = i as f32 / n as f32;
-            [x0 + (x1 - x0) * f, y + amp * (f * std::f32::consts::TAU * 1.5).sin()]
+            [
+                x0 + (x1 - x0) * f,
+                y + amp * (f * std::f32::consts::TAU * 1.5).sin(),
+            ]
         })
         .collect()
 }
@@ -300,7 +340,10 @@ fn quad(a: [f32; 2], k: [f32; 2], b: [f32; 2]) -> Vec<[f32; 2]> {
         .map(|i| {
             let t = i as f32 / 8.0;
             let m = 1.0 - t;
-            [m * m * a[0] + 2.0 * m * t * k[0] + t * t * b[0], m * m * a[1] + 2.0 * m * t * k[1] + t * t * b[1]]
+            [
+                m * m * a[0] + 2.0 * m * t * k[0] + t * t * b[0],
+                m * m * a[1] + 2.0 * m * t * k[1] + t * t * b[1],
+            ]
         })
         .collect()
 }
@@ -332,16 +375,28 @@ pub(crate) fn outline(shape: NodeShape, c: [f32; 2], s: [f32; 2]) -> Vec<[f32; 2
     let (x0, y0, x1, y1) = bounds(c, s);
     let (h, cy) = (s[1], c[1]);
     match shape {
-        S::Rect | S::Subroutine | S::DividedRect | S::LinedRect | S::WindowPane | S::TaggedRect => rounded_rect(x0, y0, x1, y1, 3.0),
+        S::Rect | S::Subroutine | S::DividedRect | S::LinedRect | S::WindowPane | S::TaggedRect => {
+            rounded_rect(x0, y0, x1, y1, 3.0)
+        }
         S::Round => rounded_rect(x0, y0, x1, y1, 10.0),
         S::Stadium => rounded_rect(x0, y0, x1, y1, h / 2.0),
-        S::Circle | S::DoubleCircle | S::SmallCircle | S::FilledCircle | S::FramedCircle | S::CrossedCircle => {
-            ellipse(c, s[0] / 2.0, s[1] / 2.0)
-        }
+        S::Circle
+        | S::DoubleCircle
+        | S::SmallCircle
+        | S::FilledCircle
+        | S::FramedCircle
+        | S::CrossedCircle => ellipse(c, s[0] / 2.0, s[1] / 2.0),
         S::Diamond => vec![[c[0], y0], [x1, cy], [c[0], y1], [x0, cy]],
         S::Hexagon => {
             let i = h / 4.0;
-            vec![[x0 + i, y0], [x1 - i, y0], [x1, cy], [x1 - i, y1], [x0 + i, y1], [x0, cy]]
+            vec![
+                [x0 + i, y0],
+                [x1 - i, y0],
+                [x1, cy],
+                [x1 - i, y1],
+                [x0 + i, y1],
+                [x0, cy],
+            ]
         }
         S::Asymmetric => vec![[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0 + h / 3.0, cy]],
         S::LeanRight => vec![[x0 + h * 0.3, y0], [x1, y0], [x1 - h * 0.3, y1], [x0, y1]],
@@ -364,19 +419,44 @@ pub(crate) fn outline(shape: NodeShape, c: [f32; 2], s: [f32; 2]) -> Vec<[f32; 2
             .map(|i| {
                 let a = (i as f32 * 360.0 / 28.0).to_radians();
                 let r = if i % 2 == 0 { 1.0 } else { 0.8 };
-                [c[0] + s[0] / 2.0 * r * a.cos(), cy + s[1] / 2.0 * r * a.sin()]
+                [
+                    c[0] + s[0] / 2.0 * r * a.cos(),
+                    cy + s[1] / 2.0 * r * a.sin(),
+                ]
             })
             .collect(),
         S::Cloud => (0..120)
             .map(|i| {
                 let a = (i as f32 * 3.0).to_radians();
                 let r = 0.84 + 0.16 * (5.0 * a).sin().abs().sqrt();
-                [c[0] + s[0] / 2.0 * r * a.cos(), cy + s[1] / 2.0 * r * a.sin()]
+                [
+                    c[0] + s[0] / 2.0 * r * a.cos(),
+                    cy + s[1] / 2.0 * r * a.sin(),
+                ]
             })
             .collect(),
-        S::Card => vec![[x0 + 12.0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0 + 12.0]],
-        S::Note => vec![[x0, y0], [x1 - 10.0, y0], [x1, y0 + 10.0], [x1, y1], [x0, y1]],
-        S::NotchedPentagon => vec![[x0 + 12.0, y0], [x1 - 12.0, y0], [x1, y0 + 12.0], [x1, y1], [x0, y1], [x0, y0 + 12.0]],
+        S::Card => vec![
+            [x0 + 12.0, y0],
+            [x1, y0],
+            [x1, y1],
+            [x0, y1],
+            [x0, y0 + 12.0],
+        ],
+        S::Note => vec![
+            [x0, y0],
+            [x1 - 10.0, y0],
+            [x1, y0 + 10.0],
+            [x1, y1],
+            [x0, y1],
+        ],
+        S::NotchedPentagon => vec![
+            [x0 + 12.0, y0],
+            [x1 - 12.0, y0],
+            [x1, y0 + 12.0],
+            [x1, y1],
+            [x0, y1],
+            [x0, y0 + 12.0],
+        ],
         S::SlopedRect => vec![[x0, y0 + 12.0], [x1, y0], [x1, y1], [x0, y1]],
         S::Delay => {
             let mut p = vec![[x0, y0]];
@@ -409,7 +489,9 @@ pub(crate) fn outline(shape: NodeShape, c: [f32; 2], s: [f32; 2]) -> Vec<[f32; 2
         S::Triangle => vec![[c[0], y0], [x1, y1], [x0, y1]],
         S::FlippedTriangle => vec![[x0, y0], [x1, y0], [c[0], y1]],
         S::Fork => rounded_rect(x0, y0, x1, y1, 2.0),
-        S::Hourglass | S::Bolt | S::BraceLeft | S::BraceRight | S::Braces | S::Text => rect(x0, y0, x1, y1),
+        S::Hourglass | S::Bolt | S::BraceLeft | S::BraceRight | S::Braces | S::Text => {
+            rect(x0, y0, x1, y1)
+        }
     }
 }
 
@@ -436,16 +518,36 @@ pub(crate) fn draw(
     match shape {
         S::Text => {}
         S::BraceLeft => {
-            c.stroke(brace(x0 + 6.0, y0 + 2.0, y1 - 2.0, -1.0), false, 1.25, border);
+            c.stroke(
+                brace(x0 + 6.0, y0 + 2.0, y1 - 2.0, -1.0),
+                false,
+                1.25,
+                border,
+            );
             at[0] += 3.0;
         }
         S::BraceRight => {
-            c.stroke(brace(x1 - 6.0, y0 + 2.0, y1 - 2.0, 1.0), false, 1.25, border);
+            c.stroke(
+                brace(x1 - 6.0, y0 + 2.0, y1 - 2.0, 1.0),
+                false,
+                1.25,
+                border,
+            );
             at[0] -= 3.0;
         }
         S::Braces => {
-            c.stroke(brace(x0 + 6.0, y0 + 2.0, y1 - 2.0, -1.0), false, 1.25, border);
-            c.stroke(brace(x1 - 6.0, y0 + 2.0, y1 - 2.0, 1.0), false, 1.25, border);
+            c.stroke(
+                brace(x0 + 6.0, y0 + 2.0, y1 - 2.0, -1.0),
+                false,
+                1.25,
+                border,
+            );
+            c.stroke(
+                brace(x1 - 6.0, y0 + 2.0, y1 - 2.0, 1.0),
+                false,
+                1.25,
+                border,
+            );
         }
         S::FilledCircle | S::Fork => c.fill(outline(shape, ctr, size), paint.line),
         S::FramedCircle => {
@@ -455,19 +557,42 @@ pub(crate) fn draw(
         S::Hourglass => {
             let (g0, gy0, g1, gy1) = glyph_box(ctr, size);
             let mid = [ctr[0], (gy0 + gy1) / 2.0];
-            c.shape(vec![[g0, gy0], [g1, gy0], mid, [g1, gy1], [g0, gy1], mid], fill, border, 1.0);
+            c.shape(
+                vec![[g0, gy0], [g1, gy0], mid, [g1, gy1], [g0, gy1], mid],
+                fill,
+                border,
+                1.0,
+            );
             at[1] = gy1 + 6.0 + label.size[1] / 2.0;
         }
         S::Bolt => {
             let (g0, gy0, _, _) = glyph_box(ctr, size);
             let p = |x: f32, y: f32| [g0 + x * GLYPH, gy0 + y * GLYPH];
-            c.shape(vec![p(0.6, 0.0), p(0.15, 0.58), p(0.45, 0.58), p(0.35, 1.0), p(0.85, 0.4), p(0.55, 0.4), p(0.75, 0.0)], fill, border, 1.0);
+            c.shape(
+                vec![
+                    p(0.6, 0.0),
+                    p(0.15, 0.58),
+                    p(0.45, 0.58),
+                    p(0.35, 1.0),
+                    p(0.85, 0.4),
+                    p(0.55, 0.4),
+                    p(0.75, 0.0),
+                ],
+                fill,
+                border,
+                1.0,
+            );
             at[1] = gy0 + GLYPH + 6.0 + label.size[1] / 2.0;
         }
         S::Documents => {
             for k in [2.0, 1.0] {
                 let d = k * STACK;
-                c.shape(document(x0 + d, y0 + 2.0 * STACK - d, x1 - 2.0 * STACK + d, y1 - d), fill, border, 1.0);
+                c.shape(
+                    document(x0 + d, y0 + 2.0 * STACK - d, x1 - 2.0 * STACK + d, y1 - d),
+                    fill,
+                    border,
+                    1.0,
+                );
             }
             c.shape(outline(shape, ctr, size), fill, border, 1.0);
             at = [ctr[0] - STACK, ctr[1] + STACK - 3.0];
@@ -475,14 +600,29 @@ pub(crate) fn draw(
         S::StackedRect => {
             for k in [2.0, 1.0] {
                 let d = k * STACK;
-                c.shape(rect(x0 + d, y0 + 2.0 * STACK - d, x1 - 2.0 * STACK + d, y1 - d), fill, border, 1.0);
+                c.shape(
+                    rect(x0 + d, y0 + 2.0 * STACK - d, x1 - 2.0 * STACK + d, y1 - d),
+                    fill,
+                    border,
+                    1.0,
+                );
             }
             c.shape(outline(shape, ctr, size), fill, border, 1.0);
             at = [ctr[0] - STACK, ctr[1] + STACK];
         }
         S::Note => {
-            c.shape(outline(shape, ctr, size), paint.note_fill, paint.note_border, 1.0);
-            c.stroke(vec![[x1 - 10.0, y0], [x1 - 10.0, y0 + 10.0], [x1, y0 + 10.0]], false, 1.0, paint.note_border);
+            c.shape(
+                outline(shape, ctr, size),
+                paint.note_fill,
+                paint.note_border,
+                1.0,
+            );
+            c.stroke(
+                vec![[x1 - 10.0, y0], [x1 - 10.0, y0 + 10.0], [x1, y0 + 10.0]],
+                false,
+                1.0,
+                paint.note_border,
+            );
         }
         _ => {
             c.shape(outline(shape, ctr, size), fill, border, 1.0);
@@ -495,20 +635,43 @@ pub(crate) fn draw(
                 // label sits in the body under it.
                 S::Cylinder => {
                     let ry = rim(size[0]);
-                    c.shape(ellipse([ctr[0], y0 + ry], size[0] / 2.0, ry), lid(fill, paint), border, 1.0);
+                    c.shape(
+                        ellipse([ctr[0], y0 + ry], size[0] / 2.0, ry),
+                        lid(fill, paint),
+                        border,
+                        1.0,
+                    );
                     at[1] += ry / 2.0;
                 }
                 S::LinedCylinder => {
                     let ry = rim(size[0]);
-                    c.shape(ellipse([ctr[0], y0 + ry], size[0] / 2.0, ry), lid(fill, paint), border, 1.0);
-                    line(c, arc([ctr[0], y0 + ry + LINED], size[0] / 2.0, ry, 0.0, 180.0, 24));
+                    c.shape(
+                        ellipse([ctr[0], y0 + ry], size[0] / 2.0, ry),
+                        lid(fill, paint),
+                        border,
+                        1.0,
+                    );
+                    line(
+                        c,
+                        arc([ctr[0], y0 + ry + LINED], size[0] / 2.0, ry, 0.0, 180.0, 24),
+                    );
                     at[1] += (ry + LINED) / 2.0;
                 }
                 S::HCylinder => {
-                    c.shape(ellipse([x1 - 8.0, ctr[1]], 8.0, h / 2.0), lid(fill, paint), border, 1.0);
+                    c.shape(
+                        ellipse([x1 - 8.0, ctr[1]], 8.0, h / 2.0),
+                        lid(fill, paint),
+                        border,
+                        1.0,
+                    );
                     at[0] -= 4.0;
                 }
-                S::DoubleCircle => c.stroke(ellipse(ctr, size[0] / 2.0 - 5.0, size[1] / 2.0 - 5.0), true, 1.0, border),
+                S::DoubleCircle => c.stroke(
+                    ellipse(ctr, size[0] / 2.0 - 5.0, size[1] / 2.0 - 5.0),
+                    true,
+                    1.0,
+                    border,
+                ),
                 S::CrossedCircle => {
                     let r = size[0] / 2.0 * std::f32::consts::FRAC_1_SQRT_2;
                     line(c, vec![[ctr[0] - r, ctr[1] - r], [ctr[0] + r, ctr[1] + r]]);

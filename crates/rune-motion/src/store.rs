@@ -43,10 +43,19 @@ impl TrackId {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MotionEvent {
     /// The track reached `(target, 0)` and went dormant.
-    Settled { track: TrackId, node: NodeId, prop: PropId },
+    Settled {
+        track: TrackId,
+        node: NodeId,
+        prop: PropId,
+    },
     /// An animation started with `.completion(token)` finished (`finished`), or was replaced by a
     /// newer animation before it did (`!finished`).
-    Completed { token: u64, node: NodeId, prop: PropId, finished: bool },
+    Completed {
+        token: u64,
+        node: NodeId,
+        prop: PropId,
+        finished: bool,
+    },
 }
 
 /// How a released gesture continues.
@@ -59,7 +68,12 @@ pub enum Release<T> {
     /// Coast, but if the projection leaves `[min, max]`, spring onto the bound with the velocity
     /// the value has when it reaches it (scroll views). If it is already out of bounds
     /// (rubber-banded), spring straight back.
-    DecayClamped { decay: Decay, min: T, max: T, spring: Spring },
+    DecayClamped {
+        decay: Decay,
+        min: T,
+        max: T,
+        spring: Spring,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -287,14 +301,22 @@ impl AnimationStore {
     }
 
     pub fn take_retarget_audit(&mut self) -> RetargetAudit {
-        self.retarget_audit.as_mut().map(std::mem::take).unwrap_or_default()
+        self.retarget_audit
+            .as_mut()
+            .map(std::mem::take)
+            .unwrap_or_default()
     }
 
     /// Sets the frame's target presentation time. Apply this frame's commits after this, then `tick`.
     pub fn set_time(&mut self, t: f64) {
         let dt = t - self.now;
         self.now = t;
-        for c in self.clocks.iter_mut().skip(1).filter(|c| c.nodes > 0 && c.scale != 0.0) {
+        for c in self
+            .clocks
+            .iter_mut()
+            .skip(1)
+            .filter(|c| c.nodes > 0 && c.scale != 0.0)
+        {
             c.time += dt * c.scale as f64;
         }
     }
@@ -313,12 +335,20 @@ impl AnimationStore {
     /// pending delays included, and [`running`](Self::running) ignores them. Changing the scale
     /// keeps every running animation at its exact place. 1 is the store's own clock.
     pub fn set_node_time_scale(&mut self, node: NodeId, scale: f32) {
-        let scale = if scale.is_finite() { scale.max(0.0) } else { 1.0 };
+        let scale = if scale.is_finite() {
+            scale.max(0.0)
+        } else {
+            1.0
+        };
         let old = self.node_clock.get(&node.0).copied().unwrap_or(0);
         if self.clock_scale(old) == scale {
             return;
         }
-        let new = if scale == 1.0 { 0 } else { self.clock_at(scale) };
+        let new = if scale == 1.0 {
+            0
+        } else {
+            self.clock_at(scale)
+        };
         let delta = self.clock_time(new) - self.clock_time(old);
         if new == 0 {
             self.node_clock.remove(&node.0);
@@ -354,13 +384,26 @@ impl AnimationStore {
 
     /// The live clock running at `scale`, or a new one reading `now`.
     fn clock_at(&mut self, scale: f32) -> u32 {
-        if let Some(c) = self.clocks.iter().skip(1).position(|c| c.nodes > 0 && c.scale == scale) {
+        if let Some(c) = self
+            .clocks
+            .iter()
+            .skip(1)
+            .position(|c| c.nodes > 0 && c.scale == scale)
+        {
             return c as u32 + 1;
         }
         if self.clocks.is_empty() {
-            self.clocks.push(SubClock { time: 0.0, scale: 1.0, nodes: 0 });
+            self.clocks.push(SubClock {
+                time: 0.0,
+                scale: 1.0,
+                nodes: 0,
+            });
         }
-        let clock = SubClock { time: self.now, scale, nodes: 0 };
+        let clock = SubClock {
+            time: self.now,
+            scale,
+            nodes: 0,
+        };
         match self.clock_free.pop() {
             Some(c) => {
                 self.clocks[c as usize] = clock;
@@ -385,11 +428,19 @@ impl AnimationStore {
     }
 
     fn clock_scale(&self, c: u32) -> f32 {
-        if c == 0 { 1.0 } else { self.clocks[c as usize].scale }
+        if c == 0 {
+            1.0
+        } else {
+            self.clocks[c as usize].scale
+        }
     }
 
     fn clock_time(&self, c: u32) -> f64 {
-        if c == 0 { self.now } else { self.clocks[c as usize].time }
+        if c == 0 {
+            self.now
+        } else {
+            self.clocks[c as usize].time
+        }
     }
 
     #[inline]
@@ -457,7 +508,9 @@ impl AnimationStore {
         self.events.drain(..self.events_seen);
         self.touched.clear();
         let meta = &self.t_meta;
-        let live = |id: &&TrackId| meta[id.index as usize].alive && meta[id.index as usize].generation == id.generation;
+        let live = |id: &&TrackId| {
+            meta[id.index as usize].alive && meta[id.index as usize].generation == id.generation
+        };
         self.touched.extend(self.set_touched.iter().filter(live));
         self.set_touched.clear();
         std::mem::swap(&mut self.starts, &mut self.ticked_starts);
@@ -469,13 +522,17 @@ impl AnimationStore {
             let now = if clocked { self.time_of(t) } else { self.now };
             // Nothing moves on a stopped clock, or on a track that only waits for a delayed
             // start: once sampled where it holds, it isn't touched again until it moves.
-            let held = (clocked && self.frozen(t)) || (now >= self.t_settle_at[t] && self.t_next_due[t] > now);
+            let held = (clocked && self.frozen(t))
+                || (now >= self.t_settle_at[t] && self.t_next_due[t] > now);
             if held && self.t_held[t] {
                 i += 1;
                 continue;
             }
             self.t_held[t] = held;
-            self.touched.push(TrackId { index: t as u32, generation: self.t_meta[t].generation });
+            self.touched.push(TrackId {
+                index: t as u32,
+                generation: self.t_meta[t].generation,
+            });
             if self.t_next_due[t] <= now {
                 self.apply_due(t, now);
             }
@@ -523,7 +580,8 @@ impl AnimationStore {
 
     /// The values presented at the last tick for a track, as raw lanes.
     pub fn values_of(&self, id: TrackId) -> Option<&[f32]> {
-        self.contains(id).then(|| self.lane_values(id.index as usize))
+        self.contains(id)
+            .then(|| self.lane_values(id.index as usize))
     }
 
     /// Where each lane of a track comes to rest (its latest target, delayed ones included),
@@ -580,7 +638,13 @@ impl AnimationStore {
     // ------------------------------------------------------------------------------------------
     // Untyped core (used by the scene, keyframes and choreography)
 
-    pub(crate) fn ensure(&mut self, node: NodeId, prop: PropId, class: PropClass, init: &[f32]) -> u32 {
+    pub(crate) fn ensure(
+        &mut self,
+        node: NodeId,
+        prop: PropId,
+        class: PropClass,
+        init: &[f32],
+    ) -> u32 {
         if let Some(&t) = self.index.get(&(node.0, prop.0)) {
             self.check_lanes(t as usize, init.len());
             return t;
@@ -610,7 +674,11 @@ impl AnimationStore {
             self.l_curve[l] = Curve::Instant;
         }
         let head = self.node_head.get(&node.0).copied().unwrap_or(NONE);
-        let clock = if self.node_clock.is_empty() { 0 } else { self.node_clock.get(&node.0).copied().unwrap_or(0) };
+        let clock = if self.node_clock.is_empty() {
+            0
+        } else {
+            self.node_clock.get(&node.0).copied().unwrap_or(0)
+        };
         let t = match self.track_free.pop() {
             Some(t) => {
                 let t = t as usize;
@@ -643,7 +711,10 @@ impl AnimationStore {
     }
 
     pub(crate) fn id_of(&self, t: usize) -> TrackId {
-        TrackId { index: t as u32, generation: self.t_meta[t].generation }
+        TrackId {
+            index: t as u32,
+            generation: self.t_meta[t].generation,
+        }
     }
 
     fn check_lanes(&self, t: usize, n: usize) {
@@ -685,12 +756,21 @@ impl AnimationStore {
             let slot = self.t_slot[t] as usize;
             self.deactivate(t, slot);
         }
-        self.set_touched.push(TrackId { index: t as u32, generation: self.t_meta[t].generation });
+        self.set_touched.push(TrackId {
+            index: t as u32,
+            generation: self.t_meta[t].generation,
+        });
     }
 
     /// Animates lanes of track `t` toward `targets`. `lane_vel` overrides per-lane start velocity.
     /// False when no lane's target changed, so nothing moves.
-    pub(crate) fn animate_raw(&mut self, t: usize, targets: &[f32], mut anim: Anim, lane_vel: Option<&[f32]>) -> bool {
+    pub(crate) fn animate_raw(
+        &mut self,
+        t: usize,
+        targets: &[f32],
+        mut anim: Anim,
+        lane_vel: Option<&[f32]>,
+    ) -> bool {
         let now = self.time_of(t);
         if self.t_next_due[t] <= now {
             self.apply_due(t, now);
@@ -718,18 +798,24 @@ impl AnimationStore {
             changed = true;
             self.cancel_pending(l);
             if anim.delay > 0.0 {
-                self.push_pending(l, Pending {
-                    at: now + anim.delay as f64,
-                    target,
-                    velocity: vel.unwrap_or(f32::NAN),
-                    curve: anim.curve,
-                    blend,
-                    next: NONE,
-                });
+                self.push_pending(
+                    l,
+                    Pending {
+                        at: now + anim.delay as f64,
+                        target,
+                        velocity: vel.unwrap_or(f32::NAN),
+                        curve: anim.curve,
+                        blend,
+                        next: NONE,
+                    },
+                );
             } else {
-                let before = (self.retarget_audit.is_some() && class == PropClass::Spatial
-                    && matches!(anim.curve, Curve::Spring(_)) && vel.is_none()
-                    && self.l_layer[l].end > now).then(|| self.sample_lane(l, now).1);
+                let before = (self.retarget_audit.is_some()
+                    && class == PropClass::Spatial
+                    && matches!(anim.curve, Curve::Spring(_))
+                    && vel.is_none()
+                    && self.l_layer[l].end > now)
+                    .then(|| self.sample_lane(l, now).1);
                 self.start_lane(l, now, target, anim.curve, blend, vel, eps);
                 if let Some(before) = before {
                     let error = (self.sample_lane(l, now).1 - before).abs();
@@ -745,7 +831,12 @@ impl AnimationStore {
         } else if anim.token != 0 {
             if self.t_slot[t] == NONE {
                 let m = self.t_meta[t];
-                self.events.push(MotionEvent::Completed { token: anim.token, node: m.node, prop: m.prop, finished: true });
+                self.events.push(MotionEvent::Completed {
+                    token: anim.token,
+                    node: m.node,
+                    prop: m.prop,
+                    finished: true,
+                });
             } else {
                 self.take_token(t, false);
                 self.t_meta[t].token = anim.token;
@@ -756,7 +847,16 @@ impl AnimationStore {
 
     /// Starts a new segment on lane `l` at time `at` from its exact state there.
     #[allow(clippy::too_many_arguments)]
-    fn start_lane(&mut self, l: usize, at: f64, target: f32, curve: Curve, blend: Blend, vel: Option<f32>, eps: Eps) {
+    fn start_lane(
+        &mut self,
+        l: usize,
+        at: f64,
+        target: f32,
+        curve: Curve,
+        blend: Blend,
+        vel: Option<f32>,
+        eps: Eps,
+    ) {
         let (x, v) = self.sample_lane(l, at);
         self.l_curve[l] = curve;
         match curve {
@@ -809,10 +909,22 @@ impl AnimationStore {
             self.free_extra(l);
             let target = self.l_target[l];
             let curve = self.l_curve[l];
-            self.l_layer[l] = Layer::start(&curve, at, x - target, v, Eps { pos: 1e-4, vel: 1e-3 });
+            self.l_layer[l] = Layer::start(
+                &curve,
+                at,
+                x - target,
+                v,
+                Eps {
+                    pos: 1e-4,
+                    vel: 1e-3,
+                },
+            );
             return;
         }
-        let idx = self.alloc_extra(Extra { layer, next: self.l_more[l] });
+        let idx = self.alloc_extra(Extra {
+            layer,
+            next: self.l_more[l],
+        });
         self.l_more[l] = idx;
     }
 
@@ -880,7 +992,11 @@ impl AnimationStore {
                 self.l_pending[l] = ev.next;
                 self.pending[p as usize].next = self.pending_free;
                 self.pending_free = p;
-                let vel = if ev.velocity.is_nan() { None } else { Some(ev.velocity) };
+                let vel = if ev.velocity.is_nan() {
+                    None
+                } else {
+                    Some(ev.velocity)
+                };
                 self.start_lane(l, ev.at, ev.target, ev.curve, ev.blend, vel, eps);
             }
         }
@@ -921,7 +1037,11 @@ impl AnimationStore {
             self.l_vel[l] = 0.0;
         }
         let m = self.t_meta[t];
-        self.events.push(MotionEvent::Settled { track: self.id_of(t), node: m.node, prop: m.prop });
+        self.events.push(MotionEvent::Settled {
+            track: self.id_of(t),
+            node: m.node,
+            prop: m.prop,
+        });
         self.take_token(t, true);
     }
 
@@ -930,7 +1050,12 @@ impl AnimationStore {
         if m.token != 0 {
             let token = core::mem::take(&mut m.token);
             let (node, prop) = (m.node, m.prop);
-            self.events.push(MotionEvent::Completed { token, node, prop, finished });
+            self.events.push(MotionEvent::Completed {
+                token,
+                node,
+                prop,
+                finished,
+            });
         }
     }
 
@@ -975,10 +1100,32 @@ impl AnimationStore {
         }
     }
 
-    #[allow(clippy::too_many_arguments, reason = "Internal lane scheduler takes a track/lane address and the pending animation fields")]
-    pub(crate) fn schedule(&mut self, t: usize, lane: usize, at: f64, target: f32, curve: Curve, blend: Blend, velocity: Option<f32>) {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Internal lane scheduler takes a track/lane address and the pending animation fields"
+    )]
+    pub(crate) fn schedule(
+        &mut self,
+        t: usize,
+        lane: usize,
+        at: f64,
+        target: f32,
+        curve: Curve,
+        blend: Blend,
+        velocity: Option<f32>,
+    ) {
         let l = self.t_lane0[t] as usize + lane;
-        self.push_pending(l, Pending { at, target, velocity: velocity.unwrap_or(f32::NAN), curve, blend, next: NONE });
+        self.push_pending(
+            l,
+            Pending {
+                at,
+                target,
+                velocity: velocity.unwrap_or(f32::NAN),
+                curve,
+                blend,
+                next: NONE,
+            },
+        );
     }
 
     pub(crate) fn cancel_track_pending(&mut self, t: usize) {
@@ -1083,6 +1230,16 @@ impl AnimationStore {
 
 impl Meta {
     fn new(node: NodeId, prop: PropId, class: PropClass, generation: u32, node_next: u32) -> Meta {
-        Meta { node, prop, class, generation, alive: true, epoch: 0, token: 0, logical_at: f64::NEG_INFINITY, node_next }
+        Meta {
+            node,
+            prop,
+            class,
+            generation,
+            alive: true,
+            epoch: 0,
+            token: 0,
+            logical_at: f64::NEG_INFINITY,
+            node_next,
+        }
     }
 }

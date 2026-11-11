@@ -23,7 +23,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-pub use crate::color::{ Color, hex, srgb_decode, srgb_encode };
+pub use crate::color::{Color, hex, srgb_decode, srgb_encode};
 
 #[derive(Clone, Debug)]
 pub struct Theme {
@@ -71,7 +71,11 @@ impl Drop for Scope {
 /// opaque `bg` in the current blend mode ([`blends_srgb`]): unchanged when blending in sRGB,
 /// its alpha re-solved with [`srgb_equivalent`] when blending in linear light.
 pub fn for_blend(c: Color, bg: Color) -> Color {
-    if blends_srgb() { c } else { srgb_equivalent(c, bg) }
+    if blends_srgb() {
+        c
+    } else {
+        srgb_equivalent(c, bg)
+    }
 }
 
 /// Compensate a translucent colour authored for sRGB blending, for a known opaque backdrop,
@@ -99,7 +103,11 @@ pub fn srgb_equivalent(c: Color, bg: Color) -> Color {
         num += w[i] * d * (t - bv);
         den += w[i] * d * d;
     }
-    let a = if den > 1e-9 { (num / den).clamp(0.0, 1.0) } else { c.a };
+    let a = if den > 1e-9 {
+        (num / den).clamp(0.0, 1.0)
+    } else {
+        c.a
+    };
     Color { a, ..c }
 }
 
@@ -108,18 +116,27 @@ impl Theme {
         let v: Value = serde_json::from_str(src).map_err(|e| format!("theme: {e}"))?;
         let palette = v.get("palette").and_then(Value::as_object);
         let mode = if dark { "dark" } else { "light" };
-        let tokens = v.get(mode).and_then(Value::as_object).ok_or(format!("theme: no \"{mode}\" section"))?;
+        let tokens = v
+            .get(mode)
+            .and_then(Value::as_object)
+            .ok_or(format!("theme: no \"{mode}\" section"))?;
         let resolve = |val: &str| -> Result<Color, String> {
             if let Some(c) = hex(val) {
                 return Ok(c);
             }
-            let p = palette.and_then(|p| p.get(val)).and_then(Value::as_str).ok_or(format!("theme: unknown colour {val:?}"))?;
+            let p = palette
+                .and_then(|p| p.get(val))
+                .and_then(Value::as_str)
+                .ok_or(format!("theme: unknown colour {val:?}"))?;
             hex(p).ok_or(format!("theme: bad hex {p:?} for {val:?}"))
         };
         let mut colors = HashMap::new();
         for (k, val) in tokens {
             let Some(s) = val.as_str() else { continue };
-            colors.insert(k.clone(), resolve(s).map_err(|e| format!("{e} (token {k})"))?);
+            colors.insert(
+                k.clone(),
+                resolve(s).map_err(|e| format!("{e} (token {k})"))?,
+            );
         }
         if let Some(p) = palette {
             for (k, val) in p {
@@ -131,7 +148,10 @@ impl Theme {
         let blend = v.get("blend");
         let mut blend_bg = None;
         if blend.and_then(|b| b.get("mode")).and_then(Value::as_str) == Some("srgb") {
-            let over = blend.and_then(|b| b.get("over")).and_then(Value::as_str).unwrap_or("");
+            let over = blend
+                .and_then(|b| b.get("over"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
             blend_bg = colors.get(over).copied();
         }
         let mut numbers = HashMap::new();
@@ -142,8 +162,18 @@ impl Theme {
                 }
             }
         }
-        let name = v.get("name").and_then(Value::as_str).unwrap_or("theme").to_owned();
-        Ok(Theme { name, dark, blend_bg, colors, numbers })
+        let name = v
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or("theme")
+            .to_owned();
+        Ok(Theme {
+            name,
+            dark,
+            blend_bg,
+            colors,
+            numbers,
+        })
     }
 
     /// A colour token for the current blend mode ([`blends_srgb`]), or None.
@@ -156,11 +186,17 @@ impl Theme {
     #[track_caller]
     pub fn color(&self, name: &str) -> Color {
         self.try_color(name).unwrap_or_else(|| {
-            let mut near: Vec<&String> =
-                self.colors.keys().filter(|k| k.contains(name.split('-').next_back().unwrap_or(name))).collect();
+            let mut near: Vec<&String> = self
+                .colors
+                .keys()
+                .filter(|k| k.contains(name.split('-').next_back().unwrap_or(name)))
+                .collect();
             near.sort();
             near.truncate(6);
-            panic!("theme {:?} has no colour {name:?}; similar: {near:?}", self.name)
+            panic!(
+                "theme {:?} has no colour {name:?}; similar: {near:?}",
+                self.name
+            )
         })
     }
 
@@ -175,7 +211,10 @@ impl Theme {
     }
 
     pub fn num(&self, name: &str) -> f32 {
-        *self.numbers.get(name).unwrap_or_else(|| panic!("theme {:?} has no number {name:?}", self.name))
+        *self
+            .numbers
+            .get(name)
+            .unwrap_or_else(|| panic!("theme {:?} has no number {name:?}", self.name))
     }
 }
 

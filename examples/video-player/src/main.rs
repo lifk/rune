@@ -15,13 +15,21 @@ struct Viewer {
 }
 
 fn state() -> Viewer {
-    let source = rune::extra_args()
-        .first()
-        .cloned()
-        .unwrap_or_else(|| concat!(env!("CARGO_MANIFEST_DIR"), "/../../crates/rune/tests/fixtures/rgbw.mp4").into());
-    let ext = source.rsplit_once('.').map(|(_, ext)| ext.to_ascii_lowercase()).unwrap_or_default();
+    let source = rune::extra_args().first().cloned().unwrap_or_else(|| {
+        concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../crates/rune/tests/fixtures/rgbw.mp4"
+        )
+        .into()
+    });
+    let ext = source
+        .rsplit_once('.')
+        .map(|(_, ext)| ext.to_ascii_lowercase())
+        .unwrap_or_default();
     if AUDIO.contains(&ext.as_str()) {
-        return Viewer { clip: Player::audio(source) };
+        return Viewer {
+            clip: Player::audio(source),
+        };
     }
     let clip = Player::new(source.into());
     clip.set_looping(true);
@@ -43,7 +51,11 @@ fn poll(s: &mut Viewer, _: f64, tx: &mut Tx) -> bool {
 }
 
 fn toggle(s: &mut Viewer) {
-    if s.clip.is_playing() { s.clip.pause() } else { s.clip.play() }
+    if s.clip.is_playing() {
+        s.clip.pause()
+    } else {
+        s.clip.play()
+    }
 }
 
 fn view(s: &Viewer, _: &mut Cx<Viewer>) -> El {
@@ -57,21 +69,46 @@ fn view(s: &Viewer, _: &mut Cx<Viewer>) -> El {
         _ => String::new(),
     };
     let media = if s.clip.is_audio() {
-        let progress = s.clip.duration().filter(|d| *d > 0.0).map_or(0.0, |d| (s.clip.time() / d) as f32);
+        let progress = s
+            .clip
+            .duration()
+            .filter(|d| *d > 0.0)
+            .map_or(0.0, |d| (s.clip.time() / d) as f32);
         row()
             .key("progress")
             .w(WIDTH)
             .h(4.0)
             .radius(2.0)
             .fill(t.control_track)
-            .child(el().w(WIDTH * progress.clamp(0.0, 1.0)).h(4.0).radius(2.0).fill(t.indicator))
+            .child(
+                el().w(WIDTH * progress.clamp(0.0, 1.0))
+                    .h(4.0)
+                    .radius(2.0)
+                    .fill(t.indicator),
+            )
     } else {
         let (w, h) = s.clip.natural_size().unwrap_or((16, 9));
-        el().key("video").w(WIDTH).h(WIDTH * h as f32 / w as f32).radius(10.0).video(&s.clip, SurfaceFit::Fit)
+        el().key("video")
+            .w(WIDTH)
+            .h(WIDTH * h as f32 / w as f32)
+            .radius(10.0)
+            .video(&s.clip, SurfaceFit::Fit)
     };
-    col().w_full().h_full().center().gap(12.0).fill(t.bg).on_press(toggle).child(media).child(text(label).font(type_::BODY).color(t.text_secondary))
+    col()
+        .w_full()
+        .h_full()
+        .center()
+        .gap(12.0)
+        .fill(t.bg)
+        .on_press(toggle)
+        .child(media)
+        .child(text(label).font(type_::BODY).color(t.text_secondary))
 }
 
 fn main() {
-    rune::run(AppSpec { setup: Some(setup), poll: Some(poll), ..AppSpec::new("Video player", (520.0, 340.0), state, view) });
+    rune::run(AppSpec {
+        setup: Some(setup),
+        poll: Some(poll),
+        ..AppSpec::new("Video player", (520.0, 340.0), state, view)
+    });
 }

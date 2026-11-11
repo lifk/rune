@@ -25,7 +25,10 @@ fn quotes(src: &str) -> Vec<String> {
 #[test]
 fn a_quote_frame_gets_the_quote_as_plain_text() {
     let src = "Before.\n\n> First `para` here.\n>\n> Second para.\n>\n> - one\n> - [x] two\n>   - nested\n> 3. third\n>\n> ```\n> let a = 1;\n> ```\n\nAfter.\n";
-    assert_eq!(quotes(src), ["First para here.\n\nSecond para.\n\n- one\n- [x] two\n  - nested\n\n3. third\n\nlet a = 1;"]);
+    assert_eq!(
+        quotes(src),
+        ["First para here.\n\nSecond para.\n\n- one\n- [x] two\n  - nested\n\n3. third\n\nlet a = 1;"]
+    );
 }
 
 #[test]

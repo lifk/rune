@@ -20,7 +20,14 @@ pub enum Page {
     Developer,
 }
 
-pub const PAGES: [Page; 6] = [Page::General, Page::Appearance, Page::Network, Page::Security, Page::Accessibility, Page::Developer];
+pub const PAGES: [Page; 6] = [
+    Page::General,
+    Page::Appearance,
+    Page::Network,
+    Page::Security,
+    Page::Accessibility,
+    Page::Developer,
+];
 
 impl Page {
     fn meta(self) -> (&'static str, &'static str) {
@@ -33,8 +40,12 @@ impl Page {
             Page::Developer => ("Developer", "developer"),
         }
     }
-    pub fn title(self) -> &'static str { self.meta().0 }
-    pub fn id(self) -> &'static str { self.meta().1 }
+    pub fn title(self) -> &'static str {
+        self.meta().0
+    }
+    pub fn id(self) -> &'static str {
+        self.meta().1
+    }
 }
 
 pub const APPEARANCES: [&str; 3] = ["Light", "Dark", "Auto"];

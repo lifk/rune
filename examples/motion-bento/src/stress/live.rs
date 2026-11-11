@@ -77,12 +77,24 @@ impl Control {
         self.glow.set(p.glow);
         self.hi.set(p.hi);
         self.lo.set(p.lo);
-        let (card, edge) = if cell.hot { (p.hot_fill, p.hot_edge) } else { (c(color::TILE), c(color::EDGE)) };
+        let (card, edge) = if cell.hot {
+            (p.hot_fill, p.hot_edge)
+        } else {
+            (c(color::TILE), c(color::EDGE))
+        };
         self.card.set(card);
         self.edge.set(edge);
-        self.switch.set(if cell.on { p.tint } else { c(SWITCH_OFF) });
+        self.switch
+            .set(if cell.on { p.tint } else { c(SWITCH_OFF) });
         let inset = (m.switch_h - m.knob) / 2.0;
-        self.knob.set([if cell.on { m.switch_w - 2.0 * inset - m.knob } else { 0.0 }, 0.0]);
+        self.knob.set([
+            if cell.on {
+                m.switch_w - 2.0 * inset - m.knob
+            } else {
+                0.0
+            },
+            0.0,
+        ]);
         let inner = w - 2.0 * m.pad;
         let bar_w = (inner - (BARS - 1) as f32 * m.bar_gap) / BARS as f32;
         for (j, (live, &b)) in self.bars.iter().zip(&cell.bars).enumerate() {
@@ -90,7 +102,8 @@ impl Control {
             live.set([j as f32 * (bar_w + m.bar_gap), m.bars_h - h, bar_w, h]);
         }
         let track = inner - 2.0 * m.gap - m.switch_w;
-        self.progress.set([0.0, 0.0, cell.progress * track, m.track_h]);
+        self.progress
+            .set([0.0, 0.0, cell.progress * track, m.track_h]);
     }
 }
 
@@ -117,7 +130,13 @@ impl Bindings {
                 hot_edge: c(stress::hot_edge(h)),
             })
             .collect();
-        Bindings { palette, controls: Vec::new(), t: LiveText::new(""), hud: Hud::new(), built: Vec::new() }
+        Bindings {
+            palette,
+            controls: Vec::new(),
+            t: LiveText::new(""),
+            hud: Hud::new(),
+            built: Vec::new(),
+        }
     }
 
     /// Sets every live value to the wall at show time `t`. True when the wall's shape changed
@@ -136,7 +155,8 @@ impl Bindings {
         if let Some(r) = readout {
             self.hud.set(r);
         }
-        let moved = self.built.len() != cells.len() || cells.iter().zip(&self.built).any(|(c, r)| c.rect != *r);
+        let moved = self.built.len() != cells.len()
+            || cells.iter().zip(&self.built).any(|(c, r)| c.rect != *r);
         if moved {
             self.built.clear();
             self.built.extend(cells.iter().map(|c| c.rect));
@@ -146,7 +166,11 @@ impl Bindings {
 }
 
 pub fn view(s: &State, wall: &Wall, b: &Bindings) -> El {
-    let mut root = el().w(grid::WIDTH).h(grid::HEIGHT).fill(c(color::BG)).child(header(s, wall, b));
+    let mut root = el()
+        .w(grid::WIDTH)
+        .h(grid::HEIGHT)
+        .fill(c(color::BG))
+        .child(header(s, wall, b));
     for (cell, control) in wall.cells().iter().zip(&b.controls) {
         root = root.child(card(&s.springs, cell, &wall.metrics, control));
     }
@@ -172,21 +196,46 @@ fn header(s: &State, wall: &Wall, b: &Bindings) -> El {
                 .gap(10.0)
                 .center_y()
                 .child(text("Rune").font(font(24.0, 680.0)).color(c(color::ACCENT)))
-                .child(text("stress wall").font(font(24.0, 680.0)).color(c(color::TEXT))),
+                .child(
+                    text("stress wall")
+                        .font(font(24.0, 680.0))
+                        .color(c(color::TEXT)),
+                ),
         )
         .child(
             row()
                 .gap(4.0)
-                .child(caption(format!("Seed {} · every control retargets, ticks and reflows at once · t", cfg.seed)))
-                .child(text("00.00 s").font(nums(12.0, 460.0)).color(c(color::TEXT_3)).live_text(&b.t)),
+                .child(caption(format!(
+                    "Seed {} · every control retargets, ticks and reflows at once · t",
+                    cfg.seed
+                )))
+                .child(
+                    text("00.00 s")
+                        .font(nums(12.0, 460.0))
+                        .color(c(color::TEXT_3))
+                        .live_text(&b.t),
+                ),
         )
         .child(
             row()
                 .gap(10.0)
                 .items_end()
-                .child(text(format!("{n}")).font(nums(40.0, 700.0)).color(c(color::TEXT)))
-                .child(text("live controls").font(font(16.0, 560.0)).color(c(color::TEXT_2)))
-                .child(caption(format!("step {} of {steps} · {}×{} grid", step + 1, wall.cols, wall.rows))),
+                .child(
+                    text(format!("{n}"))
+                        .font(nums(40.0, 700.0))
+                        .color(c(color::TEXT)),
+                )
+                .child(
+                    text("live controls")
+                        .font(font(16.0, 560.0))
+                        .color(c(color::TEXT_2)),
+                )
+                .child(caption(format!(
+                    "step {} of {steps} · {}×{} grid",
+                    step + 1,
+                    wall.cols,
+                    wall.rows
+                ))),
         )
 }
 
@@ -209,7 +258,9 @@ fn card(springs: &Springs, cell: &Cell, m: &Metrics, b: &Control) -> El {
         .clip_rounded(m.radius)
         .motion(layout)
         .transition(Transition::scale(0.85).combined(Transition::opacity()))
-        .child(memo(format!("c{id}"), (w.to_bits(), h.to_bits()), || inside(springs, cell, m, b)))
+        .child(memo(format!("c{id}"), (w.to_bits(), h.to_bits()), || {
+            inside(springs, cell, m, b)
+        }))
 }
 
 fn inside(springs: &Springs, cell: &Cell, m: &Metrics, b: &Control) -> El {
@@ -236,13 +287,26 @@ fn inside(springs: &Springs, cell: &Cell, m: &Metrics, b: &Control) -> El {
         .radius(m.switch_h / 2.0)
         .fill(c(SWITCH_OFF))
         .live_fill(b.switch.smooth(snap))
-        .child(el().size(m.knob, m.knob).absolute(inset, inset).radius(m.knob / 2.0).fill(c(KNOB)).live_offset(b.knob.smooth(snap)));
+        .child(
+            el().size(m.knob, m.knob)
+                .absolute(inset, inset)
+                .radius(m.knob / 2.0)
+                .fill(c(KNOB))
+                .live_offset(b.knob.smooth(snap)),
+        );
     let track = el()
         .grow(1.0)
         .h(m.track_h)
         .radius(m.track_h / 2.0)
         .fill(c(color::WELL))
-        .child(el().absolute(0.0, 0.0).size(0.0, m.track_h).radius(m.track_h / 2.0).fill(ink).live_fill(&b.tint).live_rect(&b.progress));
+        .child(
+            el().absolute(0.0, 0.0)
+                .size(0.0, m.track_h)
+                .radius(m.track_h / 2.0)
+                .fill(ink)
+                .live_fill(&b.tint)
+                .live_rect(&b.progress),
+        );
     col()
         .w_full()
         .h_full()
@@ -260,18 +324,48 @@ fn inside(springs: &Springs, cell: &Cell, m: &Metrics, b: &Control) -> El {
                         .shadow(0.0, 2.0 * m.dot, ink)
                         .live_shadow(&b.glow),
                 )
-                .child(text(cell.name()).font(font(m.name, 520.0)).color(c(color::TEXT_2)))
+                .child(
+                    text(cell.name())
+                        .font(font(m.name, 520.0))
+                        .color(c(color::TEXT_2)),
+                )
                 .child(spacer())
-                .child(text("Boost").font(font(m.small, 600.0)).color(ink).align(Align::End).live_text_color(&b.tint).live_text(&b.status)),
+                .child(
+                    text("Boost")
+                        .font(font(m.small, 600.0))
+                        .color(ink)
+                        .align(Align::End)
+                        .live_text_color(&b.tint)
+                        .live_text(&b.status),
+                ),
         )
         .child(
             row()
                 .h(lh(m.reading))
                 .center_y()
-                .child(text("0000.00").font(nums(m.reading, 640.0)).color(c(color::TEXT)).live_text(&b.reading))
+                .child(
+                    text("0000.00")
+                        .font(nums(m.reading, 640.0))
+                        .color(c(color::TEXT))
+                        .live_text(&b.reading),
+                )
                 .child(spacer())
-                .child(text("100%").font(nums(m.small, 500.0)).color(c(color::TEXT_3)).align(Align::End).live_text(&b.percent)),
+                .child(
+                    text("100%")
+                        .font(nums(m.small, 500.0))
+                        .color(c(color::TEXT_3))
+                        .align(Align::End)
+                        .live_text(&b.percent),
+                ),
         )
         .child(bars)
-        .child(row().w_full().h(m.foot_h).gap(2.0 * m.gap).center_y().child(track).child(switch))
+        .child(
+            row()
+                .w_full()
+                .h(m.foot_h)
+                .gap(2.0 * m.gap)
+                .center_y()
+                .child(track)
+                .child(switch),
+        )
 }

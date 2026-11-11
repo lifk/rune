@@ -582,7 +582,9 @@ pub(super) fn markdown_walkthrough(_: &G, k: &Kit, _: &mut Vec<El>) -> El {
 pub(super) fn markdown_streaming(s: &G, k: &Kit, _: &mut Vec<El>) -> El {
     let n: usize = s.picked("md-stream", "60").parse().unwrap_or(60);
     let end = MARKDOWN.char_indices().map(|(i, _)| i).nth(n).unwrap_or(MARKDOWN.len());
-    col().w(560.0).gap(12.0)
+    col()
+        .w(560.0)
+        .gap(12.0)
         .child(
             Button::new("Stream more")
                 .on_press(move |s: &mut G| {
@@ -608,7 +610,9 @@ const TAIL_STREAM: [&str; 5] = [
 pub(super) fn markdown_stream_tail(s: &G, k: &Kit, _: &mut Vec<El>) -> El {
     let n: usize = s.picked("md-tail-stream", "0").parse().unwrap_or(0);
     let src = TAIL_STREAM[..n.min(TAIL_STREAM.len())].concat();
-    col().w(560.0).gap(12.0)
+    col()
+        .w(560.0)
+        .gap(12.0)
         .child(
             Button::new("Stream more")
                 .on_press(move |s: &mut G| {
@@ -650,7 +654,9 @@ sequenceDiagram
 pub(super) fn markdown_mermaid_streaming(s: &G, k: &Kit, _: &mut Vec<El>) -> El {
     let end: usize = s.picked("md-diagram-stream", "0").parse().unwrap_or(0).min(DIAGRAM_STREAM.len());
     let style = MarkdownStyle::from_kit(k).diagram_max_width(560.0);
-    col().w(560.0).gap(12.0)
+    col()
+        .w(560.0)
+        .gap(12.0)
         .child(
             Button::new("Stream more")
                 .on_press(move |s: &mut G| {

@@ -23,7 +23,12 @@ pub fn mixer(s: &State, k: &Kit) -> El {
         let h = 12.0 + v * (TRACK_H - 12.0);
         let track = el()
             .size(30.0, TRACK_H)
-            .child(el().size(8.0, TRACK_H).absolute(11.0, 0.0).radius(4.0).fill(c(color::WELL)))
+            .child(
+                el().size(8.0, TRACK_H)
+                    .absolute(11.0, 0.0)
+                    .radius(4.0)
+                    .fill(c(color::WELL)),
+            )
             .child(
                 el().size(8.0, h)
                     .absolute(11.0, TRACK_H - h)
@@ -45,7 +50,13 @@ pub fn mixer(s: &State, k: &Kit) -> El {
                 .items_center()
                 .gap(8.0)
                 .on_press(move |s: &mut State| s.act(Action::Fader(i as u8)))
-                .child(RollingText::new(format!("level{i}"), format!("{:.0}", v * 100.0)).value(v as f64).font(nums(12.0, 560.0)).color(c(color::TEXT_2)).build(k))
+                .child(
+                    RollingText::new(format!("level{i}"), format!("{:.0}", v * 100.0))
+                        .value(v as f64)
+                        .font(nums(12.0, 560.0))
+                        .color(c(color::TEXT_2))
+                        .build(k),
+                )
                 .child(track)
                 .child(caption(*name)),
         );
@@ -64,7 +75,9 @@ fn grid_lines(w: f32, h: f32) -> Shape {
     for i in 1..4 {
         let x = w * i as f32 / 4.0;
         let y = h * i as f32 / 4.0;
-        s = s.line([x, 0.0], [x, h], 1.0, rune::LineCap::Butt, line).line([0.0, y], [w, y], 1.0, rune::LineCap::Butt, line);
+        s = s
+            .line([x, 0.0], [x, h], 1.0, rune::LineCap::Butt, line)
+            .line([0.0, y], [w, y], 1.0, rune::LineCap::Butt, line);
     }
     s
 }
@@ -83,9 +96,26 @@ pub fn xy(s: &State, k: &Kit) -> El {
         .clip_rounded(14.0)
         .on_press(|s: &mut State| s.act(Action::Puck))
         .child(canvas(grid_lines(w, h)).size(w, h).absolute(0.0, 0.0))
-        .child(el().size(1.0, h).absolute(x, 0.0).fill(c(color::ACCENT.alpha(0.35))).motion(travel))
-        .child(el().size(w, 1.0).absolute(0.0, y).fill(c(color::ACCENT.alpha(0.35))).motion(travel))
-        .child(el().size(96.0, 96.0).absolute(x - 48.0, y - 48.0).radius(48.0).fill(c(color::ACCENT.alpha(0.28))).blur(18.0).motion(travel))
+        .child(
+            el().size(1.0, h)
+                .absolute(x, 0.0)
+                .fill(c(color::ACCENT.alpha(0.35)))
+                .motion(travel),
+        )
+        .child(
+            el().size(w, 1.0)
+                .absolute(0.0, y)
+                .fill(c(color::ACCENT.alpha(0.35)))
+                .motion(travel),
+        )
+        .child(
+            el().size(96.0, 96.0)
+                .absolute(x - 48.0, y - 48.0)
+                .radius(48.0)
+                .fill(c(color::ACCENT.alpha(0.28)))
+                .blur(18.0)
+                .motion(travel),
+        )
         .child(
             el().size(24.0, 24.0)
                 .absolute(x - 12.0, y - 12.0)
@@ -97,17 +127,33 @@ pub fn xy(s: &State, k: &Kit) -> El {
         );
     let readout = row()
         .gap(10.0)
-        .child(RollingText::new("cutoff", format!("{:.0} Hz", 200.0 + px * 7800.0)).value(px as f64).font(nums(12.0, 500.0)).color(c(color::TEXT_3)).build(k))
-        .child(RollingText::new("res", format!("Q {:.1}", 0.5 + (1.0 - py) * 9.5)).value((1.0 - py) as f64).font(nums(12.0, 500.0)).color(c(color::TEXT_3)).build(k));
+        .child(
+            RollingText::new("cutoff", format!("{:.0} Hz", 200.0 + px * 7800.0))
+                .value(px as f64)
+                .font(nums(12.0, 500.0))
+                .color(c(color::TEXT_3))
+                .build(k),
+        )
+        .child(
+            RollingText::new("res", format!("Q {:.1}", 0.5 + (1.0 - py) * 9.5))
+                .value((1.0 - py) as f64)
+                .font(nums(12.0, 500.0))
+                .color(c(color::TEXT_3))
+                .build(k),
+        );
     tile("xy", "Filter", readout, pad).w(tile_w())
 }
 
 /// The queue's card art: a two-tone gradient per track.
 fn art(track: usize) -> El {
     let hue = (track as f32 * 47.0 + 200.0) % 360.0;
-    el().size(64.0, 64.0)
-        .radius(12.0)
-        .linear_gradient(135f32.to_radians(), [(0.0, c(lch(0.72, 0.15, hue))), (1.0, c(lch(0.42, 0.14, (hue + 50.0) % 360.0)))])
+    el().size(64.0, 64.0).radius(12.0).linear_gradient(
+        135f32.to_radians(),
+        [
+            (0.0, c(lch(0.72, 0.15, hue))),
+            (1.0, c(lch(0.42, 0.14, (hue + 50.0) % 360.0))),
+        ],
+    )
 }
 
 pub const CARD_H: f32 = 140.0;
@@ -132,24 +178,39 @@ pub fn queue(s: &State, _k: &Kit) -> El {
             .w_full()
             .opacity(if front { 1.0 } else { 0.0 })
             .child(
-                row()
-                    .gap(14.0)
-                    .center_y()
-                    .child(art(card.track))
-                    .child(
-                        col()
-                            .gap(3.0)
-                            .child(text(title).font(font(16.0, 620.0)).color(c(color::TEXT)))
-                            .child(text(artist).font(font(13.0, 460.0)).color(c(color::TEXT_2))),
-                    ),
+                row().gap(14.0).center_y().child(art(card.track)).child(
+                    col()
+                        .gap(3.0)
+                        .child(text(title).font(font(16.0, 620.0)).color(c(color::TEXT)))
+                        .child(text(artist).font(font(13.0, 460.0)).color(c(color::TEXT_2))),
+                ),
             )
             .child(
                 col()
                     .gap(6.0)
-                    .child(el().w_full().h(4.0).radius(2.0).fill(c(color::WELL_HI)).child(el().w_frac(progress).h(4.0).radius(2.0).fill(c(color::TEXT_2))))
+                    .child(
+                        el().w_full()
+                            .h(4.0)
+                            .radius(2.0)
+                            .fill(c(color::WELL_HI))
+                            .child(
+                                el().w_frac(progress)
+                                    .h(4.0)
+                                    .radius(2.0)
+                                    .fill(c(color::TEXT_2)),
+                            ),
+                    )
                     .child(
                         row()
-                            .child(text(format!("{}:{:02}", (progress * 220.0) as u32 / 60, (progress * 220.0) as u32 % 60)).font(nums(11.0, 500.0)).color(c(color::TEXT_3)))
+                            .child(
+                                text(format!(
+                                    "{}:{:02}",
+                                    (progress * 220.0) as u32 / 60,
+                                    (progress * 220.0) as u32 % 60
+                                ))
+                                .font(nums(11.0, 500.0))
+                                .color(c(color::TEXT_3)),
+                            )
                             .child(spacer())
                             .child(text("3:40").font(nums(11.0, 500.0)).color(c(color::TEXT_3))),
                     ),
@@ -207,10 +268,23 @@ pub fn feed(s: &State, _k: &Kit) -> El {
                     Transition::offset(0.0, -12.0).combined(Transition::opacity()),
                     Transition::scale(0.96),
                 ))
-                .child(el().size(8.0, 8.0).radius(4.0).fill(c(lch(0.72, 0.15, hue))))
-                .child(text(FEED_KINDS[item.kind]).font(font(13.0, 500.0)).color(c(color::TEXT)).truncate())
+                .child(
+                    el().size(8.0, 8.0)
+                        .radius(4.0)
+                        .fill(c(lch(0.72, 0.15, hue))),
+                )
+                .child(
+                    text(FEED_KINDS[item.kind])
+                        .font(font(13.0, 500.0))
+                        .color(c(color::TEXT))
+                        .truncate(),
+                )
                 .child(spacer())
-                .child(text(format!("9:{:02}", item.minute)).font(nums(12.0, 460.0)).color(c(color::TEXT_3))),
+                .child(
+                    text(format!("9:{:02}", item.minute))
+                        .font(nums(12.0, 460.0))
+                        .color(c(color::TEXT_3)),
+                ),
         );
     }
     let test = row()
@@ -223,6 +297,16 @@ pub fn feed(s: &State, _k: &Kit) -> El {
         .hover(c(color::WELL_HI))
         .press_scale(0.94)
         .on_press(|s: &mut State| s.act(Action::Feed))
-        .child(text("Test alert").font(font(12.0, 560.0)).color(c(color::TEXT_2)));
-    tile("feed", "Activity", test, rows.motion(spring(s.springs.layout))).w(tile_w())
+        .child(
+            text("Test alert")
+                .font(font(12.0, 560.0))
+                .color(c(color::TEXT_2)),
+        );
+    tile(
+        "feed",
+        "Activity",
+        test,
+        rows.motion(spring(s.springs.layout)),
+    )
+    .w(tile_w())
 }

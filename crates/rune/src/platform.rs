@@ -1,12 +1,22 @@
 pub(crate) mod accent;
-#[cfg(all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android")))]
+#[cfg(all(
+    unix,
+    not(target_os = "macos"),
+    not(target_os = "ios"),
+    not(target_os = "android")
+))]
 pub(crate) mod activation;
 pub(crate) mod app_icon;
 #[cfg(target_os = "macos")]
 pub(crate) mod display_link;
 #[cfg(target_vendor = "apple")]
 pub mod embed;
-#[cfg(all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android")))]
+#[cfg(all(
+    unix,
+    not(target_os = "macos"),
+    not(target_os = "ios"),
+    not(target_os = "android")
+))]
 pub(crate) mod layer_shell;
 #[cfg(target_os = "macos")]
 pub(crate) mod macos;
@@ -25,5 +35,10 @@ pub mod web;
 pub(crate) mod web_math;
 #[cfg(target_os = "windows")]
 pub(crate) mod win32;
-#[cfg(all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android")))]
+#[cfg(all(
+    unix,
+    not(target_os = "macos"),
+    not(target_os = "ios"),
+    not(target_os = "android")
+))]
 pub(crate) mod x11;

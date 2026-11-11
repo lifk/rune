@@ -45,7 +45,10 @@ impl TextInk {
     /// its bounds shift a little toward the light side; about 0.3 suits keyboard symbols.
     pub fn optical(&self, pull: f32) -> [f32; 2] {
         let [cx, cy] = self.centre();
-        [cx + (self.mass[0] - cx) * pull, cy + (self.mass[1] - cy) * pull]
+        [
+            cx + (self.mass[0] - cx) * pull,
+            cy + (self.mass[1] - cy) * pull,
+        ]
     }
 }
 
@@ -56,7 +59,9 @@ struct Entry {
 }
 
 impl Entry {
-    fn bytes(&self) -> usize { size_of::<Entry>() + self.text.len() }
+    fn bytes(&self) -> usize {
+        size_of::<Entry>() + self.text.len()
+    }
 }
 
 /// Inks by a hash of text and style, checked against both on a hit, so a hit allocates nothing.
@@ -78,12 +83,21 @@ impl Cache {
     }
 
     fn get(&self, key: u64, text: &str, style: TextStyle) -> Option<Option<TextInk>> {
-        self.entries.get(&key).filter(|e| &*e.text == text && e.style == style).map(|e| e.ink)
+        self.entries
+            .get(&key)
+            .filter(|e| &*e.text == text && e.style == style)
+            .map(|e| e.ink)
     }
 
     fn insert(&mut self, key: u64, text: &str, style: TextStyle, ink: Option<TextInk>) {
-        let entry = Entry { text: text.into(), style, ink };
-        if entry.bytes() > MAX_BYTES { return; }
+        let entry = Entry {
+            text: text.into(),
+            style,
+            ink,
+        };
+        if entry.bytes() > MAX_BYTES {
+            return;
+        }
         self.bytes += entry.bytes();
         // A colliding text takes the slot (and its place in line).
         match self.entries.insert(key, entry) {
@@ -91,8 +105,12 @@ impl Cache {
             None => self.order.push_back(key),
         }
         while self.entries.len() > MAX_ENTRIES || self.bytes > MAX_BYTES {
-            let Some(oldest) = self.order.pop_front() else { break };
-            if let Some(old) = self.entries.remove(&oldest) { self.bytes -= old.bytes(); }
+            let Some(oldest) = self.order.pop_front() else {
+                break;
+            };
+            if let Some(old) = self.entries.remove(&oldest) {
+                self.bytes -= old.bytes();
+            }
         }
     }
 }
@@ -109,7 +127,10 @@ pub fn ink(text: &str, style: TextStyle) -> Option<TextInk> {
     let epoch = super::font_epoch();
     let hit = CACHE.with_borrow_mut(|c| {
         if c.epoch != epoch {
-            *c = Cache { epoch, ..Cache::default() };
+            *c = Cache {
+                epoch,
+                ..Cache::default()
+            };
         }
         c.get(key, text, style)
     });
@@ -122,25 +143,49 @@ pub fn ink(text: &str, style: TextStyle) -> Option<TextInk> {
         let mut coords = Vec::new();
         for line in layout.lines() {
             for item in line.items() {
-                let PositionedLayoutItem::GlyphRun(run) = item else { continue };
+                let PositionedLayoutItem::GlyphRun(run) = item else {
+                    continue;
+                };
                 let face = Face::of(&run, &mut coords);
-                let Some(font) = FontRef::from_index(face.font.data.as_ref(), face.font.index as usize) else { continue };
-                let mut scaler = t.scale_cx.builder(font).size(face.size).hint(false).normalized_coords(coords.iter().copied()).build();
+                let Some(font) =
+                    FontRef::from_index(face.font.data.as_ref(), face.font.index as usize)
+                else {
+                    continue;
+                };
+                let mut scaler = t
+                    .scale_cx
+                    .builder(font)
+                    .size(face.size)
+                    .hint(false)
+                    .normalized_coords(coords.iter().copied())
+                    .build();
                 let mut x = run.offset();
                 for g in run.glyphs() {
                     let (pen_x, pen_y) = (x + g.x, face.baseline + g.y);
-                    let image = Render::new(&[Source::ColorOutline(0), Source::ColorBitmap(StrikeWith::BestFit), Source::Outline])
-                        .format(Format::Alpha)
-                        .offset(Vector::new(pen_x.fract(), 0.0))
-                        .render(&mut scaler, g.id as u16);
+                    let image = Render::new(&[
+                        Source::ColorOutline(0),
+                        Source::ColorBitmap(StrikeWith::BestFit),
+                        Source::Outline,
+                    ])
+                    .format(Format::Alpha)
+                    .offset(Vector::new(pen_x.fract(), 0.0))
+                    .render(&mut scaler, g.id as u16);
                     if let Some(image) = image {
-                        let stride = if image.content == Content::Color { 4 } else { 1 };
+                        let stride = if image.content == Content::Color {
+                            4
+                        } else {
+                            1
+                        };
                         let at = image.placement;
-                        let (left, top) = (pen_x.floor() + at.left as f32, pen_y.round() - at.top as f32);
+                        let (left, top) = (
+                            pen_x.floor() + at.left as f32,
+                            pen_y.round() - at.top as f32,
+                        );
                         for (i, px) in image.data.chunks(stride).enumerate() {
                             let a = px[stride - 1] as f32 / 255.0;
                             if a > 0.0 {
-                                let (col, row) = ((i as u32 % at.width) as f32, (i as u32 / at.width) as f32);
+                                let (col, row) =
+                                    ((i as u32 % at.width) as f32, (i as u32 / at.width) as f32);
                                 acc.add(left + col, top + row, a);
                             }
                         }
@@ -179,7 +224,12 @@ impl Acc {
         (self.weight > 0.0).then(|| {
             let k = OVERSAMPLE;
             TextInk {
-                bounds: [self.min[0] / k, self.min[1] / k, (self.max[0] - self.min[0]) / k, (self.max[1] - self.min[1]) / k],
+                bounds: [
+                    self.min[0] / k,
+                    self.min[1] / k,
+                    (self.max[0] - self.min[0]) / k,
+                    (self.max[1] - self.min[1]) / k,
+                ],
                 mass: [self.sum[0] / self.weight / k, self.sum[1] / self.weight / k],
             }
         })

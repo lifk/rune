@@ -1,8 +1,8 @@
 //! The glyph atlas: shelf-packed greyscale pages of glyph and icon masks, aged and evicted by
 //! use, and the quads that sample them.
 
-use super::*;
 use super::atlas_fill::Residency;
+use super::*;
 
 pub const ATLAS_SIZE: u32 = 2048;
 
@@ -59,7 +59,16 @@ struct Shelf {
 
 impl Shelf {
     fn new(age: u64) -> Self {
-        Shelf { x: 1, y: 1, h: 0, shown: false, touched: false, full: false, age, live_texels: 0 }
+        Shelf {
+            x: 1,
+            y: 1,
+            h: 0,
+            shown: false,
+            touched: false,
+            full: false,
+            age,
+            live_texels: 0,
+        }
     }
 
     fn reset(&mut self, age: u64) {
@@ -138,11 +147,16 @@ pub struct GlyphQuad {
 
 impl GlyphQuad {
     /// Alpha atlas page. Placements remain valid until the next frame begins.
-    pub fn atlas_page(&self) -> usize { self.uv[1] as usize / ATLAS_SIZE as usize }
+    pub fn atlas_page(&self) -> usize {
+        self.uv[1] as usize / ATLAS_SIZE as usize
+    }
 
     /// Pixel origin within [`Self::atlas_page`], without the packed page index.
     pub fn atlas_uv(&self) -> [f32; 2] {
-        [self.uv[0], self.uv[1] - (self.atlas_page() * ATLAS_SIZE as usize) as f32]
+        [
+            self.uv[0],
+            self.uv[1] - (self.atlas_page() * ATLAS_SIZE as usize) as f32,
+        ]
     }
 }
 
@@ -167,7 +181,14 @@ impl ColorGlyph {
             self.w as f32,
             self.h as f32,
         ];
-        GlyphQuad { rect, uv: [0.0, 0.0], ink, byte, color: self.index, outline: None }
+        GlyphQuad {
+            rect,
+            uv: [0.0, 0.0],
+            ink,
+            byte,
+            color: self.index,
+            outline: None,
+        }
     }
 }
 
@@ -209,7 +230,11 @@ impl Atlas {
 
     /// Alpha texels for a page returned by [`GlyphQuad::atlas_page`].
     pub fn page_data(&self, page: usize) -> Option<&[u8]> {
-        if page == 0 { Some(&self.data) } else { self.pages.get(page - 1).map(|p| p.data.as_slice()) }
+        if page == 0 {
+            Some(&self.data)
+        } else {
+            self.pages.get(page - 1).map(|p| p.data.as_slice())
+        }
     }
 
     /// Number of shelf page resets since the atlas was created.
@@ -224,7 +249,9 @@ impl Atlas {
 
     /// Rasterized glyph entries, for tests that bound the atlas.
     #[cfg(test)]
-    pub(crate) fn glyph_entries(&self) -> usize { self.map.len() }
+    pub(crate) fn glyph_entries(&self) -> usize {
+        self.map.len()
+    }
 
     pub(super) fn new() -> Self {
         Atlas {
@@ -244,11 +271,19 @@ impl Atlas {
     }
 
     fn shelf(&self, page: usize) -> &Shelf {
-        if page == 0 { &self.shelf } else { &self.pages[page - 1].shelf }
+        if page == 0 {
+            &self.shelf
+        } else {
+            &self.pages[page - 1].shelf
+        }
     }
 
     fn shelf_mut(&mut self, page: usize) -> &mut Shelf {
-        if page == 0 { &mut self.shelf } else { &mut self.pages[page - 1].shelf }
+        if page == 0 {
+            &mut self.shelf
+        } else {
+            &mut self.pages[page - 1].shelf
+        }
     }
 
     pub(super) fn touch(&mut self, page: u16, texels: u32) {
@@ -261,8 +296,11 @@ impl Atlas {
 
     pub(super) fn evict_page(&mut self, page: usize) {
         let p16 = page as u16;
-        self.map.retain(|_, v| v.mask().is_none_or(|g| g.page != p16));
-        if let Some(queue) = self.fills.get_mut(page) { queue.clear(); }
+        self.map
+            .retain(|_, v| v.mask().is_none_or(|g| g.page != p16));
+        if let Some(queue) = self.fills.get_mut(page) {
+            queue.clear();
+        }
         self.icons.retain(|_, v| v.is_none_or(|g| g.page != p16));
         self.clock += 1;
         self.resets += 1;
@@ -322,7 +360,9 @@ impl Atlas {
         }
         let total = self.page_count();
         for p in 0..total {
-            if !self.shelf(p).full && let Some((x, y)) = self.shelf_mut(p).alloc(w, h) {
+            if !self.shelf(p).full
+                && let Some((x, y)) = self.shelf_mut(p).alloc(w, h)
+            {
                 return Some((p, x, y));
             }
         }
@@ -370,7 +410,14 @@ impl Atlas {
         None
     }
 
-    pub(super) fn put(&mut self, w: u32, h: u32, src: &[u8], left: i32, top: i32) -> Option<AtlasGlyph> {
+    pub(super) fn put(
+        &mut self,
+        w: u32,
+        h: u32,
+        src: &[u8],
+        left: i32,
+        top: i32,
+    ) -> Option<AtlasGlyph> {
         let (page, ax, ay) = self.alloc(w, h)?;
         let (data, dirty) = if page == 0 {
             (&mut self.data, &mut self.dirty)
@@ -398,6 +445,14 @@ impl Atlas {
         *d = (d.0.min(y0), d.1.max(y1));
         self.rasterized += 1;
         self.touch(page as u16, w * h);
-        Some(AtlasGlyph { page: page as u16, x: ax, y: ay, w, h, left, top })
+        Some(AtlasGlyph {
+            page: page as u16,
+            x: ax,
+            y: ay,
+            w,
+            h,
+            left,
+            top,
+        })
     }
 }

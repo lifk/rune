@@ -24,15 +24,29 @@ pub(crate) type DropMoveFn = Rc<dyn Fn(crate::states::States<'_>, PointerEvent, 
 
 impl DropSpec {
     /// The files of `paths` this element takes, when it's a drop target, and the rest.
-    pub(crate) fn split(&self, paths: &[std::path::PathBuf]) -> (Vec<std::path::PathBuf>, Vec<std::path::PathBuf>) {
-        if self.on_drop.is_none() { return (Vec::new(), paths.to_vec()); }
-        paths.iter().cloned().partition(|p| self.accepts.as_ref().is_none_or(|f| f(p)))
+    pub(crate) fn split(
+        &self,
+        paths: &[std::path::PathBuf],
+    ) -> (Vec<std::path::PathBuf>, Vec<std::path::PathBuf>) {
+        if self.on_drop.is_none() {
+            return (Vec::new(), paths.to_vec());
+        }
+        paths
+            .iter()
+            .cloned()
+            .partition(|p| self.accepts.as_ref().is_none_or(|f| f(p)))
     }
     /// It stops a drag it takes none of, rather than passing it to the target around it.
-    pub(crate) fn claims_rejects(&self) -> bool { self.on_reject.is_some() || self.on_reject_hover.is_some() }
+    pub(crate) fn claims_rejects(&self) -> bool {
+        self.on_reject.is_some() || self.on_reject_hover.is_some()
+    }
     /// Its hover callback for a drag it takes (`accepted`) or rejects.
     pub(crate) fn hover_fn(&self, accepted: bool) -> Option<DropHoverFn> {
-        if accepted { self.on_hover.clone() } else { self.on_reject_hover.clone() }
+        if accepted {
+            self.on_hover.clone()
+        } else {
+            self.on_reject_hover.clone()
+        }
     }
 }
 
@@ -60,8 +74,12 @@ impl El {
     ///
     /// macOS, Windows and X11. Wayland reports no file drags in winit 0.30, and the web build
     /// has no paths to give. Headless scripts drop files with `drop_files` events.
-    pub fn on_drop_files<S: 'static>(mut self, f: impl Fn(&mut S, &[std::path::PathBuf], &mut Tx) + 'static) -> Self {
-        self.handlers.drop.get_or_insert_default().on_drop = Some(Rc::new(move |s, files, tx| f(downcast::<S>(s), files, tx)));
+    pub fn on_drop_files<S: 'static>(
+        mut self,
+        f: impl Fn(&mut S, &[std::path::PathBuf], &mut Tx) + 'static,
+    ) -> Self {
+        self.handlers.drop.get_or_insert_default().on_drop =
+            Some(Rc::new(move |s, files, tx| f(downcast::<S>(s), files, tx)));
         self
     }
     /// Only the files `accepts` returns true for reach this element's [`El::on_drop_files`]. A
@@ -73,17 +91,27 @@ impl El {
     }
     /// [`El::accepts_files`] for files with one of these extensions, compared without case.
     pub fn accepts_extensions(self, extensions: &[&str]) -> Self {
-        let extensions: Vec<String> = extensions.iter().map(|e| e.trim_start_matches('.').to_ascii_lowercase()).collect();
-        self.accepts_files(move |path| path.extension().and_then(|e| e.to_str())
-            .is_some_and(|e| extensions.iter().any(|x| x.eq_ignore_ascii_case(e))))
+        let extensions: Vec<String> = extensions
+            .iter()
+            .map(|e| e.trim_start_matches('.').to_ascii_lowercase())
+            .collect();
+        self.accepts_files(move |path| {
+            path.extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| extensions.iter().any(|x| x.eq_ignore_ascii_case(e)))
+        })
     }
     /// Called with `true` when a file drag over the window makes this element the drop target
     /// (the innermost [`El::on_drop_files`] under the pointer that accepts the files), and with
     /// `false` when the drag moves off it, leaves the window, or drops, or when the element goes
     /// away under the drag. Draw a drop highlight from it. With `true`, [`Tx::drop_point`] says
     /// where the drag came in.
-    pub fn on_drop_hover<S: 'static>(mut self, f: impl Fn(&mut S, bool, &mut Tx) + 'static) -> Self {
-        self.handlers.drop.get_or_insert_default().on_hover = Some(Rc::new(move |s, over, tx| f(downcast::<S>(s), over, tx)));
+    pub fn on_drop_hover<S: 'static>(
+        mut self,
+        f: impl Fn(&mut S, bool, &mut Tx) + 'static,
+    ) -> Self {
+        self.handlers.drop.get_or_insert_default().on_hover =
+            Some(Rc::new(move |s, over, tx| f(downcast::<S>(s), over, tx)));
         self
     }
     /// Follow a file drag this element takes ([`El::on_drop_files`]) while it's over it: `f`
@@ -94,8 +122,12 @@ impl El {
     /// Only an element with this asks the window for frames as the drag moves over it, and a
     /// drag the platform gives no position for is never heard here. Scripts move a drag with
     /// further `drag_files` events.
-    pub fn on_drop_move<S: 'static>(mut self, f: impl Fn(&mut S, PointerEvent, &mut Tx) + 'static) -> Self {
-        self.handlers.drop.get_or_insert_default().on_move = Some(Rc::new(move |s, p, tx| f(downcast::<S>(s), p, tx)));
+    pub fn on_drop_move<S: 'static>(
+        mut self,
+        f: impl Fn(&mut S, PointerEvent, &mut Tx) + 'static,
+    ) -> Self {
+        self.handlers.drop.get_or_insert_default().on_move =
+            Some(Rc::new(move |s, p, tx| f(downcast::<S>(s), p, tx)));
         self
     }
     /// Hear the files dropped on this element that it doesn't accept ([`El::accepts_files`]),
@@ -112,16 +144,24 @@ impl El {
     ///     .on_drop_rejected(|s: &mut App, files, _| s.error = Some(format!("{} isn't an export", files[0].display())))
     ///     .on_drop_rejected_hover(|s: &mut App, over, _| s.wrong = over);
     /// ```
-    pub fn on_drop_rejected<S: 'static>(mut self, f: impl Fn(&mut S, &[std::path::PathBuf], &mut Tx) + 'static) -> Self {
-        self.handlers.drop.get_or_insert_default().on_reject = Some(Rc::new(move |s, files, tx| f(downcast::<S>(s), files, tx)));
+    pub fn on_drop_rejected<S: 'static>(
+        mut self,
+        f: impl Fn(&mut S, &[std::path::PathBuf], &mut Tx) + 'static,
+    ) -> Self {
+        self.handlers.drop.get_or_insert_default().on_reject =
+            Some(Rc::new(move |s, files, tx| f(downcast::<S>(s), files, tx)));
         self
     }
     /// [`El::on_drop_hover`] for a drag this element stops but takes none of (see
     /// [`El::on_drop_rejected`]): `true` when the drag reaches it, `false` when it moves off,
     /// leaves the window or drops, or when the element goes away under it. Draw a "can't drop
     /// here" state from it.
-    pub fn on_drop_rejected_hover<S: 'static>(mut self, f: impl Fn(&mut S, bool, &mut Tx) + 'static) -> Self {
-        self.handlers.drop.get_or_insert_default().on_reject_hover = Some(Rc::new(move |s, over, tx| f(downcast::<S>(s), over, tx)));
+    pub fn on_drop_rejected_hover<S: 'static>(
+        mut self,
+        f: impl Fn(&mut S, bool, &mut Tx) + 'static,
+    ) -> Self {
+        self.handlers.drop.get_or_insert_default().on_reject_hover =
+            Some(Rc::new(move |s, over, tx| f(downcast::<S>(s), over, tx)));
         self
     }
 }
@@ -131,5 +171,7 @@ impl Tx {
     /// [`El::on_drop_hover`]'s `true`: where the file drag is on the element, in its own points
     /// (`x`, `y`, following its scroll and transforms) and in the window's. `None` when the
     /// platform gave no position and in every other handler.
-    pub fn drop_point(&self) -> Option<PointerEvent> { self.drop_point }
+    pub fn drop_point(&self) -> Option<PointerEvent> {
+        self.drop_point
+    }
 }

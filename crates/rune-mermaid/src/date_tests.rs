@@ -8,7 +8,11 @@ fn civil_days_round_trip() {
         let (y, m, d) = civil_from_days(z);
         assert_eq!(days_from_civil(y, m, d), z);
     }
-    assert_eq!(fields(days_from_civil(2024, 1, 7) as f64 * DAY).wd, 0, "2024-01-07 was a Sunday");
+    assert_eq!(
+        fields(days_from_civil(2024, 1, 7) as f64 * DAY).wd,
+        0,
+        "2024-01-07 was a Sunday"
+    );
 }
 
 #[test]
@@ -16,9 +20,19 @@ fn reads_dayjs_formats_and_iso() {
     let jan5 = days_from_civil(2024, 1, 5) as f64 * DAY;
     assert_eq!(parse("2024-01-05", "YYYY-MM-DD"), Some(jan5));
     assert_eq!(parse("05/01/2024", "DD/MM/YYYY"), Some(jan5));
-    assert_eq!(parse("2024-01-05 13:30", "YYYY-MM-DD HH:mm"), Some(jan5 + 13.5 * HOUR));
-    assert_eq!(parse("Jan 5 2024 1:30 pm", "MMM D YYYY h:mm a"), Some(jan5 + 13.5 * HOUR));
-    assert_eq!(parse("2024-01-05", "DD.MM.YY"), Some(jan5), "falls back to ISO");
+    assert_eq!(
+        parse("2024-01-05 13:30", "YYYY-MM-DD HH:mm"),
+        Some(jan5 + 13.5 * HOUR)
+    );
+    assert_eq!(
+        parse("Jan 5 2024 1:30 pm", "MMM D YYYY h:mm a"),
+        Some(jan5 + 13.5 * HOUR)
+    );
+    assert_eq!(
+        parse("2024-01-05", "DD.MM.YY"),
+        Some(jan5),
+        "falls back to ISO"
+    );
     assert_eq!(parse("1704412800", "X"), Some(jan5));
     assert_eq!(parse("2024-02-30", "YYYY-MM-DD"), None);
     assert_eq!(parse("soon", "YYYY-MM-DD"), None);
@@ -32,7 +46,10 @@ fn spans_and_months() {
     assert_eq!(span("1.5h"), Some(Span::Ms(1.5 * HOUR)));
     assert_eq!(span("2w"), Some(Span::Ms(14.0 * DAY)));
     assert_eq!(span("3x"), None);
-    assert_eq!(Span::Months(1.0).after(jan31), days_from_civil(2024, 2, 29) as f64 * DAY);
+    assert_eq!(
+        Span::Months(1.0).after(jan31),
+        days_from_civil(2024, 2, 29) as f64 * DAY
+    );
 }
 
 #[test]
@@ -53,7 +70,10 @@ fn ticks_land_on_the_calendar() {
     assert_eq!(day(weeks[0]), (2024, 1, 7));
     assert!(weeks.iter().all(|&t| fields(t).wd == 0));
     let months = Step::Months(1).ticks(lo, hi, 100);
-    assert_eq!(months.iter().map(|&t| day(t)).collect::<Vec<_>>(), [(2024, 2, 1), (2024, 3, 1), (2024, 4, 1)]);
+    assert_eq!(
+        months.iter().map(|&t| day(t)).collect::<Vec<_>>(),
+        [(2024, 2, 1), (2024, 3, 1), (2024, 4, 1)]
+    );
     assert_eq!(Step::Days(1).ticks(lo, hi, 5).len(), 5, "capped");
     assert_eq!(Step::parse("2week"), Some(Step::Weeks(2)));
     assert_eq!(Step::parse("6hour"), Some(Step::Ms(6.0 * HOUR)));

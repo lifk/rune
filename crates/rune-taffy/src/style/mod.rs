@@ -6,11 +6,12 @@
 
 use taffy::geometry::{Line, Point, Rect, Size};
 use taffy::style::{
-    AlignContent, AlignContentKeyword, AlignItems, AlignItemsKeyword, AlignSelf, AlignmentSafety, BlockContainerStyle,
-    BlockItemStyle, BoxGenerationMode, BoxSizing, CompactLength, Contain, CoreStyle, Dimension, Direction, Display,
-    FlexDirection, FlexWrap, FlexboxContainerStyle, FlexboxItemStyle, GridAutoFlow, GridContainerStyle, GridItemStyle,
-    GridPlacement, JustifyContent, LengthPercentage, LengthPercentageAuto, OofItemStyle, Overflow, Position, Style,
-    TextAlign,
+    AlignContent, AlignContentKeyword, AlignItems, AlignItemsKeyword, AlignSelf, AlignmentSafety,
+    BlockContainerStyle, BlockItemStyle, BoxGenerationMode, BoxSizing, CompactLength, Contain,
+    CoreStyle, Dimension, Direction, Display, FlexDirection, FlexWrap, FlexboxContainerStyle,
+    FlexboxItemStyle, GridAutoFlow, GridContainerStyle, GridItemStyle, GridPlacement,
+    JustifyContent, LengthPercentage, LengthPercentageAuto, OofItemStyle, Overflow, Position,
+    Style, TextAlign,
 };
 use taffy::style_helpers::{TaffyAuto, TaffyZero, fr, line, span};
 
@@ -50,7 +51,9 @@ fn pack_raw_len(len: CompactLength) -> (u32, u8) {
         let bits = if (tag as usize & CompactLength::KEYWORD_BIT) == 0
             || matches!(
                 tag as usize,
-                CompactLength::FR_TAG | CompactLength::FIT_CONTENT_PX_TAG | CompactLength::FIT_CONTENT_PERCENT_TAG
+                CompactLength::FR_TAG
+                    | CompactLength::FIT_CONTENT_PX_TAG
+                    | CompactLength::FIT_CONTENT_PERCENT_TAG
             ) {
             len.value().to_bits()
         } else {
@@ -150,7 +153,8 @@ fn rect_is_zero_lpa(r: &Rect<LengthPercentageAuto>) -> bool {
         // SAFETY: on 64-bit targets `Rect<LengthPercentageAuto>` is four 8-byte-aligned 64-bit words.
         let a: &[u64; 4] = unsafe { &*(r as *const Rect<LengthPercentageAuto> as *const [u64; 4]) };
         // SAFETY: `ZERO` has the same `Rect<LengthPercentageAuto>` layout.
-        let b: &[u64; 4] = unsafe { &*(&ZERO as *const Rect<LengthPercentageAuto> as *const [u64; 4]) };
+        let b: &[u64; 4] =
+            unsafe { &*(&ZERO as *const Rect<LengthPercentageAuto> as *const [u64; 4]) };
         a == b || *r == ZERO
     }
     #[cfg(not(target_pointer_width = "64"))]
@@ -194,7 +198,8 @@ fn rect_is_auto_lpa(r: &Rect<LengthPercentageAuto>) -> bool {
         // SAFETY: on 64-bit targets `Rect<LengthPercentageAuto>` is four 8-byte-aligned 64-bit words.
         let a: &[u64; 4] = unsafe { &*(r as *const Rect<LengthPercentageAuto> as *const [u64; 4]) };
         // SAFETY: `AUTO` has the same `Rect<LengthPercentageAuto>` layout.
-        let b: &[u64; 4] = unsafe { &*(&AUTO as *const Rect<LengthPercentageAuto> as *const [u64; 4]) };
+        let b: &[u64; 4] =
+            unsafe { &*(&AUTO as *const Rect<LengthPercentageAuto> as *const [u64; 4]) };
         a == b || *r == AUTO
     }
     #[cfg(not(target_pointer_width = "64"))]
@@ -221,8 +226,16 @@ fn has_cold_fields(s: &Style) -> bool {
         || s.item_is_replaced
         || s.item_is_compressible_replaced
         || s.grid_auto_flow != GridAutoFlow::Row
-        || s.grid_row != Line { start: GridPlacement::Auto, end: GridPlacement::Auto }
-        || s.grid_column != Line { start: GridPlacement::Auto, end: GridPlacement::Auto }
+        || s.grid_row
+            != Line {
+                start: GridPlacement::Auto,
+                end: GridPlacement::Auto,
+            }
+        || s.grid_column
+            != Line {
+                start: GridPlacement::Auto,
+                end: GridPlacement::Auto,
+            }
         || !s.grid_template_rows.is_empty()
         || !s.grid_template_columns.is_empty()
         || !s.grid_auto_rows.is_empty()
@@ -407,7 +420,10 @@ const fn decode_dir(b: u8) -> FlexDirection {
 
 #[inline(always)]
 const fn pack_box_flags(dir: FlexDirection, wrap: FlexWrap, ox: Overflow, oy: Overflow) -> u8 {
-    encode_dir(dir) | (encode_wrap(wrap) << 2) | (encode_overflow(ox) << 4) | (encode_overflow(oy) << 6)
+    encode_dir(dir)
+        | (encode_wrap(wrap) << 2)
+        | (encode_overflow(ox) << 4)
+        | (encode_overflow(oy) << 6)
 }
 
 /// Compact representation of `taffy::Style` (64 bytes inline — one cache line).
@@ -611,8 +627,6 @@ impl CompactStyle {
     pub fn align_self(&self) -> Option<AlignSelf> {
         unpack_align_self(self.align_self_u8)
     }
-
-
 }
 
 mod convert;

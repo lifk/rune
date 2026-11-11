@@ -2,10 +2,10 @@
 //! each frame. One analytic growth-spring progress interpolates source to live destination,
 //! so the copy joins the bubble without a second spring lagging behind scroll follow.
 
-use rune_motion::{Animated, PropClass, Rect};
+use crate::Tx;
 use crate::growth::GROWTH;
 use crate::render::Instance;
-use crate::Tx;
+use rune_motion::{Animated, PropClass, Rect};
 
 impl Tx {
     /// Fly the visible text of an existing keyed field to a newly mounted keyed text node.
@@ -55,26 +55,61 @@ pub(crate) struct TextFlight {
 }
 
 impl TextFlight {
-    pub fn new(source_key: String, target_key: String, source: Rect, source_clip: [f32; 4], glyphs: Vec<Instance>, scale: f32, now: f64) -> Self {
+    pub fn new(
+        source_key: String,
+        target_key: String,
+        source: Rect,
+        source_clip: [f32; 4],
+        glyphs: Vec<Instance>,
+        scale: f32,
+        now: f64,
+    ) -> Self {
         let mut progress = Animated::new(0.0).with_class(PropClass::Opacity);
         progress.animate_to(1.0, GROWTH, now);
-        Self { source_key, target_key, source, source_clip, glyphs, scale,
-            destination: source, progress, born: now, presented: source,
-            clip: source_clip, source_alpha: 1.0, target_alpha: 0.0 }
+        Self {
+            source_key,
+            target_key,
+            source,
+            source_clip,
+            glyphs,
+            scale,
+            destination: source,
+            progress,
+            born: now,
+            presented: source,
+            clip: source_clip,
+            source_alpha: 1.0,
+            target_alpha: 0.0,
+        }
     }
 
     pub fn progress(&self, now: f64, reduced: bool) -> f32 {
-        if reduced { ((now - self.born) / 0.15).clamp(0.0, 1.0) as f32 }
-        else { self.progress.sample(now).clamp(0.0, 1.0) }
+        if reduced {
+            ((now - self.born) / 0.15).clamp(0.0, 1.0) as f32
+        } else {
+            self.progress.sample(now).clamp(0.0, 1.0)
+        }
     }
 
     pub fn measure(&mut self, target: Rect, now: f64, reduced: bool) -> bool {
         self.destination = target;
-        let p = if reduced { 1.0 } else { self.progress(now, false) };
+        let p = if reduced {
+            1.0
+        } else {
+            self.progress(now, false)
+        };
         let from = self.source;
-        self.presented = Rect::new(from.x + (target.x - from.x) * p, from.y + (target.y - from.y) * p,
-            from.w + (target.w - from.w) * p, from.h + (target.h - from.h) * p);
-        if reduced { self.progress(now, true) >= 1.0 } else { self.progress.is_settled(now) }
+        self.presented = Rect::new(
+            from.x + (target.x - from.x) * p,
+            from.y + (target.y - from.y) * p,
+            from.w + (target.w - from.w) * p,
+            from.h + (target.h - from.h) * p,
+        );
+        if reduced {
+            self.progress(now, true) >= 1.0
+        } else {
+            self.progress.is_settled(now)
+        }
     }
 
     /// The node at `path` keyed `key` is this flight's source.
@@ -89,11 +124,19 @@ impl TextFlight {
 
     pub fn alphas(&self, target: Rect, now: f64, reduced: bool) -> (f32, f32) {
         let p = self.progress(now, reduced);
-        if reduced { return (1.0 - p, p); }
+        if reduced {
+            return (1.0 - p, p);
+        }
         let rewrap = (target.h - self.source.h).abs() > 2.0;
         let (out, end) = if rewrap { (0.25, 0.4) } else { (0.4, 0.5) };
-        ((1.0 - p / out).clamp(0.0, 1.0),
-            if rewrap { ((p - 0.1) / (end - 0.1)).clamp(0.0, 1.0) } else { (p / end).clamp(0.0, 1.0) })
+        (
+            (1.0 - p / out).clamp(0.0, 1.0),
+            if rewrap {
+                ((p - 0.1) / (end - 0.1)).clamp(0.0, 1.0)
+            } else {
+                (p / end).clamp(0.0, 1.0)
+            },
+        )
     }
 }
 
@@ -102,9 +145,15 @@ impl TextFlight {
 /// skipped), so repeated row-local keys can be told apart.
 pub(crate) fn selects(selector: &str, path: &str, key: Option<&str>) -> bool {
     let Some(key) = key else { return false };
-    if selector == key { return true; }
-    let Some(scope) = selector.strip_suffix(key).and_then(|s| s.strip_suffix('/')) else { return false };
-    let Some(above) = path.strip_suffix(key).and_then(|s| s.strip_suffix('/')) else { return false };
+    if selector == key {
+        return true;
+    }
+    let Some(scope) = selector.strip_suffix(key).and_then(|s| s.strip_suffix('/')) else {
+        return false;
+    };
+    let Some(above) = path.strip_suffix(key).and_then(|s| s.strip_suffix('/')) else {
+        return false;
+    };
     let mut keyed = above.rsplit('/').filter(|seg| !seg.starts_with('#'));
     scope.rsplit('/').all(|seg| keyed.next() == Some(seg))
 }
@@ -112,20 +161,37 @@ pub(crate) fn selects(selector: &str, path: &str, key: Option<&str>) -> bool {
 /// Whether `selector` names a highlight keyed `key` in the text at `path`: [`selects`] for
 /// `{path}/{key}`, without building it.
 pub(crate) fn selects_under(selector: &str, path: &str, key: &str) -> bool {
-    if selector == key { return true; }
-    let Some(scope) = selector.strip_suffix(key).and_then(|s| s.strip_suffix('/')) else { return false };
+    if selector == key {
+        return true;
+    }
+    let Some(scope) = selector.strip_suffix(key).and_then(|s| s.strip_suffix('/')) else {
+        return false;
+    };
     let mut keyed = path.rsplit('/').filter(|seg| !seg.starts_with('#'));
     scope.rsplit('/').all(|seg| keyed.next() == Some(seg))
 }
 
 /// Transform glyph geometry without changing its atlas footprint. Clip edges share the same
 /// transform; a soft inset handles lines that were only partly visible in the source editor.
-pub(crate) fn transformed(mut q: Instance, from: Rect, to: Rect, scale: f32, alpha: f32, clip: [f32; 4], fade: [f32; 4]) -> Instance {
+pub(crate) fn transformed(
+    mut q: Instance,
+    from: Rect,
+    to: Rect,
+    scale: f32,
+    alpha: f32,
+    clip: [f32; 4],
+    fade: [f32; 4],
+) -> Instance {
     let zoom = to.w / from.w.max(0.01);
     let map = |v: f32, from: f32, to: f32| (to + (v / scale - from) * zoom) * scale;
     if q.params[1] == crate::render::KIND_GLYPH && q.radii[3] > 0.0 {
         // An outline glyph (`text::Outline`) moves its pen and magnifies its pixel: crisp in flight.
-        q.radii = [map(q.radii[0], from.x, to.x), map(q.radii[1], from.y, to.y), q.radii[2], q.radii[3] * zoom];
+        q.radii = [
+            map(q.radii[0], from.x, to.x),
+            map(q.radii[1], from.y, to.y),
+            q.radii[2],
+            q.radii[3] * zoom,
+        ];
     } else {
         q.uv[2] = q.rect[2];
         q.uv[3] = q.rect[3];
@@ -147,8 +213,15 @@ mod tests {
     use super::*;
 
     fn flight() -> TextFlight {
-        TextFlight::new("source".into(), "target".into(), Rect::new(40.0, 400.0, 500.0, 40.0),
-            [40.0, 400.0, 540.0, 440.0], Vec::new(), 2.0, 0.0)
+        TextFlight::new(
+            "source".into(),
+            "target".into(),
+            Rect::new(40.0, 400.0, 500.0, 40.0),
+            [40.0, 400.0, 540.0, 440.0],
+            Vec::new(),
+            2.0,
+            0.0,
+        )
     }
 
     #[test]
@@ -173,7 +246,9 @@ mod tests {
         fast.measure(target, 0.0, false);
         for i in 1..=30 {
             slow.measure(target, i as f64 / 30.0, false);
-            for j in (i * 4 - 3)..=i * 4 { fast.measure(target, j as f64 / 120.0, false); }
+            for j in (i * 4 - 3)..=i * 4 {
+                fast.measure(target, j as f64 / 120.0, false);
+            }
             assert_eq!(slow.presented, fast.presented);
         }
         let mut f = flight();
@@ -186,13 +261,25 @@ mod tests {
     #[test]
     fn selectors_match_a_key_or_its_keyed_ancestors() {
         let path = "#0/scroll/#0/msg-42/#1/body";
-        assert!(selects("body", path, Some("body")), "a plain key still matches");
-        assert!(selects("msg-42/body", path, Some("body")), "unkeyed wrappers are skipped");
+        assert!(
+            selects("body", path, Some("body")),
+            "a plain key still matches"
+        );
+        assert!(
+            selects("msg-42/body", path, Some("body")),
+            "unkeyed wrappers are skipped"
+        );
         assert!(selects("scroll/msg-42/body", path, Some("body")));
         assert!(!selects("msg-41/body", path, Some("body")));
-        assert!(!selects("scroll/body", path, Some("body")), "the scope is the nearest keyed ancestors");
+        assert!(
+            !selects("scroll/body", path, Some("body")),
+            "the scope is the nearest keyed ancestors"
+        );
         assert!(!selects("msg-42", path, Some("body")));
         assert!(!selects("body", "#0/#1", None), "unkeyed nodes never match");
-        assert!(!selects("x/msg-42/body", path, Some("body")), "more scope than ancestors");
+        assert!(
+            !selects("x/msg-42/body", path, Some("body")),
+            "more scope than ancestors"
+        );
     }
 }

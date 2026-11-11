@@ -27,12 +27,16 @@ fn playground() -> Playground<Real> {
 }
 
 fn runtime(playground: Playground<Real>) -> Runtime<Real> {
-    App::new(AppSpec::new("folds", (800.0, 500.0), Real::default, real)).playground(playground).headless_runtime((800.0, 500.0), Env::new(false, 1.0))
+    App::new(AppSpec::new("folds", (800.0, 500.0), Real::default, real))
+        .playground(playground)
+        .headless_runtime((800.0, 500.0), Env::new(false, 1.0))
 }
 
 /// Whether the list shows a row keyed `key`.
 fn shown(rt: &Runtime<Real>, key: &str) -> bool {
-    rt.elements().iter().any(|e| e.key.as_deref() == Some(key) && !e.exiting)
+    rt.elements()
+        .iter()
+        .any(|e| e.key.as_deref() == Some(key) && !e.exiting)
 }
 
 fn tap(rt: &mut Runtime<Real>, key: &str) {
@@ -58,7 +62,10 @@ fn a_folded_group_stays_folded_after_the_playground_closes() {
     tap(&mut rt, "playground-group-0");
     assert!(!shown(&rt, "playground-item-1"), "Cards folded");
     reopen(&mut rt);
-    assert!(!shown(&rt, "playground-item-1"), "and still folded, reopened");
+    assert!(
+        !shown(&rt, "playground-item-1"),
+        "and still folded, reopened"
+    );
     assert!(shown(&rt, "playground-item-2"), "Lists isn't");
 }
 
@@ -75,14 +82,32 @@ fn folds_loads_once_and_saves_each_change() {
         move |groups| saves.borrow_mut().push(groups.to_vec()),
     );
     let mut rt = runtime(playground);
-    assert_eq!(*loads.borrow(), 0, "nothing loads until the playground opens");
+    assert_eq!(
+        *loads.borrow(),
+        0,
+        "nothing loads until the playground opens"
+    );
     rt.open_playground("Lists/Short", None);
-    assert!(!shown(&rt, "playground-item-0") && shown(&rt, "playground-item-2"), "Cards loads folded");
+    assert!(
+        !shown(&rt, "playground-item-0") && shown(&rt, "playground-item-2"),
+        "Cards loads folded"
+    );
     tap(&mut rt, "playground-group-2");
     tap(&mut rt, "playground-group-0");
-    assert_eq!(*saved.borrow(), [vec!["Cards".to_owned(), "Lists".to_owned()], vec!["Lists".to_owned()]], "a group it doesn't have is dropped");
+    assert_eq!(
+        *saved.borrow(),
+        [
+            vec!["Cards".to_owned(), "Lists".to_owned()],
+            vec!["Lists".to_owned()]
+        ],
+        "a group it doesn't have is dropped"
+    );
     reopen(&mut rt);
     assert_eq!(*loads.borrow(), 1, "loaded once");
     rt.open_playground("Lists/Short", None);
-    assert_eq!(saved.borrow().last().map(Vec::len), Some(0), "opening a story in a folded group unfolds it, and saves that");
+    assert_eq!(
+        saved.borrow().last().map(Vec::len),
+        Some(0),
+        "opening a story in a folded group unfolds it, and saves that"
+    );
 }

@@ -87,7 +87,14 @@ pub struct TextSpec {
 impl std::fmt::Debug for TextSpec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TextSpec")
-            .field("content", &if self.redacted { "[redacted]" } else { &self.content })
+            .field(
+                "content",
+                &if self.redacted {
+                    "[redacted]"
+                } else {
+                    &self.content
+                },
+            )
             .field("style", &self.style)
             .field("color", &self.color)
             .field("align", &self.align)
@@ -125,19 +132,31 @@ impl TextSpec {
     /// The key [`Self::key_shape`] kept at `scale`.
     pub(crate) fn shape_key(&self, scale: f32) -> Option<u64> {
         let (_, key) = self.shape.filter(|s| s.0 == scale.to_bits())?;
-        debug_assert_eq!(key, self.fresh_shape_key(scale), "a text changed after its shape key was taken");
+        debug_assert_eq!(
+            key,
+            self.fresh_shape_key(scale),
+            "a text changed after its shape key was taken"
+        );
         Some(key)
     }
 
     /// [`crate::text::shape_key`] of this text in its direction.
     pub(crate) fn fresh_shape_key(&self, scale: f32) -> u64 {
-        let key = crate::text::shape_key(&self.content, &self.spans, self.style, scale, self.wrap_anywhere, &self.pills);
+        let key = crate::text::shape_key(
+            &self.content,
+            &self.spans,
+            self.style,
+            scale,
+            self.wrap_anywhere,
+            &self.pills,
+        );
         crate::text::directed(key, self.base())
     }
 
     /// The paragraph direction it lays out in.
     pub(crate) fn base(&self) -> parley::BaseDirection {
-        self.flow.map_or(parley::BaseDirection::Auto, crate::el::Flow::base)
+        self.flow
+            .map_or(parley::BaseDirection::Auto, crate::el::Flow::base)
     }
 
     /// Zeroizes the shown string and shows `content` instead.
@@ -157,7 +176,9 @@ impl TextSpec {
     pub(crate) fn source_slice(&self, start: u32, end: u32) -> Option<&str> {
         match &self.source {
             None => self.content.get(start as usize..end as usize),
-            Some(s) => s.text.get(s.source(start, false) as usize..s.source(end, true) as usize),
+            Some(s) => s
+                .text
+                .get(s.source(start, false) as usize..s.source(end, true) as usize),
         }
     }
 
@@ -170,10 +191,14 @@ impl TextSpec {
         let mut out = String::new();
         let mut at = start;
         for &(a, b) in self.uncopied.iter().filter(|r| r.1 > start && r.0 < end) {
-            if a > at { out.push_str(self.source_slice(at, a)?); }
+            if a > at {
+                out.push_str(self.source_slice(at, a)?);
+            }
             at = at.max(b);
         }
-        if at < end { out.push_str(self.source_slice(at, end)?); }
+        if at < end {
+            out.push_str(self.source_slice(at, end)?);
+        }
         Some(out)
     }
 
@@ -225,21 +250,35 @@ impl TextSpec {
             for span in &self.spans {
                 let mut bounds = vec![span.start, span.end];
                 for &(a, b, _, _) in &self.rings {
-                    bounds.extend([a, b].into_iter().filter(|&p| span.start < p && p < span.end));
+                    bounds.extend(
+                        [a, b]
+                            .into_iter()
+                            .filter(|&p| span.start < p && p < span.end),
+                    );
                 }
                 bounds.sort_unstable();
                 bounds.dedup();
-                spans.extend(bounds.windows(2).map(|w| Span { start: w[0], end: w[1], ..span.clone() }));
+                spans.extend(bounds.windows(2).map(|w| Span {
+                    start: w[0],
+                    end: w[1],
+                    ..span.clone()
+                }));
             }
             self.spans = spans;
         }
         let Some(case) = self.case else { return };
         let (shown, source) = crate::text::CaseSource::new(case, std::mem::take(&mut self.content));
         for span in &mut self.spans {
-            (span.start, span.end) = (source.shown(span.start, false), source.shown(span.end, true));
+            (span.start, span.end) = (
+                source.shown(span.start, false),
+                source.shown(span.end, true),
+            );
         }
         for link in &mut self.links {
-            (link.start, link.end) = (source.shown(link.start, false), source.shown(link.end, true));
+            (link.start, link.end) = (
+                source.shown(link.start, false),
+                source.shown(link.end, true),
+            );
         }
         for r in &mut self.uncopied {
             *r = (source.shown(r.0, false), source.shown(r.1, true));

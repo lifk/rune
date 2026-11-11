@@ -20,7 +20,9 @@ impl CoreStyle for CompactStyle {
 
     #[inline(always)]
     fn is_compressible_replaced(&self) -> bool {
-        self.extra.as_ref().is_some_and(|s| s.item_is_replaced || s.item_is_compressible_replaced)
+        self.extra
+            .as_ref()
+            .is_some_and(|s| s.item_is_replaced || s.item_is_compressible_replaced)
     }
 
     #[inline(always)]
@@ -30,7 +32,9 @@ impl CoreStyle for CompactStyle {
 
     #[inline(always)]
     fn box_sizing(&self) -> BoxSizing {
-        self.extra.as_ref().map_or(BoxSizing::BorderBox, |s| s.box_sizing)
+        self.extra
+            .as_ref()
+            .map_or(BoxSizing::BorderBox, |s| s.box_sizing)
     }
 
     #[inline(always)]
@@ -146,16 +150,24 @@ impl OofItemStyle for CompactStyle {
 
     #[inline(always)]
     fn grid_row(&self) -> Line<GridPlacement<Self::CustomIdent>> {
-        self.extra
-            .as_ref()
-            .map_or(Line { start: GridPlacement::Auto, end: GridPlacement::Auto }, |s| s.grid_row.clone())
+        self.extra.as_ref().map_or(
+            Line {
+                start: GridPlacement::Auto,
+                end: GridPlacement::Auto,
+            },
+            |s| s.grid_row.clone(),
+        )
     }
 
     #[inline(always)]
     fn grid_column(&self) -> Line<GridPlacement<Self::CustomIdent>> {
-        self.extra
-            .as_ref()
-            .map_or(Line { start: GridPlacement::Auto, end: GridPlacement::Auto }, |s| s.grid_column.clone())
+        self.extra.as_ref().map_or(
+            Line {
+                start: GridPlacement::Auto,
+                end: GridPlacement::Auto,
+            },
+            |s| s.grid_column.clone(),
+        )
     }
 }
 
@@ -176,8 +188,14 @@ impl FlexboxContainerStyle for CompactStyle {
             return s.gap;
         }
         Size {
-            width: unpack_lp((self.gap_w_bf16 as u32) << 16, (self.mode_flags & MODE_GAP_W_PCT) != 0),
-            height: unpack_lp((self.gap_h_bf16 as u32) << 16, (self.mode_flags & MODE_GAP_H_PCT) != 0),
+            width: unpack_lp(
+                (self.gap_w_bf16 as u32) << 16,
+                (self.mode_flags & MODE_GAP_W_PCT) != 0,
+            ),
+            height: unpack_lp(
+                (self.gap_h_bf16 as u32) << 16,
+                (self.mode_flags & MODE_GAP_H_PCT) != 0,
+            ),
         }
     }
 
@@ -260,27 +278,39 @@ impl GridContainerStyle for CompactStyle {
 
     #[inline(always)]
     fn grid_template_rows(&self) -> Option<Self::TemplateTrackList<'_>> {
-        self.extra.as_ref().and_then(|s| GridContainerStyle::grid_template_rows(&**s))
+        self.extra
+            .as_ref()
+            .and_then(|s| GridContainerStyle::grid_template_rows(&**s))
     }
 
     #[inline(always)]
     fn grid_template_columns(&self) -> Option<Self::TemplateTrackList<'_>> {
-        self.extra.as_ref().and_then(|s| GridContainerStyle::grid_template_columns(&**s))
+        self.extra
+            .as_ref()
+            .and_then(|s| GridContainerStyle::grid_template_columns(&**s))
     }
 
     #[inline(always)]
     fn grid_auto_rows(&self) -> Self::AutoTrackList<'_> {
-        self.extra.as_ref().map_or_else(|| [].iter().copied(), |s| GridContainerStyle::grid_auto_rows(&**s))
+        self.extra.as_ref().map_or_else(
+            || [].iter().copied(),
+            |s| GridContainerStyle::grid_auto_rows(&**s),
+        )
     }
 
     #[inline(always)]
     fn grid_auto_columns(&self) -> Self::AutoTrackList<'_> {
-        self.extra.as_ref().map_or_else(|| [].iter().copied(), |s| GridContainerStyle::grid_auto_columns(&**s))
+        self.extra.as_ref().map_or_else(
+            || [].iter().copied(),
+            |s| GridContainerStyle::grid_auto_columns(&**s),
+        )
     }
 
     #[inline(always)]
     fn grid_auto_flow(&self) -> GridAutoFlow {
-        self.extra.as_ref().map_or(GridAutoFlow::Row, |s| s.grid_auto_flow)
+        self.extra
+            .as_ref()
+            .map_or(GridAutoFlow::Row, |s| s.grid_auto_flow)
     }
 
     #[inline(always)]
@@ -305,32 +335,44 @@ impl GridContainerStyle for CompactStyle {
 
     #[inline(always)]
     fn justify_items(&self) -> AlignItems {
-        self.extra.as_ref().map_or(AlignItems::NORMAL, |s| s.justify_items)
+        self.extra
+            .as_ref()
+            .map_or(AlignItems::NORMAL, |s| s.justify_items)
     }
 
     #[inline(always)]
     fn grid_template_areas(&self) -> Option<Self::GridTemplateAreas<'_>> {
-        self.extra.as_ref().and_then(|s| GridContainerStyle::grid_template_areas(&**s))
+        self.extra
+            .as_ref()
+            .and_then(|s| GridContainerStyle::grid_template_areas(&**s))
     }
 
     #[inline(always)]
     fn grid_template_area_row_count(&self) -> u16 {
-        self.extra.as_ref().map_or(0, |s| GridContainerStyle::grid_template_area_row_count(&**s))
+        self.extra.as_ref().map_or(0, |s| {
+            GridContainerStyle::grid_template_area_row_count(&**s)
+        })
     }
 
     #[inline(always)]
     fn grid_template_area_column_count(&self) -> u16 {
-        self.extra.as_ref().map_or(0, |s| GridContainerStyle::grid_template_area_column_count(&**s))
+        self.extra.as_ref().map_or(0, |s| {
+            GridContainerStyle::grid_template_area_column_count(&**s)
+        })
     }
 
     #[inline(always)]
     fn grid_template_column_names(&self) -> Option<Self::TemplateLineNames<'_>> {
-        self.extra.as_ref().and_then(|s| GridContainerStyle::grid_template_column_names(&**s))
+        self.extra
+            .as_ref()
+            .and_then(|s| GridContainerStyle::grid_template_column_names(&**s))
     }
 
     #[inline(always)]
     fn grid_template_row_names(&self) -> Option<Self::TemplateLineNames<'_>> {
-        self.extra.as_ref().and_then(|s| GridContainerStyle::grid_template_row_names(&**s))
+        self.extra
+            .as_ref()
+            .and_then(|s| GridContainerStyle::grid_template_row_names(&**s))
     }
 }
 
@@ -359,7 +401,9 @@ impl GridItemStyle for CompactStyle {
 impl BlockContainerStyle for CompactStyle {
     #[inline(always)]
     fn text_align(&self) -> TextAlign {
-        self.extra.as_ref().map_or(TextAlign::Auto, |s| s.text_align)
+        self.extra
+            .as_ref()
+            .map_or(TextAlign::Auto, |s| s.text_align)
     }
 
     #[inline(always)]
@@ -369,7 +413,9 @@ impl BlockContainerStyle for CompactStyle {
 
     #[inline(always)]
     fn justify_items(&self) -> AlignItems {
-        self.extra.as_ref().map_or(AlignItems::NORMAL, |s| s.justify_items)
+        self.extra
+            .as_ref()
+            .map_or(AlignItems::NORMAL, |s| s.justify_items)
     }
 }
 

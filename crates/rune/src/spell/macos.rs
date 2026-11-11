@@ -40,7 +40,9 @@ pub(super) fn suggest(word: &str) -> Vec<String> {
     // SAFETY: as in `misspelled`; `range` is all of `string`.
     unsafe {
         let checker = NSSpellChecker::sharedSpellChecker();
-        let Some(guesses) = checker.guessesForWordRange_inString_language_inSpellDocumentWithTag(range, &string, None, 0) else {
+        let Some(guesses) = checker
+            .guessesForWordRange_inString_language_inSpellDocumentWithTag(range, &string, None, 0)
+        else {
             return Vec::new();
         };
         guesses.iter().map(|g| g.to_string()).collect()
@@ -48,16 +50,26 @@ pub(super) fn suggest(word: &str) -> Vec<String> {
 }
 
 /// None to choose: AppKit finds each text's language itself, as Desktop leaves it on macOS.
-pub(super) fn available() -> Vec<String> { Vec::new() }
+pub(super) fn available() -> Vec<String> {
+    Vec::new()
+}
 
-pub(super) fn preferred() -> Vec<String> { Vec::new() }
+pub(super) fn preferred() -> Vec<String> {
+    Vec::new()
+}
 
-pub(super) fn english_name(tag: &str) -> String { tag.to_owned() }
+pub(super) fn english_name(tag: &str) -> String {
+    tag.to_owned()
+}
 
 /// Unused: macOS has no dictionaries to choose, so no list names them.
-pub(super) fn name_in(_: &str, _: &str) -> Option<String> { None }
+pub(super) fn name_in(_: &str, _: &str) -> Option<String> {
+    None
+}
 
-pub(super) fn sort_in<T>(_: &mut [(String, T)], _: &str) -> bool { false }
+pub(super) fn sort_in<T>(_: &mut [(String, T)], _: &str) -> bool {
+    false
+}
 
 pub(super) fn learn(word: &str) {
     // SAFETY: the shared checker is AppKit's own and the word a live string.

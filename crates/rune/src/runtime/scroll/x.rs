@@ -61,12 +61,20 @@ impl WheelLock {
 /// with no horizontal part turns horizontal, as browsers and Windows and Linux apps do for a
 /// mouse wheel. macOS turns it itself (`shift` is false there), and a delta that already has a
 /// horizontal part was turned by the system or comes from a trackpad.
-pub(crate) fn wheel_delta(delta: winit::event::MouseScrollDelta, scale: f32, shift: bool) -> (f32, f32) {
+pub(crate) fn wheel_delta(
+    delta: winit::event::MouseScrollDelta,
+    scale: f32,
+    shift: bool,
+) -> (f32, f32) {
     let (dx, dy) = match delta {
         winit::event::MouseScrollDelta::PixelDelta(p) => (p.x as f32 / scale, p.y as f32 / scale),
         winit::event::MouseScrollDelta::LineDelta(x, y) => (x * 40.0, y * 40.0),
     };
-    if shift && dx == 0.0 { (dy, 0.0) } else { (dx, dy) }
+    if shift && dx == 0.0 {
+        (dy, 0.0)
+    } else {
+        (dx, dy)
+    }
 }
 
 /// Whether Shift turns the wheel on this platform (macOS does it before the app sees the event).
@@ -76,7 +84,11 @@ pub(crate) const SHIFT_TURNS_WHEEL: bool = !cfg!(target_os = "macos");
 impl ScrollState {
     /// The offset, velocity and limit on one axis.
     pub(super) fn axis(&mut self, horizontal: bool) -> (&mut f64, f64) {
-        if horizontal { (&mut self.x.offset, self.x.max) } else { (&mut self.offset, self.max) }
+        if horizontal {
+            (&mut self.x.offset, self.x.max)
+        } else {
+            (&mut self.offset, self.max)
+        }
     }
 }
 
@@ -89,7 +101,9 @@ impl<S: 'static> Runtime<S> {
     /// without them a pause of 0.1 s ends a gesture. An [`El::on_wheel`] handler under the
     /// pointer hears it first; [`Self::wheel_event`] also passes modifiers and phases.
     pub fn wheel_xy(&mut self, x: f32, y: f32, dx: f32, dy: f32) {
-        if dx == 0.0 && dy == 0.0 { return; }
+        if dx == 0.0 && dy == 0.0 {
+            return;
+        }
         self.wheel_event(crate::WheelEvent::new(dx, dy).at(x, y));
     }
 
@@ -102,7 +116,10 @@ impl<S: 'static> Runtime<S> {
         let queued = self.queue.iter().any(|a| matches!(a, Action::Wheel(..)));
         let l = &mut self.wheel_lock;
         let idle = if l.phased { PHASED_IDLE } else { WHEEL_IDLE };
-        let flipped = !l.phased && l.run_gesture == l.gesture && l.horizontal.is_some_and(|h| if h { dx == 0.0 } else { dy == 0.0 });
+        let flipped = !l.phased
+            && l.run_gesture == l.gesture
+            && l.horizontal
+                .is_some_and(|h| if h { dx == 0.0 } else { dy == 0.0 });
         let stale = l.ended.is_some() || l.at.is_none_or(|a| now - a > idle) || flipped;
         if stale {
             let gesture = l.gesture + 1;
@@ -112,7 +129,11 @@ impl<S: 'static> Runtime<S> {
                 l.ended = None;
                 l.momentum = false;
             } else {
-                *l = WheelLock { gesture, run_gesture: gesture, ..WheelLock::default() };
+                *l = WheelLock {
+                    gesture,
+                    run_gesture: gesture,
+                    ..WheelLock::default()
+                };
             }
         }
         l.at = Some(now);
@@ -120,7 +141,9 @@ impl<S: 'static> Runtime<S> {
 
     /// Scrolls by a delta no `on_wheel` handler took, on the axis the gesture locked to.
     pub(super) fn wheel_scroll_for(&mut self, gesture: u64, x: f32, y: f32, dx: f32, dy: f32) {
-        if dx == 0.0 && dy == 0.0 { return; }
+        if dx == 0.0 && dy == 0.0 {
+            return;
+        }
         self.wheel_lock.sync_gesture(gesture);
         let l = &self.wheel_lock;
         let horizontal = match l.horizontal {
@@ -128,14 +151,22 @@ impl<S: 'static> Runtime<S> {
             // let go, a tilt, a second device), so it picks afresh rather than being dropped.
             Some(h) if l.phased || if h { dx != 0.0 } else { dy != 0.0 } => h,
             _ => {
-                let scroller = (dx.abs() > dy.abs()).then(|| self.scroll_at_axis(x, y, true)).flatten();
+                let scroller = (dx.abs() > dy.abs())
+                    .then(|| self.scroll_at_axis(x, y, true))
+                    .flatten();
                 let h = scroller.is_some();
                 self.wheel_lock.horizontal = Some(h);
                 self.wheel_lock.scroller = scroller;
                 h
             }
         };
-        if horizontal { if dx != 0.0 { self.wheel_x(x, y, dx); } } else if dy != 0.0 { self.wheel(x, y, dy); }
+        if horizontal {
+            if dx != 0.0 {
+                self.wheel_x(x, y, dx);
+            }
+        } else if dy != 0.0 {
+            self.wheel(x, y, dy);
+        }
     }
 
     /// The platform began a trackpad gesture (winit's `TouchPhase::Started` on a wheel event):
@@ -144,11 +175,15 @@ impl<S: 'static> Runtime<S> {
         let now = self.now_clock();
         let gesture = self.wheel_lock.gesture;
         // A delta queued for `on_wheel` handlers hasn't picked who has the gesture yet.
-        let queued = self.queue.iter().any(|a| matches!(a, Action::Wheel(g, ..) if *g == gesture));
+        let queued = self
+            .queue
+            .iter()
+            .any(|a| matches!(a, Action::Wheel(g, ..) if *g == gesture));
         let any_queued = self.queue.iter().any(|a| matches!(a, Action::Wheel(..)));
         let l = &mut self.wheel_lock;
         let active = l.run_gesture == gesture && (l.horizontal.is_some() || l.handler.is_some());
-        let momentum = !l.momentum && (active || queued) && l.ended.is_some_and(|e| now - e <= MOMENTUM_GAP);
+        let momentum =
+            !l.momentum && (active || queued) && l.ended.is_some_and(|e| now - e <= MOMENTUM_GAP);
         if !momentum {
             l.gesture += 1;
             if !any_queued {
@@ -179,7 +214,11 @@ impl<S: 'static> Runtime<S> {
             self.wheel_lock.ended = None;
             self.wheel_lock.momentum = false;
         } else {
-            self.wheel_lock = WheelLock { gesture, run_gesture: gesture, ..WheelLock::default() };
+            self.wheel_lock = WheelLock {
+                gesture,
+                run_gesture: gesture,
+                ..WheelLock::default()
+            };
         }
     }
 
@@ -190,18 +229,27 @@ impl<S: 'static> Runtime<S> {
         self.dismiss_help();
         let latched = self.wheel_lock.scroller.filter(|id| {
             self.node_index.get(id).is_some_and(|&i| {
-                self.nodes[i].scroll.is_some() && self.nodes[i].scroll_axes.x() && !self.subtree_exiting(i) && self.allowed(i)
+                self.nodes[i].scroll.is_some()
+                    && self.nodes[i].scroll_axes.x()
+                    && !self.subtree_exiting(i)
+                    && self.allowed(i)
             })
         });
-        let Some(id) = latched.or_else(|| self.scroll_at_axis(x, y, true)) else { return };
-        let Some(st) = self.scrolls.get_mut(&id) else { return };
+        let Some(id) = latched.or_else(|| self.scroll_at_axis(x, y, true)) else {
+            return;
+        };
+        let Some(st) = self.scrolls.get_mut(&id) else {
+            return;
+        };
         let before = st.x.offset;
         st.x.offset = (st.x.offset + st.x.toward(f64::from(dx))).clamp(0.0, st.x.max);
         st.x.v = 0.0;
         st.x.glide = None;
         st.direct = true;
         log_event!(self, "wheel-x {dx:.1}");
-        if st.x.offset != before { self.scroll_cancels_press(id); }
+        if st.x.offset != before {
+            self.scroll_cancels_press(id);
+        }
     }
 
     /// Releases a scroll with velocity (vx, vy) in points per second (positive moves content
@@ -214,12 +262,16 @@ impl<S: 'static> Runtime<S> {
         }
         self.release_hover_hold();
         self.dismiss_help();
-        let Some(id) = self.scroll_at_axis(x, y, true) else { return };
+        let Some(id) = self.scroll_at_axis(x, y, true) else {
+            return;
+        };
         if let Some(st) = self.scrolls.get_mut(&id) {
             st.x.v = st.x.toward(f64::from(vx)) as f32;
             st.x.glide = None;
             log_event!(self, "fling-x {vx:.0}");
-            if vx != 0.0 { self.scroll_cancels_press(id); }
+            if vx != 0.0 {
+                self.scroll_cancels_press(id);
+            }
         }
     }
 
@@ -231,7 +283,11 @@ impl<S: 'static> Runtime<S> {
             crate::el::Flow::Ltr => self.nodes[c].target[2] - view[0],
             crate::el::Flow::Rtl => view[2] - self.nodes[c].target[0],
         };
-        let content_w = self.scroll_children(i).map(|c| f64::from(reach(c))).reduce(f64::max).unwrap_or(0.0);
+        let content_w = self
+            .scroll_children(i)
+            .map(|c| f64::from(reach(c)))
+            .reduce(f64::max)
+            .unwrap_or(0.0);
         content_w - f64::from(view[2] - view[0])
     }
 
@@ -239,17 +295,29 @@ impl<S: 'static> Runtime<S> {
     pub(super) fn step_scroll_x(&mut self, i: usize, dt: f32) -> bool {
         let id = self.nodes[i].id;
         let overflow = self.scroll_overflow_x(i);
-        if let Some(active) = self.step_touch_scroll(id, overflow, dt, true) { return active; }
-        let Some(st) = self.scrolls.get_mut(&id) else { return false };
+        if let Some(active) = self.step_touch_scroll(id, overflow, dt, true) {
+            return active;
+        }
+        let Some(st) = self.scrolls.get_mut(&id) else {
+            return false;
+        };
         st.x.max = overflow.max(0.0);
         let mut moving = false;
         if st.x.glide.is_some() {
-            moving = scroll_offset::glide_axis(st.glide_spring(), &mut st.x.offset, &mut st.x.glide, st.x.aim.min(st.x.max), dt);
+            moving = scroll_offset::glide_axis(
+                st.glide_spring(),
+                &mut st.x.offset,
+                &mut st.x.glide,
+                st.x.aim.min(st.x.max),
+                dt,
+            );
         } else if st.x.v.abs() > 1.0 {
             let decay = (-SCROLL_DECAY * dt).exp();
             st.x.offset += f64::from(st.x.v * (1.0 - decay) / SCROLL_DECAY);
             st.x.v *= decay;
-            if st.x.offset <= 0.0 || st.x.offset >= st.x.max { st.x.v = 0.0; }
+            if st.x.offset <= 0.0 || st.x.offset >= st.x.max {
+                st.x.v = 0.0;
+            }
             moving = true;
         } else {
             st.x.v = 0.0;
@@ -261,29 +329,50 @@ impl<S: 'static> Runtime<S> {
     /// `Tx::scroll_into_view` on x: scrolls the nearest horizontal viewport around row `key`
     /// just far enough to show it, leaving its `El::scroll_margin`.
     pub(super) fn reveal_row_x(&mut self, scope: Option<&str>, key: &str) {
-        let target = self.nodes.iter().position(|n| {
-            n.named(key) && n.parent.is_none_or(|p| super::in_scope(&self.nodes[p].path, scope))
-        }).map(|i| (i, self.nodes[i].target[0], self.nodes[i].local.w)).or_else(|| {
-            let (i, [x0, _, x1, _]) = self.highlight_target_in(&self.nodes, scope, key)?;
-            Some((i, x0, (x1 - x0).max(0.0)))
-        });
-        let Some((i, target_x, target_w)) = target else { return };
+        let target = self
+            .nodes
+            .iter()
+            .position(|n| {
+                n.named(key)
+                    && n.parent
+                        .is_none_or(|p| super::in_scope(&self.nodes[p].path, scope))
+            })
+            .map(|i| (i, self.nodes[i].target[0], self.nodes[i].local.w))
+            .or_else(|| {
+                let (i, [x0, _, x1, _]) = self.highlight_target_in(&self.nodes, scope, key)?;
+                Some((i, x0, (x1 - x0).max(0.0)))
+            });
+        let Some((i, target_x, target_w)) = target else {
+            return;
+        };
         let Some(v) = std::iter::successors(self.nodes[i].parent, |&p| self.nodes[p].parent)
-            .find(|&p| self.nodes[p].scroll.is_some() && self.nodes[p].scroll_axes.x()) else { return };
+            .find(|&p| self.nodes[p].scroll.is_some() && self.nodes[p].scroll_axes.x())
+        else {
+            return;
+        };
         let view = &self.nodes[v];
         // From the viewport's start edge: its right, right to left.
         let start = match view.flow {
             crate::el::Flow::Ltr => target_x - view.target[0],
             crate::el::Flow::Rtl => view.target[2] - (target_x + target_w),
         };
-        let (left, width, viewport) = (f64::from(start), f64::from(target_w), f64::from(view.local.w));
+        let (left, width, viewport) = (
+            f64::from(start),
+            f64::from(target_w),
+            f64::from(view.local.w),
+        );
         let (margin, id) = (f64::from(view.scroll_edges.margin), view.id);
         // A vertical reveal may have just mounted rows (virtual ones) that widened the content.
         let max = self.scroll_overflow_x(v).max(0.0);
-        let Some(st) = self.scrolls.get_mut(&id) else { return };
+        let Some(st) = self.scrolls.get_mut(&id) else {
+            return;
+        };
         st.x.max = max;
-        let offset = scroll_edge::reveal(st.x.offset, left, width, viewport, margin).clamp(0.0, max);
-        if offset == st.x.offset { return; }
+        let offset =
+            scroll_edge::reveal(st.x.offset, left, width, viewport, margin).clamp(0.0, max);
+        if offset == st.x.offset {
+            return;
+        }
         st.x.offset = offset;
         st.x.v = 0.0;
         st.x.glide = None;
@@ -300,10 +389,22 @@ mod tests {
     #[test]
     fn shift_turns_only_a_purely_vertical_wheel() {
         assert_eq!(wheel_delta(LineDelta(0.0, -1.0), 2.0, false), (0.0, -40.0));
-        assert_eq!(wheel_delta(LineDelta(0.0, -1.0), 2.0, true), (-40.0, 0.0), "Shift + mouse wheel");
-        assert_eq!(wheel_delta(LineDelta(1.0, 0.0), 2.0, false), (40.0, 0.0), "a horizontal wheel (WM_MOUSEHWHEEL, X11 buttons 6/7)");
+        assert_eq!(
+            wheel_delta(LineDelta(0.0, -1.0), 2.0, true),
+            (-40.0, 0.0),
+            "Shift + mouse wheel"
+        );
+        assert_eq!(
+            wheel_delta(LineDelta(1.0, 0.0), 2.0, false),
+            (40.0, 0.0),
+            "a horizontal wheel (WM_MOUSEHWHEEL, X11 buttons 6/7)"
+        );
         let trackpad = PixelDelta(PhysicalPosition::new(-8.0, 20.0));
-        assert_eq!(wheel_delta(trackpad, 2.0, true), (-4.0, 10.0), "a delta with a horizontal part stays as it is");
+        assert_eq!(
+            wheel_delta(trackpad, 2.0, true),
+            (-4.0, 10.0),
+            "a delta with a horizontal part stays as it is"
+        );
         assert!(SHIFT_TURNS_WHEEL != cfg!(target_os = "macos"));
     }
 }

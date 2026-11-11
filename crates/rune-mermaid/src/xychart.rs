@@ -35,7 +35,10 @@ pub(crate) struct XyChart {
 }
 
 pub(crate) fn parse(header: &str, body: &[&str]) -> Option<XyChart> {
-    let mut x = XyChart { horizontal: header.trim() == "horizontal", ..XyChart::default() };
+    let mut x = XyChart {
+        horizontal: header.trim() == "horizontal",
+        ..XyChart::default()
+    };
     let mut items = 0;
     for &l in body {
         if let Some(rest) = word(l, "title") {
@@ -47,12 +50,24 @@ pub(crate) fn parse(header: &str, body: &[&str]) -> Option<XyChart> {
         } else if let Some(rest) = word(l, "y-axis") {
             let (title, _, range) = axis(rest);
             (x.y_title, x.y_range) = (title, range);
-        } else if let Some((kind, rest)) = word(l, "bar").map(|r| (Kind::Bar, r)).or_else(|| word(l, "line").map(|r| (Kind::Line, r))) {
+        } else if let Some((kind, rest)) = word(l, "bar")
+            .map(|r| (Kind::Bar, r))
+            .or_else(|| word(l, "line").map(|r| (Kind::Line, r)))
+        {
             let Some(open) = rest.find('[') else { continue };
-            let values: Option<Vec<f32>> = list(&rest[open..]).iter().map(|v| v.parse::<f32>().ok().filter(|f| f.is_finite())).collect();
-            let Some(values) = values.filter(|v| !v.is_empty()) else { continue };
+            let values: Option<Vec<f32>> = list(&rest[open..])
+                .iter()
+                .map(|v| v.parse::<f32>().ok().filter(|f| f.is_finite()))
+                .collect();
+            let Some(values) = values.filter(|v| !v.is_empty()) else {
+                continue;
+            };
             items += values.len();
-            x.series.push(Series { kind, name: clean_quoted(&rest[..open]), values });
+            x.series.push(Series {
+                kind,
+                name: clean_quoted(&rest[..open]),
+                values,
+            });
         }
         if items > MAX_ITEMS {
             return None;
@@ -64,7 +79,14 @@ pub(crate) fn parse(header: &str, body: &[&str]) -> Option<XyChart> {
 /// `"Title" [a, b]`, `Title 0 --> 10`, or a title alone.
 fn axis(rest: &str) -> (String, Vec<String>, Option<[f32; 2]>) {
     if let Some(open) = rest.find('[') {
-        return (clean_quoted(&rest[..open]), list(&rest[open..]).iter().map(|s| clean_quoted(s)).collect(), None);
+        return (
+            clean_quoted(&rest[..open]),
+            list(&rest[open..])
+                .iter()
+                .map(|s| clean_quoted(s))
+                .collect(),
+            None,
+        );
     }
     if let Some((a, b)) = rest.split_once("-->") {
         let a = a.trim();
@@ -74,7 +96,11 @@ fn axis(rest: &str) -> (String, Vec<String>, Option<[f32; 2]>) {
             && hi.is_finite()
             && lo != hi
         {
-            return (clean_quoted(title), Vec::new(), Some([lo.min(hi), lo.max(hi)]));
+            return (
+                clean_quoted(title),
+                Vec::new(),
+                Some([lo.min(hi), lo.max(hi)]),
+            );
         }
     }
     (clean_quoted(rest), Vec::new(), None)
@@ -82,7 +108,13 @@ fn axis(rest: &str) -> (String, Vec<String>, Option<[f32; 2]>) {
 
 /// The items of `[a, "b, c", d]`, trimmed.
 fn list(s: &str) -> Vec<String> {
-    let Some(inner) = s.trim().strip_prefix('[').and_then(|r| r.rfind(']').map(|e| &r[..e])) else { return Vec::new() };
+    let Some(inner) = s
+        .trim()
+        .strip_prefix('[')
+        .and_then(|r| r.rfind(']').map(|e| &r[..e]))
+    else {
+        return Vec::new();
+    };
     if inner.trim().is_empty() {
         return Vec::new();
     }
@@ -119,7 +151,10 @@ fn nice(raw: f32) -> f32 {
 /// The value axis's ends and ticks: `range` as given, or the data's (taking in zero) rounded out.
 pub(crate) fn scale(range: Option<[f32; 2]>, series: &[Series]) -> ([f32; 2], Vec<f32>) {
     let [lo, hi] = range.unwrap_or_else(|| {
-        let (lo, hi) = series.iter().flat_map(|s| &s.values).fold((0.0f32, 0.0f32), |(a, b), &v| (a.min(v), b.max(v)));
+        let (lo, hi) = series
+            .iter()
+            .flat_map(|s| &s.values)
+            .fold((0.0f32, 0.0f32), |(a, b), &v| (a.min(v), b.max(v)));
         let hi = if hi - lo < 1e-9 { lo + 1.0 } else { hi };
         let step = nice((hi - lo) / 5.0);
         [(lo / step).floor() * step, (hi / step).ceil() * step]
@@ -141,8 +176,12 @@ pub(crate) fn draw(x: &XyChart, paint: &DiagramStyle) -> Option<Scene> {
     let note = small(paint);
     let ([lo, hi], ticks) = scale(x.y_range, &x.series);
     let names: Vec<String> = match x.x_range {
-        _ if !x.bands.is_empty() => (0..n).map(|i| x.bands.get(i).cloned().unwrap_or_default()).collect(),
-        Some([a, b]) => (0..n).map(|i| number(f64::from(a + (b - a) * i as f32 / (n.max(2) - 1) as f32))).collect(),
+        _ if !x.bands.is_empty() => (0..n)
+            .map(|i| x.bands.get(i).cloned().unwrap_or_default())
+            .collect(),
+        Some([a, b]) => (0..n)
+            .map(|i| number(f64::from(a + (b - a) * i as f32 / (n.max(2) - 1) as f32)))
+            .collect(),
         None => vec![String::new(); n],
     };
     let mut c = Canvas::default();
@@ -153,7 +192,10 @@ pub(crate) fn draw(x: &XyChart, paint: &DiagramStyle) -> Option<Scene> {
         let mut h: f32 = 0.0;
         for (i, s) in x.series.iter().enumerate() {
             let m = measure(&s.name, note);
-            c.fill(ellipse([at + 5.0, m.size[1] / 2.0], 5.0, 5.0), solid(paint, hue(i)));
+            c.fill(
+                ellipse([at + 5.0, m.size[1] / 2.0], 5.0, 5.0),
+                solid(paint, hue(i)),
+            );
             c.label_at(&m, [at + 14.0, 0.0], note, paint.muted, Align::Start);
             at += 14.0 + m.size[0] + 16.0;
             h = h.max(m.size[1]);
@@ -162,7 +204,10 @@ pub(crate) fn draw(x: &XyChart, paint: &DiagramStyle) -> Option<Scene> {
     }
     let value_title = measure(&x.y_title, note);
     let band_title = measure(&x.x_title, note);
-    let values: Vec<(f32, Measured)> = ticks.iter().map(|&t| (t, measure(&number(f64::from(t)), note))).collect();
+    let values: Vec<(f32, Measured)> = ticks
+        .iter()
+        .map(|&t| (t, measure(&number(f64::from(t)), note)))
+        .collect();
     let v01 = |v: f32| ((v - lo) / (hi - lo)).clamp(0.0, 1.0);
     let base = v01(0.0);
 
@@ -188,25 +233,49 @@ pub(crate) fn draw(x: &XyChart, paint: &DiagramStyle) -> Option<Scene> {
         (x0, y0) = (vw + 10.0, top);
         (x1, y1) = (room(paint).max(x0 + 200.0), top + PLOT_H);
         let band = (x1 - x0) / n as f32;
-        labels = names.iter().map(|t| measure_wrap(t, note, (band - 4.0).max(24.0))).collect();
+        labels = names
+            .iter()
+            .map(|t| measure_wrap(t, note, (band - 4.0).max(24.0)))
+            .collect();
     }
     let length = if x.horizontal { y1 - y0 } else { x1 - x0 };
     let band = length / n as f32;
-    let point = |u: f32, v: f32| if x.horizontal { [x0 + v * (x1 - x0), y0 + u] } else { [x0 + u, y1 - v * (y1 - y0)] };
+    let point = |u: f32, v: f32| {
+        if x.horizontal {
+            [x0 + v * (x1 - x0), y0 + u]
+        } else {
+            [x0 + u, y1 - v * (y1 - y0)]
+        }
+    };
 
     // The value axis: grid lines and tick labels.
     if x.horizontal {
-        let ticks: Vec<(f32, Measured)> = values.iter().map(|(t, m)| (point(0.0, v01(*t))[0], m.clone())).collect();
+        let ticks: Vec<(f32, Measured)> = values
+            .iter()
+            .map(|(t, m)| (point(0.0, v01(*t))[0], m.clone()))
+            .collect();
         axis_x(&mut c, &ticks, [x0, x1], [y0, y1], note, paint);
         if !value_title.text.is_empty() {
             let h = values.iter().map(|v| v.1.size[1]).fold(0.0, f32::max);
-            c.label(&value_title, [(x0 + x1) / 2.0, y1 + h + 14.0 + value_title.size[1] / 2.0], note, paint.muted, Align::Center);
+            c.label(
+                &value_title,
+                [(x0 + x1) / 2.0, y1 + h + 14.0 + value_title.size[1] / 2.0],
+                note,
+                paint.muted,
+                Align::Center,
+            );
         }
     } else {
         for (t, m) in &values {
             let y = point(0.0, v01(*t))[1];
             c.stroke(vec![[x0, y], [x1, y]], false, 1.0, paint.text.alpha(0.08));
-            c.label_at(m, [x0 - 8.0 - m.size[0], y - m.size[1] / 2.0], note, paint.muted, Align::End);
+            c.label_at(
+                m,
+                [x0 - 8.0 - m.size[0], y - m.size[1] / 2.0],
+                note,
+                paint.muted,
+                Align::End,
+            );
         }
     }
     let axis_line = [point(0.0, base), point(length, base)];
@@ -216,18 +285,38 @@ pub(crate) fn draw(x: &XyChart, paint: &DiagramStyle) -> Option<Scene> {
     for (i, m) in labels.iter().enumerate() {
         let mid = (i as f32 + 0.5) * band;
         if x.horizontal {
-            c.label_at(m, [x0 - 10.0 - m.size[0], y0 + mid - m.size[1] / 2.0], note, paint.muted, Align::End);
+            c.label_at(
+                m,
+                [x0 - 10.0 - m.size[0], y0 + mid - m.size[1] / 2.0],
+                note,
+                paint.muted,
+                Align::End,
+            );
         } else {
-            c.label_at(m, [x0 + mid - m.size[0] / 2.0, y1 + 6.0], note, paint.muted, Align::Center);
+            c.label_at(
+                m,
+                [x0 + mid - m.size[0] / 2.0, y1 + 6.0],
+                note,
+                paint.muted,
+                Align::Center,
+            );
         }
     }
     if !x.horizontal && !band_title.text.is_empty() {
         let h = labels.iter().map(|m| m.size[1]).fold(0.0, f32::max);
-        c.label(&band_title, [(x0 + x1) / 2.0, y1 + h + 14.0 + band_title.size[1] / 2.0], note, paint.muted, Align::Center);
+        c.label(
+            &band_title,
+            [(x0 + x1) / 2.0, y1 + h + 14.0 + band_title.size[1] / 2.0],
+            note,
+            paint.muted,
+            Align::Center,
+        );
     }
 
     // Bars side by side within a band, then lines over them.
-    let bars: Vec<usize> = (0..x.series.len()).filter(|&i| x.series[i].kind == Kind::Bar).collect();
+    let bars: Vec<usize> = (0..x.series.len())
+        .filter(|&i| x.series[i].kind == Kind::Bar)
+        .collect();
     let group = band * 0.72;
     let each = group / bars.len().max(1) as f32;
     for (k, &i) in bars.iter().enumerate() {
@@ -236,13 +325,28 @@ pub(crate) fn draw(x: &XyChart, paint: &DiagramStyle) -> Option<Scene> {
             let u0 = b as f32 * band + (band - group) / 2.0 + k as f32 * each + each * 0.06;
             let u1 = u0 + each * 0.88;
             let (p, q) = (point(u0, base), point(u1, v01(v)));
-            let (ax, ay, bx, by) = (p[0].min(q[0]), p[1].min(q[1]), p[0].max(q[0]), p[1].max(q[1]));
+            let (ax, ay, bx, by) = (
+                p[0].min(q[0]),
+                p[1].min(q[1]),
+                p[0].max(q[0]),
+                p[1].max(q[1]),
+            );
             c.fill(vec![[ax, ay], [bx, ay], [bx, by], [ax, by]], fill);
         }
     }
-    for (i, s) in x.series.iter().enumerate().filter(|(_, s)| s.kind == Kind::Line) {
+    for (i, s) in x
+        .series
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.kind == Kind::Line)
+    {
         let color = solid(paint, hue(i));
-        let pts: Vec<[f32; 2]> = s.values.iter().enumerate().map(|(b, &v)| point((b as f32 + 0.5) * band, v01(v))).collect();
+        let pts: Vec<[f32; 2]> = s
+            .values
+            .iter()
+            .enumerate()
+            .map(|(b, &v)| point((b as f32 + 0.5) * band, v01(v)))
+            .collect();
         c.stroke(pts.clone(), false, 2.0, color);
         for p in pts {
             c.shape(ellipse(p, 3.0, 3.0), color, paint.surface, 1.0);

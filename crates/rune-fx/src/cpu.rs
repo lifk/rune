@@ -92,7 +92,11 @@ fn blur3(v: &[f32], radius: f32, wrap: bool) -> Vec<f32> {
     let mut a = v.to_vec();
     let mut b = vec![0.0f32; v.len()];
     let at = |a: &[f32], i: i64| -> f32 {
-        if wrap { a[i.rem_euclid(n) as usize] } else { a[i.clamp(0, n - 1) as usize] }
+        if wrap {
+            a[i.rem_euclid(n) as usize]
+        } else {
+            a[i.clamp(0, n - 1) as usize]
+        }
     };
     for _ in 0..3 {
         let mut acc: f32 = (-r..=r).map(|k| at(&a, k)).sum();
@@ -133,8 +137,15 @@ struct Strikes {
 
 impl Strikes {
     fn new(speed: f32, seed: u32) -> Strikes {
-        let period = if speed > 0.0 { (0.55 / speed).clamp(0.05, 4.0) } else { f32::INFINITY };
-        Strikes { period, seed: hu(seed, 0x5157) }
+        let period = if speed > 0.0 {
+            (0.55 / speed).clamp(0.05, 4.0)
+        } else {
+            f32::INFINITY
+        };
+        Strikes {
+            period,
+            seed: hu(seed, 0x5157),
+        }
     }
     fn start(&self, k: i32) -> f32 {
         if self.period.is_infinite() {
@@ -168,8 +179,16 @@ impl Strikes {
 /// the same channel, then a settle while it holds.
 fn strike_env(age: f32, dur: f32, flicker: f32, h: u32) -> f32 {
     let flash = 1.0 + 0.65 * (-age / 0.022).exp();
-    let a1 = if dur.is_finite() { dur * (0.3 + 0.4 * u01(h)) } else { f32::INFINITY };
-    let ret = if u01(h.wrapping_add(1)) < 0.6 && age > a1 { 0.7 * flicker * (-(age - a1) / 0.03).exp() } else { 0.0 };
+    let a1 = if dur.is_finite() {
+        dur * (0.3 + 0.4 * u01(h))
+    } else {
+        f32::INFINITY
+    };
+    let ret = if u01(h.wrapping_add(1)) < 0.6 && age > a1 {
+        0.7 * flicker * (-(age - a1) / 0.03).exp()
+    } else {
+        0.0
+    };
     let settle = 0.72 + 0.28 * (-age / 0.12).exp();
     flash * settle + ret
 }
@@ -182,7 +201,11 @@ fn zap_env(age: f32, flicker: f32, reduced: bool, h: u32) -> f32 {
         return (-age / 0.15).exp() * out;
     }
     let a1 = 0.07 + 0.06 * u01(h);
-    let ret = if age > a1 { (0.5 + 0.5 * flicker) * (-(age - a1) / 0.035).exp() } else { 0.0 };
+    let ret = if age > a1 {
+        (0.5 + 0.5 * flicker) * (-(age - a1) / 0.035).exp()
+    } else {
+        0.0
+    };
     ((1.0 + 0.65 * (-age / 0.022).exp()) * (-age / 0.11).exp() + ret) * out
 }
 
@@ -194,7 +217,15 @@ fn ghost_env(g: f32) -> f32 {
 /// Midpoint displacement. `pts` are the coarse points (pinned arc ends, or a loop); every level
 /// halves each segment and pushes the new midpoint sideways by `amp(level)` x gaussian. Levels
 /// below `memory` follow the channel seed (shared by re-strikes), finer ones the strike's own.
-fn mpd(mut pts: Vec<f32>, periodic: bool, levels: u32, amp: impl Fn(u32) -> f32, channel: u32, strike: u32, memory: u32) -> Vec<f32> {
+fn mpd(
+    mut pts: Vec<f32>,
+    periodic: bool,
+    levels: u32,
+    amp: impl Fn(u32) -> f32,
+    channel: u32,
+    strike: u32,
+    memory: u32,
+) -> Vec<f32> {
     for lv in 0..levels {
         let m = pts.len();
         let seg = if periodic { m } else { m - 1 };
@@ -222,10 +253,18 @@ fn resample(ctrl: &[f32], out: &mut [f32], periodic: bool, limit: f32) {
     }
     let (m, n) = (ctrl.len(), out.len());
     for (i, v) in out.iter_mut().enumerate() {
-        let x = if periodic { i as f32 / n as f32 * m as f32 } else { i as f32 / (n - 1) as f32 * (m - 1) as f32 };
+        let x = if periodic {
+            i as f32 / n as f32 * m as f32
+        } else {
+            i as f32 / (n - 1) as f32 * (m - 1) as f32
+        };
         let i0 = (x.floor() as usize).min(m - 1);
         let f = x - i0 as f32;
-        let i1 = if periodic { (i0 + 1) % m } else { (i0 + 1).min(m - 1) };
+        let i1 = if periodic {
+            (i0 + 1) % m
+        } else {
+            (i0 + 1).min(m - 1)
+        };
         let d = ctrl[i0] + (ctrl[i1] - ctrl[i0]) * f;
         *v = limit * (d / limit).tanh();
     }
@@ -245,7 +284,8 @@ fn fork_walk(hk: u32, len: f32) -> [f32; FORK_SAMPLES] {
 /// Fork envelope: (grow 0..1 as the branch shoots out, brightness, heat 1 -> 0 as it cools).
 fn fork_env(age: f32, life: f32) -> (f32, f32, f32) {
     let grow = 1.0 - (1.0 - (age / 0.035).min(1.0)).powi(3);
-    let lifee = ss(0.0, 0.01, age) * (-age / (life * 0.4)).exp() * (1.0 - ss(0.75 * life, life, age));
+    let lifee =
+        ss(0.0, 0.01, age) * (-age / (life * 0.4)).exp() * (1.0 - ss(0.75 * life, life, age));
     (grow, lifee, 1.0 - age / life)
 }
 
@@ -258,7 +298,12 @@ fn arc_fork_len(l: f32) -> f32 {
 }
 /// How far an arc's bolt and forks can reach off the A-B line, so bounds never clip them.
 pub(crate) fn arc_reach(p: &ElectricParams, l: f32) -> f32 {
-    2.0 * arc_amp(p, l) + if p.forks > 0.0 { arc_fork_len(l) * 1.1 } else { 0.0 }
+    2.0 * arc_amp(p, l)
+        + if p.forks > 0.0 {
+            arc_fork_len(l) * 1.1
+        } else {
+            0.0
+        }
 }
 
 /// Electric tables. Layout at `first`: [N, strands, forks, 0], [strand brightness k0..k2, 0],
@@ -268,26 +313,78 @@ pub(crate) fn arc_reach(p: &ElectricParams, l: f32) -> f32 {
 /// Arc and Border are lightning: a fractal (midpoint-displacement) bolt that strikes, holds,
 /// and re-strikes, mostly down the same channel. Strand 0 is the live strike; strands 1 and 2
 /// are the previous strikes' afterimages. Forks branch off at the strike and die away.
-pub(crate) fn electric(p: &ElectricParams, shape: Shape, t: f32, seed: u32, reduced: bool, data: &mut Vec<[f32; 4]>) -> [f32; 4] {
+pub(crate) fn electric(
+    p: &ElectricParams,
+    shape: Shape,
+    t: f32,
+    seed: u32,
+    reduced: bool,
+    data: &mut Vec<[f32; 4]>,
+) -> [f32; 4] {
     let first = data.len() as f32;
     let freq = p.frequency / 100.0;
-    let strands = if p.zap.is_some() { 1 } else { p.strands.clamp(1, 3) as usize };
+    let strands = if p.zap.is_some() {
+        1
+    } else {
+        p.strands.clamp(1, 3) as usize
+    };
     let rate = if reduced { 0.0 } else { p.forks };
-    let st = Strikes::new(if reduced || p.zap.is_some() { 0.0 } else { p.speed }, seed);
-    let (k, age, dur) = if reduced && p.zap.is_none() { (0, 1.0, f32::INFINITY) } else { st.at(t - p.zap.unwrap_or(0.0)) };
+    let st = Strikes::new(
+        if reduced || p.zap.is_some() {
+            0.0
+        } else {
+            p.speed
+        },
+        seed,
+    );
+    let (k, age, dur) = if reduced && p.zap.is_none() {
+        (0, 1.0, f32::INFINITY)
+    } else {
+        st.at(t - p.zap.unwrap_or(0.0))
+    };
     // When each strike began, on the layer clock (a zap is strike 0 only).
     let start = |ks: i32| match p.zap {
-        Some(t0) => if ks == 0 { t0 } else { f32::INFINITY },
+        Some(t0) => {
+            if ks == 0 {
+                t0
+            } else {
+                f32::INFINITY
+            }
+        }
         None => st.start(ks),
     };
     let still = reduced || st.period.is_infinite();
-    let noise = |j: usize| if reduced { 1.0 } else { 1.0 - p.flicker * 0.25 * (0.5 + 0.5 * gnoise(t * 14.0, j as f32 * 3.7, 0, seed.wrapping_add(17))) };
+    let noise = |j: usize| {
+        if reduced {
+            1.0
+        } else {
+            1.0 - p.flicker
+                * 0.25
+                * (0.5 + 0.5 * gnoise(t * 14.0, j as f32 * 3.7, 0, seed.wrapping_add(17)))
+        }
+    };
     let bright = match p.zap {
-        Some(_) => [zap_env(age, p.flicker, reduced, st.strike_seed(0)) * noise(0), 0.0, 0.0],
+        Some(_) => [
+            zap_env(age, p.flicker, reduced, st.strike_seed(0)) * noise(0),
+            0.0,
+            0.0,
+        ],
         None => [
-            if reduced { 1.0 } else { strike_env(age, dur, p.flicker, st.strike_seed(k)) * noise(0) },
-            if still { 0.0 } else { ghost_env(age) * noise(1) },
-            if still { 0.0 } else { ghost_env(age + st.start(k) - st.start(k - 1)) * noise(2) },
+            if reduced {
+                1.0
+            } else {
+                strike_env(age, dur, p.flicker, st.strike_seed(k)) * noise(0)
+            },
+            if still {
+                0.0
+            } else {
+                ghost_env(age) * noise(1)
+            },
+            if still {
+                0.0
+            } else {
+                ghost_env(age + st.start(k) - st.start(k - 1)) * noise(2)
+            },
         ],
     };
     let hdr = data.len();
@@ -295,14 +392,24 @@ pub(crate) fn electric(p: &ElectricParams, shape: Shape, t: f32, seed: u32, redu
     data.push([bright[0], bright[1], bright[2], 0.0]);
     match p.style {
         ElectricStyle::Arc { a, b } => {
-            let l = ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt().max(1.0);
+            let l = ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2))
+                .sqrt()
+                .max(1.0);
             let n = (l.ceil() as usize).clamp(32, 1024).next_multiple_of(4);
             let step = l / (n - 1) as f32;
             let amp = arc_amp(p, l);
             let levels = ((l * freq * 6.0).max(8.0).log2().ceil() as u32).clamp(3, 8);
             // Self-similar roughness: each halving keeps 2^-0.62 of the offset.
             let path = |ks: i32| {
-                let ctrl = mpd(vec![0.0, 0.0], false, levels, |lv| amp * 0.65 * 2f32.powf(-0.62 * lv as f32), st.channel(ks), st.strike_seed(ks), 2);
+                let ctrl = mpd(
+                    vec![0.0, 0.0],
+                    false,
+                    levels,
+                    |lv| amp * 0.65 * 2f32.powf(-0.62 * lv as f32),
+                    st.channel(ks),
+                    st.strike_seed(ks),
+                    2,
+                );
                 let mut v = vec![0.0f32; n];
                 resample(&ctrl, &mut v, false, amp * 2.0);
                 v
@@ -338,7 +445,10 @@ pub(crate) fn electric(p: &ElectricParams, shape: Shape, t: f32, seed: u32, redu
                     // Branches lean on toward the far electrode, off the local direction of the bolt.
                     let ang = slope.atan() + (0.35 + 0.5 * u01(hk + 5)) * side;
                     let len = arc_fork_len(l) * (0.45 + 0.55 * u01(hk + 6));
-                    let o = [a[0] + dir[0] * u0 * l + nrm[0] * path[i0], a[1] + dir[1] * u0 * l + nrm[1] * path[i0]];
+                    let o = [
+                        a[0] + dir[0] * u0 * l + nrm[0] * path[i0],
+                        a[1] + dir[1] * u0 * l + nrm[1] * path[i0],
+                    ];
                     let (sa, ca) = ang.sin_cos();
                     let fd = [dir[0] * ca - dir[1] * sa, dir[0] * sa + dir[1] * ca];
                     let (grow, lifee, heat) = fork_env(fage, life);
@@ -358,8 +468,18 @@ pub(crate) fn electric(p: &ElectricParams, shape: Shape, t: f32, seed: u32, redu
             let cells = ((total * freq).round() as usize).max(3);
             let path = |ks: i32| {
                 let ch = st.channel(ks);
-                let coarse: Vec<f32> = (0..cells).map(|i| p.amplitude * 0.7 * gauss3(hu(ch, i as u32 * 3 + 5))).collect();
-                let ctrl = mpd(coarse, true, 3, |lv| p.amplitude * 0.7 * 2f32.powf(-0.62 * (lv + 1) as f32), ch, st.strike_seed(ks), 1);
+                let coarse: Vec<f32> = (0..cells)
+                    .map(|i| p.amplitude * 0.7 * gauss3(hu(ch, i as u32 * 3 + 5)))
+                    .collect();
+                let ctrl = mpd(
+                    coarse,
+                    true,
+                    3,
+                    |lv| p.amplitude * 0.7 * 2f32.powf(-0.62 * (lv + 1) as f32),
+                    ch,
+                    st.strike_seed(ks),
+                    1,
+                );
                 let mut v = vec![0.0f32; n];
                 resample(&ctrl, &mut v, true, p.amplitude * 1.7);
                 v
@@ -373,7 +493,15 @@ pub(crate) fn electric(p: &ElectricParams, shape: Shape, t: f32, seed: u32, redu
             }
             let mut buf = vec![0.0f32; n];
             for j in 0..strands {
-                crawl(&mut buf, cells, p.speed, t, seed.wrapping_add(j as u32 * 7919), j as f32, false);
+                crawl(
+                    &mut buf,
+                    cells,
+                    p.speed,
+                    t,
+                    seed.wrapping_add(j as u32 * 7919),
+                    j as f32,
+                    false,
+                );
                 push_samples(data, &buf);
             }
             let mut forks = 0;
@@ -421,7 +549,9 @@ pub(crate) fn electric(p: &ElectricParams, shape: Shape, t: f32, seed: u32, redu
             push_samples(data, &buf);
             let mut forks = 0;
             for j in 0..5u32 {
-                let Some(f) = fork_slot(seed, j, t, rate * 0.5, 0.3, 0.25) else { continue };
+                let Some(f) = fork_slot(seed, j, t, rate * 0.5, 0.3, 0.25) else {
+                    continue;
+                };
                 let hk = f.hk;
                 let len = p.fork_len * 0.4 * (0.6 + 0.6 * u01(hk + 4));
                 let (grow, lifee, heat) = fork_env(f.age, f.life);
@@ -443,8 +573,19 @@ fn crawl(buf: &mut [f32], cells: usize, speed: f32, t: f32, seed: u32, k: f32, c
     let sp = if calm { speed * 0.35 } else { speed };
     for (i, v) in buf.iter_mut().enumerate() {
         let cx = i as f32 / n as f32 * cc as f32;
-        let c = 0.5 + 0.5 * gnoise(cx - t * sp * 0.08 * cc as f32, t * 0.35 + k * 5.0, cc, seed.wrapping_add(3));
-        *v = if calm { 0.45 + 0.55 * ss(0.2, 0.8, c) } else { 0.3 + 0.7 * ss(0.25, 0.75, c) };
+        let c = 0.5
+            + 0.5
+                * gnoise(
+                    cx - t * sp * 0.08 * cc as f32,
+                    t * 0.35 + k * 5.0,
+                    cc,
+                    seed.wrapping_add(3),
+                );
+        *v = if calm {
+            0.45 + 0.55 * ss(0.2, 0.8, c)
+        } else {
+            0.3 + 0.7 * ss(0.25, 0.75, c)
+        };
     }
 }
 
@@ -477,7 +618,14 @@ pub(crate) const EMBER_DRAG: f32 = 2.4;
 /// Embers: two vec4 per live ember: (pos, streak), (size, temperature, 0, 0). Returns (first, count).
 /// Each is flung up out of the flame, slows under drag toward a buoyant drift, sways in the
 /// turbulence and cools (white -> orange -> red) until it vanishes.
-pub(crate) fn embers(p: &FireParams, rect: Rect, radius: f32, t: f32, seed: u32, data: &mut Vec<[f32; 4]>) -> (f32, f32) {
+pub(crate) fn embers(
+    p: &FireParams,
+    rect: Rect,
+    radius: f32,
+    t: f32,
+    seed: u32,
+    data: &mut Vec<[f32; 4]>,
+) -> (f32, f32) {
     let first = data.len() as f32;
     let mut count = 0;
     let life0 = p.ember_life.max(0.1);
@@ -503,10 +651,14 @@ pub(crate) fn embers(p: &FireParams, rect: Rect, radius: f32, t: f32, seed: u32,
         let drift = (u01(hk + 8) - 0.5) * 14.0;
         let grow = 1.0 - (-age * 3.0).exp();
         let x = x0 + drift * age + sway * (age * fq + ph).sin() * grow;
-        let vx = drift + sway * ((age * fq + ph).cos() * fq * grow + (age * fq + ph).sin() * 3.0 * (-age * 3.0).exp());
+        let vx = drift
+            + sway
+                * ((age * fq + ph).cos() * fq * grow
+                    + (age * fq + ph).sin() * 3.0 * (-age * 3.0).exp());
         let sz = p.ember_size * (0.5 + 0.8 * u01(hk + 9)) * (1.0 - 0.4 * a);
         let attack = (age / 0.05).clamp(0.0, 1.0);
-        let temp = (-age / (life * 0.42)).exp() * (1.0 - a * a) * (0.8 + 0.3 * u01(hk + 10)) * attack;
+        let temp =
+            (-age / (life * 0.42)).exp() * (1.0 - a * a) * (0.8 + 0.3 * u01(hk + 10)) * attack;
         if temp < 0.004 {
             continue;
         }
@@ -538,10 +690,22 @@ fn star_scale(a: f32) -> f32 {
 /// A few four-point stars around the shape, each with its own size (mostly small, a few large),
 /// twinkle rate and spin. Continuous stars rest between appearances so only some are lit at once;
 /// a burst (`SparkleParams::burst`) pops every star once and flings it out a little.
-pub(crate) fn sparkles(p: &SparkleParams, rect: Rect, t: f32, seed: u32, reduced: bool, data: &mut Vec<[f32; 4]>) -> (f32, f32) {
+pub(crate) fn sparkles(
+    p: &SparkleParams,
+    rect: Rect,
+    t: f32,
+    seed: u32,
+    reduced: bool,
+    data: &mut Vec<[f32; 4]>,
+) -> (f32, f32) {
     let first = data.len() as f32;
     let mut count = 0;
-    let (cx, cy, hw, hh) = (rect.x + rect.w * 0.5, rect.y + rect.h * 0.5, rect.w * 0.5, rect.h * 0.5);
+    let (cx, cy, hw, hh) = (
+        rect.x + rect.w * 0.5,
+        rect.y + rect.h * 0.5,
+        rect.w * 0.5,
+        rect.h * 0.5,
+    );
     for k in 0..p.count.min(64) {
         let h0 = hu(seed.wrapping_add(313), k * 11 + 1);
         // (instance hash, age within its life, life)
@@ -591,7 +755,11 @@ pub(crate) fn sparkles(p: &SparkleParams, rect: Rect, t: f32, seed: u32, reduced
         if sc * env < 0.01 {
             continue;
         }
-        let spin = if reduced { 0.0 } else { (u01(hk + 7) - 0.5) * 1.2 * age };
+        let spin = if reduced {
+            0.0
+        } else {
+            (u01(hk + 7) - 0.5) * 1.2 * age
+        };
         let ang = (u01(hk + 8) - 0.5) * 0.35 + spin;
         data.push([pos[0], pos[1], size * sc, env]);
         data.push([ang.cos(), ang.sin(), 0.0, 0.0]);
@@ -603,7 +771,13 @@ pub(crate) fn sparkles(p: &SparkleParams, rect: Rect, t: f32, seed: u32, reduced
 pub(crate) const AURORA_SAMPLES: usize = 64;
 
 /// Aurora curtains: for k in 0..3, AURORA_SAMPLES heights then AURORA_SAMPLES warps, across the rect width.
-pub(crate) fn aurora(p: &AuroraParams, rect: Rect, t: f32, seed: u32, data: &mut Vec<[f32; 4]>) -> f32 {
+pub(crate) fn aurora(
+    p: &AuroraParams,
+    rect: Rect,
+    t: f32,
+    seed: u32,
+    data: &mut Vec<[f32; 4]>,
+) -> f32 {
     let first = data.len() as f32;
     let tt = t * p.speed;
     let mut ys = [0.0f32; AURORA_SAMPLES];
@@ -640,7 +814,11 @@ pub(crate) fn fold_t(t: f32) -> f32 {
         return 0.0;
     }
     let u = (t as f64 * (1.0 / 1024.0)).rem_euclid(1.0);
-    (if u <= 0.5 { u * 1024.0 } else { (1.0 - u) * 1024.0 }) as f32
+    (if u <= 0.5 {
+        u * 1024.0
+    } else {
+        (1.0 - u) * 1024.0
+    }) as f32
 }
 
 /// Mesh gradient control points at time `t`: each wanders from its rest point by up to `drift`.
@@ -658,11 +836,21 @@ pub(crate) fn mesh_points(p: &MeshGradientParams, t: f32, seed: u32) -> [[f32; 2
 }
 
 /// Metaball centres (pt), radii (pt) and colour index: one vec4 per ball.
-pub(crate) fn metaballs(p: &MetaballParams, rect: Rect, t: f32, seed: u32, data: &mut Vec<[f32; 4]>) {
+pub(crate) fn metaballs(
+    p: &MetaballParams,
+    rect: Rect,
+    t: f32,
+    seed: u32,
+    data: &mut Vec<[f32; 4]>,
+) {
     let n = p.count.clamp(1, 8);
     let short = rect.w.min(rect.h).max(0.0);
     let tt = fold_t(t * p.speed * 0.5);
-    let size = if p.size.is_finite() { p.size.max(0.0) } else { 0.0 };
+    let size = if p.size.is_finite() {
+        p.size.max(0.0)
+    } else {
+        0.0
+    };
     let colors = p.colors.len() as u32;
     for k in 0..n {
         let h = hu(seed, k + 1);
@@ -672,7 +860,12 @@ pub(crate) fn metaballs(p: &MetaballParams, rect: Rect, t: f32, seed: u32, data:
         let wx = gnoise(x, 1.5, 0, h) * 0.5;
         let wy = gnoise(x, 4.5, 0, h.wrapping_add(5)) * 0.5;
         let r = size * short * (0.7 + 0.6 * u01(h + 2));
-        data.push([rect.x + rect.w * (base[0] + wx), rect.y + rect.h * (base[1] + wy), r, (k % colors) as f32]);
+        data.push([
+            rect.x + rect.w * (base[0] + wx),
+            rect.y + rect.h * (base[1] + wy),
+            r,
+            (k % colors) as f32,
+        ]);
     }
 }
 
@@ -707,8 +900,18 @@ pub(crate) fn blue_noise() -> &'static [[f32; 4]] {
                 }
             }
         };
-        let tightest = |on: &[bool], energy: &[f32]| (0..M).filter(|&i| on[i]).max_by(|&a, &b| energy[a].total_cmp(&energy[b])).unwrap();
-        let voidest = |on: &[bool], energy: &[f32]| (0..M).filter(|&i| !on[i]).min_by(|&a, &b| energy[a].total_cmp(&energy[b])).unwrap();
+        let tightest = |on: &[bool], energy: &[f32]| {
+            (0..M)
+                .filter(|&i| on[i])
+                .max_by(|&a, &b| energy[a].total_cmp(&energy[b]))
+                .unwrap()
+        };
+        let voidest = |on: &[bool], energy: &[f32]| {
+            (0..M)
+                .filter(|&i| !on[i])
+                .min_by(|&a, &b| energy[a].total_cmp(&energy[b]))
+                .unwrap()
+        };
         // Initial pattern: about a tenth of the pixels, from the shared hash.
         let mut ones = 0;
         for (i, o) in on.iter_mut().enumerate() {

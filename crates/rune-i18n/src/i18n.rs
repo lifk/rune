@@ -20,7 +20,11 @@ pub struct I18n {
 
 impl I18n {
     pub const fn new(catalog: &'static Catalog) -> Self {
-        Self { catalog, current: AtomicUsize::new(0), formats: OnceLock::new() }
+        Self {
+            catalog,
+            current: AtomicUsize::new(0),
+            formats: OnceLock::new(),
+        }
     }
 
     pub fn catalog(&self) -> &'static Catalog {
@@ -67,7 +71,8 @@ impl I18n {
     }
 
     pub fn text_in(&self, locale: usize, key: Key) -> &'static str {
-        self.get(locale, key.index()).unwrap_or_else(|| self.catalog.keys().get(key.index()).copied().unwrap_or(""))
+        self.get(locale, key.index())
+            .unwrap_or_else(|| self.catalog.keys().get(key.index()).copied().unwrap_or(""))
     }
 
     /// The message for `key` with its `{{name}}` placeholders filled from `args`.
@@ -85,12 +90,20 @@ impl I18n {
     pub fn plural_form(&self, key: PluralKey, category: PluralCategory) -> &'static str {
         let forms = self.catalog.plural_forms(key);
         let locale = self.locale();
-        let pick = |category: PluralCategory| forms[category.index()].and_then(|k| self.get(locale, k));
-        pick(category).or_else(|| pick(PluralCategory::Other)).unwrap_or_else(|| self.catalog.plural_name(key))
+        let pick =
+            |category: PluralCategory| forms[category.index()].and_then(|k| self.get(locale, k));
+        pick(category)
+            .or_else(|| pick(PluralCategory::Other))
+            .unwrap_or_else(|| self.catalog.plural_name(key))
     }
 
     /// The plural message for `count` with `{{count}}` and `args` filled in.
-    pub fn plural_format(&self, key: PluralKey, count: u64, args: &[(&str, &dyn Display)]) -> String {
+    pub fn plural_format(
+        &self,
+        key: PluralKey,
+        count: u64,
+        args: &[(&str, &dyn Display)],
+    ) -> String {
         let template = self.plural(key, count);
         if args.is_empty() {
             return crate::render(template, &[("count", &count)]);
@@ -121,12 +134,24 @@ impl I18n {
     }
 
     fn get(&self, locale: usize, key: usize) -> Option<&'static str> {
-        let local = self.catalog.messages(locale).and_then(|messages| messages.get(key));
-        local.or_else(|| self.catalog.messages(0).and_then(|messages| messages.get(key)))
+        let local = self
+            .catalog
+            .messages(locale)
+            .and_then(|messages| messages.get(key));
+        local.or_else(|| {
+            self.catalog
+                .messages(0)
+                .and_then(|messages| messages.get(key))
+        })
     }
 
     fn formats(&self) -> &Formats {
-        let all = self.formats.get_or_init(|| self.locales().iter().map(|locale| Formats::new(locale.tag())).collect());
+        let all = self.formats.get_or_init(|| {
+            self.locales()
+                .iter()
+                .map(|locale| Formats::new(locale.tag()))
+                .collect()
+        });
         &all[self.locale().min(all.len().saturating_sub(1))]
     }
 }

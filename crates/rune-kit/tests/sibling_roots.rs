@@ -8,12 +8,18 @@ struct Page;
 
 fn cards(_: &Page, _: &mut Cx<Page>) -> El {
     let k = Kit::neutral(true);
-    col().w_full().child(Card::new().title("One", None).description("a").build(&k)).child(Card::new().title("Two", None).description("b").build(&k))
+    col()
+        .w_full()
+        .child(Card::new().title("One", None).description("a").build(&k))
+        .child(Card::new().title("Two", None).description("b").build(&k))
 }
 
 fn blocks(_: &Page, _: &mut Cx<Page>) -> El {
     let style = MarkdownStyle::neutral(true);
-    col().w_full().child(Markdown::new("# One\n\nbody").render(&style)).child(Markdown::new("# Two\n\nbody").render(&style))
+    col()
+        .w_full()
+        .child(Markdown::new("# One\n\nbody").render(&style))
+        .child(Markdown::new("# Two\n\nbody").render(&style))
 }
 
 fn repaired(view: fn(&Page, &mut Cx<Page>) -> El) -> Vec<String> {

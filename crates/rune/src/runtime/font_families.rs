@@ -20,7 +20,9 @@ impl<S: 'static> Runtime<S> {
 
     /// Whether `tx` switches the families.
     pub(super) fn changes_families(&self, tx: &Tx) -> bool {
-        tx.font_families.as_ref().is_some_and(|(sans, mono)| self.text.families() != (sans.as_str(), mono.as_str()))
+        tx.font_families
+            .as_ref()
+            .is_some_and(|(sans, mono)| self.text.families() != (sans.as_str(), mono.as_str()))
     }
 
     /// Takes up families chosen, or a web app's full faces fetched, since this runtime last

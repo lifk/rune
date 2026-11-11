@@ -30,7 +30,11 @@ pub(super) fn link_host(url: &str) -> Option<String> {
     })?;
     let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
     let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
-    let host = if host.starts_with('[') { host.split_inclusive(']').next().unwrap_or(host) } else { host.split(':').next().unwrap_or(host) };
+    let host = if host.starts_with('[') {
+        host.split_inclusive(']').next().unwrap_or(host)
+    } else {
+        host.split(':').next().unwrap_or(host)
+    };
     (!host.is_empty()).then(|| host.to_ascii_lowercase())
 }
 

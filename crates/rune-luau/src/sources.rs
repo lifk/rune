@@ -76,16 +76,26 @@ impl Sources {
     /// folder above it as [`Sources::parent_config`].
     #[cfg(not(target_arch = "wasm32"))]
     pub fn from_dir(dir: impl AsRef<std::path::Path>) -> std::io::Result<Self> {
-        fn walk(root: &std::path::Path, dir: &std::path::Path, out: &mut Sources) -> std::io::Result<()> {
+        fn walk(
+            root: &std::path::Path,
+            dir: &std::path::Path,
+            out: &mut Sources,
+        ) -> std::io::Result<()> {
             for entry in std::fs::read_dir(dir)? {
                 let path = entry?.path();
-                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or_default();
                 if path.is_dir() {
                     walk(root, &path, out)?;
                 } else if (name.ends_with(".luau") || CONFIGS.contains(&name))
                     && let Ok(rel) = path.strip_prefix(root)
                 {
-                    let rel: Vec<_> = rel.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect();
+                    let rel: Vec<_> = rel
+                        .components()
+                        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                        .collect();
                     out.insert(rel.join("/"), std::fs::read_to_string(&path)?);
                 }
             }
@@ -129,7 +139,10 @@ impl Sources {
         let compiler = compiler();
         let entry = self.entry_path();
         if !self.files.contains_key(entry) {
-            return Err(ScriptError::new(ErrorKind::Missing, format!("the script has no {entry}")));
+            return Err(ScriptError::new(
+                ErrorKind::Missing,
+                format!("the script has no {entry}"),
+            ));
         }
         let mut modules = BTreeMap::new();
         let mut configs = BTreeMap::new();
@@ -138,16 +151,35 @@ impl Sources {
                 configs.insert(path.clone(), source.clone());
                 continue;
             }
-            if let Some(same) = previous.and_then(|p| p.modules.get(path)).filter(|m| m.source == *source) {
+            if let Some(same) = previous
+                .and_then(|p| p.modules.get(path))
+                .filter(|m| m.source == *source)
+            {
                 modules.insert(path.clone(), same.clone());
                 continue;
             }
-            let code = compiler
-                .compile(source.as_bytes())
-                .map_err(|e| ScriptError::new(ErrorKind::Syntax, format!("{path}{}", ScriptError::from(e).message)))?;
-            modules.insert(path.clone(), Module { code: code.into(), native: is_native(source), source: source.clone() });
+            let code = compiler.compile(source.as_bytes()).map_err(|e| {
+                ScriptError::new(
+                    ErrorKind::Syntax,
+                    format!("{path}{}", ScriptError::from(e).message),
+                )
+            })?;
+            modules.insert(
+                path.clone(),
+                Module {
+                    code: code.into(),
+                    native: is_native(source),
+                    source: source.clone(),
+                },
+            );
         }
-        Ok(Compiled { modules, configs, parent_config: self.parent_config.clone(), folder: self.folder.clone(), entry: entry.to_owned() })
+        Ok(Compiled {
+            modules,
+            configs,
+            parent_config: self.parent_config.clone(),
+            folder: self.folder.clone(),
+            entry: entry.to_owned(),
+        })
     }
 }
 
@@ -179,16 +211,25 @@ impl Compiled {
     pub(crate) fn is_dir(&self, dir: &str) -> bool {
         dir.is_empty() || {
             let prefix = format!("{dir}/");
-            self.modules.keys().chain(self.configs.keys()).any(|k| k.starts_with(&prefix))
+            self.modules
+                .keys()
+                .chain(self.configs.keys())
+                .any(|k| k.starts_with(&prefix))
         }
     }
 
     /// The configuration file in folder `dir` ("" for the script's own), or above the script's
     /// folder for `None`.
     pub(crate) fn config(&self, dir: Option<&str>) -> Option<&str> {
-        let Some(dir) = dir else { return self.parent_config.as_deref() };
+        let Some(dir) = dir else {
+            return self.parent_config.as_deref();
+        };
         CONFIGS.iter().find_map(|name| {
-            let path = if dir.is_empty() { (*name).to_owned() } else { format!("{dir}/{name}") };
+            let path = if dir.is_empty() {
+                (*name).to_owned()
+            } else {
+                format!("{dir}/{name}")
+            };
             self.configs.get(&path).map(|s| &**s)
         })
     }
@@ -197,14 +238,24 @@ impl Compiled {
 pub(crate) fn compiler() -> mlua::chunk::Compiler {
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     crate::web::init();
-    mlua::chunk::Compiler::new().set_optimization_level(2).set_type_info_level(1).set_debug_level(1)
+    mlua::chunk::Compiler::new()
+        .set_optimization_level(2)
+        .set_type_info_level(1)
+        .set_debug_level(1)
 }
 
 /// Whether a `--!native` hot comment opens the file (before any code).
 fn is_native(source: &str) -> bool {
-    source.lines().map(str::trim).take_while(|l| l.is_empty() || l.starts_with("--")).any(|l| l.starts_with("--!native"))
+    source
+        .lines()
+        .map(str::trim)
+        .take_while(|l| l.is_empty() || l.starts_with("--"))
+        .any(|l| l.starts_with("--!native"))
 }
 
 fn normalize(path: &str) -> String {
-    path.replace('\\', "/").trim_start_matches("./").trim_start_matches('/').to_owned()
+    path.replace('\\', "/")
+        .trim_start_matches("./")
+        .trim_start_matches('/')
+        .to_owned()
 }

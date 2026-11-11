@@ -44,7 +44,9 @@ pub(crate) struct TurnScope<S> {
 }
 
 impl<S> Clone for TurnScope<S> {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 
 impl<S> Copy for TurnScope<S> {}
@@ -300,7 +302,11 @@ impl<S: 'static> App<S> {
     /// Bare specs preserve primary-display edge placement and never request key focus;
     /// `OverlaySpec::options` selects displays, placement and native input policy.
     /// Uses this app's fonts. Headless runs don't draw overlays.
-    pub fn overlay<T: 'static>(&mut self, spec: impl Into<crate::ConfiguredOverlay<T>>, state: T) -> crate::overlay::OverlayHandle<T> {
+    pub fn overlay<T: 'static>(
+        &mut self,
+        spec: impl Into<crate::ConfiguredOverlay<T>>,
+        state: T,
+    ) -> crate::overlay::OverlayHandle<T> {
         let (overlay, handle) = crate::overlay::Overlay::new(spec.into(), state, &self.spec);
         self.overlays.push(Box::new(overlay));
         handle
@@ -317,9 +323,13 @@ impl<S: 'static> App<S> {
     /// alone: the app still ends with its own window, and `Tx::quit` from either quits both.
     /// Headless tools select it with `--window KEY`; otherwise `--scene` and `--size` are left
     /// to the primary window.
-    pub fn window<T: 'static>(&mut self, spec: crate::WindowSpec<T>) -> (AppHandle<T>, crate::WindowHandle) {
+    pub fn window<T: 'static>(
+        &mut self,
+        spec: crate::WindowSpec<T>,
+    ) -> (AppHandle<T>, crate::WindowHandle) {
         let (app, window) = (spec.app.handle(), crate::WindowHandle::new(&spec.key));
-        self.windows.push(crate::AnyWindowSpec::secondary(spec, window.clone()));
+        self.windows
+            .push(crate::AnyWindowSpec::secondary(spec, window.clone()));
         (app, window)
     }
 
@@ -550,10 +560,15 @@ impl<S: 'static> App<S> {
     /// too, where it otherwise never appears, so snapshots and goldens don't change.
     pub fn playground(mut self, playground: crate::Playground<S>) -> Self {
         if playground.is_enabled() && crate::playground::offered_by_env() {
-            let item = crate::MenuItem::new("Playground", |_: &mut S, tx: &mut Tx| tx.toggle_playground())
-                .id("rune.playground")
-                .menu("View");
-            let item = match playground.shortcut_key() { Some(shortcut) => item.key_equivalent(shortcut.clone()), None => item };
+            let item = crate::MenuItem::new("Playground", |_: &mut S, tx: &mut Tx| {
+                tx.toggle_playground()
+            })
+            .id("rune.playground")
+            .menu("View");
+            let item = match playground.shortcut_key() {
+                Some(shortcut) => item.key_equivalent(shortcut.clone()),
+                None => item,
+            };
             self = self.menu_item(item);
         }
         self.playground = Some(playground);
@@ -564,7 +579,9 @@ impl<S: 'static> App<S> {
     /// headless instead: the window requests are ignored there, and updates apply each frame.
     /// Panics when the app can't start, such as without a display; `try_run` returns that error.
     pub fn run(self) {
-        if let Err(error) = self.try_run() { panic!("{error}"); }
+        if let Err(error) = self.try_run() {
+            panic!("{error}");
+        }
     }
 
     /// `run`, returning an error instead of panicking when the event loop can't start (no
@@ -650,7 +667,10 @@ impl<S: 'static> AppHandle<S> {
     /// nonactivating panel takes keys without activating. The window open at launch doesn't
     /// activate the app beyond what the platform does at launch.
     pub fn open(&self) {
-        self.request(|q| { q.window = Some(WindowRequest::Open(None)); q.minimize = false; });
+        self.request(|q| {
+            q.window = Some(WindowRequest::Open(None));
+            q.minimize = false;
+        });
     }
 
     /// Show or recreate the window without requesting focus. A minimized window stays minimized;
@@ -661,19 +681,28 @@ impl<S: 'static> AppHandle<S> {
 
     /// Hide the window, retaining its host and state. Does not invoke the close callback.
     pub fn hide(&self) {
-        self.request(|q| { q.window = Some(WindowRequest::Hide); q.minimize = false; });
+        self.request(|q| {
+            q.window = Some(WindowRequest::Hide);
+            q.minimize = false;
+        });
     }
 
     /// Focus/activate an already-visible window, restoring it if minimized.
     /// On Wayland this requests attention; use activate(token) for compositor-authorized focus.
     pub fn focus(&self) {
-        self.request(|q| { q.focus = true; q.minimize = false; });
+        self.request(|q| {
+            q.focus = true;
+            q.minimize = false;
+        });
     }
 
     /// Set the outer position in physical desktop pixels (negative coordinates are valid).
     /// Retained across recreation. Wayland does not support application window placement.
     pub fn set_position(&self, position: (i32, i32)) {
-        self.request(|q| { q.position = Some(position); q.place = None; });
+        self.request(|q| {
+            q.position = Some(position);
+            q.place = None;
+        });
     }
 
     /// Place in display-local points. UnderPointer samples the pointer at this call;
@@ -681,7 +710,10 @@ impl<S: 'static> AppHandle<S> {
     /// Wayland does not permit application placement.
     pub fn place(&self, display: crate::DisplayTarget, placement: crate::OverlayPlacement) {
         let place = crate::windows::PlaceRequest::new(display, placement);
-        self.request(|q| { q.place = Some(place); q.position = None; });
+        self.request(|q| {
+            q.place = Some(place);
+            q.position = None;
+        });
     }
 
     /// Show and focus the window with an activation token another process forwarded
@@ -689,13 +721,19 @@ impl<S: 'static> AppHandle<S> {
     /// lets it take focus. Where tokens don't exist this is `open`.
     pub fn activate(&self, token: impl Into<String>) {
         let token = token.into();
-        self.request(|q| { q.window = Some(WindowRequest::Open(Some(token).filter(|t| !t.is_empty()))); q.minimize = false; });
+        self.request(|q| {
+            q.window = Some(WindowRequest::Open(Some(token).filter(|t| !t.is_empty())));
+            q.minimize = false;
+        });
     }
 
     /// Close the window as the close button would (`App::on_close` runs; without
     /// `keep_running` the app quits).
     pub fn close(&self) {
-        self.request(|q| { q.window = Some(WindowRequest::Close); q.minimize = false; });
+        self.request(|q| {
+            q.window = Some(WindowRequest::Close);
+            q.minimize = false;
+        });
     }
 
     /// Minimize the window, as `Tx::minimize` does from a handler. Does nothing for a hidden
@@ -703,7 +741,10 @@ impl<S: 'static> AppHandle<S> {
     /// the shown window; a later `open`, `focus`, `hide` or `close` cancels it, and it cancels
     /// an earlier `focus`.
     pub fn minimize(&self) {
-        self.request(|q| { q.minimize = true; q.focus = false; });
+        self.request(|q| {
+            q.minimize = true;
+            q.focus = false;
+        });
     }
 
     /// Put the window into or out of fullscreen, as the window manager's fullscreen action
@@ -748,7 +789,10 @@ impl<S: 'static> AppHandle<S> {
     /// Change the state from this thread: `f` runs on the UI thread, in call order, even while no
     /// window shows, and the next frame commits it with the motion its `Tx` asks for.
     pub fn update(&self, f: impl FnOnce(&mut S, &mut Tx) + Send + 'static) {
-        self.update_if(move |s, tx| { f(s, tx); true });
+        self.update_if(move |s, tx| {
+            f(s, tx);
+            true
+        });
     }
 
     /// `update` for a timer or feed that often finds nothing new: `f` returns whether it changed
@@ -881,10 +925,18 @@ impl<S> Shared<S> {
     /// opens (or shows, focuses, places, quits) applies in this turn. Updates the updates queue
     /// wait for the next turn, which their wake brings.
     pub(crate) fn drain(&self, mut run: impl FnMut(Update<S>)) -> Requests<S> {
-        for f in self.take_updates() { run(f); }
+        for f in self.take_updates() {
+            run(f);
+        }
         let mut requests = self.requests.lock().unwrap();
         let later = std::mem::take(&mut requests.updates);
-        std::mem::replace(&mut *requests, Requests { updates: later, ..Requests::default() })
+        std::mem::replace(
+            &mut *requests,
+            Requests {
+                updates: later,
+                ..Requests::default()
+            },
+        )
     }
 
     /// Queues `f` for the next `take`, as `AppHandle::update_if` does, without waking the loop.
@@ -895,7 +947,12 @@ impl<S> Shared<S> {
     /// A request a `--desktop` run applies to the window (dock and quit aside) waits for `take`.
     pub(crate) fn window_pending(&self) -> bool {
         let r = self.requests.lock().unwrap();
-        r.window.is_some() || r.focus || r.minimize || r.position.is_some() || r.place.is_some() || !r.updates.is_empty()
+        r.window.is_some()
+            || r.focus
+            || r.minimize
+            || r.position.is_some()
+            || r.place.is_some()
+            || !r.updates.is_empty()
     }
 
     pub fn take_place(&self) -> Option<crate::windows::PlaceRequest> {
@@ -912,18 +969,45 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn spec() -> AppSpec<u32> {
-        AppSpec::new("test", (100.0, 100.0), || 0, |_: &u32, _: &mut Cx<u32>| el())
+        AppSpec::new(
+            "test",
+            (100.0, 100.0),
+            || 0,
+            |_: &u32, _: &mut Cx<u32>| el(),
+        )
     }
 
     #[test]
     fn a_named_web_canvas_sits_inline_unless_it_covers_the_viewport() {
-        assert!(!App::new(spec()).web_inline(), "Rune's own canvas covers the viewport");
+        assert!(
+            !App::new(spec()).web_inline(),
+            "Rune's own canvas covers the viewport"
+        );
         assert!(!App::new(spec()).full_viewport().web_inline());
-        assert!(App::new(spec()).canvas_id("view").web_inline(), "canvas_id alone stays inline");
-        assert!(App::new(spec()).canvas_id("view").fit_content_height().web_inline());
-        assert!(!App::new(spec()).canvas_id("route").full_viewport().web_inline());
-        assert!(App::new(spec()).canvas_id("view").full_viewport().fit_content_height().web_inline(),
-            "sizing to content wins over covering the viewport");
+        assert!(
+            App::new(spec()).canvas_id("view").web_inline(),
+            "canvas_id alone stays inline"
+        );
+        assert!(
+            App::new(spec())
+                .canvas_id("view")
+                .fit_content_height()
+                .web_inline()
+        );
+        assert!(
+            !App::new(spec())
+                .canvas_id("route")
+                .full_viewport()
+                .web_inline()
+        );
+        assert!(
+            App::new(spec())
+                .canvas_id("view")
+                .full_viewport()
+                .fit_content_height()
+                .web_inline(),
+            "sizing to content wins over covering the viewport"
+        );
     }
 
     #[test]
@@ -931,11 +1015,20 @@ mod tests {
         let app = App::new(spec());
         let handle = app.handle();
         handle.set_position((10, 20));
-        handle.place(crate::DisplayTarget::Primary, crate::OverlayPlacement::FullScreen);
+        handle.place(
+            crate::DisplayTarget::Primary,
+            crate::OverlayPlacement::FullScreen,
+        );
         let q = app.shared.take();
         assert!(q.position.is_none());
-        assert_eq!(q.place.unwrap().placement, crate::OverlayPlacement::FullScreen);
-        handle.place(crate::DisplayTarget::Primary, crate::OverlayPlacement::FullScreen);
+        assert_eq!(
+            q.place.unwrap().placement,
+            crate::OverlayPlacement::FullScreen
+        );
+        handle.place(
+            crate::DisplayTarget::Primary,
+            crate::OverlayPlacement::FullScreen,
+        );
         handle.set_position((-10, 20));
         let q = app.shared.take();
         assert!(q.place.is_none());
@@ -944,9 +1037,24 @@ mod tests {
 
     #[test]
     fn window_panel_focus_is_local_deduplicated_and_runs_without_frames() {
-        let mut rt = Runtime::new(Vec::new(), |_: &Vec<bool>, _: &mut Cx<Vec<bool>>| el(), (100.0, 100.0), Env::default());
-        rt.on_focus = Some(|seen, focused, tx| { seen.push(focused); if !focused { tx.close_window(); } });
-        let mut other = Runtime::new(Vec::new(), |_: &Vec<bool>, _: &mut Cx<Vec<bool>>| el(), (100.0, 100.0), Env::default());
+        let mut rt = Runtime::new(
+            Vec::new(),
+            |_: &Vec<bool>, _: &mut Cx<Vec<bool>>| el(),
+            (100.0, 100.0),
+            Env::default(),
+        );
+        rt.on_focus = Some(|seen, focused, tx| {
+            seen.push(focused);
+            if !focused {
+                tx.close_window();
+            }
+        });
+        let mut other = Runtime::new(
+            Vec::new(),
+            |_: &Vec<bool>, _: &mut Cx<Vec<bool>>| el(),
+            (100.0, 100.0),
+            Env::default(),
+        );
         other.on_focus = rt.on_focus;
         rt.window_focus(true);
         rt.window_focus(true);
@@ -961,7 +1069,10 @@ mod tests {
         other.frame(0.0);
         assert!(!other.stale());
         other.window_focus(true);
-        assert!(!other.stale(), "focus on a committed view without on_window_focus asks for no extra frame");
+        assert!(
+            !other.stale(),
+            "focus on a committed view without on_window_focus asks for no extra frame"
+        );
     }
 
     #[test]
@@ -986,7 +1097,9 @@ mod tests {
         let mut spec = spec();
         spec.scenes = &[("big", |n| *n += 100)];
         let captured = 7;
-        let (_, state, _) = App::new(spec).init(move || captured).into_parts(Some("big"));
+        let (_, state, _) = App::new(spec)
+            .init(move || captured)
+            .into_parts(Some("big"));
         assert_eq!(state, 107);
         let (_, state, _) = App::new(self::spec()).into_parts(None);
         assert_eq!(state, 0);
@@ -1048,11 +1161,21 @@ mod tests {
             inner.update(|n, _| *n += 10);
         });
         let mut n = 0;
-        let requests = app.shared.drain(|f| { f(&mut n, &mut Tx::default()); });
+        let requests = app.shared.drain(|f| {
+            f(&mut n, &mut Tx::default());
+        });
         assert_eq!(n, 1);
-        assert_eq!(requests.window, Some(WindowRequest::Open(None)), "the open applies this turn");
+        assert_eq!(
+            requests.window,
+            Some(WindowRequest::Open(None)),
+            "the open applies this turn"
+        );
         let next = app.shared.take();
-        assert_eq!(next.updates.len(), 1, "an update's own update waits for the next turn");
+        assert_eq!(
+            next.updates.len(),
+            1,
+            "an update's own update waits for the next turn"
+        );
         assert!(next.window.is_none());
     }
 
@@ -1066,9 +1189,15 @@ mod tests {
             handle.set_position((-300, 40));
             handle.show();
             handle.focus();
-        }).join().unwrap();
+        })
+        .join()
+        .unwrap();
         let requests = app.shared.take();
-        assert_eq!(requests.window, Some(WindowRequest::Show), "focus must not overwrite show");
+        assert_eq!(
+            requests.window,
+            Some(WindowRequest::Show),
+            "focus must not overwrite show"
+        );
         assert!(requests.focus);
         assert_eq!(requests.position, Some((-300, 40)));
         let drained = app.shared.take();
@@ -1105,19 +1234,38 @@ mod tests {
         rt.update(|_, tx| tx.close_window());
         rt.update(|_, tx| tx.quit());
         rt.update(|_, tx| tx.close_window());
-        assert_eq!(rt.shell_request.take(), Some(Shell::Quit), "quit outranks close");
+        assert_eq!(
+            rt.shell_request.take(),
+            Some(Shell::Quit),
+            "quit outranks close"
+        );
     }
 
     #[test]
     fn minimize_reaches_the_shell_from_handlers_updates_and_handles() {
-        let mut rt = Runtime::new(0u32, |_: &u32, _: &mut Cx<u32>| el(), (100.0, 100.0), Env::default());
-        rt.on_focus = Some(|_, focused, tx| if !focused { tx.minimize(); });
+        let mut rt = Runtime::new(
+            0u32,
+            |_: &u32, _: &mut Cx<u32>| el(),
+            (100.0, 100.0),
+            Env::default(),
+        );
+        rt.on_focus = Some(|_, focused, tx| {
+            if !focused {
+                tx.minimize();
+            }
+        });
         rt.window_focus(true);
         assert!(!rt.minimize_request);
         rt.window_focus(false);
-        assert!(rt.minimize_request && rt.shell_request.is_none(), "a handler's minimize is latched for the shell");
+        assert!(
+            rt.minimize_request && rt.shell_request.is_none(),
+            "a handler's minimize is latched for the shell"
+        );
         rt.ignore_minimize("a test");
-        assert!(!rt.minimize_request, "a shell that can't minimize takes the request");
+        assert!(
+            !rt.minimize_request,
+            "a shell that can't minimize takes the request"
+        );
         rt.update(|_, tx| tx.minimize());
         assert!(rt.minimize_request);
         let app = App::new(spec());
@@ -1128,12 +1276,24 @@ mod tests {
 
     #[test]
     fn fullscreen_reaches_the_shell_from_handlers_updates_and_handles() {
-        let mut rt = Runtime::new(0u32, |_: &u32, _: &mut Cx<u32>| el(), (100.0, 100.0), Env::default());
+        let mut rt = Runtime::new(
+            0u32,
+            |_: &u32, _: &mut Cx<u32>| el(),
+            (100.0, 100.0),
+            Env::default(),
+        );
         assert_eq!(rt.fullscreen_request, None);
         rt.update(|_, tx| tx.set_fullscreen(true));
-        assert_eq!(rt.fullscreen_request, Some(true), "a handler's request is latched");
+        assert_eq!(
+            rt.fullscreen_request,
+            Some(true),
+            "a handler's request is latched"
+        );
         assert!(!rt.fullscreen, "nothing applied it yet");
-        rt.update(|_, tx| { tx.set_fullscreen(true); tx.set_fullscreen(false); });
+        rt.update(|_, tx| {
+            tx.set_fullscreen(true);
+            tx.set_fullscreen(false);
+        });
         assert_eq!(rt.fullscreen_request, Some(false), "the last request wins");
         let app = App::new(spec());
         app.handle().set_fullscreen(true);
@@ -1146,34 +1306,114 @@ mod tests {
     fn a_handles_minimize_and_focus_are_last_wins_and_hide_close_or_open_cancel_it() {
         let app = App::new(spec());
         let h = app.handle();
-        let after = |calls: &dyn Fn()| { calls(); let r = app.shared.take(); (r.window, r.focus, r.minimize) };
-        assert_eq!(after(&|| { h.focus(); h.minimize(); }), (None, false, true), "focus then minimize stays minimized");
-        assert_eq!(after(&|| { h.minimize(); h.focus(); }), (None, true, false));
-        assert_eq!(after(&|| { h.show(); h.minimize(); }), (Some(WindowRequest::Show), false, true), "shows, then minimizes");
-        assert_eq!(after(&|| { h.minimize(); h.show(); }), (Some(WindowRequest::Show), false, true));
-        assert_eq!(after(&|| { h.minimize(); h.hide(); }), (Some(WindowRequest::Hide), false, false));
-        assert_eq!(after(&|| { h.minimize(); h.close(); }), (Some(WindowRequest::Close), false, false));
-        assert_eq!(after(&|| { h.minimize(); h.open(); }), (Some(WindowRequest::Open(None)), false, false), "open restores");
+        let after = |calls: &dyn Fn()| {
+            calls();
+            let r = app.shared.take();
+            (r.window, r.focus, r.minimize)
+        };
+        assert_eq!(
+            after(&|| {
+                h.focus();
+                h.minimize();
+            }),
+            (None, false, true),
+            "focus then minimize stays minimized"
+        );
+        assert_eq!(
+            after(&|| {
+                h.minimize();
+                h.focus();
+            }),
+            (None, true, false)
+        );
+        assert_eq!(
+            after(&|| {
+                h.show();
+                h.minimize();
+            }),
+            (Some(WindowRequest::Show), false, true),
+            "shows, then minimizes"
+        );
+        assert_eq!(
+            after(&|| {
+                h.minimize();
+                h.show();
+            }),
+            (Some(WindowRequest::Show), false, true)
+        );
+        assert_eq!(
+            after(&|| {
+                h.minimize();
+                h.hide();
+            }),
+            (Some(WindowRequest::Hide), false, false)
+        );
+        assert_eq!(
+            after(&|| {
+                h.minimize();
+                h.close();
+            }),
+            (Some(WindowRequest::Close), false, false)
+        );
+        assert_eq!(
+            after(&|| {
+                h.minimize();
+                h.open();
+            }),
+            (Some(WindowRequest::Open(None)), false, false),
+            "open restores"
+        );
     }
 
     #[test]
     fn a_standard_close_or_minimize_key_acts_only_when_no_handler_takes_it() {
         use crate::runtime::Unhandled;
         use crate::{Key, KeyEvent, Mods, PhysicalInput, PhysicalKeyCode as Code};
-        let cmd = Mods { cmd: true, ..Mods::default() };
+        let cmd = Mods {
+            cmd: true,
+            ..Mods::default()
+        };
         let press = |rt: &mut Runtime<u32>, code, c, then| {
-            rt.physical_then(PhysicalInput::Key { key: code, mods: cmd, pressed: true, repeat: false },
-                Some(KeyEvent { key: Key::Command(c), mods: cmd }), None, Some(then));
+            rt.physical_then(
+                PhysicalInput::Key {
+                    key: code,
+                    mods: cmd,
+                    pressed: true,
+                    repeat: false,
+                },
+                Some(KeyEvent {
+                    key: Key::Command(c),
+                    mods: cmd,
+                }),
+                None,
+                Some(then),
+            );
             rt.frame(0.0);
         };
-        let mut rt = Runtime::new(0u32, |_: &u32, _: &mut Cx<u32>| el(), (100.0, 100.0), Env::default());
+        let mut rt = Runtime::new(
+            0u32,
+            |_: &u32, _: &mut Cx<u32>| el(),
+            (100.0, 100.0),
+            Env::default(),
+        );
         press(&mut rt, Code::KeyW, 'w', Unhandled::Close);
-        assert_eq!(rt.shell_request.take(), Some(Shell::Close), "an unhandled ⌘W closes as the button would");
+        assert_eq!(
+            rt.shell_request.take(),
+            Some(Shell::Close),
+            "an unhandled ⌘W closes as the button would"
+        );
         press(&mut rt, Code::KeyM, 'm', Unhandled::Minimize);
         assert!(std::mem::take(&mut rt.minimize_request) && rt.shell_request.is_none());
-        rt.on_key = Some(|n, ev, _| { *n += 1; ev.is_command('w') });
+        rt.on_key = Some(|n, ev, _| {
+            *n += 1;
+            ev.is_command('w')
+        });
         press(&mut rt, Code::KeyW, 'w', Unhandled::Close);
-        assert_eq!((rt.state, rt.shell_request), (1, None), "the app's own ⌘W wins, once");
+        assert_eq!(
+            (rt.state, rt.shell_request),
+            (1, None),
+            "the app's own ⌘W wins, once"
+        );
         press(&mut rt, Code::KeyM, 'm', Unhandled::Minimize);
         assert_eq!(rt.state, 2, "the app saw ⌘M first");
         assert!(rt.minimize_request, "and didn't take it");
@@ -1188,7 +1428,9 @@ mod tests {
 
     fn drain(rt: &mut Runtime<u32>, app: &App<u32>) -> bool {
         let mut updated = false;
-        for f in app.shared.take().updates { updated |= rt.update_if(f); }
+        for f in app.shared.take().updates {
+            updated |= rt.update_if(f);
+        }
         updated
     }
 
@@ -1208,13 +1450,24 @@ mod tests {
         assert_eq!((BUILDS.get() - builds, rt.stats.commits - commits), (0, 0));
 
         handle.update_if(|_, _| false);
-        handle.update_if(|n, tx| { *n = 5; tx.instant(); true });
+        handle.update_if(|n, tx| {
+            *n = 5;
+            tx.instant();
+            true
+        });
         handle.update_if(|_, _| false);
         assert!(drain(&mut rt, &app), "one change in the batch commits it");
         rt.frame(1.0 / 120.0);
         rt.frame(1.0 / 120.0);
         assert_eq!(BUILDS.get() - builds, 1, "once");
-        assert_eq!(rt.elements().into_iter().find(|e| e.key.as_deref() == Some("box")).unwrap().rect[2], 15.0);
+        assert_eq!(
+            rt.elements()
+                .into_iter()
+                .find(|e| e.key.as_deref() == Some("box"))
+                .unwrap()
+                .rect[2],
+            15.0
+        );
 
         handle.update(|_, _| {});
         assert!(drain(&mut rt, &app), "`update` always counts as a change");
@@ -1226,13 +1479,28 @@ mod tests {
     fn an_update_that_changes_nothing_still_delivers_its_requests() {
         let mut rt = Runtime::new(0u32, counted, (100.0, 100.0), Env::default());
         rt.frame(0.0);
-        assert!(!rt.update_if(|_, tx| { tx.copy("hello"); tx.wake_after(std::time::Duration::from_millis(500)); false }));
+        assert!(!rt.update_if(|_, tx| {
+            tx.copy("hello");
+            tx.wake_after(std::time::Duration::from_millis(500));
+            false
+        }));
         assert!(!rt.stale());
         assert_eq!(rt.copy_request.as_deref(), Some("hello"));
-        assert_eq!(rt.wake_deadline(), None, "left for the next frame, as `update` leaves it");
+        assert_eq!(
+            rt.wake_deadline(),
+            None,
+            "left for the next frame, as `update` leaves it"
+        );
         rt.schedule_pending_wakes();
-        assert_eq!(rt.wake_deadline(), Some(rt.clock + 0.5), "or scheduled by a host that runs none");
-        assert!(!rt.update_if(|_, tx| { tx.quit(); false }));
+        assert_eq!(
+            rt.wake_deadline(),
+            Some(rt.clock + 0.5),
+            "or scheduled by a host that runs none"
+        );
+        assert!(!rt.update_if(|_, tx| {
+            tx.quit();
+            false
+        }));
         assert_eq!(rt.shell_request, Some(Shell::Quit));
     }
 
@@ -1243,7 +1511,10 @@ mod tests {
         let run = |changed: bool| {
             let mut rt = Runtime::new(0u32, counted, (100.0, 100.0), Env::default());
             rt.frame(0.0);
-            rt.update_if(move |_, tx| { tx.wake_after(std::time::Duration::ZERO); changed });
+            rt.update_if(move |_, tx| {
+                tx.wake_after(std::time::Duration::ZERO);
+                changed
+            });
             rt.update(|n, _| *n += 1);
             rt.frame(1.0);
             rt.wake_deadline()
@@ -1255,13 +1526,26 @@ mod tests {
     #[test]
     fn a_hidden_window_drains_its_inbox_on_wake_and_shows_it_when_reopened() {
         #[derive(Default)]
-        struct Lock { inbox: Option<std::sync::mpsc::Receiver<u32>>, locked: u32 }
+        struct Lock {
+            inbox: Option<std::sync::mpsc::Receiver<u32>>,
+            locked: u32,
+        }
         fn view(s: &Lock, _: &mut Cx<Lock>) -> El {
             crate::el::row().child(el().key("box").size(10.0 + s.locked as f32, 10.0))
         }
-        let mut rt = Runtime::new(Lock::default(), view, (200.0, 200.0), Env { system_dark: true, scale: 1.0 });
+        let mut rt = Runtime::new(
+            Lock::default(),
+            view,
+            (200.0, 200.0),
+            Env {
+                system_dark: true,
+                scale: 1.0,
+            },
+        );
         rt.poll = Some(|s: &mut Lock, _, tx: &mut Tx| {
-            let Some(n) = s.inbox.as_ref().and_then(|inbox| inbox.try_iter().last()) else { return false };
+            let Some(n) = s.inbox.as_ref().and_then(|inbox| inbox.try_iter().last()) else {
+                return false;
+            };
             s.locked = n;
             tx.wake_after(std::time::Duration::from_secs(60));
             true
@@ -1270,16 +1554,35 @@ mod tests {
         let (send, inbox) = std::sync::mpsc::channel();
         rt.state.inbox = Some(inbox);
         rt.frame(0.0);
-        let width = |rt: &Runtime<Lock>| rt.elements().into_iter().find(|e| e.key.as_deref() == Some("box")).unwrap().rect[2];
+        let width = |rt: &Runtime<Lock>| {
+            rt.elements()
+                .into_iter()
+                .find(|e| e.key.as_deref() == Some("box"))
+                .unwrap()
+                .rect[2]
+        };
         assert_eq!(width(&rt), 10.0);
 
         // Hidden from here: something queues a lock and wakes the loop.
         send.send(30).unwrap();
-        assert!(rt.poll_hidden(), "a hidden launcher renders when poll reports a change");
+        assert!(
+            rt.poll_hidden(),
+            "a hidden launcher renders when poll reports a change"
+        );
         assert!(!rt.poll_hidden());
-        assert_eq!(rt.state.locked, 30, "poll drained the inbox without a frame");
-        assert_eq!(width(&rt), 10.0, "nothing laid out, animated or presented while hidden");
-        assert!(rt.wake_deadline().is_some(), "poll's own timers still schedule while hidden");
+        assert_eq!(
+            rt.state.locked, 30,
+            "poll drained the inbox without a frame"
+        );
+        assert_eq!(
+            width(&rt),
+            10.0,
+            "nothing laid out, animated or presented while hidden"
+        );
+        assert!(
+            rt.wake_deadline().is_some(),
+            "poll's own timers still schedule while hidden"
+        );
 
         // `show` lands everything on its first frame.
         rt.settle_all();
@@ -1291,17 +1594,37 @@ mod tests {
     /// minimised), arms its timer on the next hidden poll.
     #[test]
     fn an_update_arriving_without_frames_arms_its_timer() {
-        let mut rt = Runtime::new(0_u32, |_: &u32, _: &mut Cx<u32>| el(), (100.0, 100.0), Env { system_dark: true, scale: 1.0 });
-        rt.poll = Some(|polls: &mut u32, _, _: &mut Tx| { *polls += 1; false });
+        let mut rt = Runtime::new(
+            0_u32,
+            |_: &u32, _: &mut Cx<u32>| el(),
+            (100.0, 100.0),
+            Env {
+                system_dark: true,
+                scale: 1.0,
+            },
+        );
+        rt.poll = Some(|polls: &mut u32, _, _: &mut Tx| {
+            *polls += 1;
+            false
+        });
         rt.wall_start = Some(std::time::Instant::now());
         rt.frame(0.0);
         assert_eq!(rt.wake_deadline(), None);
         rt.update(|_, tx| tx.wake_after(std::time::Duration::from_secs(5)));
         rt.poll_hidden();
-        let deadline = rt.wake_deadline().expect("the update's timer is armed without a frame");
-        assert!((4.9..5.5).contains(&deadline), "it counts from the update: {deadline}");
+        let deadline = rt
+            .wake_deadline()
+            .expect("the update's timer is armed without a frame");
+        assert!(
+            (4.9..5.5).contains(&deadline),
+            "it counts from the update: {deadline}"
+        );
         rt.frame(0.0);
-        assert_eq!(rt.wake_deadline(), Some(deadline), "and the next frame doesn't arm it twice");
+        assert_eq!(
+            rt.wake_deadline(),
+            Some(deadline),
+            "and the next frame doesn't arm it twice"
+        );
     }
 
     /// A hidden host's due timer runs `poll` and spends the timer without building the view,
@@ -1310,8 +1633,21 @@ mod tests {
     fn a_hidden_timer_polls_without_building_the_view() {
         use std::time::{Duration, Instant};
         for with_poll in [true, false] {
-            let mut rt = Runtime::new(0_u32, |_: &u32, _: &mut Cx<u32>| el(), (100.0, 100.0), Env { system_dark: true, scale: 1.0 });
-            if with_poll { rt.poll = Some(|polls: &mut u32, _, _: &mut Tx| { *polls += 1; true }); }
+            let mut rt = Runtime::new(
+                0_u32,
+                |_: &u32, _: &mut Cx<u32>| el(),
+                (100.0, 100.0),
+                Env {
+                    system_dark: true,
+                    scale: 1.0,
+                },
+            );
+            if with_poll {
+                rt.poll = Some(|polls: &mut u32, _, _: &mut Tx| {
+                    *polls += 1;
+                    true
+                });
+            }
             let t0 = Instant::now();
             rt.wall_start = Some(t0);
             rt.frame(0.0);
@@ -1321,11 +1657,19 @@ mod tests {
             assert!(rt.wake_deadline().is_some());
             rt.wall_start = Some(t0 - Duration::from_secs(1));
             assert_eq!(rt.hidden_wake(), with_poll);
-            assert_eq!(rt.wake_deadline(), None, "the due timer is spent, so it doesn't wake the host again");
+            assert_eq!(
+                rt.wake_deadline(),
+                None,
+                "the due timer is spent, so it doesn't wake the host again"
+            );
             assert_eq!(rt.stats.commits, commits, "no view or layout while hidden");
             assert!(rt.needs_commit());
             rt.frame(0.0);
-            assert_eq!(rt.stats.commits, commits + 1, "the frame that shows it builds once");
+            assert_eq!(
+                rt.stats.commits,
+                commits + 1,
+                "the frame that shows it builds once"
+            );
         }
     }
 }

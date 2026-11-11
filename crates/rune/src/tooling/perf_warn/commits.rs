@@ -69,13 +69,23 @@ impl CommitMeter {
     #[inline(always)]
     pub(crate) fn poll(&mut self) {
         #[cfg(debug_assertions)]
-        self.meter.sources.push(Source { site: "poll".into(), cause: Cause::Poll, subject: None, at: None });
+        self.meter.sources.push(Source {
+            site: "poll".into(),
+            cause: Cause::Poll,
+            subject: None,
+            at: None,
+        });
     }
 
     /// Handler `name` on the element at `path`, set at `at`, asked for a commit.
     #[inline(always)]
     #[cfg_attr(not(debug_assertions), allow(unused_variables))]
-    pub(crate) fn handler(&mut self, name: &'static str, path: Option<&str>, at: Option<&'static std::panic::Location<'static>>) {
+    pub(crate) fn handler(
+        &mut self,
+        name: &'static str,
+        path: Option<&str>,
+        at: Option<&'static std::panic::Location<'static>>,
+    ) {
         #[cfg(debug_assertions)]
         {
             let site = match (at, path) {
@@ -83,28 +93,52 @@ impl CommitMeter {
                 (None, Some(path)) => super::handler_site(name, path),
                 (None, None) => name.to_owned(),
             };
-            if let (Some(at), Some(path), "on_hover" | "on_hover_change") = (at, path, name) { self.hover_row(name, at, path); }
-            self.meter.sources.push(Source { site, cause: Cause::Handler(name), subject: path.map(str::to_owned), at });
+            if let (Some(at), Some(path), "on_hover" | "on_hover_change") = (at, path, name) {
+                self.hover_row(name, at, path);
+            }
+            self.meter.sources.push(Source {
+                site,
+                cause: Cause::Handler(name),
+                subject: path.map(str::to_owned),
+                at,
+            });
         }
     }
 
     #[cfg(debug_assertions)]
-    fn hover_row(&mut self, name: &'static str, at: &'static std::panic::Location<'static>, path: &str) {
+    fn hover_row(
+        &mut self,
+        name: &'static str,
+        at: &'static std::panic::Location<'static>,
+        path: &str,
+    ) {
         let rows = self.meter.hover_rows.entry(at).or_default();
-        if rows.len() >= HOVER_ROWS || rows.iter().any(|p| p == path) { return; }
+        if rows.len() >= HOVER_ROWS || rows.iter().any(|p| p == path) {
+            return;
+        }
         rows.push(path.to_owned());
-        if rows.len() < HOVER_ROWS { return; }
+        if rows.len() < HOVER_ROWS {
+            return;
+        }
         let example = rows[0].clone();
-        super::warn_once(format!("hover rows {at}"), || format!(
-            "`{name}` set at {at} committed the view for {HOVER_ROWS} elements (as {example:?}): each one the pointer crosses \
-             runs the whole view; {}", handler_fix(name)
-        ));
+        super::warn_once(format!("hover rows {at}"), || {
+            format!(
+                "`{name}` set at {at} committed the view for {HOVER_ROWS} elements (as {example:?}): each one the pointer crosses \
+             runs the whole view; {}",
+                handler_fix(name)
+            )
+        });
     }
 
     /// A view's layout read of `key`, made at `at`, moved, so the view runs again.
     #[cfg(debug_assertions)]
     pub(crate) fn read(&mut self, key: &str, at: Option<&'static std::panic::Location<'static>>) {
-        self.meter.sources.push(Source { site: format!("read {key}"), cause: Cause::Read, subject: Some(key.to_owned()), at });
+        self.meter.sources.push(Source {
+            site: format!("read {key}"),
+            cause: Cause::Read,
+            subject: Some(key.to_owned()),
+            at,
+        });
     }
 
     /// The frame's commits are done. `scrolling`: a hand, momentum or a glide moves a viewport;
@@ -120,7 +154,9 @@ impl CommitMeter {
             match instant.filter(|_| committed) {
                 Some(key) => {
                     m.instant += 1;
-                    if m.instant == INSTANT_FRAMES { super::warn_once(format!("instant scroll {key}"), || instant_message(key)); }
+                    if m.instant == INSTANT_FRAMES {
+                        super::warn_once(format!("instant scroll {key}"), || instant_message(key));
+                    }
                 }
                 None => m.instant = 0,
             }
@@ -130,16 +166,22 @@ impl CommitMeter {
                 return;
             }
             m.frames += 1;
-            if !committed { return; }
+            if !committed {
+                return;
+            }
             let mut seen: Vec<&str> = Vec::new();
             for s in &sources {
-                if seen.contains(&s.site.as_str()) { continue; }
+                if seen.contains(&s.site.as_str()) {
+                    continue;
+                }
                 seen.push(&s.site);
                 let count = m.counts.entry(s.site.clone()).or_default();
                 *count += 1;
                 if *count >= COMMITS && *count * SHARE >= m.frames {
                     let (count, frames) = (*count, m.frames);
-                    super::warn_once(format!("scroll commit {}", s.site), || message(s, count, frames));
+                    super::warn_once(format!("scroll commit {}", s.site), || {
+                        message(s, count, frames)
+                    });
                 }
             }
         }
@@ -149,13 +191,16 @@ impl CommitMeter {
 /// The warning for source `s`, which committed `count` of a scroll's `frames` frames.
 #[cfg(debug_assertions)]
 fn message(s: &Source, count: u32, frames: u32) -> String {
-    let at = s.at.map_or_else(String::new, |at| format!(" (set at {at})"));
+    let at =
+        s.at.map_or_else(String::new, |at| format!(" (set at {at})"));
     let subject = s.subject.as_deref().unwrap_or("");
     let (who, fix) = match s.cause {
-        Cause::Poll => ("`poll` returned true and".to_owned(),
+        Cause::Poll => (
+            "`poll` returned true and".to_owned(),
             "return true only when visible state changed; to act on where a scroll stops, wait until it \
              has been still a moment (`Tx::wake_after`), and follow it frame by frame with \
-             `El::on_scroll_offset` and live values"),
+             `El::on_scroll_offset` and live values",
+        ),
         Cause::Read => {
             let window = crate::runtime::window_read_key(subject);
             let at = s.at.map_or_else(String::new, |at| format!(" at {at}"));
@@ -163,11 +208,16 @@ fn message(s: &Source, count: u32, frames: u32) -> String {
                 Some(key) => format!("the view's `Cx::window_layout` read of {key:?}{at}"),
                 None => format!("the view's layout read of {subject:?}{at}"),
             };
-            (format!("{read} moved and"),
-             if window.is_some() { "read `Cx::layout_size` or `Cx::layout` (unscrolled) unless the view needs where the \
-                 element is in the window, and then only through `window_layout_with` and what it computes" }
-             else { "read only what the view needs (`Cx::layout_size`, `Cx::layout_with`), or follow it with \
-                 `El::on_layout_tx` and a live value" })
+            (
+                format!("{read} moved and"),
+                if window.is_some() {
+                    "read `Cx::layout_size` or `Cx::layout` (unscrolled) unless the view needs where the \
+                 element is in the window, and then only through `window_layout_with` and what it computes"
+                } else {
+                    "read only what the view needs (`Cx::layout_size`, `Cx::layout_with`), or follow it with \
+                 `El::on_layout_tx` and a live value"
+                },
+            )
         }
         Cause::Handler(name) => (format!("`{name}` on {subject:?}{at}"), handler_fix(name)),
     };
@@ -177,10 +227,14 @@ fn message(s: &Source, count: u32, frames: u32) -> String {
 #[cfg(debug_assertions)]
 fn handler_fix(name: &str) -> &'static str {
     match name {
-        "on_hover" | "on_hover_change" => "paint hover with `El::hover`, `hover_group` and `group_*` styles (`hover_alone` for a \
-            target inside a lit row) instead of state, or say `Tx::live_only` when the handler only sets live values",
-        "on_layout_tx" | "on_drawn_layout_tx" | "on_pointer_move_local" | "on_wheel" => "when the handler only moves live values \
-            or bookkeeping, say `Tx::live_only` (`on_layout` and `on_drawn_layout` take one in their `_tx` forms)",
+        "on_hover" | "on_hover_change" => {
+            "paint hover with `El::hover`, `hover_group` and `group_*` styles (`hover_alone` for a \
+            target inside a lit row) instead of state, or say `Tx::live_only` when the handler only sets live values"
+        }
+        "on_layout_tx" | "on_drawn_layout_tx" | "on_pointer_move_local" | "on_wheel" => {
+            "when the handler only moves live values \
+            or bookkeeping, say `Tx::live_only` (`on_layout` and `on_drawn_layout` take one in their `_tx` forms)"
+        }
         "on_visible_rows" => "return true only when the visible range changed what the view shows",
         _ => "say `Tx::live_only` when the handler changes nothing the view reads",
     }

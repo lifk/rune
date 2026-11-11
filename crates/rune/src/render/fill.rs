@@ -24,7 +24,12 @@ pub(super) struct FillBindings<'a> {
 }
 
 impl FillPass {
-    pub(super) fn new(device: &wgpu::Device, layout: &wgpu::PipelineLayout, shader: &dxbc::Shaders, bindings: FillBindings<'_>) -> FillPass {
+    pub(super) fn new(
+        device: &wgpu::Device,
+        layout: &wgpu::PipelineLayout,
+        shader: &dxbc::Shaders,
+        bindings: FillBindings<'_>,
+    ) -> FillPass {
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("atlas fill"),
             layout: Some(layout),
@@ -41,13 +46,20 @@ impl FillPass {
                 module: &shader.fragment,
                 entry_point: Some("fs"),
                 compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState { format: wgpu::TextureFormat::R8Unorm, blend: None, write_mask: wgpu::ColorWrites::ALL })],
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::R8Unorm,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
             }),
             multiview_mask: None,
             cache: None,
         });
         let projection = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("atlas fill projection"), size: 16, usage: wgpu::BufferUsages::UNIFORM, mapped_at_creation: true,
+            label: Some("atlas fill projection"),
+            size: 16,
+            usage: wgpu::BufferUsages::UNIFORM,
+            mapped_at_creation: true,
         });
         let size = ATLAS_SIZE as f32;
         if let Ok(mut range) = projection.slice(..).get_mapped_range_mut() {
@@ -56,11 +68,29 @@ impl FillPass {
         projection.unmap();
         let bind = Self::bind(device, &bindings, &projection);
         let capacity = 64;
-        FillPass { pipeline, projection, bind, instances: Renderer::instance_buffer(device, capacity), capacity }
+        FillPass {
+            pipeline,
+            projection,
+            bind,
+            instances: Renderer::instance_buffer(device, capacity),
+            capacity,
+        }
     }
 
-    fn bind(device: &wgpu::Device, b: &FillBindings<'_>, projection: &wgpu::Buffer) -> wgpu::BindGroup {
-        Renderer::bind_group(device, b.layout, b.globals, Some(b.outlines), b.stand_in, b.stand_in, Some(projection))
+    fn bind(
+        device: &wgpu::Device,
+        b: &FillBindings<'_>,
+        projection: &wgpu::Buffer,
+    ) -> wgpu::BindGroup {
+        Renderer::bind_group(
+            device,
+            b.layout,
+            b.globals,
+            Some(b.outlines),
+            b.stand_in,
+            b.stand_in,
+            Some(projection),
+        )
     }
 
     /// Binds a new outline texture.
@@ -69,7 +99,12 @@ impl FillPass {
     }
 
     /// Draws `fills` into `page`, ahead of anything submitted after.
-    pub(super) fn run(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, pages: &[(&wgpu::Texture, Vec<QueuedFill>)]) {
+    pub(super) fn run(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        pages: &[(&wgpu::Texture, Vec<QueuedFill>)],
+    ) {
         let count: usize = pages.iter().map(|(_, f)| f.len()).sum();
         if count == 0 {
             return;
@@ -78,9 +113,14 @@ impl FillPass {
             self.capacity = count.next_power_of_two();
             self.instances = Renderer::instance_buffer(device, self.capacity);
         }
-        let instances: Vec<Instance> = pages.iter().flat_map(|(_, fills)| fills.iter().map(instance)).collect();
+        let instances: Vec<Instance> = pages
+            .iter()
+            .flat_map(|(_, fills)| fills.iter().map(instance))
+            .collect();
         queue.write_buffer(&self.instances, 0, bytemuck::cast_slice(&instances));
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("atlas fill") });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("atlas fill"),
+        });
         let mut first = 0u32;
         for (texture, fills) in pages {
             let view = texture.create_view(&Default::default());
@@ -90,7 +130,10 @@ impl FillPass {
                     view: &view,
                     depth_slice: None,
                     resolve_target: None,
-                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
                 })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
@@ -128,10 +171,18 @@ fn instance(q: &QueuedFill) -> Instance {
 impl Renderer {
     /// A glyph atlas page; a Windfoil renderer also draws into its pages (`FillPass`).
     pub(super) fn atlas_texture(device: &wgpu::Device, filled: bool) -> wgpu::Texture {
-        let render = if filled { wgpu::TextureUsages::RENDER_ATTACHMENT } else { wgpu::TextureUsages::empty() };
+        let render = if filled {
+            wgpu::TextureUsages::RENDER_ATTACHMENT
+        } else {
+            wgpu::TextureUsages::empty()
+        };
         device.create_texture(&wgpu::TextureDescriptor {
             label: Some("glyph atlas"),
-            size: wgpu::Extent3d { width: ATLAS_SIZE, height: ATLAS_SIZE, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: ATLAS_SIZE,
+                height: ATLAS_SIZE,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -142,18 +193,33 @@ impl Renderer {
     }
 
     /// Runs the atlas's queued fills (after this frame's row uploads, which they draw over).
-    pub(super) fn fill_atlas(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, staging: &rune_staging::Staging, atlas: &mut Atlas) {
-        let variant::Uber::Windfoil { fill, .. } = &mut self.uber else { return };
+    pub(super) fn fill_atlas(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        staging: &rune_staging::Staging,
+        atlas: &mut Atlas,
+    ) {
+        let variant::Uber::Windfoil { fill, .. } = &mut self.uber else {
+            return;
+        };
         let fills = atlas.take_fills();
         if fills.is_empty() {
             return;
         }
         // Rows first: a fill draws over the zeros a row upload brings.
         staging.submit();
-        let pages: Vec<(&wgpu::Texture, Vec<QueuedFill>)> = fills.into_iter().filter_map(|(page, f)| {
-            let texture = if page == 0 { Some(&self.atlas) } else { self.atlas_pages.get(page - 1).map(|p| &p.0) };
-            texture.map(|t| (t, f))
-        }).collect();
+        let pages: Vec<(&wgpu::Texture, Vec<QueuedFill>)> = fills
+            .into_iter()
+            .filter_map(|(page, f)| {
+                let texture = if page == 0 {
+                    Some(&self.atlas)
+                } else {
+                    self.atlas_pages.get(page - 1).map(|p| &p.0)
+                };
+                texture.map(|t| (t, f))
+            })
+            .collect();
         fill.run(device, queue, &pages);
     }
 }

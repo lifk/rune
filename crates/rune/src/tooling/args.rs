@@ -114,12 +114,19 @@ impl Args {
     fn parse_split(argv: Vec<String>) -> (Args, Vec<String>) {
         #[cfg(feature = "hot")]
         crate::hot::enable_from_env();
-        let mut a = Args { fps: 60.0, every: 1, cols: 10, ..Default::default() };
+        let mut a = Args {
+            fps: 60.0,
+            every: 1,
+            cols: 10,
+            ..Default::default()
+        };
         let mut extra = Vec::new();
         let mut i = 0;
         let val = |i: &mut usize| -> String {
             *i += 1;
-            argv.get(*i).cloned().unwrap_or_else(|| die(&format!("{} needs a value", argv[*i - 1])))
+            argv.get(*i)
+                .cloned()
+                .unwrap_or_else(|| die(&format!("{} needs a value", argv[*i - 1])))
         };
         while i < argv.len() {
             match argv[i].as_str() {
@@ -130,7 +137,9 @@ impl Args {
                 #[cfg(feature = "hot")]
                 "--hot-control" => a.hot_control = Some(val(&mut i).into()),
                 #[cfg(not(feature = "hot"))]
-                "--hot" | "--snap-on-patch" | "--hot-control" => die("live editing requires the rune/hot feature; use scripts/rune-dev"),
+                "--hot" | "--snap-on-patch" | "--hot-control" => {
+                    die("live editing requires the rune/hot feature; use scripts/rune-dev")
+                }
                 "--snap" => a.snap = Some(val(&mut i).into()),
                 "--scene" => a.scene = Some(val(&mut i)),
                 "--playground" => a.playground = Some(crate::playground::arg(&argv, &mut i)),
@@ -144,29 +153,43 @@ impl Args {
                 "--size" => a.size = Some(parse_size(&val(&mut i)).unwrap_or_else(|e| die(&e))),
                 "--scale" => a.scale = Some(parse_scale(&val(&mut i)).unwrap_or_else(|e| die(&e))),
                 "--theme" => a.theme = Some(val(&mut i)),
-                "--scroll-bars" => a.scroll_bars = Some(parse_scroll_bars(&val(&mut i)).unwrap_or_else(|e| die(&e))),
+                "--scroll-bars" => {
+                    a.scroll_bars =
+                        Some(parse_scroll_bars(&val(&mut i)).unwrap_or_else(|e| die(&e)))
+                }
                 "--script" => a.script = Some(val(&mut i).into()),
                 "--frames" => a.frames = Some(num(&val(&mut i)) as usize),
                 "--start" => {
                     let v = val(&mut i);
                     a.start_mark = mark_time(&v);
-                    if a.start_mark.is_none() { a.start = num(&v); }
+                    if a.start_mark.is_none() {
+                        a.start = num(&v);
+                    }
                 }
                 "--fps" => a.fps = num(&val(&mut i)),
                 "--out" => a.out = Some(val(&mut i).into()),
                 "--video" => a.video = Some(val(&mut i).into()),
                 "--duration" => {
                     let v = val(&mut i);
-                    a.duration = Some(if v == "auto" { Length::Auto } else { Length::Seconds(num(&v)) });
+                    a.duration = Some(if v == "auto" {
+                        Length::Auto
+                    } else {
+                        Length::Seconds(num(&v))
+                    });
                 }
                 "--keys" => {
-                    let corner = argv.get(i + 1).and_then(|v| crate::input::keycaps::Corner::parse(v));
-                    if corner.is_some() { i += 1; }
+                    let corner = argv
+                        .get(i + 1)
+                        .and_then(|v| crate::input::keycaps::Corner::parse(v));
+                    if corner.is_some() {
+                        i += 1;
+                    }
                     a.keys = Some(corner.unwrap_or_default());
                 }
                 "--keys-theme" => {
                     let v = val(&mut i);
-                    a.keys_theme = crate::input::keycaps::parse_theme(&v).unwrap_or_else(|| die("--keys-theme is auto, light or dark"));
+                    a.keys_theme = crate::input::keycaps::parse_theme(&v)
+                        .unwrap_or_else(|| die("--keys-theme is auto, light or dark"));
                 }
                 "--pointer" => a.pointer = true,
                 "--desktop" => a.desktop = Some(val(&mut i).into()),
@@ -175,7 +198,14 @@ impl Args {
                 "--html-template" => a.html_template = Some(val(&mut i).into()),
                 "--html-widths" => {
                     let v = val(&mut i);
-                    a.html_widths = v.split(',').map(|w| positive(w).unwrap_or_else(|| die(&format!("--html-widths is a list of widths above 0: {v}")))).collect();
+                    a.html_widths = v
+                        .split(',')
+                        .map(|w| {
+                            positive(w).unwrap_or_else(|| {
+                                die(&format!("--html-widths is a list of widths above 0: {v}"))
+                            })
+                        })
+                        .collect();
                 }
                 "--trace" => a.trace = Some(val(&mut i).into()),
                 "--native" => a.native = true,
@@ -184,9 +214,15 @@ impl Args {
                 "--strip" => a.strip = Some(val(&mut i).into()),
                 "--crop" => {
                     let v = val(&mut i);
-                    match v.split(',').map(|s| s.trim().parse::<f32>()).collect::<Result<Vec<_>, _>>() {
+                    match v
+                        .split(',')
+                        .map(|s| s.trim().parse::<f32>())
+                        .collect::<Result<Vec<_>, _>>()
+                    {
                         Ok(r) if r.len() == 4 => a.crops.push([r[0], r[1], r[2], r[3]]),
-                        _ if v.contains(',') => die("--crop is x,y,w,h in points, or an element's key or path"),
+                        _ if v.contains(',') => {
+                            die("--crop is x,y,w,h in points, or an element's key or path")
+                        }
                         _ => a.crop_key = Some(v),
                     }
                 }
@@ -205,20 +241,32 @@ impl Args {
             }
             i += 1;
         }
-        if a.variant.is_some() && a.playground.is_none() { die("--variant needs --playground"); }
-        if a.crop_key.is_some() && a.snap.is_none() { die("--crop KEY needs --snap"); }
-        if a.whole_window && (a.playground.is_none() || a.snap.is_none()) { die("--whole-window needs --playground and --snap"); }
+        if a.variant.is_some() && a.playground.is_none() {
+            die("--variant needs --playground");
+        }
+        if a.crop_key.is_some() && a.snap.is_none() {
+            die("--crop KEY needs --snap");
+        }
+        if a.whole_window && (a.playground.is_none() || a.snap.is_none()) {
+            die("--whole-window needs --playground and --snap");
+        }
         (a, extra)
     }
 
     pub fn headless(&self) -> bool {
         #[cfg(feature = "hot")]
-        if self.snap_on_patch.is_some() { return true; }
+        if self.snap_on_patch.is_some() {
+            return true;
+        }
         self.snap.is_some()
             || self.tree.is_some()
             || self.html.is_some()
             || (!self.native
-                && (self.script.is_some() || self.trace.is_some() || self.frames.is_some() || self.duration.is_some() || self.out.is_some()))
+                && (self.script.is_some()
+                    || self.trace.is_some()
+                    || self.frames.is_some()
+                    || self.duration.is_some()
+                    || self.out.is_some()))
             || self.video.is_some()
             || self.strip.is_some()
             || self.list_scenes
@@ -300,16 +348,22 @@ pub(crate) fn die(msg: &str) -> ! {
 }
 
 pub(crate) fn num(s: &str) -> f64 {
-    s.trim().parse().unwrap_or_else(|_| die(&format!("not a number: {s}")))
+    s.trim()
+        .parse()
+        .unwrap_or_else(|_| die(&format!("not a number: {s}")))
 }
 
 fn positive(s: &str) -> Option<f32> {
-    s.trim().parse::<f32>().ok().filter(|v| v.is_finite() && *v > 0.0)
+    s.trim()
+        .parse::<f32>()
+        .ok()
+        .filter(|v| v.is_finite() && *v > 0.0)
 }
 
 /// `--size WxH`, in points.
 pub(crate) fn parse_size(v: &str) -> Result<(f32, f32), String> {
-    v.split_once('x').and_then(|(w, h)| Some((positive(w)?, positive(h)?)))
+    v.split_once('x')
+        .and_then(|(w, h)| Some((positive(w)?, positive(h)?)))
         .ok_or_else(|| format!("--size is WxH, both above 0: {v}"))
 }
 
@@ -322,6 +376,8 @@ pub(crate) fn parse_scroll_bars(v: &str) -> Result<crate::ScrollBars, String> {
         "always" => Ok(crate::ScrollBars::Always),
         "when-scrolling" => Ok(crate::ScrollBars::WhenScrolling),
         "automatic" | "auto" => Ok(crate::ScrollBars::Automatic),
-        _ => Err(format!("--scroll-bars is when-scrolling, always or automatic: {v}")),
+        _ => Err(format!(
+            "--scroll-bars is when-scrolling, always or automatic: {v}"
+        )),
     }
 }

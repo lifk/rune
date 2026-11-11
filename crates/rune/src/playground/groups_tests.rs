@@ -9,9 +9,16 @@ fn a_click_on_a_header_folds_its_group_and_another_unfolds_it() {
     let mut rt = runtime(Some(Some("big".into())));
     assert!(shown(&rt, 2) && shown(&rt, 5));
     tap(&mut rt, "playground-group-2");
-    assert!(!shown(&rt, 2) && !shown(&rt, 5), "Motion's stories are hidden");
+    assert!(
+        !shown(&rt, 2) && !shown(&rt, 5),
+        "Motion's stories are hidden"
+    );
     assert!(shown(&rt, 3), "other groups aren't");
-    assert_eq!((header(&rt), selected(&rt)), (Some("Motion"), 0), "the header is the selection; the stage keeps its story");
+    assert_eq!(
+        (header(&rt), selected(&rt)),
+        (Some("Motion"), 0),
+        "the header is the selection; the stage keeps its story"
+    );
     tap(&mut rt, "playground-group-2");
     assert!(shown(&rt, 2) && shown(&rt, 5));
 }
@@ -41,13 +48,24 @@ fn folding_the_open_storys_group_selects_its_header_and_stays_folded_after_close
     tap(&mut rt, "playground-group-2");
     assert_eq!((header(&rt), selected(&rt)), (Some("Motion"), 5));
     letter(&mut rt, "r");
-    assert_eq!(header(&rt), Some("Motion"), "a replay keeps the list as it is");
+    assert_eq!(
+        header(&rt),
+        Some("Motion"),
+        "a replay keeps the list as it is"
+    );
     assert!(!shown(&rt, 5));
     escape(&mut rt);
     rt.update(|_, tx| tx.open_playground());
     rt.frame(DT);
-    assert!(!shown(&rt, 2) && !shown(&rt, 5), "reopened, the group is still folded");
-    assert_eq!((header(&rt), selected(&rt)), (Some("Motion"), 5), "and its header stands in for the story");
+    assert!(
+        !shown(&rt, 2) && !shown(&rt, 5),
+        "reopened, the group is still folded"
+    );
+    assert_eq!(
+        (header(&rt), selected(&rt)),
+        (Some("Motion"), 5),
+        "and its header stands in for the story"
+    );
 }
 
 #[test]

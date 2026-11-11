@@ -23,7 +23,8 @@ fn compact_switch_knobs_sit_centred_on_device_pixels() {
         // The painted rect (device px edges) drawn for an element's rect.
         let drawn = |r: [f32; 4]| {
             let want = [r[0] * scale, r[1] * scale, (r[0] + r[2]) * scale, (r[1] + r[3]) * scale];
-            rt.instances.iter()
+            rt.instances
+                .iter()
                 .filter(|i| i.params[1] == KIND_RECT || i.params[1] == KIND_GRADIENT)
                 .map(|i| [i.rect[0], i.rect[1], i.rect[0] + i.rect[2], i.rect[1] + i.rect[3]])
                 .find(|e| (0..4).all(|k| (e[k] - want[k]).abs() <= 1.01))

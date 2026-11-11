@@ -18,17 +18,26 @@ struct Page {
 
 thread_local! { static PAGE: RefCell<Page> = RefCell::default(); }
 
-const BUSY: &str = "a Rune app is already running on this page; call its AppHandle::quit before starting another";
+const BUSY: &str =
+    "a Rune app is already running on this page; call its AppHandle::quit before starting another";
 
 /// Starts an app now if the page is free, or once the running app (asked to quit) has gone.
 /// `quitting` reports whether the new app was itself asked to quit before it started.
 pub(super) fn start(quitting: Quitting, start: Start) -> Result<(), String> {
     let now = PAGE.with_borrow_mut(|page| {
         // The app this one would follow: one already waiting, else the running one.
-        let ahead = page.next.as_ref().map(|(quitting, _)| quitting).or(page.live.as_ref()).map(|quitting| quitting());
+        let ahead = page
+            .next
+            .as_ref()
+            .map(|(quitting, _)| quitting)
+            .or(page.live.as_ref())
+            .map(|quitting| quitting());
         match ahead {
             None => Ok(Some(start)),
-            Some(true) => { page.next = Some((quitting, start)); Ok(None) }
+            Some(true) => {
+                page.next = Some((quitting, start));
+                Ok(None)
+            }
             Some(false) => Err(BUSY.to_owned()),
         }
     })?;
@@ -37,16 +46,25 @@ pub(super) fn start(quitting: Quitting, start: Start) -> Result<(), String> {
 
 /// The event loop for `quitting`'s app started.
 pub(super) fn occupy(quitting: Quitting, router: Option<Box<dyn Fn(&str) -> bool>>) {
-    PAGE.with_borrow_mut(|page| { page.live = Some(quitting); page.router = router.map(Into::into); });
+    PAGE.with_borrow_mut(|page| {
+        page.live = Some(quitting);
+        page.router = router.map(Into::into);
+    });
 }
 
 /// The running app's event loop is ending. A queued app starts after this turn, once winit
 /// has let go of its loop.
 pub(super) fn vacate() {
-    let next = PAGE.with_borrow_mut(|page| { page.live = None; page.router = None; page.next.take() });
+    let next = PAGE.with_borrow_mut(|page| {
+        page.live = None;
+        page.router = None;
+        page.next.take()
+    });
     if let Some((_, start)) = next {
         wasm_bindgen_futures::spawn_local(async move {
-            if let Err(e) = start() { super::error(&e, None, false, false); }
+            if let Err(e) = start() {
+                super::error(&e, None, false, false);
+            }
         });
     }
 }
@@ -60,7 +78,11 @@ pub(super) fn route(href: &str) -> bool {
 /// What Rune changed on the page, to put back when the app ends.
 #[derive(Default)]
 pub(super) struct Borrowed {
-    canvas: Option<(web_sys::HtmlCanvasElement, String, Vec<(&'static str, Option<String>)>)>,
+    canvas: Option<(
+        web_sys::HtmlCanvasElement,
+        String,
+        Vec<(&'static str, Option<String>)>,
+    )>,
     body: Option<String>,
     title: Option<String>,
 }
@@ -71,7 +93,10 @@ const CANVAS_ATTRIBUTES: [&str; 4] = ["tabindex", "alt", "width", "height"];
 impl Borrowed {
     /// Remembers a canvas the page owns, before Rune styles it.
     pub(super) fn canvas(&mut self, canvas: &web_sys::HtmlCanvasElement) {
-        let attributes = CANVAS_ATTRIBUTES.iter().map(|&name| (name, canvas.get_attribute(name))).collect();
+        let attributes = CANVAS_ATTRIBUTES
+            .iter()
+            .map(|&name| (name, canvas.get_attribute(name)))
+            .collect();
         self.canvas = Some((canvas.clone(), canvas.style().css_text(), attributes));
     }
 
@@ -85,11 +110,20 @@ impl Borrowed {
         if let Some((canvas, css, attributes)) = self.canvas {
             canvas.style().set_css_text(&css);
             for (name, value) in attributes {
-                let _ = match value { Some(value) => canvas.set_attribute(name, &value), None => canvas.remove_attribute(name) };
+                let _ = match value {
+                    Some(value) => canvas.set_attribute(name, &value),
+                    None => canvas.remove_attribute(name),
+                };
             }
         }
-        let Some(document) = web_sys::window().and_then(|w| w.document()) else { return };
-        if let (Some(css), Some(body)) = (self.body, document.body()) { body.style().set_css_text(&css); }
-        if let Some(title) = self.title { document.set_title(&title); }
+        let Some(document) = web_sys::window().and_then(|w| w.document()) else {
+            return;
+        };
+        if let (Some(css), Some(body)) = (self.body, document.body()) {
+            body.style().set_css_text(&css);
+        }
+        if let Some(title) = self.title {
+            document.set_title(&title);
+        }
     }
 }

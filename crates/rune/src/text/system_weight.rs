@@ -57,10 +57,21 @@ pub(super) fn corrections(
                 continue;
             }
             let font = run.font();
-            let Some((siblings, face)) = family_of(faces, fcx, files, &font.data, font.index) else { continue };
+            let Some((siblings, face)) = family_of(faces, fcx, files, &font.data, font.index)
+            else {
+                continue;
+            };
             let wanted = wanted(range.start);
-            let near = nearest(wanted, siblings.iter().filter(|s| s.style == face.style && s.width == face.width).map(|s| s.weight));
-            let Some(weight) = near.filter(|&w| w != face.weight) else { continue };
+            let near = nearest(
+                wanted,
+                siblings
+                    .iter()
+                    .filter(|s| s.style == face.style && s.width == face.width)
+                    .map(|s| s.weight),
+            );
+            let Some(weight) = near.filter(|&w| w != face.weight) else {
+                continue;
+            };
             match out.last_mut() {
                 Some((last, w)) if last.end == range.start && *w == weight => last.end = range.end,
                 _ => out.push((range, weight)),
@@ -74,12 +85,23 @@ pub(super) fn corrections(
 /// whose distance from 400 points the same way as `wanted`'s (`GetFirstMatchingFont`).
 fn nearest(wanted: f32, weights: impl Iterator<Item = f32>) -> Option<f32> {
     let lean = |w: f32| (w - 400.0) * (wanted - 400.0);
-    weights.min_by(|a, b| (a - wanted).abs().total_cmp(&(b - wanted).abs()).then_with(|| lean(*b).total_cmp(&lean(*a))))
+    weights.min_by(|a, b| {
+        (a - wanted)
+            .abs()
+            .total_cmp(&(b - wanted).abs())
+            .then_with(|| lean(*b).total_cmp(&lean(*a)))
+    })
 }
 
 /// The family of the face `index` of `data` among the loaded system families, with that face.
 /// Families with a `wght` axis are left out: the weight asked for sets the axis.
-fn family_of(faces: &mut Faces, fcx: &mut FontContext, files: &LoadedFiles, data: &Blob<u8>, index: u32) -> Option<(Rc<[Sibling]>, Sibling)> {
+fn family_of(
+    faces: &mut Faces,
+    fcx: &mut FontContext,
+    files: &LoadedFiles,
+    data: &Blob<u8>,
+    index: u32,
+) -> Option<(Rc<[Sibling]>, Sibling)> {
     let key = (data.id(), index);
     if let Some(found) = faces.map.get(&key) {
         return found.clone();
@@ -88,12 +110,29 @@ fn family_of(faces: &mut Faces, fcx: &mut FontContext, files: &LoadedFiles, data
     ids.sort_unstable();
     ids.dedup();
     for id in ids {
-        let Some(family) = fcx.collection.family(id) else { continue };
+        let Some(family) = fcx.collection.family(id) else {
+            continue;
+        };
         if family.fonts().iter().any(|f| f.has_weight_axis()) {
             continue;
         }
-        let siblings: Rc<[Sibling]> = family.fonts().iter().map(|f| Sibling { weight: f.weight().value(), style: f.style(), width: f.width() }).collect();
-        let keys: Vec<Option<(u64, u32)>> = family.fonts().iter().map(|f| f.load(Some(&mut fcx.source_cache)).map(|b| (b.id(), f.index()))).collect();
+        let siblings: Rc<[Sibling]> = family
+            .fonts()
+            .iter()
+            .map(|f| Sibling {
+                weight: f.weight().value(),
+                style: f.style(),
+                width: f.width(),
+            })
+            .collect();
+        let keys: Vec<Option<(u64, u32)>> = family
+            .fonts()
+            .iter()
+            .map(|f| {
+                f.load(Some(&mut fcx.source_cache))
+                    .map(|b| (b.id(), f.index()))
+            })
+            .collect();
         if !keys.contains(&Some(key)) {
             continue;
         }

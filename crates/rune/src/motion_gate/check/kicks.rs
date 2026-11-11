@@ -22,7 +22,11 @@ pub(super) fn kicks(rec: &Recording, loops: &HashSet<usize>, out: &mut Vec<Findi
     let (pause, window) = ((PAUSE * rec.hz) as usize, (WINDOW * rec.hz) as usize);
     let need = rule("stop-start") as usize;
     // Data arriving (`event…`) is what kicks it; a hand on the app may start a motion each time.
-    let touched = |a: usize, b: usize| rec.inputs.iter().any(|(k, what)| *k >= a && *k <= b && !what.starts_with("event"));
+    let touched = |a: usize, b: usize| {
+        rec.inputs
+            .iter()
+            .any(|(k, what)| *k >= a && *k <= b && !what.starts_with("event"))
+    };
     let mut hits: Vec<(usize, Finding)> = Vec::new();
     for (i, t) in tr.iter().enumerate().filter(|(i, _)| !loops.contains(i)) {
         for axis in 0..2 {
@@ -52,17 +56,28 @@ pub(super) fn kicks(rec: &Recording, loops: &HashSet<usize>, out: &mut Vec<Findi
                 prev = Some((*k, at));
             }
             let burst = (0..restarts.len()).find(|&j| {
-                restarts.get(j + need - 1).is_some_and(|&last| last - restarts[j] <= window && !touched(restarts[j], last))
+                restarts.get(j + need - 1).is_some_and(|&last| {
+                    last - restarts[j] <= window && !touched(restarts[j], last)
+                })
             });
             if let Some(j) = burst {
                 let k = restarts[j];
-                let n = restarts[j..].iter().take_while(|&&r| r - k <= window).count();
-                hits.push((i, Finding {
-                    kind: "stop-start",
-                    element: short(&t.path),
-                    frame: k,
-                    detail: format!("{} rests and sets off again {n} times in {WINDOW} s", ["x", "y"][axis]),
-                }));
+                let n = restarts[j..]
+                    .iter()
+                    .take_while(|&&r| r - k <= window)
+                    .count();
+                hits.push((
+                    i,
+                    Finding {
+                        kind: "stop-start",
+                        element: short(&t.path),
+                        frame: k,
+                        detail: format!(
+                            "{} rests and sets off again {n} times in {WINDOW} s",
+                            ["x", "y"][axis]
+                        ),
+                    },
+                ));
                 break;
             }
         }
@@ -82,7 +97,10 @@ pub(super) fn kicks(rec: &Recording, loops: &HashSet<usize>, out: &mut Vec<Findi
     hits.sort_by_key(|(i, f)| (family(*i).len(), f.frame));
     for (i, f) in hits {
         let up = family(i);
-        let near = |&(j, k): &(usize, usize)| k.abs_diff(f.frame) <= window && (up.contains(&j) || tr[j].parent.is_some_and(|p| up.contains(&p)));
+        let near = |&(j, k): &(usize, usize)| {
+            k.abs_diff(f.frame) <= window
+                && (up.contains(&j) || tr[j].parent.is_some_and(|p| up.contains(&p)))
+        };
         if kept.iter().any(near) {
             continue;
         }

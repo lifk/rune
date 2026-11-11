@@ -85,7 +85,8 @@ pub fn kit(s: &G, dark: bool) -> &'static Kit {
         static D: std::sync::OnceLock<Kit> = std::sync::OnceLock::new();
         static L: std::sync::OnceLock<Kit> = std::sync::OnceLock::new();
         let hex = |c: &str| rune::color::hex(c).unwrap();
-        let seed = |bg: &str, fg: &str, accent: &str| rune_kit::PaletteSeed { bg: hex(bg), fg: hex(fg), accent: hex(accent) };
+        let seed =
+            |bg: &str, fg: &str, accent: &str| rune_kit::PaletteSeed { bg: hex(bg), fg: hex(fg), accent: hex(accent) };
         // `--kit palette black|warm`: pure-black and paper seeds with ink focus.
         let variant = |name: &str| rune::extra_args().iter().any(|a| a == name);
         let ink = |seed| Kit::from_palette_focus(seed, rune_kit::PaletteFocus::Ink);

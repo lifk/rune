@@ -107,8 +107,12 @@ impl TreeItem {
         // What the trailing counts and badge show, said in words; the glyphs and dot stay out.
         let mut said = Vec::new();
         if let Some((add, del)) = self.changes {
-            if add > 0 { said.push(format!("{add} added")); }
-            if del > 0 { said.push(format!("{del} removed")); }
+            if add > 0 {
+                said.push(format!("{add} added"));
+            }
+            if del > 0 {
+                said.push(format!("{del} removed"));
+            }
         }
         said.extend(self.badge.clone());
         e = e.description(said.join(", "));
@@ -119,7 +123,12 @@ impl TreeItem {
         if style.guides {
             for level in 0..r.depth {
                 let x = pad + level as f32 * style.indent + chevron_w * 0.5 - 0.5;
-                let mut guide = el().key(format!("guide{level}")).pin(Some(x), Some(0.0), None, Some(0.0)).w(1.0).fill(style.guide).a11y_hidden();
+                let mut guide = el()
+                    .key(format!("guide{level}"))
+                    .pin(Some(x), Some(0.0), None, Some(0.0))
+                    .w(1.0)
+                    .fill(style.guide)
+                    .a11y_hidden();
                 if let Some(o) = style.guides_hover {
                     guide = guide.group_opacity(0.0, o);
                 }
@@ -155,7 +164,15 @@ impl TreeItem {
             .highlight
             .as_deref()
             .and_then(|q| find_ci(&self.label, q))
-            .map(|(a, b)| vec![Span { color: Some(c.text_base), weight: Some(650.0), bg: Some(k.alpha(c.text_accent, 0.22)), bg_pad: 1.0, ..Span::new(a, b) }])
+            .map(|(a, b)| {
+                vec![Span {
+                    color: Some(c.text_base),
+                    weight: Some(650.0),
+                    bg: Some(k.alpha(c.text_accent, 0.22)),
+                    bg_pad: 1.0,
+                    ..Span::new(a, b)
+                }]
+            })
             .unwrap_or_default();
         let full = self.label.clone();
         let label = if spans.is_empty() { text(self.label) } else { rich(self.label, spans) };
@@ -393,16 +410,12 @@ impl<S: 'static, T: 'static> Tree<S, T> {
             e
         };
         let cursor = model.cursor.map(|c| model.nodes[c].id.clone());
-        let rows = col()
-            .key("rows")
-            .w_full()
-            .growth(GrowthSpec::default())
-            .virtual_rows(
-                count,
-                style.row_height,
-                move |s: &S, i| Cow::Borrowed(get(s).visible_id(i).unwrap_or_default()),
-                build_row,
-            );
+        let rows = col().key("rows").w_full().growth(GrowthSpec::default()).virtual_rows(
+            count,
+            style.row_height,
+            move |s: &S, i| Cow::Borrowed(get(s).visible_id(i).unwrap_or_default()),
+            build_row,
+        );
         let viewport = col()
             .key("viewport")
             .w_full()
@@ -413,16 +426,14 @@ impl<S: 'static, T: 'static> Tree<S, T> {
             // changes what the view reads.
             .on_layout_tx(move |s: &mut S, r: [f32; 4], tx: &mut Tx| {
                 let m = get_mut(s);
-                if m.viewport == r[3] && m.row_height == style.row_height { tx.live_only(); }
+                if m.viewport == r[3] && m.row_height == style.row_height {
+                    tx.live_only();
+                }
                 m.viewport = r[3];
                 m.row_height = style.row_height;
             })
             .child(rows);
-        let mut root = col()
-            .key(tree_key)
-            .role("tree")
-            .focusable(true)
-            .w_full();
+        let mut root = col().key(tree_key).role("tree").focusable(true).w_full();
         if let Some(n) = name {
             root = root.label(n);
         }
@@ -433,29 +444,30 @@ impl<S: 'static, T: 'static> Tree<S, T> {
         if let Some(id) = cursor {
             root = root.active_descendant(id);
         }
-        root
-            .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
-                let m = get_mut(s);
-                let before = m.cursor;
-                let out = m.handle_key(ev, label, tx);
-                let after = m.cursor;
-                let id = after.map(|c| m.nodes[c].id.clone());
-                match out {
-                    TreeKey::Ignored => false,
-                    TreeKey::Handled => {
-                        if before != after && let (Some(f), Some(id)) = (&on_select, id) {
-                            f(s, &id, tx);
-                        }
-                        true
+        root.on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
+            let m = get_mut(s);
+            let before = m.cursor;
+            let out = m.handle_key(ev, label, tx);
+            let after = m.cursor;
+            let id = after.map(|c| m.nodes[c].id.clone());
+            match out {
+                TreeKey::Ignored => false,
+                TreeKey::Handled => {
+                    if before != after
+                        && let (Some(f), Some(id)) = (&on_select, id)
+                    {
+                        f(s, &id, tx);
                     }
-                    TreeKey::Open(id) => {
-                        if let Some(f) = &on_open {
-                            f(s, &id, tx);
-                        }
-                        true
-                    }
+                    true
                 }
-            })
-            .child(viewport)
+                TreeKey::Open(id) => {
+                    if let Some(f) = &on_open {
+                        f(s, &id, tx);
+                    }
+                    true
+                }
+            }
+        })
+        .child(viewport)
     }
 }

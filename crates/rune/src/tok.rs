@@ -55,7 +55,9 @@ pub enum OpticalSize {
 impl std::hash::Hash for OpticalSize {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         std::mem::discriminant(self).hash(state);
-        if let OpticalSize::Fixed(size) = self { crate::color::hash_bits(*size).hash(state) }
+        if let OpticalSize::Fixed(size) = self {
+            crate::color::hash_bits(*size).hash(state)
+        }
     }
 }
 
@@ -82,28 +84,58 @@ pub struct TextStyle {
 /// Hashes as `==` compares, `-0.0` as `0.0`, so a style can be a `memo` version.
 impl std::hash::Hash for TextStyle {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        let TextStyle { size, weight, family, line_height, tracking, variations, features, optical_size, italic } = *self;
-        [size, weight, line_height, tracking].map(crate::color::hash_bits).hash(state);
+        let TextStyle {
+            size,
+            weight,
+            family,
+            line_height,
+            tracking,
+            variations,
+            features,
+            optical_size,
+            italic,
+        } = *self;
+        [size, weight, line_height, tracking]
+            .map(crate::color::hash_bits)
+            .hash(state);
         (family, variations, features, optical_size, italic).hash(state);
     }
 }
 
 impl TextStyle {
     pub const fn new(size: f32, weight: f32) -> TextStyle {
-        TextStyle { size, weight, family: Family::Sans, line_height: 0.0, tracking: 0.0,
-            variations: "", features: "", optical_size: OpticalSize::Auto, italic: false }
+        TextStyle {
+            size,
+            weight,
+            family: Family::Sans,
+            line_height: 0.0,
+            tracking: 0.0,
+            variations: "",
+            features: "",
+            optical_size: OpticalSize::Auto,
+            italic: false,
+        }
     }
     pub const fn italic(self) -> TextStyle {
-        TextStyle { italic: true, ..self }
+        TextStyle {
+            italic: true,
+            ..self
+        }
     }
     pub const fn mono(self) -> TextStyle {
-        TextStyle { family: Family::Mono, ..self }
+        TextStyle {
+            family: Family::Mono,
+            ..self
+        }
     }
     pub const fn family(self, family: Family) -> TextStyle {
         TextStyle { family, ..self }
     }
     pub const fn lh(self, line_height: f32) -> TextStyle {
-        TextStyle { line_height, ..self }
+        TextStyle {
+            line_height,
+            ..self
+        }
     }
     pub const fn tracking(self, tracking: f32) -> TextStyle {
         TextStyle { tracking, ..self }
@@ -122,14 +154,24 @@ impl TextStyle {
     /// use `.variations("'opsz' 17")`: on SF at 16 pt, `.optical_size(17.0)` is 0.094 pt a glyph
     /// tighter (17-pt tracking scaled to 16), and both match CoreText's widths exactly.
     pub const fn optical_size(self, size: f32) -> TextStyle {
-        TextStyle { optical_size: OpticalSize::Fixed(size), ..self }
+        TextStyle {
+            optical_size: OpticalSize::Fixed(size),
+            ..self
+        }
     }
     pub const fn optical_sizing(self, optical_size: OpticalSize) -> TextStyle {
-        TextStyle { optical_size, ..self }
+        TextStyle {
+            optical_size,
+            ..self
+        }
     }
     /// Resolved line height in points.
     pub fn line_px(&self) -> f32 {
-        if self.line_height > 0.0 { self.line_height } else { self.size * 1.25 }
+        if self.line_height > 0.0 {
+            self.line_height
+        } else {
+            self.size * 1.25
+        }
     }
 }
 

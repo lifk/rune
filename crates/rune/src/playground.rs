@@ -14,7 +14,10 @@ use std::time::Duration;
 
 use crate::states::{States, StatesRef};
 use crate::tok::{self, Theme, radius, type_};
-use crate::{Color, Cx, El, Icon, Key, KeyEvent, OverlaySpec, ScrollSpec, Shortcut, Tx, col, el, icon, row, spacer, text, text_input};
+use crate::{
+    Color, Cx, El, Icon, Key, KeyEvent, OverlaySpec, ScrollSpec, Shortcut, Tx, col, el, icon, row,
+    spacer, text, text_input,
+};
 
 /// The bar's height when the playground is closed, hairline included.
 pub(crate) const BAR: f32 = 26.0;
@@ -43,18 +46,18 @@ mod variants;
 mod view;
 mod widths;
 
-pub(crate) use live::Live;
 use folds::Folds;
-use widths::Widths;
+pub(crate) use live::Live;
 pub use open::slug;
 pub(crate) use region::Region;
 pub(crate) use stage::call;
 pub use stage::{Play, Stage, Step};
 use stage::{SCROLL_MARGIN, Staged, Trigger, View, trigger, trigger_tx};
-pub use story::Story;
 use story::OwnStory;
+pub use story::Story;
 pub(crate) use testing::stage_element;
 use tree::Row;
+use widths::Widths;
 
 /// A storybook for one window, given to [`App::playground`](crate::App::playground):
 ///
@@ -136,7 +139,11 @@ impl<S: 'static> Default for Playground<S> {
 impl<S: 'static> Playground<S> {
     /// No pages, a bar, ⌘⇧D (Ctrl+Shift+D off macOS), and enabled in debug builds only.
     pub fn new() -> Self {
-        let shortcut = if cfg!(target_os = "macos") { "Shift+Cmd+D" } else { "Ctrl+Shift+D" };
+        let shortcut = if cfg!(target_os = "macos") {
+            "Shift+Cmd+D"
+        } else {
+            "Ctrl+Shift+D"
+        };
         Playground {
             pages: Vec::new(),
             triggers: Vec::new(),
@@ -160,15 +167,31 @@ impl<S: 'static> Playground<S> {
 
     /// A page drawn by `view` from the app's live state. Its handlers change the real state,
     /// and it has no triggers or replay.
-    pub fn page(mut self, name: &'static str, view: impl Fn(&S, &mut Cx<S>) -> El + 'static) -> Self {
-        self.pages.push(Page { name, kind: Kind::Live(stage::view(view)) });
+    pub fn page(
+        mut self,
+        name: &'static str,
+        view: impl Fn(&S, &mut Cx<S>) -> El + 'static,
+    ) -> Self {
+        self.pages.push(Page {
+            name,
+            kind: Kind::Live(stage::view(view)),
+        });
         self
     }
 
     /// A story with its own state: see [`Story`].
     pub fn story<P: 'static>(mut self, story: Story<P>) -> Self {
-        assert!(story.real().is_none_or(|t| t == std::any::TypeId::of::<S>()), "Story::from_real({:?}) derives from another app state than this playground's", story.name);
-        self.pages.push(Page { name: story.name, kind: Kind::Own(Box::new(story)) });
+        assert!(
+            story
+                .real()
+                .is_none_or(|t| t == std::any::TypeId::of::<S>()),
+            "Story::from_real({:?}) derives from another app state than this playground's",
+            story.name
+        );
+        self.pages.push(Page {
+            name: story.name,
+            kind: Kind::Own(Box::new(story)),
+        });
         self
     }
 
@@ -176,13 +199,25 @@ impl<S: 'static> Playground<S> {
     /// its button in the side column does. An `'r'` trigger runs when the scene is chosen and on
     /// each replay, so its motion plays at once. See
     /// [`Story::trigger`].
-    pub fn trigger(mut self, scene: &'static str, key: char, label: &'static str, run: impl Fn(&mut S, &mut Play<'_, S>) + 'static) -> Self {
+    pub fn trigger(
+        mut self,
+        scene: &'static str,
+        key: char,
+        label: &'static str,
+        run: impl Fn(&mut S, &mut Play<'_, S>) + 'static,
+    ) -> Self {
         self.triggers.push((scene, trigger(key, label, run)));
         self
     }
 
     /// [`Playground::trigger`] with a step that takes just the [`Tx`]. See [`Story::trigger_tx`].
-    pub fn trigger_tx(mut self, scene: &'static str, key: char, label: &'static str, run: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
+    pub fn trigger_tx(
+        mut self,
+        scene: &'static str,
+        key: char,
+        label: &'static str,
+        run: impl Fn(&mut S, &mut Tx) + 'static,
+    ) -> Self {
         self.triggers.push((scene, trigger_tx(key, label, run)));
         self
     }
@@ -190,14 +225,23 @@ impl<S: 'static> Playground<S> {
     /// The app's own controls for the scene named `scene` (its path, or just its name), at the
     /// top of the side column, drawn from and acting on the scene's stage state: knobs, say.
     /// See [`Story::side`].
-    pub fn side(mut self, scene: &'static str, view: impl Fn(&S, &mut Cx<S>) -> El + 'static) -> Self {
+    pub fn side(
+        mut self,
+        scene: &'static str,
+        view: impl Fn(&S, &mut Cx<S>) -> El + 'static,
+    ) -> Self {
         self.sides.push((scene, Side::Stage(stage::view(view))));
         self
     }
 
     /// A variant of the scene named `scene` (its path, or just its name): `apply` runs on its
     /// state after the scene fn. See [`Story::variant`].
-    pub fn variant(mut self, scene: &'static str, name: &'static str, apply: impl Fn(&mut S) + 'static) -> Self {
+    pub fn variant(
+        mut self,
+        scene: &'static str,
+        name: &'static str,
+        apply: impl Fn(&mut S) + 'static,
+    ) -> Self {
         self.variants.push((scene, name, Box::new(apply)));
         self
     }
@@ -205,15 +249,25 @@ impl<S: 'static> Playground<S> {
     /// [`Playground::side`], drawn from the stage and the real state both: to mark the app's
     /// own choice beside the one the stage previews, say, with a control that calls
     /// [`Tx::keep_playground`] to write the preview back through [`Playground::keep`].
-    pub fn side_real(mut self, scene: &'static str, view: impl Fn(&S, &S, &mut Cx<S>) -> El + 'static) -> Self {
+    pub fn side_real(
+        mut self,
+        scene: &'static str,
+        view: impl Fn(&S, &S, &mut Cx<S>) -> El + 'static,
+    ) -> Self {
         self.sides.push((scene, Side::Real(Box::new(view))));
         self
     }
 
     /// [`Playground::side`] for controls that take keys, for the scene named `scene`. See
     /// [`Story::side_keys`].
-    pub fn side_keys(mut self, scene: &'static str, view: impl Fn(&S, bool, &mut Cx<S>) -> El + 'static, key: impl Fn(&mut S, &KeyEvent, &mut Tx) -> bool + 'static) -> Self {
-        self.sides.push((scene, Side::Keys(Box::new(view), Box::new(key))));
+    pub fn side_keys(
+        mut self,
+        scene: &'static str,
+        view: impl Fn(&S, bool, &mut Cx<S>) -> El + 'static,
+        key: impl Fn(&mut S, &KeyEvent, &mut Tx) -> bool + 'static,
+    ) -> Self {
+        self.sides
+            .push((scene, Side::Keys(Box::new(view), Box::new(key))));
         self
     }
 
@@ -362,7 +416,16 @@ pub(crate) enum Request {
 impl Request {
     /// Whether this one changes the stage's state, so handlers built for the old one must go.
     fn swaps_stage(&self) -> bool {
-        matches!(self, Request::Open(_) | Request::OpenAt(..) | Request::Close | Request::Toggle | Request::Select(_) | Request::Replay | Request::Variant(_))
+        matches!(
+            self,
+            Request::Open(_)
+                | Request::OpenAt(..)
+                | Request::Close
+                | Request::Toggle
+                | Request::Select(_)
+                | Request::Replay
+                | Request::Variant(_)
+        )
     }
 }
 
@@ -395,22 +458,43 @@ pub(crate) struct Controls {
 
 impl Default for Controls {
     fn default() -> Self {
-        Self { filter: Default::default(), sidebar_w: SIDEBAR, side_w: SIDE, save_widths: None }
+        Self {
+            filter: Default::default(),
+            sidebar_w: SIDEBAR,
+            side_w: SIDE,
+            save_widths: None,
+        }
     }
 }
 
 /// Shows `playground` in `rt`'s window when this run offers it: an enabled playground, in a
 /// window unless `RUNE_PLAYGROUND=0`, or wherever `--playground` asks for it, headless included,
 /// opened at the story it names, on the variant `--variant` names.
-pub(crate) fn attach<S: 'static>(rt: &mut crate::Runtime<S>, playground: Option<Playground<S>>, spec: &crate::AppSpec<S>, open: Option<Option<String>>, variant: Option<String>, windowed: bool) {
-    let Some(mut playground) = playground.filter(Playground::is_enabled) else { return };
-    if open.is_none() && (!windowed || hidden_by_env()) { return; }
-    if windowed && !cfg!(test) && playground.widths.load.is_none() && playground.widths.save.is_none() {
+pub(crate) fn attach<S: 'static>(
+    rt: &mut crate::Runtime<S>,
+    playground: Option<Playground<S>>,
+    spec: &crate::AppSpec<S>,
+    open: Option<Option<String>>,
+    variant: Option<String>,
+    windowed: bool,
+) {
+    let Some(mut playground) = playground.filter(Playground::is_enabled) else {
+        return;
+    };
+    if open.is_none() && (!windowed || hidden_by_env()) {
+        return;
+    }
+    if windowed
+        && !cfg!(test)
+        && playground.widths.load.is_none()
+        && playground.widths.save.is_none()
+    {
         playground.widths = Widths::prefs(crate::tooling::app_id().unwrap_or(spec.title));
     }
     let mut live = Live::new(playground, spec, windowed && cfg!(target_os = "macos"));
     if let Some(name) = open {
-        live.open_at(name.as_deref(), variant.as_deref()).unwrap_or_else(|e| crate::tooling::die(&e));
+        live.open_at(name.as_deref(), variant.as_deref())
+            .unwrap_or_else(|e| crate::tooling::die(&e));
         live.pending.push(Request::Open(name));
     }
     rt.playground = Some(Box::new(live));
@@ -419,7 +503,9 @@ pub(crate) fn attach<S: 'static>(rt: &mut crate::Runtime<S>, playground: Option<
 /// `--playground [NAME]`'s optional story name, taking it when the next argument isn't a flag.
 pub(crate) fn arg(argv: &[String], i: &mut usize) -> Option<String> {
     let name = argv.get(*i + 1).filter(|v| !v.starts_with("--")).cloned();
-    if name.is_some() { *i += 1; }
+    if name.is_some() {
+        *i += 1;
+    }
     name
 }
 
@@ -457,7 +543,8 @@ impl Tx {
 
 /// Whether `key` is the stage's, around the story's root.
 pub(crate) fn is_stage(key: &str) -> bool {
-    key.strip_prefix("playground-stage-").is_some_and(|g| g.parse::<u32>().is_ok())
+    key.strip_prefix("playground-stage-")
+        .is_some_and(|g| g.parse::<u32>().is_ok())
 }
 
 #[cfg(test)]

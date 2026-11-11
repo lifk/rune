@@ -17,7 +17,11 @@ pub(crate) fn room(paint: &DiagramStyle) -> f32 {
 /// How much a canvas `width` points wide is drawn at to fit its card in `paint.max_width`, down
 /// to `paint.min_scale`.
 fn fit(width: f32, paint: &DiagramStyle) -> f32 {
-    if width <= room(paint) { 1.0 } else { (room(paint) / width).max(paint.min_scale.clamp(0.0, 1.0)) }
+    if width <= room(paint) {
+        1.0
+    } else {
+        (room(paint) / width).max(paint.min_scale.clamp(0.0, 1.0))
+    }
 }
 
 /// Text measured for a diagram: its size, and whether it wraps at [`WRAP`].
@@ -41,10 +45,18 @@ pub(crate) fn measure_wrap(s: &str, font: TextStyle, max_w: f32) -> Measured {
     }
     let (w, h) = rune::text::measure(s, &[], font, None);
     if w <= max_w {
-        return Measured { text: s.to_owned(), size: [w, h], wrap: false };
+        return Measured {
+            text: s.to_owned(),
+            size: [w, h],
+            wrap: false,
+        };
     }
     let (w, h) = rune::text::measure(s, &[], font, Some(max_w));
-    Measured { text: s.to_owned(), size: [w, h], wrap: true }
+    Measured {
+        text: s.to_owned(),
+        size: [w, h],
+        wrap: true,
+    }
 }
 
 /// [`measure`], wrapped to the narrowest width that takes as few lines, so the lines come out
@@ -74,7 +86,12 @@ pub(crate) fn over_color(top: Color, bottom: Color) -> Color {
         return Color::TRANSPARENT;
     }
     let m = |t: f32, b: f32| (t * top.a + b * bottom.a * (1.0 - top.a)) / a;
-    Color { r: m(top.r, bottom.r), g: m(top.g, bottom.g), b: m(top.b, bottom.b), a }
+    Color {
+        r: m(top.r, bottom.r),
+        g: m(top.g, bottom.g),
+        b: m(top.b, bottom.b),
+        a,
+    }
 }
 
 /// The outline of a group (a subgraph, a block group, a participant box): the nodes' outline,
@@ -86,7 +103,13 @@ pub(crate) fn group_border(paint: &crate::DiagramStyle) -> Color {
 #[derive(Clone)]
 pub(crate) enum Op {
     Fill(Vec<[f32; 2]>, Color),
-    Stroke { points: Vec<[f32; 2]>, closed: bool, width: f32, cap: LineCap, color: Color },
+    Stroke {
+        points: Vec<[f32; 2]>,
+        closed: bool,
+        width: f32,
+        cap: LineCap,
+        color: Color,
+    },
 }
 
 pub(crate) struct Label {
@@ -126,7 +149,13 @@ impl Canvas {
 
     pub(crate) fn stroke(&mut self, points: Vec<[f32; 2]>, closed: bool, width: f32, color: Color) {
         if points.len() >= 2 {
-            self.ops.push(Op::Stroke { points, closed, width, cap: LineCap::Round, color });
+            self.ops.push(Op::Stroke {
+                points,
+                closed,
+                width,
+                cap: LineCap::Round,
+                color,
+            });
         }
     }
 
@@ -136,7 +165,14 @@ impl Canvas {
         self.stroke(points, true, width, border);
     }
 
-    pub(crate) fn dashed(&mut self, points: &[[f32; 2]], width: f32, color: Color, on: f32, off: f32) {
+    pub(crate) fn dashed(
+        &mut self,
+        points: &[[f32; 2]],
+        width: f32,
+        color: Color,
+        on: f32,
+        off: f32,
+    ) {
         let mut dash: Vec<[f32; 2]> = Vec::new();
         let mut drawing = true;
         let mut left = on;
@@ -150,7 +186,9 @@ impl Canvas {
             }
             let mut t = 0.0;
             while t < len {
-                let Some(rest) = budget.checked_sub(1) else { return };
+                let Some(rest) = budget.checked_sub(1) else {
+                    return;
+                };
                 budget = rest;
                 let step = left.min(len - t);
                 let p0 = lerp(a, b, t / len);
@@ -165,7 +203,13 @@ impl Canvas {
                 left -= step;
                 if left <= 1e-3 {
                     if drawing && dash.len() >= 2 {
-                        self.ops.push(Op::Stroke { points: std::mem::take(&mut dash), closed: false, width, cap: LineCap::Butt, color });
+                        self.ops.push(Op::Stroke {
+                            points: std::mem::take(&mut dash),
+                            closed: false,
+                            width,
+                            cap: LineCap::Butt,
+                            color,
+                        });
                     }
                     dash.clear();
                     drawing = !drawing;
@@ -174,12 +218,25 @@ impl Canvas {
             }
         }
         if dash.len() >= 2 {
-            self.ops.push(Op::Stroke { points: dash, closed: false, width, cap: LineCap::Butt, color });
+            self.ops.push(Op::Stroke {
+                points: dash,
+                closed: false,
+                width,
+                cap: LineCap::Butt,
+                color,
+            });
         }
     }
 
     /// `m` centred on `center`.
-    pub(crate) fn label(&mut self, m: &Measured, center: [f32; 2], font: TextStyle, color: Color, align: Align) {
+    pub(crate) fn label(
+        &mut self,
+        m: &Measured,
+        center: [f32; 2],
+        font: TextStyle,
+        color: Color,
+        align: Align,
+    ) {
         if m.text.is_empty() {
             return;
         }
@@ -187,9 +244,24 @@ impl Canvas {
         self.label_at(m, at, font, color, align);
     }
 
-    pub(crate) fn label_at(&mut self, m: &Measured, at: [f32; 2], font: TextStyle, color: Color, align: Align) {
+    pub(crate) fn label_at(
+        &mut self,
+        m: &Measured,
+        at: [f32; 2],
+        font: TextStyle,
+        color: Color,
+        align: Align,
+    ) {
         if !m.text.is_empty() {
-            self.labels.push(Label { text: m.text.clone(), at, size: m.size, font, color, wrap: m.wrap, align });
+            self.labels.push(Label {
+                text: m.text.clone(),
+                at,
+                size: m.size,
+                font,
+                color,
+                wrap: m.wrap,
+                align,
+            });
         }
     }
 
@@ -197,22 +269,37 @@ impl Canvas {
     pub(crate) fn append(&mut self, other: Canvas) {
         let (base, shift) = (self.ops.len(), self.labels.len());
         self.marks.push((base, shift, None));
-        self.marks.extend(other.marks.into_iter().map(|(o, l, p)| (o + base, l + shift, p)));
+        self.marks.extend(
+            other
+                .marks
+                .into_iter()
+                .map(|(o, l, p)| (o + base, l + shift, p)),
+        );
         self.ops.extend(other.ops);
         self.labels.extend(other.labels);
-        self.traces.extend(other.traces.into_iter().map(|t| Trace { label: t.label.map(|(i, g)| (i + shift, g)), ..t }));
+        self.traces.extend(other.traces.into_iter().map(|t| Trace {
+            label: t.label.map(|(i, g)| (i + shift, g)),
+            ..t
+        }));
     }
 
     /// The bounding box of everything drawn: `[x0, y0, x1, y1]`.
     fn bounds(&self) -> [f32; 4] {
         let mut b = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
         let mut add = |p: [f32; 2], r: f32| {
-            b = [b[0].min(p[0] - r), b[1].min(p[1] - r), b[2].max(p[0] + r), b[3].max(p[1] + r)];
+            b = [
+                b[0].min(p[0] - r),
+                b[1].min(p[1] - r),
+                b[2].max(p[0] + r),
+                b[3].max(p[1] + r),
+            ];
         };
         for op in &self.ops {
             match op {
                 Op::Fill(points, _) => points.iter().for_each(|&p| add(p, 0.0)),
-                Op::Stroke { points, width, .. } => points.iter().for_each(|&p| add(p, width / 2.0)),
+                Op::Stroke { points, width, .. } => {
+                    points.iter().for_each(|&p| add(p, width / 2.0))
+                }
             }
         }
         for l in &self.labels {
@@ -253,14 +340,30 @@ impl Canvas {
         let map = |p: [f32; 2]| [p[0] - b[0] + pad, p[1] - b[1] + pad];
         let stroke = |w: f32| w * scale.max(0.8) / scale;
         let paint = |shape: Shape, op: &Op| match op {
-            Op::Fill(points, color) => shape.fill(points.iter().map(|&p| map(p)).collect::<Vec<_>>(), *color),
-            Op::Stroke { points, closed, width, cap, color } => {
-                shape.stroke_with(points.iter().map(|&p| map(p)).collect::<Vec<_>>(), *closed, stroke(*width), *cap, *color)
+            Op::Fill(points, color) => {
+                shape.fill(points.iter().map(|&p| map(p)).collect::<Vec<_>>(), *color)
             }
+            Op::Stroke {
+                points,
+                closed,
+                width,
+                cap,
+                color,
+            } => shape.stroke_with(
+                points.iter().map(|&p| map(p)).collect::<Vec<_>>(),
+                *closed,
+                stroke(*width),
+                *cap,
+                *color,
+            ),
         };
         let (pieces, label_keys) = pieces(&self, map, stroke);
         let hovers = self.hovers(map, paint);
-        let labels = self.labels.into_iter().map(|l| Label { at: map(l.at), ..l }).collect();
+        let labels = self
+            .labels
+            .into_iter()
+            .map(|l| Label { at: map(l.at), ..l })
+            .collect();
         let full = [b[2] - b[0] + 2.0 * pad, b[3] - b[1] + 2.0 * pad];
         let size = [full[0] * scale, full[1] * scale];
         let lit = self.hover.map_or(Color::TRANSPARENT, |h| h.1);
@@ -319,20 +422,34 @@ impl Scene {
         // Fit destinations before springing them. Multiplying a springing canvas size by a
         // second, shrinking scale spring makes edges overshoot and reverse between updates.
         let scale = self.scale;
-        let mut body = el().key("fit").absolute(0.0, 0.0).size(self.size[0], self.size[1]).transition(Transition::none());
+        let mut body = el()
+            .key("fit")
+            .absolute(0.0, 0.0)
+            .size(self.size[0], self.size[1])
+            .transition(Transition::none());
         for p in &self.pieces {
             // Shapes and lines draw what the labels and the figure's description say.
             body = body.child(p.el(streaming, scale).a11y_hidden());
         }
         let label = |l: &Label, color: Color| {
             // A point of slack so rounding never breaks a measured line.
-            let t = text(l.text.clone()).font(l.font).color(color).align(l.align).w(l.size[0] + 2.0);
+            let t = text(l.text.clone())
+                .font(l.font)
+                .color(color)
+                .align(l.align)
+                .w(l.size[0] + 2.0);
             if l.wrap { t.wrap() } else { t }
         };
         // Labels and hover groups are placed by offset, as pieces are ([`Piece::el`]).
         for (l, (key, kind)) in self.labels.iter().zip(&self.label_keys) {
             let (enter, delay) = kind.map_or((Transition::opacity(), 0.0), |k| k.label_enter());
-            let mut t = label(l, l.color).absolute(0.0, 0.0).offset((l.at[0] - 1.0) * scale, l.at[1] * scale).origin(0.0, 0.0).scale(scale).key(key.clone()).transition(still(enter));
+            let mut t = label(l, l.color)
+                .absolute(0.0, 0.0)
+                .offset((l.at[0] - 1.0) * scale, l.at[1] * scale)
+                .origin(0.0, 0.0)
+                .scale(scale)
+                .key(key.clone())
+                .transition(still(enter));
             if streaming && delay > 0.0 {
                 t = t.enter_delay(delay);
             }
@@ -351,14 +468,41 @@ impl Scene {
                 .group_opacity(0.0, 1.0)
                 .instant_changes()
                 .transition(Transition::none())
-                .child(canvas(s.lit.clone()).key("lit").absolute(0.0, 0.0).size(w, h).transition(Transition::none()));
+                .child(
+                    canvas(s.lit.clone())
+                        .key("lit")
+                        .absolute(0.0, 0.0)
+                        .size(w, h)
+                        .transition(Transition::none()),
+                );
             for &i in &s.labels {
                 if let Some(l) = self.labels.get(i) {
-                    glow = glow.child(label(l, self.lit).absolute(l.at[0] - 1.0, l.at[1]).key(format!("t{i}")).transition(Transition::none()));
+                    glow = glow.child(
+                        label(l, self.lit)
+                            .absolute(l.at[0] - 1.0, l.at[1])
+                            .key(format!("t{i}"))
+                            .transition(Transition::none()),
+                    );
                 }
             }
-            let exit = if streaming { Transition { insertion: rune::Effect::IDENTITY, ..Transition::opacity() } } else { Transition::none() };
-            body = body.child(el().key(s.key.clone()).absolute(0.0, 0.0).offset(r[0] * scale, r[1] * scale).size(r[2] * scale, r[3] * scale).hover_group().transition(exit).child(glow).a11y_hidden());
+            let exit = if streaming {
+                Transition {
+                    insertion: rune::Effect::IDENTITY,
+                    ..Transition::opacity()
+                }
+            } else {
+                Transition::none()
+            };
+            body = body.child(
+                el().key(s.key.clone())
+                    .absolute(0.0, 0.0)
+                    .offset(r[0] * scale, r[1] * scale)
+                    .size(r[2] * scale, r[3] * scale)
+                    .hover_group()
+                    .transition(exit)
+                    .child(glow)
+                    .a11y_hidden(),
+            );
         }
         let mut card = col()
             .w_full()
@@ -376,10 +520,26 @@ impl Scene {
             card = card.clip_fade(CARD_PAD, 0.0, CARD_PAD, 0.0);
         }
         if let Some(title) = &self.title {
-            let tf = TextStyle { size: paint.font.size + 1.0, line_height: paint.font.line_height + 2.0, weight: 600.0, ..paint.font };
-            card = card.gap(12.0).child(text(title.clone()).key("title").font(tf).color(paint.text).transition(still(Transition::opacity())));
+            let tf = TextStyle {
+                size: paint.font.size + 1.0,
+                line_height: paint.font.line_height + 2.0,
+                weight: 600.0,
+                ..paint.font
+            };
+            card = card.gap(12.0).child(
+                text(title.clone())
+                    .key("title")
+                    .font(tf)
+                    .color(paint.text)
+                    .transition(still(Transition::opacity())),
+            );
         }
-        card.child(el().key("diagram").size(self.size[0], self.size[1]).transition(still(Transition::opacity())).child(body))
+        card.child(
+            el().key("diagram")
+                .size(self.size[0], self.size[1])
+                .transition(still(Transition::opacity()))
+                .child(body),
+        )
     }
 }
 
@@ -404,7 +564,12 @@ pub(crate) fn rounded_rect(x0: f32, y0: f32, x1: f32, y1: f32, r: f32) -> Vec<[f
     }
     let steps = 6;
     let mut pts = Vec::with_capacity(4 * (steps + 1));
-    let corners = [([x1 - r, y0 + r], -90.0f32), ([x1 - r, y1 - r], 0.0), ([x0 + r, y1 - r], 90.0), ([x0 + r, y0 + r], 180.0)];
+    let corners = [
+        ([x1 - r, y0 + r], -90.0f32),
+        ([x1 - r, y1 - r], 0.0),
+        ([x0 + r, y1 - r], 90.0),
+        ([x0 + r, y0 + r], 180.0),
+    ];
     for (c, start) in corners {
         for i in 0..=steps {
             let a = (start + 90.0 * i as f32 / steps as f32).to_radians();
@@ -434,7 +599,11 @@ pub(crate) fn ellipse(c: [f32; 2], rx: f32, ry: f32) -> Vec<[f32; 2]> {
 pub(crate) fn arrowhead(tip: [f32; 2], dir: [f32; 2], len: f32, width: f32) -> Vec<[f32; 2]> {
     let base = [tip[0] - dir[0] * len, tip[1] - dir[1] * len];
     let n = [-dir[1] * width / 2.0, dir[0] * width / 2.0];
-    vec![tip, [base[0] + n[0], base[1] + n[1]], [base[0] - n[0], base[1] - n[1]]]
+    vec![
+        tip,
+        [base[0] + n[0], base[1] + n[1]],
+        [base[0] - n[0], base[1] - n[1]],
+    ]
 }
 
 /// A diamond head (for UML composition and aggregation) with its tip at `tip`, along `dir`.
@@ -442,7 +611,12 @@ pub(crate) fn diamond_head(tip: [f32; 2], dir: [f32; 2], len: f32, width: f32) -
     let mid = [tip[0] - dir[0] * len / 2.0, tip[1] - dir[1] * len / 2.0];
     let tail = [tip[0] - dir[0] * len, tip[1] - dir[1] * len];
     let n = [-dir[1] * width / 2.0, dir[0] * width / 2.0];
-    vec![tip, [mid[0] + n[0], mid[1] + n[1]], tail, [mid[0] - n[0], mid[1] - n[1]]]
+    vec![
+        tip,
+        [mid[0] + n[0], mid[1] + n[1]],
+        tail,
+        [mid[0] - n[0], mid[1] - n[1]],
+    ]
 }
 
 /// A smooth curve through `pts` (Catmull-Rom, as flattened cubics).
@@ -468,7 +642,9 @@ pub(crate) fn smooth(pts: &[[f32; 2]]) -> Vec<[f32; 2]> {
         let (ta, tb) = (tangent(i), tangent(i + 1));
         let c1 = [a[0] + ta[0] / 3.0, a[1] + ta[1] / 3.0];
         let c2 = [b[0] - tb[0] / 3.0, b[1] - tb[1] / 3.0];
-        let steps = ((dist(a, c1) + dist(c1, c2) + dist(c2, b)) / 4.0).ceil().clamp(2.0, 48.0) as usize;
+        let steps = ((dist(a, c1) + dist(c1, c2) + dist(c2, b)) / 4.0)
+            .ceil()
+            .clamp(2.0, 48.0) as usize;
         for s in 1..=steps {
             let t = s as f32 / steps as f32;
             let u = 1.0 - t;

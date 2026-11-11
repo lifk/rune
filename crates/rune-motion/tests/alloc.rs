@@ -50,7 +50,12 @@ fn store_tick_allocates_nothing_in_steady_state() {
         // A spread of bounces and durations so tracks settle at different times.
         let s = Spring::new(0.3 + (i % 7) as f32 * 0.2, (i % 5) as f32 * 0.1);
         store.animate(id, X, 100.0 + i as f32, s);
-        store.animate(id, prop::FRAME, Rect::new(5.0, 3.0, 20.0, 10.0), s.delay((i % 3) as f32 * 0.05));
+        store.animate(
+            id,
+            prop::FRAME,
+            Rect::new(5.0, 3.0, 20.0, 10.0),
+            s.delay((i % 3) as f32 * 0.05),
+        );
         if i % 4 == 0 {
             store.animate(id, X, -50.0, Curve::tween(0.4, Easing::EASE_IN_OUT));
         }
@@ -69,19 +74,35 @@ fn store_tick_allocates_nothing_in_steady_state() {
         ticks += 1;
     }
     let after = allocs();
-    assert!(ticks > 100, "the animations should run for a while ({ticks})");
-    assert_eq!(after - before, 0, "{} allocations over {ticks} ticks", after - before);
+    assert!(
+        ticks > 100,
+        "the animations should run for a while ({ticks})"
+    );
+    assert_eq!(
+        after - before,
+        0,
+        "{} allocations over {ticks} ticks",
+        after - before
+    );
 }
 
 #[test]
 fn scene_frame_allocates_nothing_while_animating() {
     let mut scene = Scene::new();
     for i in 0..500u64 {
-        scene.insert(NodeId(i), NodeSpec::new(Rect::new(0.0, i as f32 * 10.0, 100.0, 10.0)), Mount::Initial);
+        scene.insert(
+            NodeId(i),
+            NodeSpec::new(Rect::new(0.0, i as f32 * 10.0, 100.0, 10.0)),
+            Mount::Initial,
+        );
     }
     scene.frame_at(0.0);
     for i in 0..500u64 {
-        scene.set_frame(NodeId(i), Rect::new(10.0, i as f32 * 12.0, 100.0, 12.0), motion::REFLOW);
+        scene.set_frame(
+            NodeId(i),
+            Rect::new(10.0, i as f32 * 12.0, 100.0, 12.0),
+            motion::REFLOW,
+        );
         scene.animate(NodeId(i), prop::OPACITY, 0.5, motion::SETTLE);
     }
     let mut t = 0.0;

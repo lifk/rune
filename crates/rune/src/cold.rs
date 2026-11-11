@@ -13,7 +13,9 @@ pub(crate) trait Empty: Clone + 'static {
 pub(crate) struct Cold<T: Empty>(Option<Rc<T>>);
 
 impl<T: Empty> Default for Cold<T> {
-    fn default() -> Self { Cold(None) }
+    fn default() -> Self {
+        Cold(None)
+    }
 }
 
 impl<T: Empty> Cold<T> {
@@ -61,7 +63,9 @@ impl<T: Empty + std::fmt::Debug> std::fmt::Debug for Cold<T> {
 impl<T: Empty> Deref for Cold<T> {
     type Target = T;
     #[inline(always)]
-    fn deref(&self) -> &T { self.0.as_deref().unwrap_or(T::EMPTY) }
+    fn deref(&self) -> &T {
+        self.0.as_deref().unwrap_or(T::EMPTY)
+    }
 }
 
 impl<T: Empty> DerefMut for Cold<T> {
@@ -75,17 +79,25 @@ impl<T: Empty> DerefMut for Cold<T> {
 pub(crate) struct SharedBox<T: Clone>(Rc<T>);
 
 impl<T: Clone> SharedBox<T> {
-    pub(crate) fn new(value: T) -> Self { Self(Rc::new(value)) }
+    pub(crate) fn new(value: T) -> Self {
+        Self(Rc::new(value))
+    }
 
     #[allow(dead_code)]
-    pub(crate) fn ptr_eq(a: &Self, b: &Self) -> bool { Rc::ptr_eq(&a.0, &b.0) }
+    pub(crate) fn ptr_eq(a: &Self, b: &Self) -> bool {
+        Rc::ptr_eq(&a.0, &b.0)
+    }
 }
 
 impl<T: Clone> Deref for SharedBox<T> {
     type Target = T;
-    fn deref(&self) -> &T { &self.0 }
+    fn deref(&self) -> &T {
+        &self.0
+    }
 }
 
 impl<T: Clone> DerefMut for SharedBox<T> {
-    fn deref_mut(&mut self) -> &mut T { Rc::make_mut(&mut self.0) }
+    fn deref_mut(&mut self) -> &mut T {
+        Rc::make_mut(&mut self.0)
+    }
 }

@@ -75,7 +75,11 @@ pub(crate) enum Event {
     /// `autonumber [start [step]]` from here on, or `autonumber off` (`None`).
     Number(Option<(u32, u32)>),
     /// A frame (`Some(kind)`) or a `rect` highlight band (`None`, with optional colour).
-    Open { kind: Option<String>, label: String, fill: Option<Color> },
+    Open {
+        kind: Option<String>,
+        label: String,
+        fill: Option<Color>,
+    },
     Else(String),
     End,
 }
@@ -91,7 +95,13 @@ pub(crate) struct Sequence {
 
 pub(crate) fn parse(_header: &str, body: &[&str]) -> Option<Sequence> {
     let mut p = Parser {
-        s: Sequence { title: None, participants: Vec::new(), boxes: Vec::new(), events: Vec::new(), autonumber: false },
+        s: Sequence {
+            title: None,
+            participants: Vec::new(),
+            boxes: Vec::new(),
+            events: Vec::new(),
+            autonumber: false,
+        },
         ids: HashMap::new(),
         depth: 0,
         active_box: None,
@@ -137,13 +147,17 @@ const ARROWS: &[(&str, bool, Tip, bool)] = &[
 impl Parser {
     fn line(&mut self, l: &str) -> Option<()> {
         let l = l.trim().trim_end_matches(';').trim_end();
-        let (word, rest) = l.split_once(char::is_whitespace).map_or((l, ""), |(w, r)| (w, r.trim()));
+        let (word, rest) = l
+            .split_once(char::is_whitespace)
+            .map_or((l, ""), |(w, r)| (w, r.trim()));
         match word.trim_end_matches(':') {
             "participant" | "actor" => {
                 self.declare(rest, word == "actor")?;
             }
             "create" => {
-                let (kind, name) = rest.split_once(char::is_whitespace).map_or((rest, ""), |(w, r)| (w, r.trim()));
+                let (kind, name) = rest
+                    .split_once(char::is_whitespace)
+                    .map_or((rest, ""), |(w, r)| (w, r.trim()));
                 let i = match kind {
                     "participant" | "actor" => self.declare(name, kind == "actor")?,
                     _ => return None,
@@ -184,11 +198,19 @@ impl Parser {
             "Note" | "note" => self.note(rest)?,
             kind @ ("loop" | "alt" | "opt" | "par" | "critical" | "break") => {
                 self.depth += 1;
-                self.s.events.push(Event::Open { kind: Some(kind.to_owned()), label: clean(rest), fill: None });
+                self.s.events.push(Event::Open {
+                    kind: Some(kind.to_owned()),
+                    label: clean(rest),
+                    fill: None,
+                });
             }
             "rect" => {
                 self.depth += 1;
-                self.s.events.push(Event::Open { kind: None, label: String::new(), fill: parse_color_spec(rest) });
+                self.s.events.push(Event::Open {
+                    kind: None,
+                    label: String::new(),
+                    fill: parse_color_spec(rest),
+                });
             }
             "box" => {
                 if self.active_box.is_some() {
@@ -218,7 +240,9 @@ impl Parser {
     }
 
     fn declare(&mut self, rest: &str, actor: bool) -> Option<usize> {
-        let (rest, meta) = rest.split_once("@{").map_or((rest, ""), |(id, meta)| (id, meta));
+        let (rest, meta) = rest
+            .split_once("@{")
+            .map_or((rest, ""), |(id, meta)| (id, meta));
         let kind = if actor { Kind::Actor } else { meta_kind(meta) };
         let (id, label) = match rest.split_once(" as ") {
             Some((id, label)) => (id.trim(), clean_quoted(label)),
@@ -242,8 +266,14 @@ impl Parser {
         if let Some(&i) = self.ids.get(name) {
             return Some(i);
         }
-        self.s.participants.push(Participant { id: name.to_owned(), label: clean(name), kind: Kind::Box, group: self.active_box });
-        self.ids.insert(name.to_owned(), self.s.participants.len() - 1);
+        self.s.participants.push(Participant {
+            id: name.to_owned(),
+            label: clean(name),
+            kind: Kind::Box,
+            group: self.active_box,
+        });
+        self.ids
+            .insert(name.to_owned(), self.s.participants.len() - 1);
         Some(self.s.participants.len() - 1)
     }
 
@@ -279,7 +309,12 @@ impl Parser {
         let (at, &(tok, dotted, tip, both)) = lhs
             .char_indices()
             .filter(|&(_, ch)| ch == '-' || ch == '<')
-            .find_map(|(i, _)| ARROWS.iter().find(|a| lhs[i..].starts_with(a.0)).map(|a| (i, a)))?;
+            .find_map(|(i, _)| {
+                ARROWS
+                    .iter()
+                    .find(|a| lhs[i..].starts_with(a.0))
+                    .map(|a| (i, a))
+            })?;
         let from = lhs[..at].trim();
         let rest = lhs[at + tok.len()..].trim_start();
         let (activate, deactivate, to) = match rest.as_bytes().first() {
@@ -288,16 +323,30 @@ impl Parser {
             _ => (false, false, rest),
         };
         let (from, to) = (self.id(from)?, self.id(to)?);
-        self.s.events.push(Event::Message(Message { from, to, text: clean(text), dotted, tip, both, activate, deactivate }));
+        self.s.events.push(Event::Message(Message {
+            from,
+            to,
+            text: clean(text),
+            dotted,
+            tip,
+            both,
+            activate,
+            deactivate,
+        }));
         Some(())
     }
 }
 
 /// The kind a v11 `@{ "type": "database" }` names; anything else is a plain box.
 fn meta_kind(meta: &str) -> Kind {
-    let Some((_, after)) = meta.split_once("type") else { return Kind::Box };
+    let Some((_, after)) = meta.split_once("type") else {
+        return Kind::Box;
+    };
     let name = after.trim_start_matches(|c: char| c == '"' || c == ':' || c.is_whitespace());
-    let name: String = name.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+    let name: String = name
+        .chars()
+        .take_while(|c| c.is_ascii_alphabetic())
+        .collect();
     match name.as_str() {
         "actor" => Kind::Actor,
         "boundary" => Kind::Boundary,
@@ -315,11 +364,16 @@ fn parse_box_header(rest: &str) -> (Option<Color>, String) {
     if rest.is_empty() {
         return (None, String::new());
     }
-    if let Some(after_paren) = rest.strip_prefix("rgb(").or_else(|| rest.strip_prefix("rgba("))
+    if let Some(after_paren) = rest
+        .strip_prefix("rgb(")
+        .or_else(|| rest.strip_prefix("rgba("))
         && let Some(end) = after_paren.find(')')
     {
         let col_len = rest.len() - after_paren.len() + end + 1;
-        return (parse_color_spec(&rest[..col_len]), clean_quoted(&rest[col_len..]));
+        return (
+            parse_color_spec(&rest[..col_len]),
+            clean_quoted(&rest[col_len..]),
+        );
     }
     let (first, tail) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
     if first.eq_ignore_ascii_case("transparent") {

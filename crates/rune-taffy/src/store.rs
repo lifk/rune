@@ -371,8 +371,8 @@ impl LayoutStore {
             let had_measure = slot.has_context();
             let has_measure = measure.is_some();
             let new_m = measure.unwrap_or(0);
-            let measure_changed =
-                had_measure != has_measure || (has_measure && (force_measure_dirty || slot.measure != new_m));
+            let measure_changed = had_measure != has_measure
+                || (has_measure && (force_measure_dirty || slot.measure != new_m));
             let was_mutated = slot.has_mutated();
             let now_mutated = was_mutated || style_changed || kids_changed || measure_changed;
             slot.child_len_and_flags = child_len
@@ -559,7 +559,10 @@ impl LayoutStore {
         slot.style = style;
         slot.cache.clear();
         for anc in ancestors {
-            if matches!(self.slots[anc.0 as usize].cache.clear(), ClearState::AlreadyEmpty) {
+            if matches!(
+                self.slots[anc.0 as usize].cache.clear(),
+                ClearState::AlreadyEmpty
+            ) {
                 break;
             }
         }
@@ -567,10 +570,17 @@ impl LayoutStore {
 
     /// Clears `id`'s and its ancestors' layout caches without modifying style.
     #[inline]
-    pub fn mark_dirty_and_ancestors(&mut self, id: SlotId, ancestors: impl IntoIterator<Item = SlotId>) {
+    pub fn mark_dirty_and_ancestors(
+        &mut self,
+        id: SlotId,
+        ancestors: impl IntoIterator<Item = SlotId>,
+    ) {
         self.slots[id.0 as usize].cache.clear();
         for anc in ancestors {
-            if matches!(self.slots[anc.0 as usize].cache.clear(), ClearState::AlreadyEmpty) {
+            if matches!(
+                self.slots[anc.0 as usize].cache.clear(),
+                ClearState::AlreadyEmpty
+            ) {
                 break;
             }
         }
@@ -583,8 +593,12 @@ impl LayoutStore {
         }
     }
 
-    pub fn compute_layout<F>(&mut self, root: SlotId, available_space: Size<AvailableSpace>, measure_leaf: F)
-    where
+    pub fn compute_layout<F>(
+        &mut self,
+        root: SlotId,
+        available_space: Size<AvailableSpace>,
+        measure_leaf: F,
+    ) where
         F: FnMut(LayoutInput, Option<usize>, &CompactStyle) -> LayoutOutput,
     {
         let mut view = LayoutStoreView {
@@ -598,7 +612,9 @@ impl LayoutStore {
         let slot_capacity = self.slots.capacity();
         let bytes_per_slot = core::mem::size_of::<RetainedSlot>() + core::mem::size_of::<u32>();
         let inline_buffer_bytes = slot_capacity * bytes_per_slot
-            + (self.prev_children.capacity() + self.curr_children.capacity() + self.child_scratch.capacity())
+            + (self.prev_children.capacity()
+                + self.curr_children.capacity()
+                + self.child_scratch.capacity())
                 * core::mem::size_of::<u32>()
             + self.free.capacity() * core::mem::size_of::<u32>();
         let mut cold_style_bytes = 0usize;
@@ -609,7 +625,8 @@ impl LayoutStore {
             cold_style_bytes += slot.style.heap_bytes();
             cold_cache_bytes += slot.cache.heap_bytes();
             if slot.grid_info.is_some() {
-                cold_aux_bytes += core::mem::size_of::<DetailedLayoutInfo>() + core::mem::size_of::<DetailedGridInfo>();
+                cold_aux_bytes += core::mem::size_of::<DetailedLayoutInfo>()
+                    + core::mem::size_of::<DetailedGridInfo>();
             }
         }
         StorageStats {
@@ -622,7 +639,10 @@ impl LayoutStore {
             cold_style_bytes,
             cold_cache_bytes,
             cold_aux_bytes,
-            total_retained_bytes: inline_buffer_bytes + cold_style_bytes + cold_cache_bytes + cold_aux_bytes,
+            total_retained_bytes: inline_buffer_bytes
+                + cold_style_bytes
+                + cold_cache_bytes
+                + cold_aux_bytes,
         }
     }
 }

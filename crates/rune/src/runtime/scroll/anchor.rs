@@ -8,14 +8,18 @@ impl<S: 'static> Runtime<S> {
     /// Before a commit: puts each anchored viewport's top row ahead of the app's own
     /// `Tx::keep_on_screen` keys, which win when they name a row in the same viewport.
     pub(super) fn anchor_keeps(&self, tx: &mut Tx) {
-        if !self.built || self.drawn.len() != self.nodes.len() { return; }
+        if !self.built || self.drawn.len() != self.nodes.len() {
+            return;
+        }
         let rows: Vec<String> = (0..self.nodes.len())
             .filter(|&s| self.nodes[s].scroll_edges.anchor && self.nodes[s].scroll_axes.y())
             .filter(|&s| self.anchor_holds(s))
             .filter_map(|s| self.anchor_row(s))
             .map(|i| self.nodes[i].path.clone())
             .collect();
-        if rows.is_empty() { return; }
+        if rows.is_empty() {
+            return;
+        }
         tx.keep_on_screen.splice(0..0, rows);
     }
 
@@ -24,9 +28,18 @@ impl<S: 'static> Runtime<S> {
     /// revealing one.
     fn anchor_holds(&self, s: usize) -> bool {
         let path = &self.nodes[s].path;
-        if self.keeps.iter().any(|k| k.viewport == *path) || self.scroll_reveals.iter().any(|r| r.viewport == *path) { return false; }
+        if self.keeps.iter().any(|k| k.viewport == *path)
+            || self.scroll_reveals.iter().any(|r| r.viewport == *path)
+        {
+            return false;
+        }
         self.scrolls.get(&self.nodes[s].id).is_some_and(|st| {
-            st.offset > 0.5 && !st.pinned() && !st.scrolling && !st.direct && st.coast() == 0.0 && st.glide().is_none()
+            st.offset > 0.5
+                && !st.pinned()
+                && !st.scrolling
+                && !st.direct
+                && st.coast() == 0.0
+                && st.glide().is_none()
         })
     }
 
@@ -37,15 +50,32 @@ impl<S: 'static> Runtime<S> {
         let top = self.drawn[s][1];
         let bottom = top + self.drawn[s][3];
         let mut parent = s;
-        if self.virtuals.contains_key(&self.nodes[s].path) { return None; }
+        if self.virtuals.contains_key(&self.nodes[s].path) {
+            return None;
+        }
         loop {
-            let child = (parent + 1..self.nodes.len()).filter(|&j| self.nodes[j].parent == Some(parent)).find(|&j| {
-                let [_, y, w, h] = self.drawn[j];
-                w > 0.0 && h > 0.0 && y + h > top + 0.5 && y < bottom && self.nodes[j].sticky.is_none() && !self.subtree_exiting(j)
-            })?;
-            if self.virtuals.contains_key(&self.nodes[child].path) { return None; }
-            let into = self.drawn[child][1] < top - 0.5 && self.nodes.get(child + 1).is_some_and(|n| n.parent == Some(child));
-            if !into { return Some(child); }
+            let child = (parent + 1..self.nodes.len())
+                .filter(|&j| self.nodes[j].parent == Some(parent))
+                .find(|&j| {
+                    let [_, y, w, h] = self.drawn[j];
+                    w > 0.0
+                        && h > 0.0
+                        && y + h > top + 0.5
+                        && y < bottom
+                        && self.nodes[j].sticky.is_none()
+                        && !self.subtree_exiting(j)
+                })?;
+            if self.virtuals.contains_key(&self.nodes[child].path) {
+                return None;
+            }
+            let into = self.drawn[child][1] < top - 0.5
+                && self
+                    .nodes
+                    .get(child + 1)
+                    .is_some_and(|n| n.parent == Some(child));
+            if !into {
+                return Some(child);
+            }
             parent = child;
         }
     }

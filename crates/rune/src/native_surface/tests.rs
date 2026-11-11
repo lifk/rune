@@ -13,7 +13,12 @@ pub(super) fn draw(surface: &NativeSurface, rect: [f32; 4]) -> SurfaceDraw {
         opacity: 1.0,
     }
 }
-pub(super) fn render(gpu: &Gpu, renderer: &mut SurfaceRenderer, draws: &[SurfaceDraw], size: (u32, u32)) -> Vec<u8> {
+pub(super) fn render(
+    gpu: &Gpu,
+    renderer: &mut SurfaceRenderer,
+    draws: &[SurfaceDraw],
+    size: (u32, u32),
+) -> Vec<u8> {
     let (completed, completion) = std::sync::mpsc::channel();
     for d in draws {
         let completed = completed.clone();
@@ -30,7 +35,12 @@ pub(super) fn render(gpu: &Gpu, renderer: &mut SurfaceRenderer, draws: &[Surface
     let target = Offscreen::new(&gpu.device, size.0, size.1);
     let mut encoder = gpu.device.create_command_encoder(&Default::default());
     {
-        let mut pass = clear_pass(&mut encoder, &target.view, wgpu::Color::TRANSPARENT, renderer.timestamp_writes());
+        let mut pass = clear_pass(
+            &mut encoder,
+            &target.view,
+            wgpu::Color::TRANSPARENT,
+            renderer.timestamp_writes(),
+        );
         for i in 0..renderer.len() {
             renderer.draw(&mut pass, i);
         }
@@ -39,7 +49,9 @@ pub(super) fn render(gpu: &Gpu, renderer: &mut SurfaceRenderer, draws: &[Surface
     renderer.submit(&gpu.queue, encoder);
     let pixels = target.read(&gpu.device);
     for _ in draws {
-        completion.recv_timeout(std::time::Duration::from_secs(10)).expect("frame completion");
+        completion
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("frame completion");
     }
     pixels
 }
@@ -54,7 +66,10 @@ fn clear_pass<'e>(
             view,
             depth_slice: None,
             resolve_target: None,
-            ops: wgpu::Operations { load: wgpu::LoadOp::Clear(clear), store: wgpu::StoreOp::Store },
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Clear(clear),
+                store: wgpu::StoreOp::Store,
+            },
         })],
         timestamp_writes,
         ..Default::default()
@@ -75,7 +90,11 @@ macro_rules! on_each_backend {
     };
 }
 fn srgb(x: f32) -> u8 {
-    let x = if x <= 0.0031308 { x * 12.92 } else { 1.055 * x.powf(1.0 / 2.4) - 0.055 };
+    let x = if x <= 0.0031308 {
+        x * 12.92
+    } else {
+        1.055 * x.powf(1.0 / 2.4) - 0.055
+    };
     (x.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
@@ -96,10 +115,12 @@ fn completion_worker_preserves_cpu_gpu_overlap() {
     let surface = NativeSurface::new();
     surface.push_bytes(synthetic(16, 16, 0), 1).unwrap();
     let mut renderer = SurfaceRenderer::new(&gpu.device, OFFSCREEN_FORMAT);
-    let shader = gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("overlap workload"),
-        source: wgpu::ShaderSource::Wgsl(
-            r#"
+    let shader = gpu
+        .device
+        .create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("overlap workload"),
+            source: wgpu::ShaderSource::Wgsl(
+                r#"
             @group(0) @binding(0) var<storage, read_write> result: array<u32>;
             @compute @workgroup_size(64)
             fn main(@builtin(global_invocation_id) id: vec3<u32>) {
@@ -110,17 +131,19 @@ fn completion_worker_preserves_cpu_gpu_overlap() {
                 result[id.x] = x;
             }
         "#
-            .into(),
-        ),
-    });
-    let compute = gpu.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-        label: Some("overlap workload"),
-        layout: None,
-        module: &shader,
-        entry_point: Some("main"),
-        compilation_options: Default::default(),
-        cache: None,
-    });
+                .into(),
+            ),
+        });
+    let compute = gpu
+        .device
+        .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("overlap workload"),
+            layout: None,
+            module: &shader,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
     let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
         label: None,
         size: 65536 * 4,
@@ -130,14 +153,22 @@ fn completion_worker_preserves_cpu_gpu_overlap() {
     let bind = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: None,
         layout: &compute.get_bind_group_layout(0),
-        entries: &[wgpu::BindGroupEntry { binding: 0, resource: buffer.as_entire_binding() }],
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: buffer.as_entire_binding(),
+        }],
     });
     let target = Offscreen::new(&gpu.device, 16, 16);
     let mut outcomes = Vec::new();
     // Each dispatch is one unit of work (a few hundred ms on a desktop GPU); later attempts
     // queue more of them in the same submission rather than lengthening one dispatch.
     for dispatches in [1, 2, 4, 8, 16] {
-        renderer.prepare(&gpu.device, &gpu.queue, &[draw(&surface, [0.0, 0.0, 16.0, 16.0])], (16, 16));
+        renderer.prepare(
+            &gpu.device,
+            &gpu.queue,
+            &[draw(&surface, [0.0, 0.0, 16.0, 16.0])],
+            (16, 16),
+        );
         let probe = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("present lock probe"),
             size: 4,
@@ -154,7 +185,12 @@ fn completion_worker_preserves_cpu_gpu_overlap() {
             }
         }
         {
-            let mut pass = clear_pass(&mut encoder, &target.view, wgpu::Color::BLACK, renderer.timestamp_writes());
+            let mut pass = clear_pass(
+                &mut encoder,
+                &target.view,
+                wgpu::Color::BLACK,
+                renderer.timestamp_writes(),
+            );
             renderer.draw(&mut pass, 0);
         }
         let (done, completed) = std::sync::mpsc::channel();
@@ -175,7 +211,9 @@ fn completion_worker_preserves_cpu_gpu_overlap() {
             gpu.device.poll(wgpu::PollType::Poll).unwrap();
             match completed.try_recv() {
                 Err(TryRecvError::Empty) => {
-                    completed.recv_timeout(Duration::from_secs(30)).expect("GPU workload completed");
+                    completed
+                        .recv_timeout(Duration::from_secs(30))
+                        .expect("GPU workload completed");
                     "overlapped"
                 }
                 _ => "finished by the time the write lock returned",
@@ -192,14 +230,19 @@ fn completion_worker_preserves_cpu_gpu_overlap() {
 fn publish(s: &NativeSurface, b: ByteFrame, id: u64, native: bool) {
     #[cfg(target_os = "macos")]
     if native {
-        s.push(macos::PixelBuffer::from_bytes(&b).unwrap(), id).unwrap();
+        s.push(macos::PixelBuffer::from_bytes(&b).unwrap(), id)
+            .unwrap();
         return;
     }
     let _ = native;
     s.push_bytes(b, id).unwrap();
 }
 
-on_each_backend!(queued_video_frames_then_readback, queued_video_frames_then_readback_on_metal, queued_video_frames_then_readback_on);
+on_each_backend!(
+    queued_video_frames_then_readback,
+    queued_video_frames_then_readback_on_metal,
+    queued_video_frames_then_readback_on
+);
 fn queued_video_frames_then_readback_on(gpu: Gpu) {
     let mut renderer = SurfaceRenderer::new(&gpu.device, OFFSCREEN_FORMAT);
     let surfaces: Vec<_> = (0..4).map(|_| NativeSurface::new()).collect();
@@ -215,7 +258,10 @@ fn queued_video_frames_then_readback_on(gpu: Gpu) {
                     done.send(t).unwrap();
                 }
             }));
-            draw(s, [(i % 2) as f32 * 640.0, (i / 2) as f32 * 360.0, 640.0, 360.0])
+            draw(
+                s,
+                [(i % 2) as f32 * 640.0, (i / 2) as f32 * 360.0, 640.0, 360.0],
+            )
         })
         .collect();
     let target = Offscreen::new(&gpu.device, 1280, 720);
@@ -227,8 +273,12 @@ fn queued_video_frames_then_readback_on(gpu: Gpu) {
             renderer.prepare(&gpu.device, &gpu.queue, &draws, (1280, 720));
             let mut encoder = gpu.device.create_command_encoder(&Default::default());
             {
-                let mut pass =
-                    clear_pass(&mut encoder, &target.view, wgpu::Color::TRANSPARENT, renderer.timestamp_writes());
+                let mut pass = clear_pass(
+                    &mut encoder,
+                    &target.view,
+                    wgpu::Color::TRANSPARENT,
+                    renderer.timestamp_writes(),
+                );
                 for i in 0..renderer.len() {
                     renderer.draw(&mut pass, i);
                 }
@@ -240,7 +290,10 @@ fn queued_video_frames_then_readback_on(gpu: Gpu) {
         }
         let pixels = target.read(&gpu.device);
         if let Some(expected) = &expected {
-            assert_eq!(&pixels, expected, "unchanged queued frames must read back identically");
+            assert_eq!(
+                &pixels, expected,
+                "unchanged queued frames must read back identically"
+            );
         } else {
             assert!(pixels.iter().any(|&v| v != 0));
             expected = Some(pixels);
@@ -248,19 +301,32 @@ fn queued_video_frames_then_readback_on(gpu: Gpu) {
     }
     let mut timed = 0;
     for _ in 0..8 * 61 * 4 {
-        let t = completed.recv_timeout(std::time::Duration::from_secs(10)).expect("queued frame completion");
+        let t = completed
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("queued frame completion");
         assert_eq!(t.gpu_start_seconds.is_some(), t.gpu_end_seconds.is_some());
         if let Some((start, end)) = t.gpu_start_seconds.zip(t.gpu_end_seconds) {
             assert!(end >= start && end > 0.0, "invalid timestamps: {t:?}");
             timed += 1;
         }
     }
-    if gpu.device.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
-        assert!(timed > 0, "queued frames must still produce GPU timing samples");
+    if gpu
+        .device
+        .features()
+        .contains(wgpu::Features::TIMESTAMP_QUERY)
+    {
+        assert!(
+            timed > 0,
+            "queued frames must still produce GPU timing samples"
+        );
     }
 }
 
-on_each_backend!(video_gpu_colour_sharpness_geometry_and_lifetime, video_gpu_colour_sharpness_geometry_and_lifetime_on_metal, video_gpu_colour_sharpness_geometry_and_lifetime_on);
+on_each_backend!(
+    video_gpu_colour_sharpness_geometry_and_lifetime,
+    video_gpu_colour_sharpness_geometry_and_lifetime_on_metal,
+    video_gpu_colour_sharpness_geometry_and_lifetime_on
+);
 fn video_gpu_colour_sharpness_geometry_and_lifetime_on(gpu: Gpu) {
     // Other renderers (including the parallel burst test) may own native planes.
     // Their lifetime must not affect this renderer's ownership assertions.
@@ -269,7 +335,12 @@ fn video_gpu_colour_sharpness_geometry_and_lifetime_on(gpu: Gpu) {
         let surface = NativeSurface::new();
         publish(&surface, synthetic(16, 16, 0), 0, true);
         let mut renderer = SurfaceRenderer::new(&gpu.device, OFFSCREEN_FORMAT);
-        renderer.prepare(&gpu.device, &gpu.queue, &[draw(&surface, [0.0, 0.0, 16.0, 16.0])], (16, 16));
+        renderer.prepare(
+            &gpu.device,
+            &gpu.queue,
+            &[draw(&surface, [0.0, 0.0, 16.0, 16.0])],
+            (16, 16),
+        );
         assert_eq!(renderer.live_planes(), 2);
         renderer
     };
@@ -304,8 +375,14 @@ fn video_gpu_colour_sharpness_geometry_and_lifetime_on(gpu: Gpu) {
                             id,
                             native,
                         );
-                        let pixels = render(&gpu, &mut renderer, &[draw(&surface, [0.0, 0.0, 8.0, 8.0])], (8, 8));
-                        let reference = nv12_reference(codes[0], codes[1], codes[2], format, color).map(srgb);
+                        let pixels = render(
+                            &gpu,
+                            &mut renderer,
+                            &[draw(&surface, [0.0, 0.0, 8.0, 8.0])],
+                            (8, 8),
+                        );
+                        let reference =
+                            nv12_reference(codes[0], codes[1], codes[2], format, color).map(srgb);
                         for pixel in pixels.chunks_exact(4) {
                             for c in 0..3 {
                                 assert!(
@@ -332,7 +409,11 @@ fn video_gpu_colour_sharpness_geometry_and_lifetime_on(gpu: Gpu) {
             let mut expected = Vec::new();
             for y in 0..16 {
                 for x in 0..256 {
-                    let v = if y % 2 == 0 { x as u8 } else { if x % 2 == 0 { 0 } else { 255 } };
+                    let v = if y % 2 == 0 {
+                        x as u8
+                    } else {
+                        if x % 2 == 0 { 0 } else { 255 }
+                    };
                     if format == Format::Bgra {
                         b.planes[0].extend_from_slice(&[v, 255 - v, v / 2, 255]);
                         expected.extend_from_slice(&[v / 2, 255 - v, v, 255]);
@@ -347,18 +428,34 @@ fn video_gpu_colour_sharpness_geometry_and_lifetime_on(gpu: Gpu) {
             }
             id += 1;
             publish(&surface, b, id, native);
-            let pixels = render(&gpu, &mut renderer, &[draw(&surface, [0.0, 0.0, 256.0, 16.0])], (256, 16));
-            assert_eq!(pixels, expected, "1:1 pixels changed for native={native}, format={format:?}");
+            let pixels = render(
+                &gpu,
+                &mut renderer,
+                &[draw(&surface, [0.0, 0.0, 256.0, 16.0])],
+                (256, 16),
+            );
+            assert_eq!(
+                pixels, expected,
+                "1:1 pixels changed for native={native}, format={format:?}"
+            );
         }
     }
     let held = surface.latest().unwrap();
     let weak = Arc::downgrade(&held);
     drop(held);
     surface.clear();
-    assert!(weak.upgrade().is_some(), "renderer must retain its current frame");
+    assert!(
+        weak.upgrade().is_some(),
+        "renderer must retain its current frame"
+    );
     renderer.prepare(&gpu.device, &gpu.queue, &[], (256, 16));
-    gpu.device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
-    assert!(weak.upgrade().is_none(), "old frame leaked after completion and removal");
+    gpu.device
+        .poll(wgpu::PollType::wait_indefinitely())
+        .unwrap();
+    assert!(
+        weak.upgrade().is_none(),
+        "old frame leaked after completion and removal"
+    );
     #[cfg(target_os = "macos")]
     assert_eq!(renderer.live_planes(), 0, "CVMetalTexture ownership leaked");
     let (submitted, completed) = surface.counts();
@@ -366,11 +463,21 @@ fn video_gpu_colour_sharpness_geometry_and_lifetime_on(gpu: Gpu) {
     let timing = surface.timing().unwrap();
     assert_eq!(timing.frame_id, id);
     assert!(timing.completed_at.unwrap() >= timing.submitted_at);
-    if gpu.device.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
-        assert!(timing.gpu_end_seconds.is_some(), "timestamp query produced no times: {timing:?}");
+    if gpu
+        .device
+        .features()
+        .contains(wgpu::Features::TIMESTAMP_QUERY)
+    {
+        assert!(
+            timing.gpu_end_seconds.is_some(),
+            "timestamp query produced no times: {timing:?}"
+        );
         assert!(timing.gpu_end_seconds.unwrap() >= timing.gpu_start_seconds.unwrap());
     } else {
-        eprintln!("adapter has no timestamp queries: {:?}", gpu.adapter.get_info());
+        eprintln!(
+            "adapter has no timestamp queries: {:?}",
+            gpu.adapter.get_info()
+        );
     }
 
     // Contain letterboxes, cover crops, and rounded clip remains local to the node.
@@ -404,8 +511,18 @@ fn video_gpu_colour_sharpness_geometry_and_lifetime_on(gpu: Gpu) {
     {
         // Drop mailbox + renderer references while commands are encoded but unsubmitted.
         // The wgpu HAL ownership guard, not a borrowed CoreVideo/Metal pointer, must survive.
-        surface.push(macos::PixelBuffer::from_bytes(&synthetic(16, 16, 0)).unwrap(), 1000).unwrap();
-        renderer.prepare(&gpu.device, &gpu.queue, &[draw(&surface, [0.0, 0.0, 16.0, 16.0])], (16, 16));
+        surface
+            .push(
+                macos::PixelBuffer::from_bytes(&synthetic(16, 16, 0)).unwrap(),
+                1000,
+            )
+            .unwrap();
+        renderer.prepare(
+            &gpu.device,
+            &gpu.queue,
+            &[draw(&surface, [0.0, 0.0, 16.0, 16.0])],
+            (16, 16),
+        );
         let target = Offscreen::new(&gpu.device, 16, 16);
         let mut encoder = gpu.device.create_command_encoder(&Default::default());
         {
@@ -414,7 +531,11 @@ fn video_gpu_colour_sharpness_geometry_and_lifetime_on(gpu: Gpu) {
         }
         surface.clear();
         renderer.prepare(&gpu.device, &gpu.queue, &[], (16, 16));
-        assert_eq!(renderer.live_planes(), 2, "encoded frames released too early");
+        assert_eq!(
+            renderer.live_planes(),
+            2,
+            "encoded frames released too early"
+        );
         target.copy(&mut encoder);
         gpu.queue.submit([encoder.finish()]);
         let p = target.read(&gpu.device);
@@ -443,11 +564,22 @@ fn video_gpu_colour_sharpness_geometry_and_lifetime_on(gpu: Gpu) {
             .border(1.0, crate::Color::BLACK)
             .child(crate::el().w(2.0).h(2.0).fill(crate::Color::BLACK))
     }
-    let mut rt = crate::Runtime::new(surface.clone(), view, (8.0, 4.0), crate::Env::new(true, 2.0));
+    let mut rt = crate::Runtime::new(
+        surface.clone(),
+        view,
+        (8.0, 4.0),
+        crate::Env::new(true, 2.0),
+    );
     rt.frame(0.0);
     assert_eq!(rt.surfaces[0].rect, [0.0, 0.0, 16.0, 8.0]);
     let mut renderer = crate::render::Renderer::new(&gpu.device, OFFSCREEN_FORMAT);
-    renderer.prepare(&gpu.device, &gpu.queue, &mut rt.text.atlas, &rt.instances, (16, 8));
+    renderer.prepare(
+        &gpu.device,
+        &gpu.queue,
+        &mut rt.text.atlas,
+        &rt.instances,
+        (16, 8),
+    );
     renderer.prepare_surfaces(&gpu.device, &gpu.queue, &rt.surfaces, (16, 8));
     let target = Offscreen::new(&gpu.device, 16, 8);
     let mut encoder = gpu.device.create_command_encoder(&Default::default());
@@ -456,32 +588,69 @@ fn video_gpu_colour_sharpness_geometry_and_lifetime_on(gpu: Gpu) {
     renderer.submit(&gpu.queue, encoder);
     let p = target.read(&gpu.device);
     assert_eq!(&p[0..4], &[0, 0, 0, 255], "border must paint over video");
-    assert_eq!(&p[(3 * 16 + 3) * 4..(3 * 16 + 3) * 4 + 4], &[0, 0, 0, 255], "child must paint over video");
-    assert_eq!(&p[(4 * 16 + 10) * 4..(4 * 16 + 10) * 4 + 4], &[255; 4], "video must paint over background");
+    assert_eq!(
+        &p[(3 * 16 + 3) * 4..(3 * 16 + 3) * 4 + 4],
+        &[0, 0, 0, 255],
+        "child must paint over video"
+    );
+    assert_eq!(
+        &p[(4 * 16 + 10) * 4..(4 * 16 + 10) * 4 + 4],
+        &[255; 4],
+        "video must paint over background"
+    );
 
     // A video pipeline switch must also restore the retained-springs bind group before
     // painting the border and child. Identity tracks should exactly match ordinary rendering.
     let zero = crate::gpu::springs::Track::constant(0.0);
-    let node = crate::gpu::springs::Node { x: zero, y: zero, opacity: crate::gpu::springs::Track::constant(1.0) };
-    let mut sprung =
-        crate::render::Renderer::with_springs(&gpu.device, OFFSCREEN_FORMAT, &[node], &vec![0; rt.instances.len()]);
-    sprung.prepare(&gpu.device, &gpu.queue, &mut rt.text.atlas, &rt.instances, (16, 8));
+    let node = crate::gpu::springs::Node {
+        x: zero,
+        y: zero,
+        opacity: crate::gpu::springs::Track::constant(1.0),
+    };
+    let mut sprung = crate::render::Renderer::with_springs(
+        &gpu.device,
+        OFFSCREEN_FORMAT,
+        &[node],
+        &vec![0; rt.instances.len()],
+    );
+    sprung.prepare(
+        &gpu.device,
+        &gpu.queue,
+        &mut rt.text.atlas,
+        &rt.instances,
+        (16, 8),
+    );
     sprung.prepare_surfaces(&gpu.device, &gpu.queue, &rt.surfaces, (16, 8));
     let mut encoder = gpu.device.create_command_encoder(&Default::default());
     sprung.draw(&mut encoder, &target.view, [0.0; 4]);
     target.copy(&mut encoder);
     sprung.submit(&gpu.queue, encoder);
-    assert_eq!(target.read(&gpu.device), p, "retained-springs binding must survive the video draw");
+    assert_eq!(
+        target.read(&gpu.device),
+        p,
+        "retained-springs binding must survive the video draw"
+    );
 
     // A custom compositor can omit video. Preparing it alone must not report a submission.
     let submitted = surface.counts().0;
     renderer.prepare_surfaces(&gpu.device, &gpu.queue, &rt.surfaces, (16, 8));
-    renderer.submit(&gpu.queue, gpu.device.create_command_encoder(&Default::default()));
-    assert_eq!(surface.counts().0, submitted, "undrawn video must not report submission");
+    renderer.submit(
+        &gpu.queue,
+        gpu.device.create_command_encoder(&Default::default()),
+    );
+    assert_eq!(
+        surface.counts().0,
+        submitted,
+        "undrawn video must not report submission"
+    );
 
     // External pass timing takes precedence without resolving NativeSurface's unwritten
     // query set. Frame completion still arrives, with no native GPU timestamps.
-    if gpu.device.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
+    if gpu
+        .device
+        .features()
+        .contains(wgpu::Features::TIMESTAMP_QUERY)
+    {
         let external = gpu.device.create_query_set(&wgpu::QuerySetDescriptor {
             label: Some("external UI timing"),
             ty: wgpu::QueryType::Timestamp,
@@ -509,8 +678,9 @@ fn video_gpu_colour_sharpness_geometry_and_lifetime_on(gpu: Gpu) {
         // The preceding render's callback may still arrive; consume until this submission.
         let submission = surface.timing().unwrap().submitted_at;
         loop {
-            let t =
-                completion.recv_timeout(std::time::Duration::from_secs(10)).expect("externally timed frame completion");
+            let t = completion
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .expect("externally timed frame completion");
             if t.submitted_at != submission {
                 continue;
             }
@@ -532,7 +702,16 @@ pub(super) fn bgra_ramp(width: u32, height: u32) -> (ByteFrame, Vec<[u8; 4]>) {
             rgba.push([(y * 40) as u8, 255 - v, v, 255]);
         }
     }
-    (ByteFrame { width, height, format: Format::Bgra, color: ColorInfo::default(), planes: [planes, vec![]] }, rgba)
+    (
+        ByteFrame {
+            width,
+            height,
+            format: Format::Bgra,
+            color: ColorInfo::default(),
+            planes: [planes, vec![]],
+        },
+        rgba,
+    )
 }
 pub(super) fn pixel(p: &[u8], width: u32, x: u32, y: u32) -> [u8; 4] {
     let i = ((y * width + x) * 4) as usize;
@@ -542,13 +721,23 @@ pub(super) fn pixel(p: &[u8], width: u32, x: u32, y: u32) -> [u8; 4] {
 fn assert_row_reversed(mirrored: &[u8], plain: &[u8], size: (u32, u32), what: &str) {
     for y in 0..size.1 {
         for x in 0..size.0 {
-            let (a, b) = (pixel(mirrored, size.0, x, y), pixel(plain, size.0, size.0 - 1 - x, y));
-            assert!(a.iter().zip(b).all(|(a, b)| a.abs_diff(b) <= 1), "{what} ({x},{y}): {a:?} != {b:?}");
+            let (a, b) = (
+                pixel(mirrored, size.0, x, y),
+                pixel(plain, size.0, size.0 - 1 - x, y),
+            );
+            assert!(
+                a.iter().zip(b).all(|(a, b)| a.abs_diff(b) <= 1),
+                "{what} ({x},{y}): {a:?} != {b:?}"
+            );
         }
     }
 }
 
-on_each_backend!(mirrored_video_is_exact_cropped_centred_and_toggles_without_a_new_frame, mirrored_video_on_metal, mirrored_video_is_exact_cropped_centred_and_toggles_without_a_new_frame_on);
+on_each_backend!(
+    mirrored_video_is_exact_cropped_centred_and_toggles_without_a_new_frame,
+    mirrored_video_on_metal,
+    mirrored_video_is_exact_cropped_centred_and_toggles_without_a_new_frame_on
+);
 fn mirrored_video_is_exact_cropped_centred_and_toggles_without_a_new_frame_on(gpu: Gpu) {
     let mut renderer = SurfaceRenderer::new(&gpu.device, OFFSCREEN_FORMAT);
     let mut id = 0;
@@ -565,11 +754,20 @@ fn mirrored_video_is_exact_cropped_centred_and_toggles_without_a_new_frame_on(gp
         let (b, src) = bgra_ramp(8, 4);
         publish_next(b);
         for (node_w, origin) in [(8u32, 0u32), (9, 1)] {
-            let p = render(&gpu, &mut renderer, &[draw(&surface, [0.0, 0.0, node_w as f32, 4.0])], (node_w, 4));
+            let p = render(
+                &gpu,
+                &mut renderer,
+                &[draw(&surface, [0.0, 0.0, node_w as f32, 4.0])],
+                (node_w, 4),
+            );
             for y in 0..4 {
                 for x in origin..origin + 8 {
                     let expected = src[(y * 8 + (7 - (x - origin))) as usize];
-                    assert_eq!(pixel(&p, node_w, x, y), expected, "native={native} 1:1 mirror at ({x},{y}) in {node_w}");
+                    assert_eq!(
+                        pixel(&p, node_w, x, y),
+                        expected,
+                        "native={native} 1:1 mirror at ({x},{y}) in {node_w}"
+                    );
                 }
             }
         }
@@ -582,15 +780,24 @@ fn mirrored_video_is_exact_cropped_centred_and_toggles_without_a_new_frame_on(gp
         let p = render(&gpu, &mut renderer, &[d], (8, 8));
         for y in 0..8 {
             for x in 0..8 {
-                assert_eq!(pixel(&p, 8, x, y), src[(y * 16 + 11 - x) as usize], "native={native} Fill crop ({x},{y})");
+                assert_eq!(
+                    pixel(&p, 8, x, y),
+                    src[(y * 16 + 11 - x) as usize],
+                    "native={native} Fill crop ({x},{y})"
+                );
             }
         }
 
         // NV12 at 1:1: luma per pixel and each 2x2 chroma block move together.
         let (w, h) = (8u32, 4u32);
         let luma: Vec<u8> = (0..w * h).map(|i| (16 + i * 6) as u8).collect();
-        let chroma: Vec<u8> = (0..w * h / 4).flat_map(|i| [(40 + i * 20) as u8, (200 - i * 18) as u8]).collect();
-        let color = ColorInfo { matrix: Matrix::Bt709, transfer: Transfer::Srgb };
+        let chroma: Vec<u8> = (0..w * h / 4)
+            .flat_map(|i| [(40 + i * 20) as u8, (200 - i * 18) as u8])
+            .collect();
+        let color = ColorInfo {
+            matrix: Matrix::Bt709,
+            transfer: Transfer::Srgb,
+        };
         publish_next(ByteFrame {
             width: w,
             height: h,
@@ -598,17 +805,30 @@ fn mirrored_video_is_exact_cropped_centred_and_toggles_without_a_new_frame_on(gp
             color,
             planes: [luma.clone(), chroma.clone()],
         });
-        let p = render(&gpu, &mut renderer, &[draw(&surface, [0.0, 0.0, w as f32, h as f32])], (w, h));
+        let p = render(
+            &gpu,
+            &mut renderer,
+            &[draw(&surface, [0.0, 0.0, w as f32, h as f32])],
+            (w, h),
+        );
         for y in 0..h {
             for x in 0..w {
                 let sx = w - 1 - x;
                 let c = ((y / 2) * (w / 2) + sx / 2) as usize * 2;
-                let reference =
-                    nv12_reference(luma[(y * w + sx) as usize], chroma[c], chroma[c + 1], Format::Nv12Full, color)
-                        .map(srgb);
+                let reference = nv12_reference(
+                    luma[(y * w + sx) as usize],
+                    chroma[c],
+                    chroma[c + 1],
+                    Format::Nv12Full,
+                    color,
+                )
+                .map(srgb);
                 let got = pixel(&p, w, x, y);
                 for i in 0..3 {
-                    assert!(got[i].abs_diff(reference[i]) <= 1, "native={native} NV12 ({x},{y}): {got:?} != {reference:?}");
+                    assert!(
+                        got[i].abs_diff(reference[i]) <= 1,
+                        "native={native} NV12 ({x},{y}): {got:?} != {reference:?}"
+                    );
                 }
             }
         }
@@ -616,9 +836,27 @@ fn mirrored_video_is_exact_cropped_centred_and_toggles_without_a_new_frame_on(gp
         // Filtered paths: bilinear Fill (2x, cropped) and the area-grid shrink, BGRA and NV12.
         let (bgra, _) = bgra_ramp(16, 8);
         for (frame, rect, fit, size, what) in [
-            (bgra, [0.0, 0.0, 16.0, 16.0], SurfaceFit::Fill, (16, 16), "BGRA bilinear Fill"),
-            (synthetic(32, 16, 3), [0.0, 0.0, 24.0, 20.0], SurfaceFit::Fill, (24, 20), "NV12 bilinear Fill"),
-            (synthetic(128, 32, 5), [0.0, 0.0, 8.0, 8.0], SurfaceFit::Fit, (8, 8), "NV12 area shrink"),
+            (
+                bgra,
+                [0.0, 0.0, 16.0, 16.0],
+                SurfaceFit::Fill,
+                (16, 16),
+                "BGRA bilinear Fill",
+            ),
+            (
+                synthetic(32, 16, 3),
+                [0.0, 0.0, 24.0, 20.0],
+                SurfaceFit::Fill,
+                (24, 20),
+                "NV12 bilinear Fill",
+            ),
+            (
+                synthetic(128, 32, 5),
+                [0.0, 0.0, 8.0, 8.0],
+                SurfaceFit::Fit,
+                (8, 8),
+                "NV12 area shrink",
+            ),
         ] {
             publish_next(frame);
             let mut d = draw(&surface, rect);
@@ -661,25 +899,47 @@ fn mirrored_video_is_exact_cropped_centred_and_toggles_without_a_new_frame_on(gp
     clone.set_mirrored(true);
     clone.set_mirrored(true);
     assert!(surface.is_mirrored(), "clones share the flag");
-    assert_eq!(wakes.load(std::sync::atomic::Ordering::SeqCst), woken + 1, "one wake per change");
+    assert_eq!(
+        wakes.load(std::sync::atomic::Ordering::SeqCst),
+        woken + 1,
+        "one wake per change"
+    );
     let mirrored = render(&gpu, &mut renderer, &d, (8, 2));
     assert_eq!(pixel(&mirrored, 8, 0, 0), src[7]);
     assert_row_reversed(&mirrored, &plain, (8, 2), "runtime toggle");
     surface.set_mirrored(false);
     assert_eq!(wakes.load(std::sync::atomic::Ordering::SeqCst), woken + 2);
-    assert_eq!(render(&gpu, &mut renderer, &d, (8, 2)), plain, "unmirroring restores the frame");
+    assert_eq!(
+        render(&gpu, &mut renderer, &d, (8, 2)),
+        plain,
+        "unmirroring restores the frame"
+    );
     assert_eq!(surface.latest().unwrap().id, 1, "no new frame was pushed");
 }
 
-const ORIENTS: [[i8; 4]; 8] =
-    [[1, 0, 0, 1], [-1, 0, 0, 1], [1, 0, 0, -1], [-1, 0, 0, -1], [0, 1, 1, 0], [0, -1, 1, 0], [0, 1, -1, 0], [0, -1, -1, 0]];
+const ORIENTS: [[i8; 4]; 8] = [
+    [1, 0, 0, 1],
+    [-1, 0, 0, 1],
+    [1, 0, 0, -1],
+    [-1, 0, 0, -1],
+    [0, 1, 1, 0],
+    [0, -1, 1, 0],
+    [0, 1, -1, 0],
+    [0, -1, -1, 0],
+];
 
 /// The buffer pixel an upright pixel shows, by rotating about the centre.
 fn buffer_pixel(o: Orient, [w, h]: [u32; 2], x: u32, y: u32) -> (u32, u32) {
     let [uw, uh] = o.upright([w, h]);
-    let (cx, cy) = (x as f64 + 0.5 - uw as f64 / 2.0, y as f64 + 0.5 - uh as f64 / 2.0);
+    let (cx, cy) = (
+        x as f64 + 0.5 - uw as f64 / 2.0,
+        y as f64 + 0.5 - uh as f64 / 2.0,
+    );
     let m = o.0.map(f64::from);
-    ((m[0] * cx + m[1] * cy + w as f64 / 2.0).floor() as u32, (m[2] * cx + m[3] * cy + h as f64 / 2.0).floor() as u32)
+    (
+        (m[0] * cx + m[1] * cy + w as f64 / 2.0).floor() as u32,
+        (m[2] * cx + m[3] * cy + h as f64 / 2.0).floor() as u32,
+    )
 }
 /// The frame turned upright on the CPU.
 fn turned(b: &ByteFrame, o: Orient) -> ByteFrame {
@@ -698,15 +958,25 @@ fn turned(b: &ByteFrame, o: Orient) -> ByteFrame {
     let [w, h] = [b.width, b.height];
     let planes = match b.format {
         Format::Bgra => [plane(&b.planes[0], w, h, 4), vec![]],
-        _ => [plane(&b.planes[0], w, h, 1), plane(&b.planes[1], w / 2, h / 2, 2)],
+        _ => [
+            plane(&b.planes[0], w, h, 1),
+            plane(&b.planes[1], w / 2, h / 2, 2),
+        ],
     };
     let [width, height] = o.upright([w, h]);
-    ByteFrame { width, height, format: b.format, color: b.color, planes }
+    ByteFrame {
+        width,
+        height,
+        format: b.format,
+        color: b.color,
+        planes,
+    }
 }
 fn publish_oriented(s: &NativeSurface, b: ByteFrame, id: u64, native: bool, o: Orient) {
     #[cfg(target_os = "macos")]
     if native {
-        s.push_oriented(macos::PixelBuffer::from_bytes(&b).unwrap(), id, o).unwrap();
+        s.push_oriented(macos::PixelBuffer::from_bytes(&b).unwrap(), id, o)
+            .unwrap();
         return;
     }
     let _ = native;
@@ -716,11 +986,25 @@ fn publish_oriented(s: &NativeSurface, b: ByteFrame, id: u64, native: bool, o: O
 #[test]
 fn orientations_come_from_quarter_turn_transforms_only() {
     // An iPhone portrait clip: buffer (x, y) shows at (h - y, x).
-    assert_eq!(Orient::from_transform(0.0, 1.0, -1.0, 0.0), Orient([0, 1, -1, 0]));
+    assert_eq!(
+        Orient::from_transform(0.0, 1.0, -1.0, 0.0),
+        Orient([0, 1, -1, 0])
+    );
     assert_eq!(Orient::from_transform(1.0, 0.0, 0.0, 1.0), Orient::UP);
-    assert_eq!(Orient::from_transform(-1.0, 0.0, 0.0, -1.0), Orient([-1, 0, 0, -1]));
-    assert_eq!(Orient::from_transform(0.7071, 0.7071, -0.7071, 0.7071), Orient::UP, "45 degrees isn't a quarter turn");
-    assert_eq!(Orient::from_transform(2.0, 0.0, 0.0, 2.0), Orient::UP, "scales are ignored");
+    assert_eq!(
+        Orient::from_transform(-1.0, 0.0, 0.0, -1.0),
+        Orient([-1, 0, 0, -1])
+    );
+    assert_eq!(
+        Orient::from_transform(0.7071, 0.7071, -0.7071, 0.7071),
+        Orient::UP,
+        "45 degrees isn't a quarter turn"
+    );
+    assert_eq!(
+        Orient::from_transform(2.0, 0.0, 0.0, 2.0),
+        Orient::UP,
+        "scales are ignored"
+    );
     assert!(Orient([0, 1, -1, 0]).swaps());
     assert_eq!(Orient([0, 1, -1, 0]).upright([64, 32]), [32, 64]);
     // The buffer's top-left pixel ends up top-right, as it does on the phone.
@@ -729,7 +1013,11 @@ fn orientations_come_from_quarter_turn_transforms_only() {
 
 // A buffer drawn with an orientation equals the same picture turned upright on the CPU, for
 // every quarter turn and flip, at 1:1, magnified and shrunk, BGRA and NV12.
-on_each_backend!(oriented_frames_draw_like_frames_turned_upright, oriented_frames_on_metal, oriented_frames_draw_like_frames_turned_upright_on);
+on_each_backend!(
+    oriented_frames_draw_like_frames_turned_upright,
+    oriented_frames_on_metal,
+    oriented_frames_draw_like_frames_turned_upright_on
+);
 fn oriented_frames_draw_like_frames_turned_upright_on(gpu: Gpu) {
     let mut renderer = SurfaceRenderer::new(&gpu.device, OFFSCREEN_FORMAT);
     let mut id = 0;
@@ -743,12 +1031,19 @@ fn oriented_frames_draw_like_frames_turned_upright_on(gpu: Gpu) {
                 id += 1;
                 publish_oriented(&oriented, frame, id, native, o);
                 publish(&reference, upright, id, native);
-                for (w, h, what) in [(uw, uh, "1:1"), (uw * 2, uh * 2, "2x"), (uw / 2, uh / 2, "half")] {
+                for (w, h, what) in [
+                    (uw, uh, "1:1"),
+                    (uw * 2, uh * 2, "2x"),
+                    (uw / 2, uh / 2, "half"),
+                ] {
                     let rect = [0.0, 0.0, w as f32, h as f32];
                     let got = render(&gpu, &mut renderer, &[draw(&oriented, rect)], (w, h));
                     let want = render(&gpu, &mut renderer, &[draw(&reference, rect)], (w, h));
                     for (i, (g, r)) in got.iter().zip(&want).enumerate() {
-                        assert!(g.abs_diff(*r) <= 1, "native={native} {m:?} {what} byte {i}: {g} != {r}");
+                        assert!(
+                            g.abs_diff(*r) <= 1,
+                            "native={native} {m:?} {what} byte {i}: {g} != {r}"
+                        );
                     }
                 }
             }
@@ -759,19 +1054,42 @@ fn oriented_frames_draw_like_frames_turned_upright_on(gpu: Gpu) {
 // A portrait clip stored sideways (display matrix rotate=90): its player buffers, drawn with
 // the track's orientation, match the upright poster AVFoundation decodes, quadrant by quadrant.
 #[cfg(target_os = "macos")]
-on_each_backend!(rotated_clip_buffers_draw_upright_like_its_poster, rotated_clip_on_metal, rotated_clip_buffers_draw_upright_like_its_poster_on);
+on_each_backend!(
+    rotated_clip_buffers_draw_upright_like_its_poster,
+    rotated_clip_on_metal,
+    rotated_clip_buffers_draw_upright_like_its_poster_on
+);
 #[cfg(target_os = "macos")]
 fn rotated_clip_buffers_draw_upright_like_its_poster_on(gpu: Gpu) {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/quadrants-rot90.mp4");
-    let (upright, raw, o) = crate::video::test_frames(&crate::MediaSource::File(path), 0.125).unwrap();
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/quadrants-rot90.mp4");
+    let (upright, raw, o) =
+        crate::video::test_frames(&crate::MediaSource::File(path), 0.125).unwrap();
     assert_eq!((raw.width, raw.height), (64, 32), "stored landscape");
     assert_eq!((upright.width, upright.height), (32, 64), "shown portrait");
     assert!(o.swaps(), "{o:?}");
     let mut renderer = SurfaceRenderer::new(&gpu.device, OFFSCREEN_FORMAT);
     for native in [false, true] {
         let (oriented, poster) = (NativeSurface::new(), NativeSurface::new());
-        publish_oriented(&oriented, ByteFrame { planes: raw.planes.clone(), ..raw }, 1, native, o);
-        publish(&poster, ByteFrame { planes: upright.planes.clone(), ..upright }, 1, native);
+        publish_oriented(
+            &oriented,
+            ByteFrame {
+                planes: raw.planes.clone(),
+                ..raw
+            },
+            1,
+            native,
+            o,
+        );
+        publish(
+            &poster,
+            ByteFrame {
+                planes: upright.planes.clone(),
+                ..upright
+            },
+            1,
+            native,
+        );
         for scale in [1, 2] {
             let (w, h) = (32 / scale, 64 / scale);
             let rect = [0.0, 0.0, w as f32, h as f32];
@@ -782,7 +1100,10 @@ fn rotated_clip_buffers_draw_upright_like_its_poster_on(gpu: Gpu) {
             for (qx, qy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
                 let (x, y) = ((qx * 16 + 8) / scale, (qy * 32 + 16) / scale);
                 let (g, r) = (pixel(&got, w, x, y), pixel(&want, w, x, y));
-                assert!(g.iter().zip(r).all(|(g, r)| g.abs_diff(r) <= 8), "native={native} 1/{scale} quadrant ({qx},{qy}): {g:?} != {r:?}");
+                assert!(
+                    g.iter().zip(r).all(|(g, r)| g.abs_diff(r) <= 8),
+                    "native={native} 1/{scale} quadrant ({qx},{qy}): {g:?} != {r:?}"
+                );
                 colours.push(r);
             }
             colours.dedup();

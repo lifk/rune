@@ -15,7 +15,11 @@ fn sections_tasks_scores_and_actors() {
     assert_eq!(j.title.as_deref(), Some("My working day"));
     assert_eq!(j.sections, ["Go to work", "Go home"]);
     assert_eq!(j.actors, ["Me", "Cat"]);
-    let got: Vec<(&str, f32, &[usize], Option<usize>)> = j.tasks.iter().map(|t| (t.name.as_str(), t.score, t.actors.as_slice(), t.section)).collect();
+    let got: Vec<(&str, f32, &[usize], Option<usize>)> = j
+        .tasks
+        .iter()
+        .map(|t| (t.name.as_str(), t.score, t.actors.as_slice(), t.section))
+        .collect();
     assert_eq!(
         got,
         [
@@ -27,14 +31,25 @@ fn sections_tasks_scores_and_actors() {
         ]
     );
     assert!(crate::parse("journey\ntitle Empty\nsection A").is_none());
-    let budget = format!("journey\n{}", (0..=MAX_ITEMS).map(|i| format!("t{i}: 3: Me")).collect::<Vec<_>>().join("\n"));
+    let budget = format!(
+        "journey\n{}",
+        (0..=MAX_ITEMS)
+            .map(|i| format!("t{i}: 3: Me"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
     assert!(crate::parse(&budget).is_none());
 }
 
 #[test]
 fn draws_tasks_sections_and_actors() {
     let paint = DiagramStyle::neutral(false);
-    let s = crate::scene("journey\nsection Day\nGood: 5: Me\nBad: 1: Me", &paint, None).unwrap();
+    let s = crate::scene(
+        "journey\nsection Day\nGood: 5: Me\nBad: 1: Me",
+        &paint,
+        None,
+    )
+    .unwrap();
     let texts: Vec<&str> = s.labels.iter().map(|l| l.text.as_str()).collect();
     for t in ["Day", "Good", "Bad", "Me"] {
         assert!(texts.contains(&t), "{t} in {texts:?}");

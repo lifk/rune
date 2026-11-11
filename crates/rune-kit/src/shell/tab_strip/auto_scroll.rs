@@ -40,7 +40,10 @@ pub(super) fn view(key: &str) -> Rc<View> {
         if views.len() >= KEPT && !views.contains_key(&id) {
             views.clear();
         }
-        views.entry(id).or_insert_with(|| Rc::new(View { pos: Cell::new(ScrollPos::default()), rect: Live::new([0.0; 4]) })).clone()
+        views
+            .entry(id)
+            .or_insert_with(|| Rc::new(View { pos: Cell::new(ScrollPos::default()), rect: Live::new([0.0; 4]) }))
+            .clone()
     })
 }
 
@@ -83,6 +86,10 @@ pub(super) fn step(v: &View, key: &str, vertical: bool, d: &Drag, tx: &mut Tx) {
     let mut moved = at;
     moved.offset[a] = to;
     v.pos.set(moved);
-    if vertical { tx.scroll_to_instant(key, 0.0, to) } else { tx.scroll_to_instant(key, to, 0.0) }
+    if vertical {
+        tx.scroll_to_instant(key, 0.0, to)
+    } else {
+        tx.scroll_to_instant(key, to, 0.0)
+    }
     tx.drag_repeat_after(FRAME);
 }

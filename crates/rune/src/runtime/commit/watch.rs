@@ -6,7 +6,9 @@ impl<S: 'static> Runtime<S> {
     /// A frame's commit for `why` (`CommitWhy` bits).
     pub(super) fn commit_for(&mut self, tx: &Tx, why: u16) {
         self.commit_why |= why;
-        if crate::tooling::interaction::on() { self.watch.interaction.committed(why); }
+        if crate::tooling::interaction::on() {
+            self.watch.interaction.committed(why);
+        }
         self.watch.cause = why;
         self.commit(tx);
         self.watch.cause = 0;
@@ -18,6 +20,8 @@ impl<S: 'static> Runtime<S> {
     #[cfg(debug_assertions)]
     pub(super) fn watch_frame(&mut self, commits0: u64, instant: Option<&str>) {
         let scrolling = self.scrolling();
-        self.watch.meter.frame_ends(scrolling, self.commits != commits0, instant);
+        self.watch
+            .meter
+            .frame_ends(scrolling, self.commits != commits0, instant);
     }
 }

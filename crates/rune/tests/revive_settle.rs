@@ -3,7 +3,12 @@ use rune::{Color, Cx, El, Env, Runtime, Transition, col, el};
 fn view(shown: &(bool, f32), _: &mut Cx<(bool, f32)>) -> El {
     let mut c = col().size(200.0, 200.0).child(el().h(shown.1));
     if shown.0 {
-        c = c.child(el().key("card").size(80.0, 40.0).fill(Color::WHITE).transition(Transition::opacity()));
+        c = c.child(
+            el().key("card")
+                .size(80.0, 40.0)
+                .fill(Color::WHITE)
+                .transition(Transition::opacity()),
+        );
     }
     c
 }
@@ -35,7 +40,10 @@ fn a_settled_return_mid_exit_appears_at_rest() {
     assert_eq!((r, o), ([0.0, 20.0, 80.0, 40.0], 1.0));
     for _ in 0..120 {
         rt.frame(1.0 / 120.0);
-        assert_eq!(rt.presented("card").unwrap(), ([0.0, 20.0, 80.0, 40.0], 1.0));
+        assert_eq!(
+            rt.presented("card").unwrap(),
+            ([0.0, 20.0, 80.0, 40.0], 1.0)
+        );
     }
 }
 
@@ -47,5 +55,8 @@ fn an_animated_return_mid_exit_still_reverses_from_where_it_is() {
     for _ in 0..240 {
         rt.frame(1.0 / 120.0);
     }
-    assert_eq!(rt.presented("card").unwrap(), ([0.0, 20.0, 80.0, 40.0], 1.0));
+    assert_eq!(
+        rt.presented("card").unwrap(),
+        ([0.0, 20.0, 80.0, 40.0], 1.0)
+    );
 }

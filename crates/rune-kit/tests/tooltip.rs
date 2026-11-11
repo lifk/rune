@@ -26,7 +26,9 @@ fn a_tooltip_label_wraps_inside_its_max_width() {
                 let long = format!("{LONG} {LONG}");
                 tip.text(&k, long).build(&k, &mut layer)
             }
-            3 => tip.child(text(LONG).wrap()).child(text("⌘K").key("chip"))
+            3 => tip
+                .child(text(LONG).wrap())
+                .child(text("⌘K").key("chip"))
                 .render(&TooltipStyle::neutral(true).max_width(160.0).padding(8.0, 5.0), &mut layer),
             _ => tip.label("Help").render(&TooltipStyle::neutral(true).max_width(160.0).padding(8.0, 5.0), &mut layer),
         };
@@ -35,7 +37,9 @@ fn a_tooltip_label_wraps_inside_its_max_width() {
     let laid_out = |which| {
         let mut rt = Runtime::new(which, view, (800.0, 400.0), Env::new(true, 1.0));
         rt.frame(0.0);
-        for _ in 0..60 { rt.frame(1.0); }
+        for _ in 0..60 {
+            rt.frame(1.0);
+        }
         rt
     };
 

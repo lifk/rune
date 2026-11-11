@@ -8,9 +8,24 @@ use crate::{Color, Cx, El, Env, Icon, Runtime, TextStyle, canvas, col, el, icon,
 use rune_motion::Spring;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
-const RED: Color = Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 };
-const GREEN: Color = Color { r: 0.0, g: 1.0, b: 0.0, a: 1.0 };
-const BLUE: Color = Color { r: 0.0, g: 0.0, b: 1.0, a: 1.0 };
+const RED: Color = Color {
+    r: 1.0,
+    g: 0.0,
+    b: 0.0,
+    a: 1.0,
+};
+const GREEN: Color = Color {
+    r: 0.0,
+    g: 1.0,
+    b: 0.0,
+    a: 1.0,
+};
+const BLUE: Color = Color {
+    r: 0.0,
+    g: 0.0,
+    b: 1.0,
+    a: 1.0,
+};
 
 static RING_ICON: Icon = Icon {
     name: "ring",
@@ -52,7 +67,13 @@ impl Bench {
         let renderer = Renderer::new(&gpu.device, FORMAT);
         let (dw, dh) = ((w as f32 * scale) as u32, (h as f32 * scale) as u32);
         let target = Offscreen::with_format(&gpu.device, dw, dh, FORMAT);
-        Self { gpu, renderer, target, dw, dh }
+        Self {
+            gpu,
+            renderer,
+            target,
+            dw,
+            dh,
+        }
     }
 
     fn draw<S: 'static>(&mut self, rt: &mut Runtime<S>, clear: [f64; 4]) -> Vec<u8> {
@@ -64,11 +85,8 @@ impl Bench {
             (self.dw, self.dh),
         );
         let mut enc = self.gpu.device.create_command_encoder(&Default::default());
-        self.renderer.draw(
-            &mut enc,
-            &self.target.view,
-            clear.map(|v| v as f32),
-        );
+        self.renderer
+            .draw(&mut enc, &self.target.view, clear.map(|v| v as f32));
         self.target.copy(&mut enc);
         self.renderer.submit(&self.gpu.queue, enc);
         self.target.read(&self.gpu.device)
@@ -124,7 +142,11 @@ fn scaled_view(s: &ScaledCase, _: &mut Cx<ScaledCase>) -> El {
             .size(16.0, 16.0)
             .fill(BLUE)
             .child(icon(&RING_ICON, 16.0).color(RED).absolute(0.0, 0.0))
-            .child(canvas(disc_shape(4.0, GREEN)).size(16.0, 16.0).absolute(0.0, 0.0))
+            .child(
+                canvas(disc_shape(4.0, GREEN))
+                    .size(16.0, 16.0)
+                    .absolute(0.0, 0.0),
+            )
     };
     if s.anchored {
         let page = col()
@@ -132,11 +154,20 @@ fn scaled_view(s: &ScaledCase, _: &mut Cx<ScaledCase>) -> El {
             .size(120.0, 120.0)
             .scale(s.zoom)
             .origin(0.0, 0.0)
-            .child(el().key("anchor").absolute(12.0 + s.at[0], 10.0 + s.at[1]).size(24.0, 8.0));
+            .child(
+                el().key("anchor")
+                    .absolute(12.0 + s.at[0], 10.0 + s.at[1])
+                    .size(24.0, 8.0),
+            );
         let pop = col()
             .key("pop")
             .padding(6.0)
-            .fill(Color { r: 0.0, g: 0.0, b: 0.25, a: 1.0 })
+            .fill(Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.25,
+                a: 1.0,
+            })
             .child(badge)
             .anchored("anchor", Side::Bottom, Align::Start, 4.0);
         col().size(160.0, 160.0).children([page, pop])
@@ -165,7 +196,12 @@ fn concentric_icon_and_shape_share_centre_and_size_at_scaled_rest() {
             for ix in 0..5 {
                 let at = [ix as f32 * 0.21, iy as f32 * 0.21];
                 let mut rt = Runtime::new(
-                    ScaledCase { at, zoom: 1.6, anchored, only_icon_disc: false },
+                    ScaledCase {
+                        at,
+                        zoom: 1.6,
+                        anchored,
+                        only_icon_disc: false,
+                    },
                     scaled_view,
                     (160.0, 160.0),
                     Env::new(true, 2.0),
@@ -205,7 +241,12 @@ fn concentric_icon_and_shape_share_centre_and_size_at_scaled_rest() {
                 // polygon disc.
                 if iy == 2 {
                     let mut rt_disc = Runtime::new(
-                        ScaledCase { at, zoom: 1.6, anchored, only_icon_disc: true },
+                        ScaledCase {
+                            at,
+                            zoom: 1.6,
+                            anchored,
+                            only_icon_disc: true,
+                        },
                         scaled_view,
                         (160.0, 160.0),
                         Env::new(true, 2.0),
@@ -250,7 +291,11 @@ fn moving_view(s: &MovingCase, _: &mut Cx<MovingCase>) -> El {
         .offset(s.at[0], s.at[1])
         .offset_motion(Spring::new(0.45, 0.0))
         .child(icon(&RING_ICON, 16.0).color(RED).absolute(0.0, 0.0))
-        .child(canvas(disc_shape(4.0, GREEN)).size(16.0, 16.0).absolute(0.0, 0.0));
+        .child(
+            canvas(disc_shape(4.0, GREEN))
+                .size(16.0, 16.0)
+                .absolute(0.0, 0.0),
+        );
     col().size(120.0, 120.0).child(
         col()
             .key("stage")
@@ -268,7 +313,10 @@ fn concentric_icon_shape_and_fill_glide_together_during_motion() {
     let mut bench = Bench::new(120, 120, 2.0);
     for zoom in [1.0, 1.6] {
         let mut rt = Runtime::new(
-            MovingCase { at: [0.0, 0.0], zoom },
+            MovingCase {
+                at: [0.0, 0.0],
+                zoom,
+            },
             moving_view,
             (120.0, 120.0),
             Env::new(true, 2.0),
@@ -285,8 +333,12 @@ fn concentric_icon_shape_and_fill_glide_together_during_motion() {
             let (c_icon, _) = channel_moments(&rgba, bench.dw, bench.dh, 0);
             let (c_shape, _) = channel_moments(&rgba, bench.dw, bench.dh, 1);
             let (c_fill, _) = channel_moments(&rgba, bench.dw, bench.dh, 3);
-            let d_is = (c_icon[0] - c_shape[0]).abs().max((c_icon[1] - c_shape[1]).abs());
-            let d_if = (c_icon[0] - c_fill[0]).abs().max((c_icon[1] - c_fill[1]).abs());
+            let d_is = (c_icon[0] - c_shape[0])
+                .abs()
+                .max((c_icon[1] - c_shape[1]).abs());
+            let d_if = (c_icon[0] - c_fill[0])
+                .abs()
+                .max((c_icon[1] - c_fill[1]).abs());
             max_icon_shape = max_icon_shape.max(d_is);
             max_icon_fill = max_icon_fill.max(d_if);
             assert!(
@@ -322,13 +374,18 @@ fn swap_view(s: &SwapCase, _: &mut Cx<SwapCase>) -> El {
         el().key("badge")
             .size(16.0, 16.0)
             .child(icon(&RING_ICON, 16.0).color(BLUE).absolute(0.0, 0.0))
-            .child(canvas(disc_shape(s.disc_r, RED)).size(16.0, 16.0).absolute(0.0, 0.0))
+            .child(
+                canvas(disc_shape(s.disc_r, RED))
+                    .size(16.0, 16.0)
+                    .absolute(0.0, 0.0),
+            )
     };
-    let pop = col()
-        .key("pop")
-        .padding(6.15)
-        .child(indicator)
-        .anchored("anchor", Side::Bottom, Align::Start, 4.1);
+    let pop = col().key("pop").padding(6.15).child(indicator).anchored(
+        "anchor",
+        Side::Bottom,
+        Align::Start,
+        4.1,
+    );
     col().size(160.0, 160.0).children([page, pop])
 }
 
@@ -339,7 +396,10 @@ fn swap_view(s: &SwapCase, _: &mut Cx<SwapCase>) -> El {
 fn swapping_canvas_shape_to_icon_keeps_centre_and_area_steady() {
     let mut bench = Bench::new(160, 160, 2.0);
     let mut rt = Runtime::new(
-        SwapCase { swapped: false, disc_r: 2.8 },
+        SwapCase {
+            swapped: false,
+            disc_r: 2.8,
+        },
         swap_view,
         (160.0, 160.0),
         Env::new(true, 2.0),
@@ -387,7 +447,10 @@ fn swapping_canvas_shape_to_icon_keeps_centre_and_area_steady() {
     for (f, c) in centres.iter().enumerate() {
         let dx = (c[0] - c0[0]).abs();
         let dy = (c[1] - c0[1]).abs();
-        assert!(dx <= 0.125 && dy <= 0.125, "frame {f}: centre drifted from {c0:?} to {c:?}");
+        assert!(
+            dx <= 0.125 && dy <= 0.125,
+            "frame {f}: centre drifted from {c0:?} to {c:?}"
+        );
     }
 }
 
@@ -408,7 +471,11 @@ fn large_heading_glides_horizontally_within_a_phase() {
                 .fill(Color::WHITE.mix(Color::BLACK, 0.8))
                 .offset(s.x, 0.0)
                 .offset_motion(Spring::new(0.35, 0.0))
-                .child(text("Centered").font(TextStyle::new(24.0, 600.0)).color(Color::WHITE)),
+                .child(
+                    text("Centered")
+                        .font(TextStyle::new(24.0, 600.0))
+                        .color(Color::WHITE),
+                ),
         )
     }
     let ink_x = |rt: &Runtime<HeadingCard>| {
@@ -428,9 +495,18 @@ fn large_heading_glides_horizontally_within_a_phase() {
         (sx / sum) as f32
     };
 
-    let mut rt = Runtime::new(HeadingCard { x: 0.0 }, view, (280.0, 100.0), Env::new(true, 2.0));
+    let mut rt = Runtime::new(
+        HeadingCard { x: 0.0 },
+        view,
+        (280.0, 100.0),
+        Env::new(true, 2.0),
+    );
     rt.frame(0.0);
-    let glyphs = rt.instances.iter().filter(|i| i.params[1] == KIND_GLYPH).count();
+    let glyphs = rt
+        .instances
+        .iter()
+        .filter(|i| i.params[1] == KIND_GLYPH)
+        .count();
     let masks0 = rt.text.atlas.glyph_entries();
     let (mut lo, mut hi) = (f32::MAX, f32::MIN);
     for k in 1..=180 {
@@ -438,14 +514,25 @@ fn large_heading_glides_horizontally_within_a_phase() {
         let d = 2.5 * (0.5 - 0.5 * (std::f32::consts::TAU * t / 3.0).cos());
         rt.update(|s, _| s.x = d);
         rt.frame(1.0 / 60.0);
-        let card_x = rt.instances.iter().find(|i| i.params[1] == KIND_RECT && i.fill[3] > 0.0).unwrap().rect[0];
+        let card_x = rt
+            .instances
+            .iter()
+            .find(|i| i.params[1] == KIND_RECT && i.fill[3] > 0.0)
+            .unwrap()
+            .rect[0];
         let off = ink_x(&rt) - card_x;
         (lo, hi) = (lo.min(off), hi.max(off));
     }
     let spread = hi - lo;
     let added = rt.text.atlas.glyph_entries() - masks0;
-    assert!(spread <= 0.30, "48 ppem heading x-glide spread {spread:.3} px > 0.30 px");
-    assert!(added <= glyphs * crate::text::GLIDE_PHASES as usize, "{added} masks for {glyphs} glyphs");
+    assert!(
+        spread <= 0.30,
+        "48 ppem heading x-glide spread {spread:.3} px > 0.30 px"
+    );
+    assert!(
+        added <= glyphs * crate::text::GLIDE_PHASES as usize,
+        "{added} masks for {glyphs} glyphs"
+    );
 }
 
 #[derive(Clone, Copy)]
@@ -457,10 +544,30 @@ struct ProofScene {
 }
 
 fn proof_view(s: &ProofScene, _: &mut Cx<ProofScene>) -> El {
-    let accent = Color { r: 0.96, g: 0.28, b: 0.24, a: 1.0 };
-    let ring_col = Color { r: 0.92, g: 0.94, b: 0.98, a: 1.0 };
-    let card_bg = Color { r: 0.08, g: 0.09, b: 0.12, a: 1.0 };
-    let card_border = Color { r: 0.20, g: 0.23, b: 0.30, a: 1.0 };
+    let accent = Color {
+        r: 0.96,
+        g: 0.28,
+        b: 0.24,
+        a: 1.0,
+    };
+    let ring_col = Color {
+        r: 0.92,
+        g: 0.94,
+        b: 0.98,
+        a: 1.0,
+    };
+    let card_bg = Color {
+        r: 0.08,
+        g: 0.09,
+        b: 0.12,
+        a: 1.0,
+    };
+    let card_border = Color {
+        r: 0.20,
+        g: 0.23,
+        b: 0.30,
+        a: 1.0,
+    };
 
     let indicator = if s.swapped {
         el().key("badge")
@@ -471,7 +578,11 @@ fn proof_view(s: &ProofScene, _: &mut Cx<ProofScene>) -> El {
         el().key("badge")
             .size(16.0, 16.0)
             .child(icon(&RING_ICON, 16.0).color(ring_col).absolute(0.0, 0.0))
-            .child(canvas(disc_shape(s.disc_r, accent)).size(16.0, 16.0).absolute(0.0, 0.0))
+            .child(
+                canvas(disc_shape(s.disc_r, accent))
+                    .size(16.0, 16.0)
+                    .absolute(0.0, 0.0),
+            )
     };
 
     let page = col()
@@ -505,7 +616,9 @@ fn proof_view(s: &ProofScene, _: &mut Cx<ProofScene>) -> El {
 /// before/after proof clips and p95/max centre-offset tables without touching a real display.
 #[test]
 fn capture_one_snap_proof() {
-    let Some(dir) = std::env::var_os("RUNE_ONE_SNAP_DUMP") else { return };
+    let Some(dir) = std::env::var_os("RUNE_ONE_SNAP_DUMP") else {
+        return;
+    };
     let dir = std::path::PathBuf::from(dir);
     std::fs::create_dir_all(&dir).unwrap();
 
@@ -520,7 +633,12 @@ fn capture_one_snap_proof() {
             for ix in 0..5 {
                 let at = [ix as f32 * 0.21, iy as f32 * 0.21];
                 let mut rt = Runtime::new(
-                    ScaledCase { at, zoom: 1.6, anchored, only_icon_disc: false },
+                    ScaledCase {
+                        at,
+                        zoom: 1.6,
+                        anchored,
+                        only_icon_disc: false,
+                    },
                     scaled_view,
                     (160.0, 160.0),
                     Env::new(true, 2.0),
@@ -539,7 +657,12 @@ fn capture_one_snap_proof() {
                 if anchored && ix == 1 && iy == 2 {
                     disc_shape_area = s_area;
                     let mut rt_disc = Runtime::new(
-                        ScaledCase { at, zoom: 1.6, anchored: true, only_icon_disc: true },
+                        ScaledCase {
+                            at,
+                            zoom: 1.6,
+                            anchored: true,
+                            only_icon_disc: true,
+                        },
                         scaled_view,
                         (160.0, 160.0),
                         Env::new(true, 2.0),
@@ -556,7 +679,10 @@ fn capture_one_snap_proof() {
     let mut bench120 = Bench::new(120, 120, 2.0);
     let mut moving_errs = Vec::new();
     let mut rt_move = Runtime::new(
-        MovingCase { at: [0.0, 0.0], zoom: 1.6 },
+        MovingCase {
+            at: [0.0, 0.0],
+            zoom: 1.6,
+        },
         moving_view,
         (120.0, 120.0),
         Env::new(true, 2.0),
@@ -573,7 +699,10 @@ fn capture_one_snap_proof() {
     }
 
     let mut rt_swap = Runtime::new(
-        SwapCase { swapped: false, disc_r: 2.8 },
+        SwapCase {
+            swapped: false,
+            disc_r: 2.8,
+        },
         swap_view,
         (160.0, 160.0),
         Env::new(true, 2.0),
@@ -607,7 +736,12 @@ fn capture_one_snap_proof() {
     //   130..210: diagonal spring glide across subpixel offsets and settle
     let mut bench_clip = Bench::new(80, 80, 2.0);
     let mut rt_clip = Runtime::new(
-        ProofScene { at: [0.0, 0.0], zoom: 1.0, disc_r: 2.6, swapped: false },
+        ProofScene {
+            at: [0.0, 0.0],
+            zoom: 1.0,
+            disc_r: 2.6,
+            swapped: false,
+        },
         proof_view,
         (80.0, 80.0),
         Env::new(true, 2.0),
@@ -625,7 +759,13 @@ fn capture_one_snap_proof() {
         });
         rt_clip.frame(1.0 / 120.0);
         let rgba = bench_clip.draw(&mut rt_clip, [0.03, 0.035, 0.045, 1.0]);
-        write_png(&dir.join(format!("frame_{f:03}.png")), bench_clip.dw, bench_clip.dh, &rgba).unwrap();
+        write_png(
+            &dir.join(format!("frame_{f:03}.png")),
+            bench_clip.dw,
+            bench_clip.dh,
+            &rgba,
+        )
+        .unwrap();
     }
 
     let report = serde_json::json!({
@@ -654,5 +794,9 @@ fn capture_one_snap_proof() {
             "disc_icon_area_px": disc_icon_area,
         }
     });
-    std::fs::write(dir.join("metrics.json"), serde_json::to_string_pretty(&report).unwrap()).unwrap();
+    std::fs::write(
+        dir.join("metrics.json"),
+        serde_json::to_string_pretty(&report).unwrap(),
+    )
+    .unwrap();
 }

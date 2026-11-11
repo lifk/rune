@@ -3,9 +3,9 @@
 
 use rune::{Cx, El, el};
 
+use crate::State;
 use crate::gfx::CHROME;
 use crate::kit::*;
-use crate::State;
 
 const GLYPHS: [&str; 4] = [
     "###....|####...|##.##..|##..##.|##..##.|##.##..|####...|##.##..|##..##.|##...##|##...##",
@@ -37,7 +37,10 @@ pub fn cells() -> (Vec<(i32, i32, usize)>, i32) {
         let b = ink(&rows, 0);
         if let Some(a) = &prev {
             let mut x = at + 1;
-            while a.iter().any(|(ax, ay)| b.iter().any(|(bx, by)| (bx + x - ax).abs() <= 1 && (by - ay).abs() <= 1)) {
+            while a.iter().any(|(ax, ay)| {
+                b.iter()
+                    .any(|(bx, by)| (bx + x - ax).abs() <= 1 && (by - ay).abs() <= 1)
+            }) {
                 x += 1;
             }
             at = x;
@@ -58,9 +61,17 @@ pub fn view(s: &State, _: &mut Cx<State>, card: bool) -> El {
     let total_w = width as f32 * cell;
     let total_h = 11.0 * cell;
     // A slow push in, about the frame's centre.
-    let zoom = if card { 1.0 } else { 1.0 + 0.05 * ease(t, 0.0, 4.0) };
+    let zoom = if card {
+        1.0
+    } else {
+        1.0 + 0.05 * ease(t, 0.0, 4.0)
+    };
     let ox = (W - total_w * zoom) / 2.0;
-    let oy = if card { 168.0 } else { (H - total_h * zoom) / 2.0 };
+    let oy = if card {
+        168.0
+    } else {
+        (H - total_h * zoom) / 2.0
+    };
     let mut root = el().w(W).h(H).fill(c(0x000000));
     for &(x, y, g) in &cells {
         // A wave left to right, each letter a beat behind the last, rows rippling down.

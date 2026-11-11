@@ -21,7 +21,12 @@ pub fn snap_rect(r: Rect, scale: f32) -> Rect {
 /// Snaps edges given directly (left, top, right, bottom).
 #[inline]
 pub fn snap_edges(e: [f32; 4], scale: f32) -> Rect {
-    Rect::from_edges(grid(e[0], scale), grid(e[1], scale), grid(e[2], scale), grid(e[3], scale))
+    Rect::from_edges(
+        grid(e[0], scale),
+        grid(e[1], scale),
+        grid(e[2], scale),
+        grid(e[3], scale),
+    )
 }
 
 #[cfg(test)]
@@ -42,6 +47,9 @@ mod tests {
             let (y, h) = (grid(top, 2.0), grid(bottom - top, 2.0));
             separate.insert((y + h).to_bits());
         }
-        assert!(separate.len() > 1, "the naive way should wobble, proving the test bites");
+        assert!(
+            separate.len() > 1,
+            "the naive way should wobble, proving the test bites"
+        );
     }
 }

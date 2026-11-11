@@ -19,7 +19,10 @@ pub struct Run {
 impl Run {
     pub fn new(text: impl Into<Rc<str>>) -> Run {
         let text = text.into();
-        Run { hash: hash::run_hash(&text), text }
+        Run {
+            hash: hash::run_hash(&text),
+            text,
+        }
     }
     pub fn as_str(&self) -> &str {
         &self.text
@@ -63,7 +66,9 @@ impl RunLayout {
         let mut glyphs: Vec<(usize, RunGlyph)> = Vec::new();
         for line in layout.lines() {
             for item in line.items() {
-                let PositionedLayoutItem::GlyphRun(glyph_run) = item else { continue };
+                let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
+                    continue;
+                };
                 let mut coords = Vec::new();
                 let face = Face::of(&glyph_run, &mut coords);
                 faces.push(RunFace { face, coords });
@@ -84,7 +89,15 @@ impl RunLayout {
                 let mut rel = glyph_run.offset();
                 for g in glyph_run.glyphs() {
                     let byte = owners.next().unwrap_or(0);
-                    glyphs.push((grapheme_of(byte), RunGlyph { face, id: g.id, x: rel + g.x, y: g.y }));
+                    glyphs.push((
+                        grapheme_of(byte),
+                        RunGlyph {
+                            face,
+                            id: g.id,
+                            x: rel + g.x,
+                            y: g.y,
+                        },
+                    ));
                     rel += g.advance;
                 }
             }
@@ -95,15 +108,31 @@ impl RunLayout {
         for (i, &start) in starts.iter().enumerate() {
             let x = if xs[i].is_finite() { xs[i] } else { prev };
             prev = x;
-            graphemes.push((start, (x * 64.0).round() / 64.0, glyphs.partition_point(|g| g.0 < i) as u32));
+            graphemes.push((
+                start,
+                (x * 64.0).round() / 64.0,
+                glyphs.partition_point(|g| g.0 < i) as u32,
+            ));
         }
-        graphemes.push((text.len() as u32, (layout.full_width() - 1e-3).ceil(), glyphs.len() as u32));
-        RunLayout { layout, graphemes, faces, glyphs: glyphs.into_iter().map(|g| g.1).collect() }
+        graphemes.push((
+            text.len() as u32,
+            (layout.full_width() - 1e-3).ceil(),
+            glyphs.len() as u32,
+        ));
+        RunLayout {
+            layout,
+            graphemes,
+            faces,
+            glyphs: glyphs.into_iter().map(|g| g.1).collect(),
+        }
     }
 
     /// The index of the grapheme starting at byte `at` (never the end sentinel).
     pub(super) fn grapheme(&self, at: usize) -> Option<usize> {
-        let i = self.graphemes.binary_search_by_key(&(at as u32), |e| e.0).ok()?;
+        let i = self
+            .graphemes
+            .binary_search_by_key(&(at as u32), |e| e.0)
+            .ok()?;
         (i + 1 < self.graphemes.len()).then_some(i)
     }
 
@@ -130,8 +159,12 @@ impl super::TextSystem {
             *used = g;
             return r.clone();
         }
-        let r = Rc::new(RunLayout::new(self.layout_rich(run.as_str(), &[], style, scale, None), run.as_str()));
-        self.runs.insert(key, super::Entry::new(r.clone(), g, run.as_str().len(), 0));
+        let r = Rc::new(RunLayout::new(
+            self.layout_rich(run.as_str(), &[], style, scale, None),
+            run.as_str(),
+        ));
+        self.runs
+            .insert(key, super::Entry::new(r.clone(), g, run.as_str().len(), 0));
         r
     }
 }

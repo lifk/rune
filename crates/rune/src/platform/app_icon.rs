@@ -27,15 +27,27 @@ pub fn set_app_icon(bytes: impl Into<Vec<u8>>) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let bytes = bytes.into();
-        if decode(&bytes).is_none() { return Err("set_app_icon: the bytes aren't an image AppKit reads".into()); }
+        if decode(&bytes).is_none() {
+            return Err("set_app_icon: the bytes aren't an image AppKit reads".into());
+        }
         *PENDING.lock().unwrap_or_else(|e| e.into_inner()) = Some(bytes);
-        if LAUNCHED.load(Ordering::Acquire) { crate::platform::main_queue::on_main(apply); }
+        if LAUNCHED.load(Ordering::Acquire) {
+            crate::platform::main_queue::on_main(apply);
+        }
     }
     #[cfg(target_os = "windows")]
     {
-        let image = image::load_from_memory(&bytes.into()).map_err(|e| format!("set_app_icon: {e}"))?.into_rgba8();
-        let size = |px: u32| image::imageops::resize(&image, px, px, image::imageops::FilterType::Lanczos3).into_raw();
-        *WINDOWS.lock().unwrap_or_else(|e| e.into_inner()) = Some(WindowsIcon { small: size(SMALL), big: size(BIG) });
+        let image = image::load_from_memory(&bytes.into())
+            .map_err(|e| format!("set_app_icon: {e}"))?
+            .into_rgba8();
+        let size = |px: u32| {
+            image::imageops::resize(&image, px, px, image::imageops::FilterType::Lanczos3)
+                .into_raw()
+        };
+        *WINDOWS.lock().unwrap_or_else(|e| e.into_inner()) = Some(WindowsIcon {
+            small: size(SMALL),
+            big: size(BIG),
+        });
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let _ = bytes;
@@ -64,7 +76,9 @@ pub(crate) fn with_icon(attrs: winit::window::WindowAttributes) -> winit::window
     use winit::platform::windows::WindowAttributesExtWindows;
     use winit::window::Icon;
     let icon = WINDOWS.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(icon) = icon.as_ref() else { return attrs };
+    let Some(icon) = icon.as_ref() else {
+        return attrs;
+    };
     let small = Icon::from_rgba(icon.small.clone(), SMALL, SMALL).ok();
     let big = Icon::from_rgba(icon.big.clone(), BIG, BIG).ok();
     attrs.with_window_icon(small).with_taskbar_icon(big)
@@ -93,8 +107,12 @@ fn decode(bytes: &[u8]) -> Option<objc2::rc::Retained<objc2_app_kit::NSImage>> {
 
 #[cfg(target_os = "macos")]
 fn apply() {
-    let Some(mtm) = objc2_foundation::MainThreadMarker::new() else { return };
-    let Some(bytes) = PENDING.lock().unwrap_or_else(|e| e.into_inner()).take() else { return };
+    let Some(mtm) = objc2_foundation::MainThreadMarker::new() else {
+        return;
+    };
+    let Some(bytes) = PENDING.lock().unwrap_or_else(|e| e.into_inner()).take() else {
+        return;
+    };
     let Some(image) = decode(&bytes) else { return };
     let app = objc2_app_kit::NSApplication::sharedApplication(mtm);
     // SAFETY: on the main thread, with an image AppKit decoded.
@@ -107,7 +125,9 @@ mod tests {
 
     fn png() -> Vec<u8> {
         let mut out = std::io::Cursor::new(Vec::new());
-        image::RgbaImage::from_pixel(16, 16, image::Rgba([40, 120, 220, 255])).write_to(&mut out, image::ImageFormat::Png).unwrap();
+        image::RgbaImage::from_pixel(16, 16, image::Rgba([40, 120, 220, 255]))
+            .write_to(&mut out, image::ImageFormat::Png)
+            .unwrap();
         out.into_inner()
     }
 

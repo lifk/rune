@@ -91,9 +91,12 @@ impl Scene {
                 if layer_depth == MAX_LAYER_DEPTH || p.params[2] != 0.0 {
                     return Err(format!("unsupported layer {} ({})", p.node, p.source));
                 }
-                if !matches!(p.params[0], 0.0 | 1.0) || !matches!(p.params[3], 0.0 | 1.0)
-                    || (p.params[3] == 1.0 && p.radii.iter().chain(p.uv.iter())
-                        .any(|v| !v.is_finite() || !(0.0..=65535.0).contains(v) || v.fract() != 0.0))
+                if !matches!(p.params[0], 0.0 | 1.0)
+                    || !matches!(p.params[3], 0.0 | 1.0)
+                    || (p.params[3] == 1.0
+                        && p.radii.iter().chain(p.uv.iter()).any(|v| {
+                            !v.is_finite() || !(0.0..=65535.0).contains(v) || v.fract() != 0.0
+                        }))
                 {
                     return Err(format!("invalid layer {} ({})", p.node, p.source));
                 }
@@ -213,40 +216,76 @@ impl Frame {
                         close += 1;
                     }
                 }
-                if p.params[3] == 0.0 && p.fill[3] == 1.0 && p.params[0] == 0.0 && p.params[2] == 0.0 && p.clip == NO_CLIP && p.border == [0.0; 4]
+                if p.params[3] == 0.0
+                    && p.fill[3] == 1.0
+                    && p.params[0] == 0.0
+                    && p.params[2] == 0.0
+                    && p.clip == NO_CLIP
+                    && p.border == [0.0; 4]
                     && p.radii[3] == 0.0
                     && p.turn.is_none()
                 {
-                    Self::render_range(width, height, rgba, owners.as_deref_mut(), scene, cursor + 1, close);
+                    Self::render_range(
+                        width,
+                        height,
+                        rgba,
+                        owners.as_deref_mut(),
+                        scene,
+                        cursor + 1,
+                        close,
+                    );
                 } else if p.fill[3] > 0.0 {
                     let mut layer_rgba = vec![0u8; (width * height * 4) as usize];
                     let mut layer_owners = owners.as_ref().map(|o| vec![None; o.len()]);
-                    Self::render_range(width, height, &mut layer_rgba, layer_owners.as_deref_mut(), scene, cursor + 1, close);
-                    let turn = p.turn.filter(|t| t[0] != 0.0).map(|[a, px, py]| (libm::sinf(a), libm::cosf(a), [px, py]));
+                    Self::render_range(
+                        width,
+                        height,
+                        &mut layer_rgba,
+                        layer_owners.as_deref_mut(),
+                        scene,
+                        cursor + 1,
+                        close,
+                    );
+                    let turn = p
+                        .turn
+                        .filter(|t| t[0] != 0.0)
+                        .map(|[a, px, py]| (libm::sinf(a), libm::cosf(a), [px, py]));
                     // A turned layer can reach anywhere; its contents fill the frame-sized buffer.
                     let (x0, y0, x1, y1) = if turn.is_some() {
                         (0, 0, width, height)
                     } else {
-                        (libm::floorf(p.rect[0]).max(0.0) as u32, libm::floorf(p.rect[1]).max(0.0) as u32,
+                        (
+                            libm::floorf(p.rect[0]).max(0.0) as u32,
+                            libm::floorf(p.rect[1]).max(0.0) as u32,
                             (libm::ceilf(p.rect[0] + p.rect[2]).max(0.0) as u32).min(width),
-                            (libm::ceilf(p.rect[1] + p.rect[3]).max(0.0) as u32).min(height))
+                            (libm::ceilf(p.rect[1] + p.rect[3]).max(0.0) as u32).min(height),
+                        )
                     };
                     let alpha = p.fill[3].clamp(0.0, 1.0);
                     for y in y0..y1 {
                         for x in x0..x1 {
-                            let cov = alpha * shader::layer_clip_coverage(p, [x as f32 + 0.5, y as f32 + 0.5]);
+                            let cov = alpha
+                                * shader::layer_clip_coverage(p, [x as f32 + 0.5, y as f32 + 0.5]);
                             if cov <= 0.0 {
                                 continue;
                             }
                             let at = (y * width + x) as usize;
                             let src = match turn {
                                 Some((sn, cs, pivot)) => {
-                                    let (qx, qy) = (x as f32 + 0.5 - pivot[0], y as f32 + 0.5 - pivot[1]);
-                                    let (ux, uy) = (pivot[0] + cs * qx + sn * qy - 0.5, pivot[1] + cs * qy - sn * qx - 0.5);
+                                    let (qx, qy) =
+                                        (x as f32 + 0.5 - pivot[0], y as f32 + 0.5 - pivot[1]);
+                                    let (ux, uy) = (
+                                        pivot[0] + cs * qx + sn * qy - 0.5,
+                                        pivot[1] + cs * qy - sn * qx - 0.5,
+                                    );
                                     let (bx, by) = (libm::floorf(ux), libm::floorf(uy));
                                     let (fx, fy) = (ux - bx, uy - by);
                                     let texel = |tx: f32, ty: f32| -> [f32; 4] {
-                                        if tx < 0.0 || ty < 0.0 || tx >= width as f32 || ty >= height as f32 {
+                                        if tx < 0.0
+                                            || ty < 0.0
+                                            || tx >= width as f32
+                                            || ty >= height as f32
+                                        {
                                             return [0.0; 4];
                                         }
                                         let at = (ty as u32 * width + tx as u32) as usize;
@@ -273,7 +312,9 @@ impl Frame {
                                 std::array::from_fn(|c| col[c] + dst[c] * (1.0 - col[3]))
                             };
                             rgba[at * 4..at * 4 + 4].copy_from_slice(&encode(out));
-                            if let (Some(ids), Some(l_ids)) = (owners.as_deref_mut(), layer_owners.as_ref()) {
+                            if let (Some(ids), Some(l_ids)) =
+                                (owners.as_deref_mut(), layer_owners.as_ref())
+                            {
                                 ids[at] = l_ids[at].or(Some(cursor));
                             }
                         }

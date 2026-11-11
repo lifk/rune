@@ -19,10 +19,35 @@ fn spans_with(src: &str, style: &MarkdownStyle, highlighter: Highlighter) -> Vec
         }
     }
     let (blocks, sources, tasks, _, _) = doc_cached(src);
-    let r = Renderer { s: style.clone(), highlights: Vec::new(), reveal: 0.0, streaming: false, on_link: None, on_link_secondary: None, link_look: None, link_help: None, link_ring: None, on_task: None,
-        tasks_read_only: false, selectable: false, scroll_wide: false, highlighter, sources: sources.clone(),
-        next_source: Cell::new(0), tasks, next_task: Cell::new(0), current_block_key: RefCell::new("b0".into()),
-        #[cfg(feature = "mermaid")] diagram_frame: None, code_frame: None, quote_frame: None, link_favicon: None, images: None, on_image: None, flow: Cell::default() };
+    let r = Renderer {
+        s: style.clone(),
+        highlights: Vec::new(),
+        reveal: 0.0,
+        streaming: false,
+        on_link: None,
+        on_link_secondary: None,
+        link_look: None,
+        link_help: None,
+        link_ring: None,
+        on_task: None,
+        tasks_read_only: false,
+        selectable: false,
+        scroll_wide: false,
+        highlighter,
+        sources: sources.clone(),
+        next_source: Cell::new(0),
+        tasks,
+        next_task: Cell::new(0),
+        current_block_key: RefCell::new("b0".into()),
+        #[cfg(feature = "mermaid")]
+        diagram_frame: None,
+        code_frame: None,
+        quote_frame: None,
+        link_favicon: None,
+        images: None,
+        on_image: None,
+        flow: Cell::default(),
+    };
     let mut found = Vec::new();
     codes(&blocks, &mut found);
     assert_eq!(found.len(), sources.len(), "one source per code block");
@@ -49,7 +74,12 @@ fn known_languages_are_coloured_and_others_stay_plain() {
     let (ts, s) = &got[0];
     assert_eq!(coloured(ts, s, style.syntax.color(Syntax::Keyword)), ["const "]);
     assert_eq!(coloured(ts, s, style.syntax.color(Syntax::Number)), ["1"]);
-    assert!(s.iter().all(|s| s.color.is_some() && s.weight.is_none() && !s.italic && !s.mono && s.size.is_none() && s.bg.is_none()));
+    assert!(s.iter().all(|s| s.color.is_some()
+        && s.weight.is_none()
+        && !s.italic
+        && !s.mono
+        && s.size.is_none()
+        && s.bg.is_none()));
     for (code, s) in &got[1..4] {
         assert!(s.is_empty(), "{code:?} stays plain");
     }
@@ -89,7 +119,8 @@ fn a_highlighter_gets_each_fence_language_as_written() {
     let style = MarkdownStyle::neutral(true);
     let src = "```Kotlin title=\"a.kt\"\nval x = 1\n```\n\n```\nbare fence\n```\n\n    indented code\n\n```rust,ignore\nfn f() {}\n```\n\n```diff\n+a\n```";
     let got = spans_with(src, &style, h);
-    let want = [(Some("Kotlin"), "val x = 1"), (None, "bare fence"), (None, "indented code"), (Some("rust"), "fn f() {}")];
+    let want =
+        [(Some("Kotlin"), "val x = 1"), (None, "bare fence"), (None, "indented code"), (Some("rust"), "fn f() {}")];
     assert_eq!(SEEN.take(), want.map(|(l, c)| (l.map(str::to_owned), c.to_owned())), "diff fences keep their own look");
     for (code, s) in &got {
         assert_eq!(coloured(code, s, style.syntax.color(Syntax::Keyword)), [&code[0..1]]);
@@ -106,7 +137,16 @@ fn without_a_highlighter_the_output_is_the_builtin_ones() {
     let got = spans(src, &style);
     let k = |s| style.syntax.color(s);
     let ts: Vec<_> = got[0].1.iter().map(|s| (s.start, s.end, s.color.unwrap())).collect();
-    assert_eq!(ts, [(0, 6, k(Syntax::Keyword)), (6, 8, k(Syntax::Variable)), (8, 10, k(Syntax::Operator)), (10, 11, k(Syntax::Number)), (11, 12, k(Syntax::Punctuation))]);
+    assert_eq!(
+        ts,
+        [
+            (0, 6, k(Syntax::Keyword)),
+            (6, 8, k(Syntax::Variable)),
+            (8, 10, k(Syntax::Operator)),
+            (10, 11, k(Syntax::Number)),
+            (11, 12, k(Syntax::Punctuation))
+        ]
+    );
     assert!(got[1].1.is_empty() && got[2].1.is_empty());
     let h = Highlighter::new(|_, _| panic!("colour is off"));
     assert!(spans_with(src, &style.clone().syntax_highlight(false), h).iter().all(|(_, s)| s.is_empty()));
@@ -151,7 +191,10 @@ fn highlighting_never_moves_a_glyph() {
         out.iter().map(|q| (q.rect.map(f32::to_bits), q.uv.map(f32::to_bits), q.byte)).collect::<Vec<_>>()
     };
     for (lang, code) in [
-        ("tsx", "export function Card({ title }: { title: string }) {\n  return <div className=\"card\">{title.toUpperCase()}</div>; // done\n}"),
+        (
+            "tsx",
+            "export function Card({ title }: { title: string }) {\n  return <div className=\"card\">{title.toUpperCase()}</div>; // done\n}",
+        ),
         ("rust", "fn main() { let v: Vec<u8> = vec![1, 2, 3]; println!(\"{v:?} → ok\"); }"),
         ("sh", "FOO=1 npm run build --if-present && echo \"$HOME/${X}\" | tee out.txt # café"),
         ("yaml", "name: rune\nlist: [a, 1, {b: c}]\nscript: |\n  echo hi"),
@@ -180,7 +223,8 @@ fn parses() -> (usize, usize) {
 fn a_column_of_forty_documents_parses_each_once() {
     fn view(_: &(), _: &mut rune::Cx<()>) -> El {
         let style = MarkdownStyle::neutral(true);
-        col().children((0..40).map(|i| Markdown::new(format!("para {i}\n\n- item")).render(&style).key(format!("m{i}"))))
+        col()
+            .children((0..40).map(|i| Markdown::new(format!("para {i}\n\n- item")).render(&style).key(format!("m{i}"))))
     }
     let before = parses();
     let mut rt = rune::Runtime::new((), view, (400.0, 800.0), rune::Env::default());
@@ -238,7 +282,9 @@ fn a_stream_drops_the_strings_it_grew_from() {
     let mut stream = String::new();
     for i in 0.. {
         stream += &format!("Line {i} of a streamed answer, with a few more words.\n\n");
-        if stream.len() >= 50_000 { break; }
+        if stream.len() >= 50_000 {
+            break;
+        }
     }
     for end in (50..=stream.len()).step_by(50).chain([stream.len()]) {
         commit();
@@ -260,7 +306,10 @@ fn a_reference_definition_parses_whole() {
     doc_cached("[x]\n\nsome text");
     doc_cached("[x]\n\nsome text\n\n[x]: https://example.com");
     assert_eq!(parses().0 - before.0, 2);
-    assert_eq!(parse_cached("[x]\n\nsome text\n\n[x]: https://example.com")[0], parse("[x]\n\nsome text\n\n[x]: https://example.com")[0]);
+    assert_eq!(
+        parse_cached("[x]\n\nsome text\n\n[x]: https://example.com")[0],
+        parse("[x]\n\nsome text\n\n[x]: https://example.com")[0]
+    );
 }
 
 #[test]
@@ -268,20 +317,56 @@ fn link_spans_come_before_inner_inline_styles_so_bold_em_and_code_keep_theirs() 
     let style = MarkdownStyle::neutral(true);
     let bg = Color { r: 1.0, g: 0.0, b: 0.5, a: 1.0 };
     let look: LinkLook = Rc::new(move |url| {
-        url.starts_with("session:").then(|| (Span::new(0, 0).color(Color::WHITE).weight(500.0).bg(bg, 3.0), LinkPaint::new()))
+        url.starts_with("session:")
+            .then(|| (Span::new(0, 0).color(Color::WHITE).weight(500.0).bg(bg, 3.0), LinkPaint::new()))
     });
     let (blocks, sources, tasks, _, _) = doc_cached("[**bold** *em* `code` plain](session:1)");
     let Block::Para(inl) = &blocks[0] else { panic!() };
-    let r = Renderer { s: style.clone(), highlights: Vec::new(), reveal: 0.0, streaming: false, on_link: None, on_link_secondary: None, link_look: Some(look), link_help: None, link_ring: None, on_task: None,
-        tasks_read_only: false, selectable: false, scroll_wide: false, highlighter: Highlighter::builtin(), sources,
-        next_source: Cell::new(0), tasks, next_task: Cell::new(0), current_block_key: RefCell::new("b0".into()),
-        #[cfg(feature = "mermaid")] diagram_frame: None, code_frame: None, quote_frame: None, link_favicon: None, images: None, on_image: None, flow: Cell::default() };
+    let r = Renderer {
+        s: style.clone(),
+        highlights: Vec::new(),
+        reveal: 0.0,
+        streaming: false,
+        on_link: None,
+        on_link_secondary: None,
+        link_look: Some(look),
+        link_help: None,
+        link_ring: None,
+        on_task: None,
+        tasks_read_only: false,
+        selectable: false,
+        scroll_wide: false,
+        highlighter: Highlighter::builtin(),
+        sources,
+        next_source: Cell::new(0),
+        tasks,
+        next_task: Cell::new(0),
+        current_block_key: RefCell::new("b0".into()),
+        #[cfg(feature = "mermaid")]
+        diagram_frame: None,
+        code_frame: None,
+        quote_frame: None,
+        link_favicon: None,
+        images: None,
+        on_image: None,
+        flow: Cell::default(),
+    };
     let spans = r.spans(inl, style.body);
     // The link span is first so `flatten_spans` applies inner Strong/Em/Code over it.
-    assert_eq!((spans[0].start, spans[0].end, spans[0].color, spans[0].weight, spans[0].bg, spans[0].bg_pad), (0, inl.text.len() as u32, Some(Color::WHITE), Some(500.0), Some(bg), 3.0));
-    assert!(spans.iter().any(|s| &inl.text[s.start as usize..s.end as usize] == "bold" && s.weight == Some(style.strong_weight)));
+    assert_eq!(
+        (spans[0].start, spans[0].end, spans[0].color, spans[0].weight, spans[0].bg, spans[0].bg_pad),
+        (0, inl.text.len() as u32, Some(Color::WHITE), Some(500.0), Some(bg), 3.0)
+    );
+    assert!(
+        spans
+            .iter()
+            .any(|s| &inl.text[s.start as usize..s.end as usize] == "bold" && s.weight == Some(style.strong_weight))
+    );
     assert!(spans.iter().any(|s| &inl.text[s.start as usize..s.end as usize] == "em" && s.italic && s.color.is_none()));
-    assert!(spans.iter().any(|s| &inl.text[s.start as usize..s.end as usize] == "code" && s.mono && s.size == Some(style.body.size * style.inline_code_scale) && s.bg.is_none()));
+    assert!(spans.iter().any(|s| &inl.text[s.start as usize..s.end as usize] == "code"
+        && s.mono
+        && s.size == Some(style.body.size * style.inline_code_scale)
+        && s.bg.is_none()));
 }
 
 #[test]
@@ -299,11 +384,8 @@ fn pure_markdown_caches_its_built_subtree_keeps_paths_and_invalidates_on_change(
     fn view(s: &State, _: &mut Cx<State>) -> El {
         let _ = s.tick;
         let style = MarkdownStyle::neutral(true).text(s.accent);
-        let hl = if s.query.is_empty() {
-            Vec::new()
-        } else {
-            find(&s.a, s.query, Case::Insensitive).into_iter().collect()
-        };
+        let hl =
+            if s.query.is_empty() { Vec::new() } else { find(&s.a, s.query, Case::Insensitive).into_iter().collect() };
         col().w_full().h_full().children([
             // Two unkeyed Markdown siblings (even with identical text initially) keep `#0` and `#1`
             // without duplicate-key warnings, plus a `.key("third")` sibling.
@@ -373,9 +455,10 @@ fn link_help_gives_each_link_its_own_tooltip() {
     }
     let mut rt = Runtime::new((), view, (400.0, 200.0), Env::new(true, 2.0));
     rt.frame(0.0);
-    let links: Vec<(Option<String>, Option<String>)> = rt.elements().into_iter().filter(|e| e.role == "link").map(|e| (e.key, e.help)).collect();
-    assert_eq!(links, [
-        (Some("https://example.com/docs".into()), Some("example.com/docs".into())),
-        (Some("notes".into()), None),
-    ]);
+    let links: Vec<(Option<String>, Option<String>)> =
+        rt.elements().into_iter().filter(|e| e.role == "link").map(|e| (e.key, e.help)).collect();
+    assert_eq!(
+        links,
+        [(Some("https://example.com/docs".into()), Some("example.com/docs".into())), (Some("notes".into()), None),]
+    );
 }

@@ -19,14 +19,34 @@ enum Scene {
 
 fn view(s: &State, cx: &mut Cx<State>) -> El {
     let t = tok::theme(cx.system_dark());
-    let line = |content: &str, size: f32| text(content).font(TextStyle::new(size, 400.0)).color(t.text);
-    let note = |content: &str| text(content).font(TextStyle::new(12.0, 400.0)).color(t.text_secondary);
+    let line = |content: &str, size: f32| {
+        text(content)
+            .font(TextStyle::new(size, 400.0))
+            .color(t.text)
+    };
+    let note = |content: &str| {
+        text(content)
+            .font(TextStyle::new(12.0, 400.0))
+            .color(t.text_secondary)
+    };
     // A card shows the element's width, so each line's alignment inside it is visible.
     let para = |content: &str, align: Align| {
-        text(content).font(TextStyle::new(13.0, 400.0)).color(t.text).wrap().w_full().align(align)
-            .fill(t.card).padding(8.0).radius(6.0)
+        text(content)
+            .font(TextStyle::new(13.0, 400.0))
+            .color(t.text)
+            .wrap()
+            .w_full()
+            .align(align)
+            .fill(t.card)
+            .padding(8.0)
+            .radius(6.0)
     };
-    let pair = |a: El, b: El| row().w_full().gap(12.0).children(vec![a.w(250.0), b.w(250.0)]);
+    let pair = |a: El, b: El| {
+        row()
+            .w_full()
+            .gap(12.0)
+            .children(vec![a.w(250.0), b.w(250.0)])
+    };
     let rows: Vec<El> = match s.scene {
         Scene::Emoji => vec![
             note("ZWJ family, flag, skin tone, ❤️, keycap"),
@@ -50,19 +70,34 @@ fn view(s: &State, cx: &mut Cx<State>) -> El {
             let hebrew = "שורות עוטפות מתיישרות אחת אחת בתוך רוחב האלמנט, כך שהשורה האחרונה הקצרה יושבת במקום הנכון.";
             vec![
                 pair(note("Center"), note("Justify")),
-                pair(para(latin, Align::Center), para(latin, Align::Start).justify()),
+                pair(
+                    para(latin, Align::Center),
+                    para(latin, Align::Start).justify(),
+                ),
                 pair(note("Right-to-left Start"), note("Right-to-left Justify")),
-                pair(para(hebrew, Align::Start), para(hebrew, Align::Start).justify()),
+                pair(
+                    para(hebrew, Align::Start),
+                    para(hebrew, Align::Start).justify(),
+                ),
             ]
         }
     };
-    col().w_full().h_full().padding(24.0).gap(12.0).fill(t.bg).children(rows)
+    col()
+        .w_full()
+        .h_full()
+        .padding(24.0)
+        .gap(12.0)
+        .fill(t.bg)
+        .children(rows)
 }
 
 fn main() {
     rune::run(AppSpec::<State> {
-        scenes: &[("emoji", |s| s.scene = Scene::Emoji), ("math", |s| s.scene = Scene::Math),
-            ("align", |s| s.scene = Scene::Align)],
+        scenes: &[
+            ("emoji", |s| s.scene = Scene::Emoji),
+            ("math", |s| s.scene = Scene::Math),
+            ("align", |s| s.scene = Scene::Align),
+        ],
         ..AppSpec::new("Text coverage", (560.0, 360.0), State::default, view)
     });
 }

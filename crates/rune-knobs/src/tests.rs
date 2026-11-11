@@ -3,7 +3,10 @@ use super::*;
 const A: Knob = Knob::new("A", 0.0, 10.0, 5.0);
 const B: Knob = Knob::new("B", -1.0, 1.0, 0.0).step(0.5);
 const C: Knob = Knob::choice("C", &["x", "y", "z"], 0);
-const G: Group = Group::new("G", "g", &[A, B, C]).presets(&[Preset { name: "Wide", values: &[("A", 9.0)] }]);
+const G: Group = Group::new("G", "g", &[A, B, C]).presets(&[Preset {
+    name: "Wide",
+    values: &[("A", 9.0)],
+}]);
 
 #[test]
 fn random_stays_in_range_and_on_steps() {
@@ -57,7 +60,10 @@ fn change_undoes_and_redoes_and_a_new_change_drops_redo() {
     assert!(k.redo());
     assert_eq!(k.get(&C), 2.0);
     assert!(k.undo() && k.undo());
-    assert!(k.values.is_empty(), "a repeat of the same value is no change");
+    assert!(
+        k.values.is_empty(),
+        "a repeat of the same value is no change"
+    );
     assert!(!k.undo());
     assert!(k.redo());
     k.change(&B, 0.5);
@@ -78,7 +84,10 @@ fn keep_marks_what_differs_and_revert_goes_back_undoably() {
     assert_eq!((k.get(&A), k.get(&C)), (8.0, 1.0));
     k.revert(&G.knobs);
     assert_eq!(k.get(&C), 0.0);
-    assert!(!k.values.contains_key("C"), "kept at its default, so back to no value");
+    assert!(
+        !k.values.contains_key("C"),
+        "kept at its default, so back to no value"
+    );
     assert!(k.undo());
     assert_eq!(k.get(&C), 1.0);
     k.keep_some(&[C]);

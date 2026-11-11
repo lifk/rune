@@ -86,7 +86,8 @@ impl<S: 'static> Runtime<S> {
         self.last_commit_clock = self.clock;
         self.memo_since = self.memo.next_pass();
         for r in &self.scroll_reveals {
-            if r.at_end && let Some(&id) = self.path_ids.get(&r.viewport)
+            if r.at_end
+                && let Some(&id) = self.path_ids.get(&r.viewport)
                 && let Some(scroll) = self.scrolls.get_mut(&id)
             {
                 scroll.pin();
@@ -118,7 +119,12 @@ impl<S: 'static> Runtime<S> {
     /// Restores any nodes moved out of `self.nodes` and recycles `measured`'s buffers before a
     /// commit pass re-measures.
     pub(super) fn discard_measured(&mut self, mut measured: Measured) {
-        memo_reuse::restore_moved_nodes(&mut self.nodes, &mut measured.nodes, &measured.memo_reused, &measured.taken_paths);
+        memo_reuse::restore_moved_nodes(
+            &mut self.nodes,
+            &mut measured.nodes,
+            &measured.memo_reused,
+            &measured.taken_paths,
+        );
         measured.nodes.clear();
         self.spare_nodes = measured.nodes;
         if let Some(mut pending) = measured.memo_flattened {
@@ -144,8 +150,12 @@ pub(super) fn unwrapped_width(style: &mut CompactStyle, vertical: bool) {
     let w = style.size().width;
     if w.is_auto() || w == Dimension::percent(1.0) {
         style.set_width(Dimension::max_content());
-        if style.min_size().width.is_auto() { style.set_min_width(percent(1.0)); }
+        if style.min_size().width.is_auto() {
+            style.set_min_width(percent(1.0));
+        }
     }
     style.set_flex_shrink(0.0);
-    if vertical && style.align_self().is_none() { style.set_align_self(Some(AlignSelf::FLEX_START)); }
+    if vertical && style.align_self().is_none() {
+        style.set_align_self(Some(AlignSelf::FLEX_START));
+    }
 }

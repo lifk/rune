@@ -10,9 +10,12 @@ const THEME: &str = r##"{ "name": "Test", "blend": { "mode": "srgb", "over": "bg
   "dark":  { "bg": "#161616", "border": "#ffffff1a" } }"##;
 
 fn view(t: &Theme, _: &mut Cx<Theme>) -> El {
-    el().size(40.0, 40.0).fill(t.color("bg"))
+    el().size(40.0, 40.0)
+        .fill(t.color("bg"))
         .child(el().size(20.0, 20.0).fill(t.color("border")))
-        .child(memo("row", (), || el().size(10.0, 10.0).fill(t.color("border"))))
+        .child(memo("row", (), || {
+            el().size(10.0, 10.0).fill(t.color("border"))
+        }))
 }
 
 fn runtime(dark: bool, srgb: bool) -> Runtime<Theme> {
@@ -26,7 +29,13 @@ fn runtime(dark: bool, srgb: bool) -> Runtime<Theme> {
 
 /// The token in the `side`-point box composited over the backdrop, as sRGB bytes.
 fn composited(rt: &Runtime<Theme>, side: f32) -> [f32; 3] {
-    let fill = |w: f32| rt.instances.iter().find(|i| i.rect[2] == w && i.fill[3] > 0.0).unwrap_or_else(|| panic!("a {w}-point box")).fill;
+    let fill = |w: f32| {
+        rt.instances
+            .iter()
+            .find(|i| i.rect[2] == w && i.fill[3] > 0.0)
+            .unwrap_or_else(|| panic!("a {w}-point box"))
+            .fill
+    };
     let px = over(fill(side), fill(40.0));
     let encode = |v: f32| if rt.srgb_blend() { v } else { srgb_encode(v) };
     [0, 1, 2].map(|i| encode(px[i]) * 255.0)
@@ -41,15 +50,25 @@ fn browser(fg: u8, bg: u8, a: u8) -> f32 {
 fn assert_browser(rt: &Runtime<Theme>, want: f32, what: &str) {
     for side in [20.0, 10.0] {
         let got = composited(rt, side);
-        assert!(got.iter().all(|v| (v - want).abs() < 0.5), "{what}, {side}-point box: {got:?} vs {want}");
+        assert!(
+            got.iter().all(|v| (v - want).abs() < 0.5),
+            "{what}, {side}-point box: {got:?} vs {want}"
+        );
     }
 }
 
 #[test]
 fn a_translucent_token_composites_to_the_browser_pixel_in_both_blend_modes() {
-    for (dark, want) in [(true, browser(0xff, 0x16, 0x1a)), (false, browser(0x00, 0xf8, 0x1f))] {
+    for (dark, want) in [
+        (true, browser(0xff, 0x16, 0x1a)),
+        (false, browser(0x00, 0xf8, 0x1f)),
+    ] {
         for srgb in [true, false] {
-            assert_browser(&runtime(dark, srgb), want, &format!("dark {dark}, sRGB blending {srgb}"));
+            assert_browser(
+                &runtime(dark, srgb),
+                want,
+                &format!("dark {dark}, sRGB blending {srgb}"),
+            );
         }
     }
 }
@@ -74,6 +93,10 @@ fn outside_a_runtime_tokens_resolve_as_authored() {
     assert!(rune::theme::blends_srgb());
     assert_eq!(t.color("border").a, 0x1a as f32 / 255.0);
     let linear = rune::theme::with_blend(false, || t.color("border"));
-    assert!(linear.a < t.color("border").a, "linear light needs less alpha over a dark backdrop: {}", linear.a);
+    assert!(
+        linear.a < t.color("border").a,
+        "linear light needs less alpha over a dark backdrop: {}",
+        linear.a
+    );
     assert!(rune::theme::blends_srgb(), "with_blend restores the mode");
 }

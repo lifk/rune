@@ -4,13 +4,18 @@ use super::*;
 fn a_bare_test_binary_cannot_post() {
     // Not a .app bundle, so it never reaches UNUserNotificationCenter (which would throw).
     assert!(!available());
-    assert!(!post(&Notification::new("n-1", "Response ready").body("Fix the build")));
+    assert!(!post(
+        &Notification::new("n-1", "Response ready").body("Fix the build")
+    ));
     remove(&["n-1"]);
 }
 
 #[test]
 fn click_reads_user_info() {
-    let click = Click { id: "n-1".into(), info: vec![("session".into(), "ses_1".into())] };
+    let click = Click {
+        id: "n-1".into(),
+        info: vec![("session".into(), "ses_1".into())],
+    };
     assert_eq!(click.get("session"), Some("ses_1"));
     assert_eq!(click.get("server"), None);
 }
@@ -21,9 +26,9 @@ fn click_reads_user_info() {
 #[test]
 fn a_click_reaches_the_handler_and_completes() {
     use block2::RcBlock;
-    use std::sync::{Arc, Mutex};
     use objc2::runtime::{AnyClass, AnyObject, ClassBuilder, Sel};
     use objc2::{class, msg_send, sel};
+    use std::sync::{Arc, Mutex};
 
     extern "C" fn this(this: *mut AnyObject, _: Sel) -> *mut AnyObject {
         this
@@ -32,7 +37,12 @@ fn a_click_reaches_the_handler_and_completes() {
         unsafe { mac::ns("n-7") }
     }
     extern "C" fn user_info(_: *mut AnyObject, _: Sel) -> *mut AnyObject {
-        unsafe { mac::dictionary(&[("session".into(), "ses_7".into()), ("server".into(), "http://127.0.0.1:4096".into())]) }
+        unsafe {
+            mac::dictionary(&[
+                ("session".into(), "ses_7".into()),
+                ("server".into(), "http://127.0.0.1:4096".into()),
+            ])
+        }
     }
 
     let fake = AnyClass::get("RuneMacFakeResponse").unwrap_or_else(|| {

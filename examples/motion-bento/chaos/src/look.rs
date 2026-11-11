@@ -47,7 +47,11 @@ pub fn lab_to_linear([l, a, b]: [f32; 3]) -> [f32; 3] {
 /// Linear to gamma-encoded sRGB, clamped to 0..1.
 pub fn encode(x: f32) -> f32 {
     let x = x.clamp(0.0, 1.0);
-    if x <= 0.003_130_8 { 12.92 * x } else { 1.055 * x.powf(1.0 / 2.4) - 0.055 }
+    if x <= 0.003_130_8 {
+        12.92 * x
+    } else {
+        1.055 * x.powf(1.0 / 2.4) - 0.055
+    }
 }
 
 pub mod color {
@@ -113,7 +117,11 @@ impl Spring {
 
     /// ζ = 1 − bounce (≥ 0), 1 / (1 + bounce) below.
     pub fn zeta(self) -> f32 {
-        if self.bounce >= 0.0 { 1.0 - self.bounce } else { 1.0 / (1.0 + self.bounce) }
+        if self.bounce >= 0.0 {
+            1.0 - self.bounce
+        } else {
+            1.0 / (1.0 + self.bounce)
+        }
     }
 
     /// k = ω².

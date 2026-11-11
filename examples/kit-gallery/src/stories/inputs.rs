@@ -213,10 +213,15 @@ pub(super) fn select_disabled(_: &G, k: &Kit, layer: &mut Vec<El>) -> El {
 /// rest, hover, open and disabled; the 280 x 28 field's rest, hover, keyboard focus, open,
 /// invalid and disabled.
 pub(super) fn select_states(s: &G, k: &Kit, layer: &mut Vec<El>) -> El {
-    let pick = |key: &'static str, st: State| Select::new(key, &FRUITS).label("Fruit").placeholder("Pick a fruit").current(Some("Banana")).state(st);
-    let line = |name: &str, e: El| row().gap(16.0).center_y().child(text(name.to_owned()).font(k.ty.small).color(k.c.text_faint).w(72.0)).child(e);
+    let pick = |key: &'static str, st: State| {
+        Select::new(key, &FRUITS).label("Fruit").placeholder("Pick a fruit").current(Some("Banana")).state(st)
+    };
+    let line = |name: &str, e: El| {
+        row().gap(16.0).center_y().child(text(name.to_owned()).font(k.ty.small).color(k.c.text_faint).w(72.0)).child(e)
+    };
     let field = |key: &'static str, st: State| pick(key, st).appearance(SelectAppearance::Field);
-    col().gap(10.0)
+    col()
+        .gap(10.0)
         .child(line("Inline", pick("i1", State::Rest).trigger(k)))
         .child(line("Hover", pick("i2", State::Hover).trigger(k)))
         .child(line("Open", pick("i3", State::Rest).open(true).trigger(k)))

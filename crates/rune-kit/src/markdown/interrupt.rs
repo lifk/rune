@@ -26,7 +26,15 @@ pub(super) struct ListInterrupts<'a, I: Iterator<Item = Ev<'a>>> {
 }
 
 pub(super) fn list_interrupts<'a, I: Iterator<Item = Ev<'a>>>(src: &'a str, inner: I) -> ListInterrupts<'a, I> {
-    ListInterrupts { src, inner: inner.peekable(), queue: VecDeque::new(), para: false, depth: 0, list: false, made: false }
+    ListInterrupts {
+        src,
+        inner: inner.peekable(),
+        queue: VecDeque::new(),
+        para: false,
+        depth: 0,
+        list: false,
+        made: false,
+    }
 }
 
 impl<'a, I: Iterator<Item = Ev<'a>>> Iterator for ListInterrupts<'a, I> {
@@ -51,7 +59,9 @@ impl<'a, I: Iterator<Item = Ev<'a>>> Iterator for ListInterrupts<'a, I> {
                     return Some((Event::End(TagEnd::Item), range));
                 }
             }
-            Event::Start(Tag::Emphasis | Tag::Strong | Tag::Strikethrough | Tag::Link { .. } | Tag::Image { .. }) => self.depth += 1,
+            Event::Start(Tag::Emphasis | Tag::Strong | Tag::Strikethrough | Tag::Link { .. } | Tag::Image { .. }) => {
+                self.depth += 1
+            }
             Event::End(TagEnd::Emphasis | TagEnd::Strong | TagEnd::Strikethrough | TagEnd::Link | TagEnd::Image) => {
                 self.depth = self.depth.saturating_sub(1)
             }

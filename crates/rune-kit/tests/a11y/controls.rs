@@ -11,12 +11,33 @@ fn buttons(s: &App, _: &mut Cx<App>) -> El {
     let k = kit();
     col()
         .gap(8.0)
-        .child(Button::new("Save").help("Write the file to disk").shortcut("F5").on_press(|s: &mut App| s.presses += 1).build(&k).key("save"))
-        .child(Button::new("Add").icon(k.glyph.copy).variant(ButtonVariant::Ghost).expanded(s.open)
-            .on_press(|s: &mut App| s.open = !s.open).build(&k).key("menu"))
+        .child(
+            Button::new("Save")
+                .help("Write the file to disk")
+                .shortcut("F5")
+                .on_press(|s: &mut App| s.presses += 1)
+                .build(&k)
+                .key("save"),
+        )
+        .child(
+            Button::new("Add")
+                .icon(k.glyph.copy)
+                .variant(ButtonVariant::Ghost)
+                .expanded(s.open)
+                .on_press(|s: &mut App| s.open = !s.open)
+                .build(&k)
+                .key("menu"),
+        )
         .child(Button::new("Unavailable").disabled(true).on_press(|s: &mut App| s.presses += 100).build(&k).key("off"))
         .child(Button::new("Saving").variant(ButtonVariant::Loading).build(&k).key("busy"))
-        .child(IconButton::new(k.glyph.close).label("Close").help("Close the panel").on_press(|s: &mut App| s.presses += 10).build(&k).key("close"))
+        .child(
+            IconButton::new(k.glyph.close)
+                .label("Close")
+                .help("Close the panel")
+                .on_press(|s: &mut App| s.presses += 10)
+                .build(&k)
+                .key("close"),
+        )
         .child(IconButton::new(k.glyph.copy).help("Copy").build(&k).key("copy"))
         .child(IconButton::new(k.glyph.copy).label("Copy link").disabled(true).build(&k).key("copy-off"))
 }
@@ -59,10 +80,24 @@ fn toggles(s: &App, _: &mut Cx<App>) -> El {
     let k = kit();
     col()
         .gap(8.0)
-        .child(Checkbox::new(s.on).label("Sync").description("Keep files in step").on_toggle(|s: &mut App| s.on = !s.on).build(&k).key("sync"))
+        .child(
+            Checkbox::new(s.on)
+                .label("Sync")
+                .description("Keep files in step")
+                .on_toggle(|s: &mut App| s.on = !s.on)
+                .build(&k)
+                .key("sync"),
+        )
         .child(Checkbox::new(false).label("Some").indeterminate(true).build(&k).key("some"))
         .child(Checkbox::new(true).label("Locked").disabled(true).build(&k).key("locked"))
-        .child(Switch::new(s.on).label("Wi-Fi").description("Join known networks").on_toggle(|s: &mut App| s.on = !s.on).build(&k).key("wifi"))
+        .child(
+            Switch::new(s.on)
+                .label("Wi-Fi")
+                .description("Join known networks")
+                .on_toggle(|s: &mut App| s.on = !s.on)
+                .build(&k)
+                .key("wifi"),
+        )
         .child(Switch::new(true).label("Airplane").hide_label().disabled(true).build(&k).key("airplane"))
 }
 
@@ -192,7 +227,10 @@ fn status_and_progress_read_their_text_and_fraction() {
     assert!(count["children"].is_null(), "a rolling label reads whole, not a glyph at a time");
     golden("status", &tree);
 
-    rt.update(|s, _| { s.presses = 12; s.level = 1.0; });
+    rt.update(|s, _| {
+        s.presses = 12;
+        s.level = 1.0;
+    });
     settle(&mut rt);
     let tree = rt.accessibility_json();
     assert_eq!(node(&tree, "count")["name"], "12 files");
@@ -203,10 +241,25 @@ fn fields(s: &App, _: &mut Cx<App>) -> El {
     let k = kit();
     col()
         .gap(8.0)
-        .child(TextInput::new(&s.edit).placeholder("Search files").clear_button().on_edit(|s: &mut App| &mut s.edit).build(&k).key("search"))
-        .child(TextInput::new(&s.edit).label("Email").placeholder("you@example.com").disabled(true).build(&k).key("email"))
+        .child(
+            TextInput::new(&s.edit)
+                .placeholder("Search files")
+                .clear_button()
+                .on_edit(|s: &mut App| &mut s.edit)
+                .build(&k)
+                .key("search"),
+        )
+        .child(
+            TextInput::new(&s.edit).label("Email").placeholder("you@example.com").disabled(true).build(&k).key("email"),
+        )
         .child(TextArea::new(&s.edit).label("Notes").on_edit(|s: &mut App| &mut s.edit).build(&k).key("notes"))
-        .child(TextField::new("Name", &s.edit).error("Name is taken").on_edit(|s: &mut App| &mut s.edit).build(&k).key("name"))
+        .child(
+            TextField::new("Name", &s.edit)
+                .error("Name is taken")
+                .on_edit(|s: &mut App| &mut s.edit)
+                .build(&k)
+                .key("name"),
+        )
         .child(
             Field::new()
                 .label("Token")
@@ -235,7 +288,10 @@ fn fields_name_their_editor_and_describe_their_help_and_errors() {
     assert_eq!((said(name), name["description"].as_str()), (("text-input", "Name"), Some("Name is taken")));
     assert!(has(node(&tree, "error"), "live-assertive"), "an error is announced as it appears");
     let token = node(&tree, "token");
-    assert_eq!((said(token), token["description"].as_str()), (("group", "Token"), Some("From your account page. Kept in the keychain")));
+    assert_eq!(
+        (said(token), token["description"].as_str()),
+        (("group", "Token"), Some("From your account page. Kept in the keychain"))
+    );
     golden("fields", &tree);
 
     assert!(rt.accessibility_action("input", Action::SetValue, Some(rune::accesskit::ActionData::Value("Ada".into()))));

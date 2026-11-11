@@ -32,7 +32,10 @@ impl El {
     /// [`El::arrives_whole`].
     pub fn fold_glide(mut self, spring: rune_motion::Spring) -> Self {
         self.flags.set(ElFlags::WHOLE, true);
-        self.cold_mut().glide = Some(crate::growth::FoldGlide { spring, feather: self.cold.glide.and_then(|g| g.feather) });
+        self.cold_mut().glide = Some(crate::growth::FoldGlide {
+            spring,
+            feather: self.cold.glide.and_then(|g| g.feather),
+        });
         self
     }
     /// How deep, in points, a [`El::fold_glide`] row's moving bottom edge feathers as it folds

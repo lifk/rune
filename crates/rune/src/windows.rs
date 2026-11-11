@@ -13,21 +13,45 @@ pub(crate) struct PlaceRequest {
 impl PlaceRequest {
     pub fn new(display: crate::DisplayTarget, placement: crate::OverlayPlacement) -> Self {
         #[allow(unused_mut)] // Only desktop hosts can sample a pointer's display.
-        let mut request = Self { requested: display.clone(), display, placement, pointer: None };
+        let mut request = Self {
+            requested: display.clone(),
+            display,
+            placement,
+            pointer: None,
+        };
         if request.display == crate::DisplayTarget::UnderPointer {
             #[cfg(target_os = "macos")]
-            { request.display = crate::platform::macos::pointer_display().map_or(crate::DisplayTarget::Primary,
-                |id| crate::DisplayTarget::Native(crate::NativeDisplayId::MacOS(id))); }
+            {
+                request.display = crate::platform::macos::pointer_display()
+                    .map_or(crate::DisplayTarget::Primary, |id| {
+                        crate::DisplayTarget::Native(crate::NativeDisplayId::MacOS(id))
+                    });
+            }
             #[cfg(target_os = "windows")]
-            { request.pointer = crate::platform::win32::pointer_position(); }
-            #[cfg(all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android")))]
-            { request.pointer = crate::platform::x11::overlay::pointer_position(); }
+            {
+                request.pointer = crate::platform::win32::pointer_position();
+            }
+            #[cfg(all(
+                unix,
+                not(target_os = "macos"),
+                not(target_os = "ios"),
+                not(target_os = "android")
+            ))]
+            {
+                request.pointer = crate::platform::x11::overlay::pointer_position();
+            }
         }
         request
     }
 
     pub fn at(size: (f32, f32)) -> crate::overlay::Placement {
-        crate::overlay::Placement { size, edge: crate::ScreenEdge::Top, margin: 0.0, align: crate::Align::Center, inset: 0.0 }
+        crate::overlay::Placement {
+            size,
+            edge: crate::ScreenEdge::Top,
+            margin: 0.0,
+            align: crate::Align::Center,
+            inset: 0.0,
+        }
     }
 }
 
@@ -52,16 +76,29 @@ pub struct Display {
 }
 
 impl Display {
-    pub fn native_id(&self) -> Option<crate::NativeDisplayId> { self.id.as_ref().and_then(|id| id.native_id()) }
+    pub fn native_id(&self) -> Option<crate::NativeDisplayId> {
+        self.id.as_ref().and_then(|id| id.native_id())
+    }
 
     /// (x, y, width, height) in the native global, top-left coordinate space. macOS uses
     /// CGDisplayBounds points; Windows/X11 use desktop pixels; Wayland uses compositor
     /// logical coordinates. Keep the origin in this space; scale only local offsets.
     pub fn native_bounds(&self) -> [f64; 4] {
         #[cfg(target_os = "macos")]
-        if let Some(crate::NativeDisplayId::MacOS(id)) = self.native_id() { return crate::platform::macos::display_bounds(id); }
-        let divisor = if matches!(self.native_id(), Some(crate::NativeDisplayId::Wayland(_))) { self.scale } else { 1.0 };
-        [f64::from(self.position.0), f64::from(self.position.1), f64::from(self.size.0) / divisor, f64::from(self.size.1) / divisor]
+        if let Some(crate::NativeDisplayId::MacOS(id)) = self.native_id() {
+            return crate::platform::macos::display_bounds(id);
+        }
+        let divisor = if matches!(self.native_id(), Some(crate::NativeDisplayId::Wayland(_))) {
+            self.scale
+        } else {
+            1.0
+        };
+        [
+            f64::from(self.position.0),
+            f64::from(self.position.1),
+            f64::from(self.size.0) / divisor,
+            f64::from(self.size.1) / divisor,
+        ]
     }
 }
 
@@ -93,9 +130,16 @@ pub struct WindowOptions {
 impl Default for WindowOptions {
     fn default() -> Self {
         Self {
-            transparent: false, borderless: false, click_through: false,
-            always_on_top: false, visible: true, position: None, physical_size: None,
-            min_size: None, max_size: None, resizable: true,
+            transparent: false,
+            borderless: false,
+            click_through: false,
+            always_on_top: false,
+            visible: true,
+            position: None,
+            physical_size: None,
+            min_size: None,
+            max_size: None,
+            resizable: true,
         }
     }
 }
@@ -107,42 +151,78 @@ impl WindowOptions {
     pub fn launcher_panel() -> ConfiguredWindowOptions {
         let mut native = MacWindowOptions::default().nonactivating_panel(true);
         native.launcher = true;
-        Self { visible: false, borderless: true, transparent: true, resizable: false,
-            min_size: Some((0.0, 0.0)), ..Default::default() }.macos(native)
+        Self {
+            visible: false,
+            borderless: true,
+            transparent: true,
+            resizable: false,
+            min_size: Some((0.0, 0.0)),
+            ..Default::default()
+        }
+        .macos(native)
     }
     /// Optional AppKit settings without adding fields to existing WindowOptions literals.
     /// Ignored on other platforms.
     pub fn macos(self, native: MacWindowOptions) -> ConfiguredWindowOptions {
-        ConfiguredWindowOptions { options: self, native }
+        ConfiguredWindowOptions {
+            options: self,
+            native,
+        }
     }
     /// One transparent, borderless, topmost, click-through overlay covering this display.
     pub fn overlay(display: &Display) -> Self {
         Self {
-            transparent: true, borderless: true, click_through: true, always_on_top: true,
-            visible: true, position: Some(display.position), physical_size: Some(display.size),
-            min_size: Some((0.0, 0.0)), max_size: None, resizable: true,
+            transparent: true,
+            borderless: true,
+            click_through: true,
+            always_on_top: true,
+            visible: true,
+            position: Some(display.position),
+            physical_size: Some(display.size),
+            min_size: Some((0.0, 0.0)),
+            max_size: None,
+            resizable: true,
         }
     }
 
     /// The window's minimum and maximum content sizes, with `AppSpec::min_size` as the
     /// fallback minimum.
-    pub(crate) fn size_limits(&self, app_min: Option<(f32, f32)>) -> ((f32, f32), Option<(f32, f32)>) {
+    pub(crate) fn size_limits(
+        &self,
+        app_min: Option<(f32, f32)>,
+    ) -> ((f32, f32), Option<(f32, f32)>) {
         let mut min = self.min_size.or(app_min).unwrap_or(DEFAULT_MIN_SIZE);
-        if let Some(max) = self.max_size { min = (min.0.min(max.0), min.1.min(max.1)); }
+        if let Some(max) = self.max_size {
+            min = (min.0.min(max.0), min.1.min(max.1));
+        }
         (min, self.max_size)
     }
 
     /// The minimum a window that fits its content height opens with: the content sets the
     /// height, so the default minimum height doesn't apply.
     pub(crate) fn fit_min_size(&self, app_min: Option<(f32, f32)>) -> Option<(f32, f32)> {
-        if app_min.is_none() && self.min_size.is_none() { Some((DEFAULT_MIN_SIZE.0, 0.0)) } else { app_min }
+        if app_min.is_none() && self.min_size.is_none() {
+            Some((DEFAULT_MIN_SIZE.0, 0.0))
+        } else {
+            app_min
+        }
     }
 
-    pub(crate) fn attributes(&self, title: &str, size: (f32, f32), app_min: Option<(f32, f32)>, visible: bool) -> winit::window::WindowAttributes {
+    pub(crate) fn attributes(
+        &self,
+        title: &str,
+        size: (f32, f32),
+        app_min: Option<(f32, f32)>,
+        visible: bool,
+    ) -> winit::window::WindowAttributes {
         use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
         use winit::window::{Window, WindowButtons, WindowLevel};
         let (min, _) = self.size_limits(app_min);
-        let buttons = if self.resizable { WindowButtons::all() } else { WindowButtons::all() - WindowButtons::MAXIMIZE };
+        let buttons = if self.resizable {
+            WindowButtons::all()
+        } else {
+            WindowButtons::all() - WindowButtons::MAXIMIZE
+        };
         let mut attrs = Window::default_attributes()
             .with_title(title)
             .with_inner_size(LogicalSize::new(size.0, size.1))
@@ -152,10 +232,20 @@ impl WindowOptions {
             .with_transparent(self.transparent)
             .with_decorations(!self.borderless)
             .with_visible(visible)
-            .with_window_level(if self.always_on_top { WindowLevel::AlwaysOnTop } else { WindowLevel::Normal });
-        if let Some((w, h)) = self.max_size { attrs = attrs.with_max_inner_size(LogicalSize::new(w, h)); }
-        if let Some((x, y)) = self.position { attrs = attrs.with_position(PhysicalPosition::new(x, y)); }
-        if let Some((w, h)) = self.physical_size { attrs = attrs.with_inner_size(PhysicalSize::new(w, h)); }
+            .with_window_level(if self.always_on_top {
+                WindowLevel::AlwaysOnTop
+            } else {
+                WindowLevel::Normal
+            });
+        if let Some((w, h)) = self.max_size {
+            attrs = attrs.with_max_inner_size(LogicalSize::new(w, h));
+        }
+        if let Some((x, y)) = self.position {
+            attrs = attrs.with_position(PhysicalPosition::new(x, y));
+        }
+        if let Some((w, h)) = self.physical_size {
+            attrs = attrs.with_inner_size(PhysicalSize::new(w, h));
+        }
         attrs
     }
 }
@@ -178,27 +268,47 @@ impl MacWindowOptions {
     /// Use a key-taking NSPanel. Open/focus never activates the app or its other windows.
     pub fn nonactivating_panel(mut self, enabled: bool) -> Self {
         self.nonactivating_panel = enabled;
-        if !enabled { self.launcher = false; }
+        if !enabled {
+            self.launcher = false;
+        }
         self
     }
-    pub fn shadow(mut self, enabled: bool) -> Self { self.shadow = Some(enabled); self }
+    pub fn shadow(mut self, enabled: bool) -> Self {
+        self.shadow = Some(enabled);
+        self
+    }
     /// AppKit NSWindow.Level value (normal 0, floating 3, status 25).
-    pub fn level(mut self, level: isize) -> Self { self.level = Some(level); self }
+    pub fn level(mut self, level: isize) -> Self {
+        self.level = Some(level);
+        self
+    }
     /// AppKit NSWindow.CollectionBehavior bit mask. Replaces the existing mask.
-    pub fn collection_behavior(mut self, bits: usize) -> Self { self.collection_behavior = Some(bits); self }
+    pub fn collection_behavior(mut self, bits: usize) -> Self {
+        self.collection_behavior = Some(bits);
+        self
+    }
     /// Requests NSWindowSharingNone; capture clients should also filter window_number().
     /// false restores NSWindowSharingReadOnly. This is not a capture guarantee. A nonactivating
     /// panel applies it only while shown (see `OverlayOptions::exclude_from_capture`).
-    pub fn exclude_from_capture(mut self, exclude: bool) -> Self { self.exclude_from_capture = Some(exclude); self }
+    pub fn exclude_from_capture(mut self, exclude: bool) -> Self {
+        self.exclude_from_capture = Some(exclude);
+        self
+    }
     /// Rounds a transparent, borderless window or panel to `radius` points with a continuous
     /// (squircle) curve. The window's root layer clips everything it shows, Rune's drawing and
     /// native material views alike, so the root view needn't clip itself to the radius. A
     /// border drawn inside the edge is still the app's. The system shadow, when on, follows
     /// the rounded shape. Ignored for opaque or bordered windows, where AppKit owns the frame,
     /// and on other platforms.
-    pub fn corner_radius(mut self, radius: f32) -> Self { self.corner_radius = Some(radius.max(0.0)); self }
+    pub fn corner_radius(mut self, radius: f32) -> Self {
+        self.corner_radius = Some(radius.max(0.0));
+        self
+    }
     /// Use a circular corner arc instead of the continuous curve for `corner_radius`.
-    pub fn corner_curve_circular(mut self) -> Self { self.corner_curve_circular = true; self }
+    pub fn corner_curve_circular(mut self) -> Self {
+        self.corner_curve_circular = true;
+        self
+    }
 }
 
 /// Ordinary options plus native builders, accepted by WindowSpec::configured_options.
@@ -209,7 +319,12 @@ pub struct ConfiguredWindowOptions {
 }
 
 impl From<WindowOptions> for ConfiguredWindowOptions {
-    fn from(options: WindowOptions) -> Self { Self { options, native: MacWindowOptions::default() } }
+    fn from(options: WindowOptions) -> Self {
+        Self {
+            options,
+            native: MacWindowOptions::default(),
+        }
+    }
 }
 
 impl ConfiguredWindowOptions {
@@ -244,43 +359,89 @@ impl<S> WindowSpec<S> {
     /// App::accessory is process-level: use run_windows_with(RunOptions, factory) instead.
     /// AppHandle::set_dock_icon remains global.
     pub fn from_app(key: impl Into<String>, app: App<S>) -> Self {
-        Self { key: key.into(), options: app.window_options.clone(), app, on_created: None }
+        Self {
+            key: key.into(),
+            options: app.window_options.clone(),
+            app,
+            on_created: None,
+        }
     }
     /// Configure this window's frame, including headless traffic-light placement.
-    pub fn chrome(mut self, chrome: crate::Chrome) -> Self { self.app = self.app.chrome(chrome); self }
+    pub fn chrome(mut self, chrome: crate::Chrome) -> Self {
+        self.app = self.app.chrome(chrome);
+        self
+    }
     /// This window draws its own titlebar, like `App::titlebar`.
-    pub fn titlebar(mut self, titlebar: crate::Titlebar) -> Self { self.app = self.app.titlebar(titlebar); self }
+    pub fn titlebar(mut self, titlebar: crate::Titlebar) -> Self {
+        self.app = self.app.titlebar(titlebar);
+        self
+    }
     /// Composite this window's translucent fills, blurs, shadows, images and video in sRGB
     /// (gamma) space instead of linear light, matching CSS and Core Animation. With a
     /// `Compositor`, `Frame::srgb_blend` says which encoding its passes must match.
-    pub fn srgb_blend(mut self, enabled: bool) -> Self { self.app = self.app.srgb_blend(enabled); self }
+    pub fn srgb_blend(mut self, enabled: bool) -> Self {
+        self.app = self.app.srgb_blend(enabled);
+        self
+    }
     /// This window's font smoothing (`App::font_smoothing`).
-    pub fn font_smoothing(mut self, mode: crate::FontSmoothing) -> Self { self.app = self.app.font_smoothing(mode); self }
-    pub fn on_focus(mut self, f: fn(&mut S, bool, &mut crate::Tx)) -> Self { self.app = self.app.on_focus(f); self }
-    pub fn on_modifiers(mut self, f: fn(&mut S, crate::Mods, &mut crate::Tx)) -> Self { self.app = self.app.on_modifiers(f); self }
+    pub fn font_smoothing(mut self, mode: crate::FontSmoothing) -> Self {
+        self.app = self.app.font_smoothing(mode);
+        self
+    }
+    pub fn on_focus(mut self, f: fn(&mut S, bool, &mut crate::Tx)) -> Self {
+        self.app = self.app.on_focus(f);
+        self
+    }
+    pub fn on_modifiers(mut self, f: fn(&mut S, crate::Mods, &mut crate::Tx)) -> Self {
+        self.app = self.app.on_modifiers(f);
+        self
+    }
     /// This window's editor's input method events, like `App::on_ime`.
-    pub fn on_ime(mut self, f: fn(&mut S, &crate::Ime, &mut crate::Tx) -> bool) -> Self { self.app = self.app.on_ime(f); self }
+    pub fn on_ime(mut self, f: fn(&mut S, &crate::Ime, &mut crate::Tx) -> bool) -> Self {
+        self.app = self.app.on_ime(f);
+        self
+    }
     /// This window's playground, like `App::playground`.
-    pub fn playground(mut self, playground: crate::Playground<S>) -> Self { self.app = self.app.playground(playground); self }
+    pub fn playground(mut self, playground: crate::Playground<S>) -> Self {
+        self.app = self.app.playground(playground);
+        self
+    }
     /// Runs in this window when the app starts to quit, like `App::on_quit`.
-    pub fn on_quit(mut self, f: fn(&mut S, &mut crate::Tx)) -> Self { self.app = self.app.on_quit(f); self }
+    pub fn on_quit(mut self, f: fn(&mut S, &mut crate::Tx)) -> Self {
+        self.app = self.app.on_quit(f);
+        self
+    }
     /// Runs when the app is reopened, like `App::on_reopen`.
-    pub fn on_reopen(mut self, f: fn(&mut S, bool, &mut crate::Tx) -> bool) -> Self { self.app = self.app.on_reopen(f); self }
+    pub fn on_reopen(mut self, f: fn(&mut S, bool, &mut crate::Tx) -> bool) -> Self {
+        self.app = self.app.on_reopen(f);
+        self
+    }
     /// Receives links opened with the app, like `App::on_open_url`.
-    pub fn on_open_url(mut self, f: fn(&mut S, &str, &mut crate::Tx)) -> Self { self.app = self.app.on_open_url(f); self }
+    pub fn on_open_url(mut self, f: fn(&mut S, &str, &mut crate::Tx)) -> Self {
+        self.app = self.app.on_open_url(f);
+        self
+    }
     /// Send `Key::Modifier` presses and releases to this window, like `App::modifier_keys`.
-    pub fn modifier_keys(mut self) -> Self { self.app = self.app.modifier_keys(); self }
+    pub fn modifier_keys(mut self) -> Self {
+        self.app = self.app.modifier_keys();
+        self
+    }
     /// Tab visits every focusable control in this window, like `App::tab_visits_controls`.
-    pub fn tab_visits_controls(mut self, on: bool) -> Self { self.app = self.app.tab_visits_controls(on); self }
+    pub fn tab_visits_controls(mut self, on: bool) -> Self {
+        self.app = self.app.tab_visits_controls(on);
+        self
+    }
     /// Called on the event thread after the first frame is ready, once per native creation.
     pub fn on_ready(mut self, f: impl FnMut(&crate::WindowHandle) + 'static) -> Self {
-        self.app = self.app.on_ready(f); self
+        self.app = self.app.on_ready(f);
+        self
     }
     /// Reports each of this window's frames, like `App::on_frame_encoded`. A spec made with
     /// `WindowSpec::from_app` keeps its app's hook unless this replaces it; windows `App::window`
     /// adds have their own.
     pub fn on_frame_encoded(mut self, f: impl FnMut(&crate::FrameEncoded) + 'static) -> Self {
-        self.app = self.app.on_frame_encoded(f); self
+        self.app = self.app.on_frame_encoded(f);
+        self
     }
     pub fn options(mut self, options: WindowOptions) -> Self {
         self.options = options;
@@ -293,8 +454,14 @@ impl<S> WindowSpec<S> {
         self.app.macos_window = native;
         self
     }
-    pub fn state(mut self, state: S) -> Self { self.app = self.app.init(move || state); self }
-    pub fn on_created(mut self, callback: impl FnOnce(crate::window::WindowHandle) + 'static) -> Self {
+    pub fn state(mut self, state: S) -> Self {
+        self.app = self.app.init(move || state);
+        self
+    }
+    pub fn on_created(
+        mut self,
+        callback: impl FnOnce(crate::window::WindowHandle) + 'static,
+    ) -> Self {
         self.on_created = Some(Box::new(callback));
         self
     }
@@ -302,13 +469,21 @@ impl<S> WindowSpec<S> {
 
 impl<S: 'static> WindowSpec<S> {
     /// Erase the state type, so one factory can return windows of different state types.
-    pub fn boxed(self) -> AnyWindowSpec { self.into() }
+    pub fn boxed(self) -> AnyWindowSpec {
+        self.into()
+    }
     /// Open this window without taking focus from the window that has it, such as a window a
     /// tab is dragged into while the press stays with its strip. A later `open` or `focus`
     /// activates it.
-    pub fn inactive(mut self) -> Self { self.app = self.app.open_inactive(); self }
+    pub fn inactive(mut self) -> Self {
+        self.app = self.app.open_inactive();
+        self
+    }
     /// Open this window maximized, like `App::maximized`.
-    pub fn maximized(mut self, maximized: bool) -> Self { self.app = self.app.maximized(maximized); self }
+    pub fn maximized(mut self, maximized: bool) -> Self {
+        self.app = self.app.maximized(maximized);
+        self
+    }
 }
 
 thread_local! {
@@ -326,7 +501,11 @@ thread_local! {
 pub fn open_window<S: 'static>(spec: WindowSpec<S>) -> crate::WindowHandle {
     let handle = crate::WindowHandle::new(&spec.key);
     if !crate::is_headless() {
-        let opened = AnyWindowSpec(Box::new(Erased { spec, handle: Some(handle.clone()), secondary: false }));
+        let opened = AnyWindowSpec(Box::new(Erased {
+            spec,
+            handle: Some(handle.clone()),
+            secondary: false,
+        }));
         OPENED.with(|o| o.borrow_mut().push(opened));
     }
     handle
@@ -358,31 +537,59 @@ pub struct WindowPlacement {
 pub struct AnyWindowSpec(Box<dyn ErasedWindow>);
 
 impl AnyWindowSpec {
-    pub fn key(&self) -> &str { self.0.key() }
-
-    /// A window `App::window` added: it closes by hiding and never keeps the loop running alone.
-    pub(crate) fn secondary<T: 'static>(mut spec: WindowSpec<T>, handle: crate::WindowHandle) -> Self {
-        spec.app.keep_running = true;
-        Self(Box::new(Erased { spec, handle: Some(handle), secondary: true }))
+    pub fn key(&self) -> &str {
+        self.0.key()
     }
 
-    pub(crate) fn resolve_args(&mut self, inherited: crate::tooling::Args) -> crate::tooling::Args { self.0.resolve_args(inherited) }
+    /// A window `App::window` added: it closes by hiding and never keeps the loop running alone.
+    pub(crate) fn secondary<T: 'static>(
+        mut spec: WindowSpec<T>,
+        handle: crate::WindowHandle,
+    ) -> Self {
+        spec.app.keep_running = true;
+        Self(Box::new(Erased {
+            spec,
+            handle: Some(handle),
+            secondary: true,
+        }))
+    }
+
+    pub(crate) fn resolve_args(&mut self, inherited: crate::tooling::Args) -> crate::tooling::Args {
+        self.0.resolve_args(inherited)
+    }
 
     /// Render this window headless; `scale` converts a physical size option to points.
-    pub(crate) fn headless(self, args: crate::tooling::Args, scale: f32) { self.0.headless(args, scale) }
+    pub(crate) fn headless(self, args: crate::tooling::Args, scale: f32) {
+        self.0.headless(args, scale)
+    }
 
     /// This window as one member of a `--desktop` composite; `selected` takes `--scene`.
-    pub(crate) fn desktop(self, args: &crate::tooling::Args, selected: bool, scale: f32) -> Box<dyn crate::desktop::Member> {
+    pub(crate) fn desktop(
+        self,
+        args: &crate::tooling::Args,
+        selected: bool,
+        scale: f32,
+    ) -> Box<dyn crate::desktop::Member> {
         self.0.desktop(args, selected, scale)
     }
 
-    pub(crate) fn start(self, inherited: crate::tooling::Args, cx: crate::window::Start<'_>) -> Option<Box<dyn crate::window::AnyHost>> {
+    pub(crate) fn start(
+        self,
+        inherited: crate::tooling::Args,
+        cx: crate::window::Start<'_>,
+    ) -> Option<Box<dyn crate::window::AnyHost>> {
         self.0.start(inherited, cx)
     }
 }
 
 impl<S: 'static> From<WindowSpec<S>> for AnyWindowSpec {
-    fn from(spec: WindowSpec<S>) -> Self { Self(Box::new(Erased { spec, handle: None, secondary: false })) }
+    fn from(spec: WindowSpec<S>) -> Self {
+        Self(Box::new(Erased {
+            spec,
+            handle: None,
+            secondary: false,
+        }))
+    }
 }
 
 trait ErasedWindow {
@@ -390,8 +597,17 @@ trait ErasedWindow {
     fn take_windows(&mut self) -> Vec<AnyWindowSpec>;
     fn resolve_args(&mut self, inherited: crate::tooling::Args) -> crate::tooling::Args;
     fn headless(self: Box<Self>, args: crate::tooling::Args, scale: f32);
-    fn desktop(self: Box<Self>, args: &crate::tooling::Args, selected: bool, scale: f32) -> Box<dyn crate::desktop::Member>;
-    fn start(self: Box<Self>, inherited: crate::tooling::Args, cx: crate::window::Start<'_>) -> Option<Box<dyn crate::window::AnyHost>>;
+    fn desktop(
+        self: Box<Self>,
+        args: &crate::tooling::Args,
+        selected: bool,
+        scale: f32,
+    ) -> Box<dyn crate::desktop::Member>;
+    fn start(
+        self: Box<Self>,
+        inherited: crate::tooling::Args,
+        cx: crate::window::Start<'_>,
+    ) -> Option<Box<dyn crate::window::AnyHost>>;
 }
 
 struct Erased<S: 'static> {
@@ -401,21 +617,46 @@ struct Erased<S: 'static> {
 }
 
 impl<S: 'static> ErasedWindow for Erased<S> {
-    fn key(&self) -> &str { &self.spec.key }
-    fn take_windows(&mut self) -> Vec<AnyWindowSpec> { std::mem::take(&mut self.spec.app.windows) }
-    fn resolve_args(&mut self, inherited: crate::tooling::Args) -> crate::tooling::Args { self.spec.app.resolve_args(inherited) }
+    fn key(&self) -> &str {
+        &self.spec.key
+    }
+    fn take_windows(&mut self) -> Vec<AnyWindowSpec> {
+        std::mem::take(&mut self.spec.app.windows)
+    }
+    fn resolve_args(&mut self, inherited: crate::tooling::Args) -> crate::tooling::Args {
+        self.spec.app.resolve_args(inherited)
+    }
     fn headless(self: Box<Self>, args: crate::tooling::Args, scale: f32) {
-        let WindowSpec { mut app, options, .. } = self.spec;
-        if let Some((w, h)) = options.physical_size { app.spec.size = (w as f32 / scale, h as f32 / scale); }
+        let WindowSpec {
+            mut app, options, ..
+        } = self.spec;
+        if let Some((w, h)) = options.physical_size {
+            app.spec.size = (w as f32 / scale, h as f32 / scale);
+        }
         let transparent = options.transparent;
         app.window_options = options;
         crate::tooling::headless_configured(app, args, transparent);
     }
-    fn desktop(self: Box<Self>, args: &crate::tooling::Args, selected: bool, scale: f32) -> Box<dyn crate::desktop::Member> {
-        let Erased { spec, handle, secondary } = *self;
-        Box::new(crate::desktop::Window::new(spec, handle, args, selected, !secondary, scale))
+    fn desktop(
+        self: Box<Self>,
+        args: &crate::tooling::Args,
+        selected: bool,
+        scale: f32,
+    ) -> Box<dyn crate::desktop::Member> {
+        let Erased {
+            spec,
+            handle,
+            secondary,
+        } = *self;
+        Box::new(crate::desktop::Window::new(
+            spec, handle, args, selected, !secondary, scale,
+        ))
     }
-    fn start(self: Box<Self>, mut inherited: crate::tooling::Args, cx: crate::window::Start<'_>) -> Option<Box<dyn crate::window::AnyHost>> {
+    fn start(
+        self: Box<Self>,
+        mut inherited: crate::tooling::Args,
+        cx: crate::window::Start<'_>,
+    ) -> Option<Box<dyn crate::window::AnyHost>> {
         // A secondary window is not what --scene or --size describe unless --window selects it.
         if self.secondary && inherited.window.as_deref() != Some(self.spec.key.as_str()) {
             inherited.scene = None;
@@ -439,7 +680,9 @@ pub(crate) fn flatten(windows: impl IntoIterator<Item = AnyWindowSpec>) -> Vec<A
 pub(crate) fn validate(windows: &[AnyWindowSpec]) -> Result<(), String> {
     let mut keys = std::collections::HashSet::new();
     for window in windows {
-        if window.key().is_empty() || !keys.insert(window.key()) { return Err(format!("empty or duplicate window key: {:?}", window.key())); }
+        if window.key().is_empty() || !keys.insert(window.key()) {
+            return Err(format!("empty or duplicate window key: {:?}", window.key()));
+        }
     }
     Ok(())
 }
@@ -454,7 +697,11 @@ mod tests {
         let preset = WindowOptions::launcher_panel();
         assert!(preset.native.nonactivating_panel && preset.native.launcher);
         assert!(!preset.options.visible && preset.options.borderless && preset.options.transparent);
-        assert!(!MacWindowOptions::default().nonactivating_panel(true).launcher);
+        assert!(
+            !MacWindowOptions::default()
+                .nonactivating_panel(true)
+                .launcher
+        );
         assert!(!preset.native.nonactivating_panel(false).launcher);
         assert!(WindowOptions::default().visible);
         let spec = AppSpec::new("launcher", (300.0, 100.0), || (), |_, _| crate::el());
@@ -467,9 +714,13 @@ mod tests {
 
     #[test]
     fn amending_a_preset_keeps_its_launcher_behaviour() {
-        let preset = WindowOptions::launcher_panel().macos(|native| native.corner_radius(16.0).shadow(true));
+        let preset =
+            WindowOptions::launcher_panel().macos(|native| native.corner_radius(16.0).shadow(true));
         assert!(preset.native.launcher && preset.native.nonactivating_panel);
-        assert_eq!((preset.native.corner_radius, preset.native.shadow), (Some(16.0), Some(true)));
+        assert_eq!(
+            (preset.native.corner_radius, preset.native.shadow),
+            (Some(16.0), Some(true))
+        );
         assert!(!preset.options.visible && preset.options.transparent);
         let spec = AppSpec::new("launcher", (300.0, 100.0), || (), |_, _| crate::el());
         let app = App::new(spec).configured_options(preset);
@@ -479,15 +730,36 @@ mod tests {
 
     #[test]
     fn app_windows_follow_their_app_and_share_its_key_space() {
-        let mut main = App::new(AppSpec::new("main", (100.0, 100.0), || 0u32, |_, _| crate::el()));
-        let settings = || WindowSpec::new("settings", AppSpec::new("settings", (100.0, 100.0), String::new, |_, _| crate::el()));
+        let mut main = App::new(AppSpec::new(
+            "main",
+            (100.0, 100.0),
+            || 0u32,
+            |_, _| crate::el(),
+        ));
+        let settings = || {
+            WindowSpec::new(
+                "settings",
+                AppSpec::new("settings", (100.0, 100.0), String::new, |_, _| crate::el()),
+            )
+        };
         let (_, handle) = main.window(settings());
         assert_eq!(handle.key(), "settings");
-        let other = WindowSpec::new("other", AppSpec::new("other", (100.0, 100.0), || (), |_, _| crate::el()));
+        let other = WindowSpec::new(
+            "other",
+            AppSpec::new("other", (100.0, 100.0), || (), |_, _| crate::el()),
+        );
         let flat = flatten([WindowSpec::from_app("main", main).boxed(), other.into()]);
-        assert_eq!(flat.iter().map(AnyWindowSpec::key).collect::<Vec<_>>(), ["main", "settings", "other"]);
+        assert_eq!(
+            flat.iter().map(AnyWindowSpec::key).collect::<Vec<_>>(),
+            ["main", "settings", "other"]
+        );
         assert!(validate(&flat).is_ok());
-        let mut clash = App::new(AppSpec::new("main", (100.0, 100.0), || 0u32, |_, _| crate::el()));
+        let mut clash = App::new(AppSpec::new(
+            "main",
+            (100.0, 100.0),
+            || 0u32,
+            |_, _| crate::el(),
+        ));
         clash.window(settings());
         assert!(validate(&flatten([WindowSpec::from_app("settings", clash).boxed()])).is_err());
     }
@@ -495,7 +767,8 @@ mod tests {
     #[test]
     fn default_window_options_remain_inferable_at_existing_call_sites() {
         // This fails to compile if options becomes generic over Into<...>.
-        let _configure: fn(WindowSpec<()>) -> WindowSpec<()> = |spec| spec.options(Default::default());
+        let _configure: fn(WindowSpec<()>) -> WindowSpec<()> =
+            |spec| spec.options(Default::default());
     }
 
     #[test]
@@ -503,73 +776,131 @@ mod tests {
         let options = RunOptions { accessory: true };
         let copied = options;
         assert!(options.accessory && copied.accessory);
-        let args = crate::tooling::window_args(Some(vec![]), || panic!("must not inspect host --trace/--snap flags"));
+        let args = crate::tooling::window_args(Some(vec![]), || {
+            panic!("must not inspect host --trace/--snap flags")
+        });
         assert!(!args.headless());
         assert!(args.scene.is_none() && args.size.is_none());
-        let inherited = crate::tooling::window_args(None, || crate::tooling::Args::parse_from(
-            vec!["--trace".into(), "out.jsonl".into()]));
+        let inherited = crate::tooling::window_args(None, || {
+            crate::tooling::Args::parse_from(vec!["--trace".into(), "out.jsonl".into()])
+        });
         assert!(inherited.headless());
     }
 
     #[test]
     fn window_app_args_override_inherited_scene_and_size() {
-        fn spec() -> AppSpec<()> { AppSpec::new("test", (100.0, 100.0), || (), |_, _| crate::el()) }
-        let inherited = crate::tooling::Args::parse_from(vec!["--scene".into(), "host-scene".into()]);
-        let mut window = WindowSpec::from_app("pill", App::new(spec()).args(vec!["--size".into(), "320x80".into()]));
+        fn spec() -> AppSpec<()> {
+            AppSpec::new("test", (100.0, 100.0), || (), |_, _| crate::el())
+        }
+        let inherited =
+            crate::tooling::Args::parse_from(vec!["--scene".into(), "host-scene".into()]);
+        let mut window = WindowSpec::from_app(
+            "pill",
+            App::new(spec()).args(vec!["--size".into(), "320x80".into()]),
+        );
         let resolved = window.app.resolve_args(inherited.clone());
         assert_eq!(resolved.size, Some((320.0, 80.0)));
         assert!(resolved.scene.is_none());
         let mut plain = WindowSpec::new("plain", spec());
-        assert_eq!(plain.app.resolve_args(inherited).scene.as_deref(), Some("host-scene"));
+        assert_eq!(
+            plain.app.resolve_args(inherited).scene.as_deref(),
+            Some("host-scene")
+        );
         let trace = crate::tooling::Args::parse_from(vec!["--trace".into(), "host.jsonl".into()]);
         let mut isolated = WindowSpec::from_app("isolated", App::new(spec()).args(vec![]));
         assert!(!isolated.app.resolve_args(trace).headless());
-        let mut traced = WindowSpec::from_app("traced", App::new(spec()).args(vec!["--trace".into(), "window.jsonl".into()]));
-        assert!(traced.app.resolve_args(crate::tooling::Args::default()).headless());
+        let mut traced = WindowSpec::from_app(
+            "traced",
+            App::new(spec()).args(vec!["--trace".into(), "window.jsonl".into()]),
+        );
+        assert!(
+            traced
+                .app
+                .resolve_args(crate::tooling::Args::default())
+                .headless()
+        );
     }
 
     #[test]
     fn compact_window_overrides_the_legacy_minimum_without_changing_defaults() {
         let defaults = WindowOptions::default().attributes("app", (560.0, 440.0), None, true);
-        assert_eq!(defaults.min_inner_size, Some(Size::Logical(LogicalSize::new(420.0, 400.0))));
+        assert_eq!(
+            defaults.min_inner_size,
+            Some(Size::Logical(LogicalSize::new(420.0, 400.0)))
+        );
         assert!(defaults.resizable && defaults.decorations && defaults.visible);
         assert_eq!(defaults.max_inner_size, None);
 
         let compact = WindowOptions {
-            min_size: Some((280.0, 80.0)), max_size: Some((320.0, 120.0)),
-            resizable: false, borderless: true, ..Default::default()
-        }.attributes("compact", (300.0, 100.0), Some((860.0, 560.0)), false);
-        assert_eq!(compact.inner_size, Some(Size::Logical(LogicalSize::new(300.0, 100.0))));
-        assert_eq!(compact.min_inner_size, Some(Size::Logical(LogicalSize::new(280.0, 80.0))));
-        assert_eq!(compact.max_inner_size, Some(Size::Logical(LogicalSize::new(320.0, 120.0))));
+            min_size: Some((280.0, 80.0)),
+            max_size: Some((320.0, 120.0)),
+            resizable: false,
+            borderless: true,
+            ..Default::default()
+        }
+        .attributes("compact", (300.0, 100.0), Some((860.0, 560.0)), false);
+        assert_eq!(
+            compact.inner_size,
+            Some(Size::Logical(LogicalSize::new(300.0, 100.0)))
+        );
+        assert_eq!(
+            compact.min_inner_size,
+            Some(Size::Logical(LogicalSize::new(280.0, 80.0)))
+        );
+        assert_eq!(
+            compact.max_inner_size,
+            Some(Size::Logical(LogicalSize::new(320.0, 120.0)))
+        );
         assert!(!compact.resizable && !compact.decorations && !compact.visible);
     }
 
     #[test]
     fn maximum_alone_caps_the_inherited_minimum_per_axis() {
-        let options = WindowOptions { max_size: Some((320.0, 120.0)), ..Default::default() };
-        for (app_min, expected) in [
-            (None, (320.0, 120.0)),
-            (Some((860.0, 80.0)), (320.0, 80.0)),
-        ] {
+        let options = WindowOptions {
+            max_size: Some((320.0, 120.0)),
+            ..Default::default()
+        };
+        for (app_min, expected) in [(None, (320.0, 120.0)), (Some((860.0, 80.0)), (320.0, 80.0))] {
             let attrs = options.attributes("compact", (300.0, 100.0), app_min, true);
-            assert_eq!(attrs.min_inner_size, Some(Size::Logical(LogicalSize::new(expected.0, expected.1))));
-            assert_eq!(attrs.max_inner_size, Some(Size::Logical(LogicalSize::new(320.0, 120.0))));
+            assert_eq!(
+                attrs.min_inner_size,
+                Some(Size::Logical(LogicalSize::new(expected.0, expected.1)))
+            );
+            assert_eq!(
+                attrs.max_inner_size,
+                Some(Size::Logical(LogicalSize::new(320.0, 120.0)))
+            );
         }
     }
 
     #[test]
     fn default_options_inherit_the_app_minimum() {
-        let attrs = WindowOptions::default().attributes("app", (900.0, 600.0), Some((860.0, 560.0)), true);
-        assert_eq!(attrs.min_inner_size, Some(Size::Logical(LogicalSize::new(860.0, 560.0))));
+        let attrs =
+            WindowOptions::default().attributes("app", (900.0, 600.0), Some((860.0, 560.0)), true);
+        assert_eq!(
+            attrs.min_inner_size,
+            Some(Size::Logical(LogicalSize::new(860.0, 560.0)))
+        );
     }
 
     #[test]
     fn a_window_that_fits_its_content_has_no_default_minimum_height() {
         let fit = WindowOptions::default().fit_min_size(None);
-        assert_eq!(WindowOptions::default().size_limits(fit), ((420.0, 0.0), None));
-        assert_eq!(WindowOptions::default().fit_min_size(Some((300.0, 200.0))), Some((300.0, 200.0)));
-        let options = WindowOptions { min_size: Some((300.0, 500.0)), ..Default::default() };
-        assert_eq!(options.size_limits(options.fit_min_size(None)), ((300.0, 500.0), None));
+        assert_eq!(
+            WindowOptions::default().size_limits(fit),
+            ((420.0, 0.0), None)
+        );
+        assert_eq!(
+            WindowOptions::default().fit_min_size(Some((300.0, 200.0))),
+            Some((300.0, 200.0))
+        );
+        let options = WindowOptions {
+            min_size: Some((300.0, 500.0)),
+            ..Default::default()
+        };
+        assert_eq!(
+            options.size_limits(options.fit_min_size(None)),
+            ((300.0, 500.0), None)
+        );
     }
 }

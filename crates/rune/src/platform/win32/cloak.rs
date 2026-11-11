@@ -41,10 +41,23 @@ pub(crate) enum CloakEffect {
 impl CloakState {
     pub(crate) fn step(self, event: CloakEvent) -> (CloakState, CloakEffect) {
         match (self, event) {
-            (state, CloakEvent::Hold { until }) => (CloakState::Held { until }, if state == CloakState::Lifted { CloakEffect::Set(true) } else { CloakEffect::None }),
-            (CloakState::Held { .. }, CloakEvent::Extend { until }) => (CloakState::Held { until }, CloakEffect::None),
-            (CloakState::Held { .. }, CloakEvent::Lift) => (CloakState::Lifted, CloakEffect::Set(false)),
-            (CloakState::Held { until }, CloakEvent::Tick { now }) if until <= now => (CloakState::Lifted, CloakEffect::Set(false)),
+            (state, CloakEvent::Hold { until }) => (
+                CloakState::Held { until },
+                if state == CloakState::Lifted {
+                    CloakEffect::Set(true)
+                } else {
+                    CloakEffect::None
+                },
+            ),
+            (CloakState::Held { .. }, CloakEvent::Extend { until }) => {
+                (CloakState::Held { until }, CloakEffect::None)
+            }
+            (CloakState::Held { .. }, CloakEvent::Lift) => {
+                (CloakState::Lifted, CloakEffect::Set(false))
+            }
+            (CloakState::Held { until }, CloakEvent::Tick { now }) if until <= now => {
+                (CloakState::Lifted, CloakEffect::Set(false))
+            }
             (state, _) => (state, CloakEffect::None),
         }
     }
@@ -58,13 +71,18 @@ pub(crate) struct Cloak {
 
 impl Cloak {
     /// Cloaks the window until `lift`, or `until` at the latest.
-    pub(crate) fn hold(&self, window: &winit::window::Window, until: Instant) { self.apply(window, CloakEvent::Hold { until }); }
+    pub(crate) fn hold(&self, window: &winit::window::Window, until: Instant) {
+        self.apply(window, CloakEvent::Hold { until });
+    }
 
-    pub(crate) fn held(&self) -> bool { self.state.get() != CloakState::Lifted }
+    pub(crate) fn held(&self) -> bool {
+        self.state.get() != CloakState::Lifted
+    }
 
     /// Moves a held cloak's deadline, as when making the GPU took part of it.
     pub(crate) fn extend(&self, until: Instant) {
-        self.state.set(self.state.get().step(CloakEvent::Extend { until }).0);
+        self.state
+            .set(self.state.get().step(CloakEvent::Extend { until }).0);
     }
 
     /// When the cloak gives up on a frame.
@@ -76,17 +94,25 @@ impl Cloak {
     }
 
     /// Uncloaks: its frame landed, or it hid.
-    pub(crate) fn lift(&self, window: &winit::window::Window) { self.apply(window, CloakEvent::Lift); }
+    pub(crate) fn lift(&self, window: &winit::window::Window) {
+        self.apply(window, CloakEvent::Lift);
+    }
 
     /// Uncloaks once `now` is past the deadline.
-    pub(crate) fn lift_if_due(&self, window: &winit::window::Window, now: Instant) { self.apply(window, CloakEvent::Tick { now }); }
+    pub(crate) fn lift_if_due(&self, window: &winit::window::Window, now: Instant) {
+        self.apply(window, CloakEvent::Tick { now });
+    }
 
     fn apply(&self, window: &winit::window::Window, event: CloakEvent) {
         let (next, effect) = self.state.get().step(event);
         match effect {
             CloakEffect::None => self.state.set(next),
             // A window DWM won't cloak shows as it is: nothing is held.
-            CloakEffect::Set(true) => self.state.set(if set(window, true) { next } else { CloakState::Lifted }),
+            CloakEffect::Set(true) => self.state.set(if set(window, true) {
+                next
+            } else {
+                CloakState::Lifted
+            }),
             CloakEffect::Set(false) => {
                 self.state.set(next);
                 set(window, false);
@@ -96,7 +122,9 @@ impl Cloak {
 }
 
 fn set(window: &winit::window::Window, cloaked: bool) -> bool {
-    let Some(hwnd) = super::hwnd(window) else { return false };
+    let Some(hwnd) = super::hwnd(window) else {
+        return false;
+    };
     let value = i32::from(cloaked);
     // SAFETY: DWMWA_CLOAK reads one BOOL from `value` for a window this thread owns.
     unsafe { DwmSetWindowAttribute(hwnd, DWMWA_CLOAK as u32, (&raw const value).cast(), 4) >= 0 }

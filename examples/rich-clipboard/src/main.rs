@@ -23,22 +23,45 @@ fn sample() -> ClipboardContent {
 }
 
 fn seen(s: &mut State, how: &'static str, content: &ClipboardContent) {
-    println!("{how}: text {} bytes, html {:?} bytes, rtf {:?} bytes", content.text().len(), content.html().map(str::len), content.rtf().map(str::len));
-    if let Some(html) = content.html() { println!("{html}"); }
+    println!(
+        "{how}: text {} bytes, html {:?} bytes, rtf {:?} bytes",
+        content.text().len(),
+        content.html().map(str::len),
+        content.rtf().map(str::len)
+    );
+    if let Some(html) = content.html() {
+        println!("{html}");
+    }
     s.last = Some((how, content.clone()));
 }
 
 fn summary(last: &Option<(&'static str, ClipboardContent)>) -> (String, String) {
-    let Some((how, content)) = last else { return ("Paste formatted text into the field".into(), String::new()) };
-    let form = |name: &str, len: Option<usize>| match len { Some(n) => format!("{name} {n} B"), None => format!("no {name}") };
-    let head = format!("{how}: text {} B, {}, {}", content.text().len(), form("HTML", content.html().map(str::len)), form("RTF", content.rtf().map(str::len)));
+    let Some((how, content)) = last else {
+        return ("Paste formatted text into the field".into(), String::new());
+    };
+    let form = |name: &str, len: Option<usize>| match len {
+        Some(n) => format!("{name} {n} B"),
+        None => format!("no {name}"),
+    };
+    let head = format!(
+        "{how}: text {} B, {}, {}",
+        content.text().len(),
+        form("HTML", content.html().map(str::len)),
+        form("RTF", content.rtf().map(str::len))
+    );
     let preview: String = content.html().unwrap_or("").chars().take(400).collect();
     (head, preview)
 }
 
 fn button(key: &'static str, label: &str, f: impl Fn(&mut State, &mut Tx) + 'static) -> El {
     let t = tok::theme(true);
-    row().key(key).role("button").padding(space::S2).radius(radius::MD).fill(t.card).border(1.0, t.card_border)
+    row()
+        .key(key)
+        .role("button")
+        .padding(space::S2)
+        .radius(radius::MD)
+        .fill(t.card)
+        .border(1.0, t.card_border)
         .child(text(label).font(type_::LABEL).color(t.text))
         .on_press_tx(f)
 }
@@ -46,22 +69,60 @@ fn button(key: &'static str, label: &str, f: impl Fn(&mut State, &mut Tx) + 'sta
 fn view(s: &State, _: &mut Cx<State>) -> El {
     let t = tok::theme(true);
     let (head, preview) = summary(&s.last);
-    let field = text_input(&s.field, type_::BODY).key("field").w_full().min_h(80.0).padding(space::S2)
-        .radius(radius::MD).fill(t.card).border(1.0, t.card_border).color(t.text)
+    let field = text_input(&s.field, type_::BODY)
+        .key("field")
+        .w_full()
+        .min_h(80.0)
+        .padding(space::S2)
+        .radius(radius::MD)
+        .fill(t.card)
+        .border(1.0, t.card_border)
+        .color(t.text)
         .on_edit(|s: &mut State| &mut s.field)
         // Look at every form, then let the editor paste the text as usual.
-        .on_input_paste(|s: &mut State, content, _| { seen(s, "Pasted", content); false });
-    col().w_full().h_full().padding(space::S6).gap(space::S3).fill(t.bg)
+        .on_input_paste(|s: &mut State, content, _| {
+            seen(s, "Pasted", content);
+            false
+        });
+    col()
+        .w_full()
+        .h_full()
+        .padding(space::S6)
+        .gap(space::S3)
+        .fill(t.bg)
         .child(field)
-        .child(row().gap(space::S2)
-            .child(button("copy", "Copy formatted", |_, tx| tx.copy_rich(sample())))
-            .child(button("read", "Read clipboard", |_, tx| tx.read_clipboard(|s: &mut State, content, _| seen(s, "Read", content)))))
-        .child(text(head).key("summary").font(type_::BODY).color(t.text_secondary))
-        .child(text(preview).key("preview").font(type_::LABEL).color(t.text_secondary).w_full())
+        .child(
+            row()
+                .gap(space::S2)
+                .child(button("copy", "Copy formatted", |_, tx| {
+                    tx.copy_rich(sample())
+                }))
+                .child(button("read", "Read clipboard", |_, tx| {
+                    tx.read_clipboard(|s: &mut State, content, _| seen(s, "Read", content))
+                })),
+        )
+        .child(
+            text(head)
+                .key("summary")
+                .font(type_::BODY)
+                .color(t.text_secondary),
+        )
+        .child(
+            text(preview)
+                .key("preview")
+                .font(type_::LABEL)
+                .color(t.text_secondary)
+                .w_full(),
+        )
 }
 
 fn main() {
-    rune::run(AppSpec::new("Rich Clipboard", (560.0, 420.0), State::default, view));
+    rune::run(AppSpec::new(
+        "Rich Clipboard",
+        (560.0, 420.0),
+        State::default,
+        view,
+    ));
 }
 
 #[cfg(test)]
@@ -77,12 +138,17 @@ mod tests {
         rt.frame(0.0);
         rt.update(|s, _| s.field.focused = true);
         rt.frame(0.0);
-        board.set_content(ClipboardContent::new("Hi").with_html("<b>Hi</b><img src=x onerror=alert(1)>"));
+        board.set_content(
+            ClipboardContent::new("Hi").with_html("<b>Hi</b><img src=x onerror=alert(1)>"),
+        );
         rt.update(|_, tx| tx.request_paste());
         rt.frame(0.0);
         assert_eq!(rt.state.field.text, "Hi");
         let (how, content) = rt.state.last.clone().unwrap();
-        assert_eq!((how, content.html()), ("Pasted", Some(r#"<b>Hi</b><img src="x">"#)));
+        assert_eq!(
+            (how, content.html()),
+            ("Pasted", Some(r#"<b>Hi</b><img src="x">"#))
+        );
 
         let (x, y) = rt.find("copy").unwrap();
         rt.pointer_down(x, y);

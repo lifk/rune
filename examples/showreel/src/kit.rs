@@ -32,15 +32,21 @@ pub fn t(s: impl Into<String>, size: f32, weight: f32, color: u32) -> El {
 }
 
 pub fn ta(s: impl Into<String>, size: f32, weight: f32, color: u32, alpha: f32) -> El {
-    text(s).font(TextStyle::new(size, weight)).color(ca(color, alpha.clamp(0.0, 1.0)))
+    text(s)
+        .font(TextStyle::new(size, weight))
+        .color(ca(color, alpha.clamp(0.0, 1.0)))
 }
 
 pub fn mono_a(s: impl Into<String>, size: f32, color: u32, alpha: f32) -> El {
-    text(s).font(TextStyle::new(size, 500.0).mono()).color(ca(color, alpha.clamp(0.0, 1.0)))
+    text(s)
+        .font(TextStyle::new(size, 500.0).mono())
+        .color(ca(color, alpha.clamp(0.0, 1.0)))
 }
 
 pub fn mono(s: impl Into<String>, size: f32, color: u32) -> El {
-    text(s).font(TextStyle::new(size, 500.0).mono()).color(c(color))
+    text(s)
+        .font(TextStyle::new(size, 500.0).mono())
+        .color(c(color))
 }
 
 /// An effect slot: `kind` is a `gfx` constant, `data` its numbers.
@@ -57,7 +63,8 @@ pub fn ease(t: f64, t0: f64, dur: f64) -> f32 {
 /// A value that starts at `from` and springs to each key's target at its time, carrying velocity
 /// across retargets (as an interrupted Rune spring does).
 pub fn track(t: f64, from: f32, keys: &[(f64, f32, Spring)]) -> f32 {
-    let (mut x, mut v, mut target, mut t0, mut spring) = (from, 0.0f32, from, 0.0f64, Spring::new(0.3, 0.0));
+    let (mut x, mut v, mut target, mut t0, mut spring) =
+        (from, 0.0f32, from, 0.0f64, Spring::new(0.3, 0.0));
     for &(tk, to, sp) in keys {
         if t < tk {
             break;
@@ -95,13 +102,20 @@ pub fn pointer_at(t: f64, start: [f32; 2], path: &[(f64, f32, f32)], taps: &[f64
     let ky: Vec<(f64, f32, Spring)> = path.iter().map(|&(tk, _, y)| (tk, y, s)).collect();
     let x = track(t, start[0], &kx);
     let y = track(t, start[1], &ky);
-    let k: Vec<(f64, f32, Spring)> = taps.iter().flat_map(|&tp| [(tp, 1.0, sp(0.12, 0.0)), (tp + 0.14, 0.0, sp(0.3, 0.4))]).collect();
+    let k: Vec<(f64, f32, Spring)> = taps
+        .iter()
+        .flat_map(|&tp| [(tp, 1.0, sp(0.12, 0.0)), (tp + 0.14, 0.0, sp(0.3, 0.4))])
+        .collect();
     pointer(x, y, track(t, 0.0, &k))
 }
 
 /// Press depth (0 → 1 → 0) for a tap at `tp`: down fast, back on a bouncy spring.
 pub fn pressed(t: f64, tp: f64) -> f32 {
-    track(t, 0.0, &[(tp, 1.0, sp(0.12, 0.0)), (tp + 0.14, 0.0, sp(0.35, 0.45))])
+    track(
+        t,
+        0.0,
+        &[(tp, 1.0, sp(0.12, 0.0)), (tp + 0.14, 0.0, sp(0.35, 0.45))],
+    )
 }
 
 pub fn avatar(letter: &str, color: u32, size: f32) -> El {

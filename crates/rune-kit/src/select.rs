@@ -188,7 +188,8 @@ impl Select {
             let mut item = row()
                 .key(format!("option{i}"))
                 .role("option")
-                .focusable(true).focus_selected(selected)
+                .focusable(true)
+                .focus_selected(selected)
                 .label(o.clone())
                 .position_in_set(i + 1, count)
                 .h(28.0)
@@ -199,7 +200,14 @@ impl Select {
                 .radius(4.0)
                 .mt(if after_item { 2.0 } else { 0.0 })
                 .child(
-                    text(o.clone()).key("label").font(k.ty.ui_compact).color(c.text_base).grow(1.0).shrink().truncate().a11y_hidden(),
+                    text(o.clone())
+                        .key("label")
+                        .font(k.ty.ui_compact)
+                        .color(c.text_base)
+                        .grow(1.0)
+                        .shrink()
+                        .truncate()
+                        .a11y_hidden(),
                 )
                 .child(el().key("indicator").size(16.0, 16.0).center().a11y_hidden().child(
                     icon(k.glyph.check_small, 14.0).color(c.icon_base).opacity(if selected { 1.0 } else { 0.0 }),
@@ -229,8 +237,17 @@ impl Select {
                 .max_w(368.0)
                 .radius(6.0)
                 .fill(c.layer_01)
-                .child(col().key("listbox").role("listbox").label(self.name.clone().unwrap_or_else(|| self.placeholder.clone()))
-                    .focus_group().max_h(LISTBOX_MAX_HEIGHT).min_h(0.0).shrink().child(fit_scroll_bar(k, &self.key, list))),
+                .child(
+                    col()
+                        .key("listbox")
+                        .role("listbox")
+                        .label(self.name.clone().unwrap_or_else(|| self.placeholder.clone()))
+                        .focus_group()
+                        .max_h(LISTBOX_MAX_HEIGHT)
+                        .min_h(0.0)
+                        .shrink()
+                        .child(fit_scroll_bar(k, &self.key, list)),
+                ),
             &k.elevation.floating,
         );
         if let Some(modal) = modal {
@@ -254,8 +271,13 @@ impl Select {
         // Named for what it chooses, its value the chosen option; the text and chevron inside
         // show the same.
         let name = self.name.clone().unwrap_or_else(|| self.placeholder.clone());
-        let mut trigger = row().key(anchor_key.clone()).role("combobox").label(name)
-            .expanded(self.open).disabled(disabled).center_y()
+        let mut trigger = row()
+            .key(anchor_key.clone())
+            .role("combobox")
+            .label(name)
+            .expanded(self.open)
+            .disabled(disabled)
+            .center_y()
             .focusable(!disabled);
         if let Some(v) = &self.current {
             trigger = trigger.a11y_value(v.clone());
@@ -302,7 +324,10 @@ impl Select {
                             .a11y_hidden(),
                     )
                     .child(
-                        el().size(20.0, 20.0).center().child(icon(chevron, 16.0).key("chevron").color(c.icon_muted)).a11y_hidden(),
+                        el().size(20.0, 20.0)
+                            .center()
+                            .child(icon(chevron, 16.0).key("chevron").color(c.icon_muted))
+                            .a11y_hidden(),
                     );
                 // select.css:34-35, 100-108: a 1 point ring just inside the box, in place of the
                 // shadow, while focus is in the closed field (`:focus-within`) or it's invalid.
@@ -313,7 +338,11 @@ impl Select {
                 } else {
                     t = shadows(k, t, k.elevation.input());
                     // select.css:73,100-103: focus inside drops the shadow and the hover tint.
-                    t = if self.open { t.no_focus_ring() } else { t.focus_within_ring(1.0, -1.0, c.border_focus).focus_within_flat() };
+                    t = if self.open {
+                        t.no_focus_ring()
+                    } else {
+                        t.focus_within_ring(1.0, -1.0, c.border_focus).focus_within_flat()
+                    };
                     if self.state == State::Rest && !self.open {
                         t = t.hover(c.hover);
                     }

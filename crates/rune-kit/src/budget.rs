@@ -107,7 +107,6 @@ impl<K: Hash + Eq, V> Budget<K, V> {
         self.map.retain(|_, s| kept(s) || s.used > last);
         self.bytes = bytes;
     }
-
 }
 
 #[cfg(test)]
@@ -116,7 +115,8 @@ mod tests {
 
     #[test]
     fn what_the_last_two_commits_used_outlives_the_budget() {
-        let mut rt = rune::Runtime::new((), |_: &(), _: &mut rune::Cx<()>| rune::el(), (10.0, 10.0), rune::Env::default());
+        let mut rt =
+            rune::Runtime::new((), |_: &(), _: &mut rune::Cx<()>| rune::el(), (10.0, 10.0), rune::Env::default());
         let mut commit = || {
             rt.invalidate();
             rt.frame(0.01);

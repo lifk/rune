@@ -19,7 +19,12 @@ thread_local! {
 }
 
 unsafe extern "C" {
-    fn class_addMethod(class: *const AnyClass, selector: Sel, implementation: *const c_void, types: *const c_char) -> Bool;
+    fn class_addMethod(
+        class: *const AnyClass,
+        selector: Sel,
+        implementation: *const c_void,
+        types: *const c_char,
+    ) -> Bool;
 }
 
 /// `NSTerminateNow`.
@@ -32,7 +37,9 @@ extern "C" fn should_terminate(_: *mut AnyObject, _: Sel, _: *mut AnyObject) -> 
 }
 
 pub(super) fn install() {
-    let Some(mtm) = MainThreadMarker::new() else { return };
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
     let app = NSApplication::sharedApplication(mtm);
     let selector = sel!(applicationShouldTerminate:);
     // SAFETY: AppKit calls and runtime changes on the main thread. The added function has the
@@ -40,7 +47,9 @@ pub(super) fn install() {
     // adding a method the class lacks leaves its other methods and instances alone.
     unsafe {
         let delegate: *mut AnyObject = msg_send![&app, delegate];
-        let Some(delegate) = delegate.as_ref() else { return };
+        let Some(delegate) = delegate.as_ref() else {
+            return;
+        };
         let class = delegate.class();
         if HOOKED.with(|hooked| std::ptr::eq(hooked.get(), class)) {
             return;

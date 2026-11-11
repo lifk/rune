@@ -93,7 +93,15 @@ fn pages(groups: &[Group]) -> Vec<&'static str> {
 /// Knob `i` of `g` matches every word of `q` across its page, group, title and description.
 fn matches(g: &Group, i: usize, words: &[String]) -> bool {
     let d = &g.knobs[i];
-    let hay = format!("{} {} {} {} {}", g.under, g.name, d.title(), d.name, d.describe()).to_lowercase();
+    let hay = format!(
+        "{} {} {} {} {}",
+        g.under,
+        g.name,
+        d.title(),
+        d.name,
+        d.describe()
+    )
+    .to_lowercase();
     words.iter().all(|w| hay.contains(w.as_str()))
 }
 
@@ -103,51 +111,110 @@ pub(crate) fn plan(k: &Knobs, groups: &[Group], seen: BTreeSet<usize>) -> Plan {
     // `lead`: open by default while on screen; otherwise folded until it's opened.
     let sub = |g: usize, full: bool, lead: bool| {
         let s = seen.contains(&g);
-        Sub { g, open: !k.is_folded(groups[g].name, !(s && lead)), seen: s, knobs: (0..groups[g].knobs.len()).collect(), full }
+        Sub {
+            g,
+            open: !k.is_folded(groups[g].name, !(s && lead)),
+            seen: s,
+            knobs: (0..groups[g].knobs.len()).collect(),
+            full,
+        }
     };
     let mut plan = Plan::default();
     if !words.is_empty() {
         let subs = (0..groups.len())
             .filter_map(|g| {
-                let knobs: Vec<usize> = (0..groups[g].knobs.len()).filter(|&i| matches(&groups[g], i, &words)).collect();
-                (!knobs.is_empty()).then(|| Sub { open: true, knobs, ..sub(g, true, true) })
+                let knobs: Vec<usize> = (0..groups[g].knobs.len())
+                    .filter(|&i| matches(&groups[g], i, &words))
+                    .collect();
+                (!knobs.is_empty()).then(|| Sub {
+                    open: true,
+                    knobs,
+                    ..sub(g, true, true)
+                })
             })
             .collect();
-        plan.sections.push(Section { head: Head::Bare, open: true, seen: false, subs });
+        plan.sections.push(Section {
+            head: Head::Bare,
+            open: true,
+            seen: false,
+            subs,
+        });
         plan.seen = seen;
         return plan;
     }
-    let of = |page: &str| (0..groups.len()).filter(|&g| groups[g].page() == page).collect::<Vec<_>>();
+    let of = |page: &str| {
+        (0..groups.len())
+            .filter(|&g| groups[g].page() == page)
+            .collect::<Vec<_>>()
+    };
     match layout(k) {
         Layout::Tree => {
             for p in pages(groups) {
                 let gs = of(p);
                 let lit = gs.iter().any(|g| seen.contains(g));
                 if gs.len() == 1 && groups[gs[0]].under.is_empty() {
-                    plan.sections.push(Section { head: Head::Bare, open: true, seen: lit, subs: vec![sub(gs[0], false, false)] });
+                    plan.sections.push(Section {
+                        head: Head::Bare,
+                        open: true,
+                        seen: lit,
+                        subs: vec![sub(gs[0], false, false)],
+                    });
                 } else {
                     // A page opens with the group left open in it.
-                    let holds = gs.iter().any(|&g| k.group.as_deref() == Some(groups[g].name) && k.unfolded.contains(groups[g].name));
-                    plan.sections.push(Section { head: Head::Page(p), open: !k.is_folded(p, !holds), seen: lit, subs: gs.iter().map(|&g| sub(g, false, false)).collect() });
+                    let holds = gs.iter().any(|&g| {
+                        k.group.as_deref() == Some(groups[g].name)
+                            && k.unfolded.contains(groups[g].name)
+                    });
+                    plan.sections.push(Section {
+                        head: Head::Page(p),
+                        open: !k.is_folded(p, !holds),
+                        seen: lit,
+                        subs: gs.iter().map(|&g| sub(g, false, false)).collect(),
+                    });
                 }
             }
         }
         Layout::OnScreen => {
-            let (on, off): (Vec<usize>, Vec<usize>) = (0..groups.len()).partition(|g| seen.contains(g));
+            let (on, off): (Vec<usize>, Vec<usize>) =
+                (0..groups.len()).partition(|g| seen.contains(g));
             if !on.is_empty() {
-                plan.sections.push(Section { head: Head::Caption(SEEN), open: true, seen: true, subs: on.into_iter().map(|g| sub(g, true, true)).collect() });
+                plan.sections.push(Section {
+                    head: Head::Caption(SEEN),
+                    open: true,
+                    seen: true,
+                    subs: on.into_iter().map(|g| sub(g, true, true)).collect(),
+                });
             }
             if !off.is_empty() {
-                plan.sections.push(Section { head: Head::Caption(REST), open: true, seen: false, subs: off.into_iter().map(|g| sub(g, true, true)).collect() });
+                plan.sections.push(Section {
+                    head: Head::Caption(REST),
+                    open: true,
+                    seen: false,
+                    subs: off.into_iter().map(|g| sub(g, true, true)).collect(),
+                });
             }
         }
         Layout::Tabs => {
-            plan.tabs = pages(groups).into_iter().map(|p| (p, of(p).iter().any(|g| seen.contains(g)))).collect();
-            let picked = k.tab.as_deref().and_then(|t| plan.tabs.iter().find(|(p, _)| *p == t));
-            let tab = picked.or(plan.tabs.iter().find(|(_, on)| *on)).or(plan.tabs.first()).map(|(p, _)| *p);
+            plan.tabs = pages(groups)
+                .into_iter()
+                .map(|p| (p, of(p).iter().any(|g| seen.contains(g))))
+                .collect();
+            let picked = k
+                .tab
+                .as_deref()
+                .and_then(|t| plan.tabs.iter().find(|(p, _)| *p == t));
+            let tab = picked
+                .or(plan.tabs.iter().find(|(_, on)| *on))
+                .or(plan.tabs.first())
+                .map(|(p, _)| *p);
             plan.tab = tab;
             if let Some(t) = tab {
-                plan.sections.push(Section { head: Head::Bare, open: true, seen: true, subs: of(t).into_iter().map(|g| sub(g, false, true)).collect() });
+                plan.sections.push(Section {
+                    head: Head::Bare,
+                    open: true,
+                    seen: true,
+                    subs: of(t).into_iter().map(|g| sub(g, false, true)).collect(),
+                });
             }
         }
     }
@@ -234,8 +301,19 @@ impl Knobs {
                     }
                     Some(n @ (Node::Group(_) | Node::Page(_))) => {
                         let (name, open) = match n {
-                            Node::Group(g) => (groups[g].name, plan.sections.iter().flat_map(|s| &s.subs).any(|s| s.g == g && s.open)),
-                            Node::Page(p) => (p, plan.sections.iter().any(|s| s.head == Head::Page(p) && s.open)),
+                            Node::Group(g) => (
+                                groups[g].name,
+                                plan.sections
+                                    .iter()
+                                    .flat_map(|s| &s.subs)
+                                    .any(|s| s.g == g && s.open),
+                            ),
+                            Node::Page(p) => (
+                                p,
+                                plan.sections
+                                    .iter()
+                                    .any(|s| s.head == Head::Page(p) && s.open),
+                            ),
                             Node::Knob(..) => unreachable!(),
                         };
                         match (right, open) {
@@ -271,12 +349,19 @@ impl Knobs {
             Key::Enter => match self.at.filter(|_| here.is_some()) {
                 Some(Node::Group(g)) => {
                     let name = groups[g].name;
-                    let folded = !plan.sections.iter().flat_map(|s| &s.subs).any(|s| s.g == g && s.open);
+                    let folded = !plan
+                        .sections
+                        .iter()
+                        .flat_map(|s| &s.subs)
+                        .any(|s| s.g == g && s.open);
                     self.set_folded(name, !folded);
                     Did::Fold
                 }
                 Some(Node::Page(p)) => {
-                    let folded = !plan.sections.iter().any(|s| s.head == Head::Page(p) && s.open);
+                    let folded = !plan
+                        .sections
+                        .iter()
+                        .any(|s| s.head == Head::Page(p) && s.open);
                     self.set_folded(p, !folded);
                     Did::Fold
                 }
@@ -308,9 +393,16 @@ impl Knobs {
                 }
             }
             Key::Text(t) if (t == "[" || t == "]") && !plan.tabs.is_empty() => {
-                let i = plan.tab.and_then(|c| plan.tabs.iter().position(|(p, _)| *p == c)).unwrap_or(0) as i32;
+                let i = plan
+                    .tab
+                    .and_then(|c| plan.tabs.iter().position(|(p, _)| *p == c))
+                    .unwrap_or(0) as i32;
                 let n = plan.tabs.len() as i32;
-                self.tab = Some(plan.tabs[(i + if t == "[" { -1 } else { 1 }).rem_euclid(n) as usize].0.to_owned());
+                self.tab = Some(
+                    plan.tabs[(i + if t == "[" { -1 } else { 1 }).rem_euclid(n) as usize]
+                        .0
+                        .to_owned(),
+                );
                 self.at = None;
                 Did::Now
             }
@@ -368,9 +460,15 @@ impl Knobs {
                 Did::Now
             }
             Key::Tab => {
-                let heads: Vec<usize> = (0..rows.len()).filter(|&i| !matches!(rows[i], Node::Knob(..))).collect();
+                let heads: Vec<usize> = (0..rows.len())
+                    .filter(|&i| !matches!(rows[i], Node::Knob(..)))
+                    .collect();
                 let at = here.unwrap_or(0);
-                let next = if ev.mods.shift { heads.iter().rev().find(|&&i| i < at).or(heads.last()) } else { heads.iter().find(|&&i| i > at).or(heads.first()) };
+                let next = if ev.mods.shift {
+                    heads.iter().rev().find(|&&i| i < at).or(heads.last())
+                } else {
+                    heads.iter().find(|&&i| i > at).or(heads.first())
+                };
                 if let Some(&i) = next {
                     self.set_at(Some(rows[i]), groups);
                 }

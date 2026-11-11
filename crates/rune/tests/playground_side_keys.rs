@@ -37,32 +37,63 @@ fn runtime() -> Runtime<Real> {
     let playground = Playground::<Real>::new()
         .story(
             Story::new("Dials/Dial", Dial::default, dial)
-                .side_keys(|d, active, _| text(format!("{} {}", if active { "active" } else { "idle" }, d.value)).key("dial-side"), dial_key)
+                .side_keys(
+                    |d, active, _| {
+                        text(format!(
+                            "{} {}",
+                            if active { "active" } else { "idle" },
+                            d.value
+                        ))
+                        .key("dial-side")
+                    },
+                    dial_key,
+                )
                 .trigger('f', "Fail", |d, _| d.failed = true),
         )
-        .story(Story::new("Dials/Plain", Dial::default, dial).side(|d, _| text(format!("plain {}", d.value)).key("plain-side")))
+        .story(
+            Story::new("Dials/Plain", Dial::default, dial)
+                .side(|d, _| text(format!("plain {}", d.value)).key("plain-side")),
+        )
         .side_keys(
             "Meter/High",
-            |s, active, _| text(format!("{} {}", if active { "active" } else { "idle" }, s.level)).key("meter-side"),
+            |s, active, _| {
+                text(format!(
+                    "{} {}",
+                    if active { "active" } else { "idle" },
+                    s.level
+                ))
+                .key("meter-side")
+            },
             |s, ev, _| (ev.key == Key::Up).then(|| s.level += 5).is_some(),
         );
     let mut spec = AppSpec::new("dials", (800.0, 500.0), Real::default, real);
     spec.scenes = SCENES;
-    App::new(spec).playground(playground).headless_runtime((800.0, 500.0), Env::new(false, 1.0))
+    App::new(spec)
+        .playground(playground)
+        .headless_runtime((800.0, 500.0), Env::new(false, 1.0))
 }
 
 fn press(rt: &mut Runtime<Real>, key: Key) {
-    rt.key(KeyEvent { key, mods: Mods::default() });
+    rt.key(KeyEvent {
+        key,
+        mods: Mods::default(),
+    });
     rt.frame(1.0 / 60.0);
 }
 
 /// What the side column's element keyed `key` says.
 fn says(rt: &Runtime<Real>, key: &str) -> String {
-    rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key)).and_then(|e| e.text).unwrap_or_default()
+    rt.elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some(key))
+        .and_then(|e| e.text)
+        .unwrap_or_default()
 }
 
 fn dial_state(rt: &Runtime<Real>) -> (i32, bool) {
-    rt.playground_state::<Dial>().map(|d| (d.value, d.failed)).expect("a dial story's state")
+    rt.playground_state::<Dial>()
+        .map(|d| (d.value, d.failed))
+        .expect("a dial story's state")
 }
 
 #[test]
@@ -71,10 +102,17 @@ fn the_side_view_knows_when_the_keyboard_is_on_it() {
     rt.open_playground("Dials/Dial", None);
     assert_eq!(says(&rt, "dial-side"), "idle 0");
     press(&mut rt, Key::Right);
-    assert_eq!(says(&rt, "dial-side"), "active 0", "→ puts the keyboard on it");
+    assert_eq!(
+        says(&rt, "dial-side"),
+        "active 0",
+        "→ puts the keyboard on it"
+    );
     press(&mut rt, Key::Escape);
     assert_eq!(says(&rt, "dial-side"), "idle 0", "Esc leaves");
-    assert!(rt.playground_state::<Dial>().is_some(), "and the playground stays open");
+    assert!(
+        rt.playground_state::<Dial>().is_some(),
+        "and the playground stays open"
+    );
     press(&mut rt, Key::Tab);
     assert_eq!(says(&rt, "dial-side"), "active 0", "so does Tab");
     press(&mut rt, Key::Tab);
@@ -89,13 +127,21 @@ fn its_hook_gets_keys_first_and_left_no_longer_leaves() {
     press(&mut rt, Key::Up);
     press(&mut rt, Key::Up);
     press(&mut rt, Key::Down);
-    assert_eq!(dial_state(&rt), (1, false), "↑↓ are the hook's, not the side column's");
+    assert_eq!(
+        dial_state(&rt),
+        (1, false),
+        "↑↓ are the hook's, not the side column's"
+    );
     press(&mut rt, Key::Left);
     assert_eq!(says(&rt, "dial-side"), "active 1", "← stays");
     press(&mut rt, Key::Text("f".into()));
     // The step it queued runs on the frame after.
     rt.frame(1.0 / 60.0);
-    assert_eq!(dial_state(&rt), (1, true), "a key it leaves runs the trigger it's on");
+    assert_eq!(
+        dial_state(&rt),
+        (1, true),
+        "a key it leaves runs the trigger it's on"
+    );
 }
 
 #[test]
@@ -103,8 +149,16 @@ fn a_side_without_keys_keeps_the_old_keys() {
     let mut rt = runtime();
     rt.open_playground("Dials/Plain", None);
     press(&mut rt, Key::Right);
-    let focused = |rt: &Runtime<Real>| rt.elements().into_iter().find(|e| e.focused).and_then(|e| e.key);
-    assert!(focused(&rt).is_some_and(|k| k.starts_with("playground-trigger")), "→ goes to its first control");
+    let focused = |rt: &Runtime<Real>| {
+        rt.elements()
+            .into_iter()
+            .find(|e| e.focused)
+            .and_then(|e| e.key)
+    };
+    assert!(
+        focused(&rt).is_some_and(|k| k.starts_with("playground-trigger")),
+        "→ goes to its first control"
+    );
     press(&mut rt, Key::Left);
     assert_eq!(focused(&rt), None, "← leaves");
 }

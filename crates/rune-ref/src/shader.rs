@@ -44,7 +44,11 @@ fn ramp(d: f32, fade: f32) -> f32 {
         return clamp(d + 0.5);
     }
     let x = clamp(d / fade.abs());
-    if fade < 0.0 { x } else { x * x * (3.0 - 2.0 * x) }
+    if fade < 0.0 {
+        x
+    } else {
+        x * x * (3.0 - 2.0 * x)
+    }
 }
 fn erf(x: f32) -> f32 {
     let s = if x > 0.0 {
@@ -101,21 +105,41 @@ fn ring_arc(p: [f32; 2], size: [f32; 2], radii: [f32; 4], bw: f32) -> (f32, f32)
     let s = if p[0] > size[0] * 0.5 {
         if p[1] > size[1] * 0.5 {
             let v = [p[0] - (size[0] - e[2]), p[1] - (size[1] - e[2])];
-            if v[0] > 0.0 && v[1] > 0.0 { s_br + atan2f(v[1], v[0]) * rc[2] }
-            else if size[0] - p[0] < size[1] - p[1] { right } else { bottom }
+            if v[0] > 0.0 && v[1] > 0.0 {
+                s_br + atan2f(v[1], v[0]) * rc[2]
+            } else if size[0] - p[0] < size[1] - p[1] {
+                right
+            } else {
+                bottom
+            }
         } else {
             let v = [p[0] - (size[0] - e[1]), p[1] - e[1]];
-            if v[0] > 0.0 && v[1] < 0.0 { s_tr + atan2f(v[0], -v[1]) * rc[1] }
-            else if size[0] - p[0] < p[1] { right } else { top }
+            if v[0] > 0.0 && v[1] < 0.0 {
+                s_tr + atan2f(v[0], -v[1]) * rc[1]
+            } else if size[0] - p[0] < p[1] {
+                right
+            } else {
+                top
+            }
         }
     } else if p[1] > size[1] * 0.5 {
         let v = [p[0] - e[3], p[1] - (size[1] - e[3])];
-        if v[0] < 0.0 && v[1] > 0.0 { s_bl + atan2f(-v[0], v[1]) * rc[3] }
-        else if p[0] < size[1] - p[1] { left } else { bottom }
+        if v[0] < 0.0 && v[1] > 0.0 {
+            s_bl + atan2f(-v[0], v[1]) * rc[3]
+        } else if p[0] < size[1] - p[1] {
+            left
+        } else {
+            bottom
+        }
     } else {
         let v = [p[0] - e[0], p[1] - e[0]];
-        if v[0] < 0.0 && v[1] < 0.0 { s_tl + atan2f(-v[1], -v[0]) * rc[0] }
-        else if p[0] < p[1] { left } else { top }
+        if v[0] < 0.0 && v[1] < 0.0 {
+            s_tl + atan2f(-v[1], -v[0]) * rc[0]
+        } else if p[0] < p[1] {
+            left
+        } else {
+            top
+        }
     };
     (s, s_tl + arc[0])
 }
@@ -131,11 +155,24 @@ fn dash_cov(s: f32, total: f32, d: [f32; 3]) -> f32 {
 
 /// A border over its own background, as CSS paints one (shader.wgsl `border_over`).
 #[allow(clippy::too_many_arguments)]
-fn border_over(fill: [f32; 4], edge: [f32; 4], d: f32, inner_d: f32, soft: f32, bw: f32, opacity: f32, shrink: bool) -> [f32; 4] {
+fn border_over(
+    fill: [f32; 4],
+    edge: [f32; 4],
+    d: f32,
+    inner_d: f32,
+    soft: f32,
+    bw: f32,
+    opacity: f32,
+    shrink: bool,
+) -> [f32; 4] {
     let cov = clamp(0.5 - d / (soft * 2.0));
     let ring = (cov - clamp(0.5 - inner_d / (soft * 2.0))).max(0.0);
     let hide = clamp(edge[3] / opacity.clamp(1e-6, 1.0));
-    let pull = if shrink && hide > 0.999 { bw * 0.5 } else { 0.0 };
+    let pull = if shrink && hide > 0.999 {
+        bw * 0.5
+    } else {
+        0.0
+    };
     let under = clamp(0.5 - (d + pull) / (soft * 2.0));
     std::array::from_fn(|c| edge[c] * ring + fill[c] * (under * (1.0 - hide * ring)))
 }
@@ -170,7 +207,10 @@ pub(crate) fn fragment(i: &Primitive, atlas: &Atlas, screen: [f32; 2]) -> [f32; 
         let (s, c) = (sinf(i.params[0]), cosf(i.params[0]));
         let center = [i.rect[0] + i.rect[2] * 0.5, i.rect[1] + i.rect[3] * 0.5];
         let d = [screen[0] - center[0], screen[1] - center[1]];
-        [center[0] + (c * d[0] + s * d[1]), center[1] + (c * d[1] - s * d[0])]
+        [
+            center[0] + (c * d[0] + s * d[1]),
+            center[1] + (c * d[1] - s * d[0]),
+        ]
     } else {
         screen
     };
@@ -202,30 +242,65 @@ pub(crate) fn fragment(i: &Primitive, atlas: &Atlas, screen: [f32; 2]) -> [f32; 
                 let w = i.uv;
                 let sides = w[2] >= 0.0 && w != [0.0; 4];
                 let inner_d = if sides {
-                    let ih = [(h[0] - (w[1] + w[3]) * 0.5).max(0.0), (h[1] - (w[0] + w[2]) * 0.5).max(0.0)];
+                    let ih = [
+                        (h[0] - (w[1] + w[3]) * 0.5).max(0.0),
+                        (h[1] - (w[0] + w[2]) * 0.5).max(0.0),
+                    ];
                     let at = [q[0] - (w[3] - w[1]) * 0.5, q[1] - (w[0] - w[2]) * 0.5];
-                    let cut = [w[0].max(w[3]), w[0].max(w[1]), w[2].max(w[1]), w[2].max(w[3])];
-                    sd(at, ih, std::array::from_fn(|n| (i.radii[n].abs() - cut[n]).max(0.0).copysign(i.radii[n])))
+                    let cut = [
+                        w[0].max(w[3]),
+                        w[0].max(w[1]),
+                        w[2].max(w[1]),
+                        w[2].max(w[3]),
+                    ];
+                    sd(
+                        at,
+                        ih,
+                        std::array::from_fn(|n| {
+                            (i.radii[n].abs() - cut[n]).max(0.0).copysign(i.radii[n])
+                        }),
+                    )
                 } else {
                     d + bw
                 };
-                col = border_over(i.fill, i.border, d, inner_d, soft, bw, i.params[3], !sides && i.radii != [0.0; 4]);
+                col = border_over(
+                    i.fill,
+                    i.border,
+                    d,
+                    inner_d,
+                    soft,
+                    bw,
+                    i.params[3],
+                    !sides && i.radii != [0.0; 4],
+                );
             } else {
                 col = i.fill.map(|c| c * clamp(0.5 - d / (soft * 2.0)));
             }
         }
         1 => {
-            let mut cov = shadow(q, h, i.params[2].max(0.01), i.radii[0].abs().min(h[0].min(h[1])));
+            let mut cov = shadow(
+                q,
+                h,
+                i.params[2].max(0.01),
+                i.radii[0].abs().min(h[0].min(h[1])),
+            );
             if i.uv[2] > 0.0 {
                 let hole = [i.uv[2] * 0.5, i.uv[3] * 0.5];
-                let at = [p[0] - (i.rect[0] + i.uv[0] + hole[0]), p[1] - (i.rect[1] + i.uv[1] + hole[1])];
+                let at = [
+                    p[0] - (i.rect[0] + i.uv[0] + hole[0]),
+                    p[1] - (i.rect[1] + i.uv[1] + hole[1]),
+                ];
                 cov *= clamp(0.5 + sd(at, hole, [i.radii[3]; 4]));
             }
             col = i.fill.map(|c| c * cov);
         }
         2 => {
             let cov = if i.uv[2] > 0.0 || rotated {
-                let span = if i.uv[2] > 0.0 { [i.uv[2], i.uv[3]] } else { [i.rect[2], i.rect[3]] };
+                let span = if i.uv[2] > 0.0 {
+                    [i.uv[2], i.uv[3]]
+                } else {
+                    [i.rect[2], i.rect[3]]
+                };
                 let px = (p[0] - i.rect[0]) * span[0] / i.rect[2] - 0.5;
                 let py = (p[1] - i.rect[1]) * span[1] / i.rect[3] - 0.5;
                 let x = (i.uv[0] + floorf(px)) as i32;
@@ -251,7 +326,11 @@ pub(crate) fn fragment(i: &Primitive, atlas: &Atlas, screen: [f32; 2]) -> [f32; 
             let ih = h.map(|v| (v - spread).max(0.0));
             let q = [q[0] - i.uv[0], q[1] - i.uv[1]];
             let lit = if i.params[2] < 0.3 {
-                box_cov(q, ih, i.radii.map(|r| (r.abs() - spread).max(0.0).copysign(r)))
+                box_cov(
+                    q,
+                    ih,
+                    i.radii.map(|r| (r.abs() - spread).max(0.0).copysign(r)),
+                )
             } else {
                 shadow(
                     q,
@@ -269,7 +348,16 @@ pub(crate) fn fragment(i: &Primitive, atlas: &Atlas, screen: [f32; 2]) -> [f32; 
             let t = clamp((p[1] - i.rect[1]) / i.rect[3].max(1.0));
             col = if bw > 0.0 {
                 let edge = std::array::from_fn(|c| mix(i.border[c], i.uv[c], t));
-                border_over(i.fill, edge, d, d + bw, soft, bw, i.params[3], i.radii != [0.0; 4])
+                border_over(
+                    i.fill,
+                    edge,
+                    d,
+                    d + bw,
+                    soft,
+                    bw,
+                    i.params[3],
+                    i.radii != [0.0; 4],
+                )
             } else {
                 let cov = clamp(0.5 - d / (soft * 2.0));
                 std::array::from_fn(|c| mix(i.fill[c], i.uv[c], t) * cov)
@@ -278,7 +366,8 @@ pub(crate) fn fragment(i: &Primitive, atlas: &Atlas, screen: [f32; 2]) -> [f32; 
         10 => {
             let d = sd(q, h, i.radii);
             let soft = i.params[2].max(0.5);
-            let ring = clamp(0.5 - d / (soft * 2.0)) - clamp(0.5 - (d + i.params[0]) / (soft * 2.0));
+            let ring =
+                clamp(0.5 - d / (soft * 2.0)) - clamp(0.5 - (d + i.params[0]) / (soft * 2.0));
             let t = clamp((p[1] - i.rect[1]) / i.rect[3].max(1.0));
             let local = [p[0] - i.rect[0], p[1] - i.rect[1]];
             let (s, total) = ring_arc(local, [i.rect[2], i.rect[3]], i.radii, i.params[0]);
@@ -318,17 +407,29 @@ pub(crate) fn fragment(i: &Primitive, atlas: &Atlas, screen: [f32; 2]) -> [f32; 
 }
 
 pub(crate) fn layer_clip_coverage(i: &Primitive, screen: [f32; 2]) -> f32 {
-    let clip = clip_coverage(i, screen) * if i.params[3] == 0.0 { hole_alpha(screen, i.radii) } else { 1.0 };
-    if i.border == [0.0; 4] { return clip; }
+    let clip = clip_coverage(i, screen)
+        * if i.params[3] == 0.0 {
+            hole_alpha(screen, i.radii)
+        } else {
+            1.0
+        };
+    if i.border == [0.0; 4] {
+        return clip;
+    }
     let half = [(i.clip[2] - i.clip[0]) * 0.5, (i.clip[3] - i.clip[1]) * 0.5];
-    let p = [screen[0] - i.clip[0] - half[0], screen[1] - i.clip[1] - half[1]];
+    let p = [
+        screen[0] - i.clip[0] - half[0],
+        screen[1] - i.clip[1] - half[1],
+    ];
     clip * clamp(0.5 - sd(p, half, i.border))
 }
 
 /// A layer's round hole (`El::cutout_circle`): centre `h[0..2]`, clear within `h[2]`, whole from
 /// `h[3]`, linear between and at least a pixel wide; none when `h[3]` is zero.
 fn hole_alpha(p: [f32; 2], h: [f32; 4]) -> f32 {
-    if h[3] <= 0.0 { return 1.0; }
+    if h[3] <= 0.0 {
+        return 1.0;
+    }
     let (dx, dy) = (p[0] - h[0], p[1] - h[1]);
     clamp((sqrtf(dx * dx + dy * dy) - (h[2] + h[3]) * 0.5) / (h[3] - h[2]).max(1.0) + 0.5)
 }
@@ -336,17 +437,36 @@ fn hole_alpha(p: [f32; 2], h: [f32; 4]) -> f32 {
 fn clip_coverage(i: &Primitive, screen: [f32; 2]) -> f32 {
     let origin = i.fade_origin.unwrap_or(i.clip);
     let p = screen;
-    let hard = [p[0] - i.clip[0], p[1] - i.clip[1], i.clip[2] - p[0], i.clip[3] - p[1]];
-    (0..4).map(|edge| {
-        let width = half::f16::from_f32(i.fade[edge].clamp(-65504.0, 65504.0)).to_f32();
-        let distance = if edge < 2 { i.clip[edge] - origin[edge] } else { origin[edge] - i.clip[edge] };
-        let w = i.fade[edge].abs();
-        let offset = if w > 0.0 { (distance / w).clamp(0.0, 1.0) } else { 0.0 };
-        let offset = libm::floorf(offset * 255.0 + 0.5) / 255.0;
-        if offset >= 1.0 { ramp(hard[edge], 0.0) }
-        else if offset > 0.0 { ramp(hard[edge], 0.0).min(ramp(hard[edge] + offset * width.abs(), width)) }
-        else { ramp(hard[edge], width) }
-    }).product()
+    let hard = [
+        p[0] - i.clip[0],
+        p[1] - i.clip[1],
+        i.clip[2] - p[0],
+        i.clip[3] - p[1],
+    ];
+    (0..4)
+        .map(|edge| {
+            let width = half::f16::from_f32(i.fade[edge].clamp(-65504.0, 65504.0)).to_f32();
+            let distance = if edge < 2 {
+                i.clip[edge] - origin[edge]
+            } else {
+                origin[edge] - i.clip[edge]
+            };
+            let w = i.fade[edge].abs();
+            let offset = if w > 0.0 {
+                (distance / w).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let offset = libm::floorf(offset * 255.0 + 0.5) / 255.0;
+            if offset >= 1.0 {
+                ramp(hard[edge], 0.0)
+            } else if offset > 0.0 {
+                ramp(hard[edge], 0.0).min(ramp(hard[edge] + offset * width.abs(), width))
+            } else {
+                ramp(hard[edge], width)
+            }
+        })
+        .product()
 }
 
 #[cfg(test)]
@@ -355,11 +475,29 @@ mod tests {
 
     #[test]
     fn a_negative_fade_ramps_linearly_and_a_positive_one_eases() {
-        for (d, linear) in [(0.0, 0.0), (4.0, 0.25), (8.0, 0.5), (12.0, 0.75), (16.0, 1.0), (20.0, 1.0)] {
-            assert!((ramp(d, -16.0) - linear).abs() < 1e-6, "linear at {d}: {}", ramp(d, -16.0));
+        for (d, linear) in [
+            (0.0, 0.0),
+            (4.0, 0.25),
+            (8.0, 0.5),
+            (12.0, 0.75),
+            (16.0, 1.0),
+            (20.0, 1.0),
+        ] {
+            assert!(
+                (ramp(d, -16.0) - linear).abs() < 1e-6,
+                "linear at {d}: {}",
+                ramp(d, -16.0)
+            );
         }
-        assert!((ramp(4.0, 16.0) - 0.15625).abs() < 1e-6, "smoothstep a quarter in");
-        assert_eq!(ramp(8.0, 16.0), ramp(8.0, -16.0), "both are half way at the middle");
+        assert!(
+            (ramp(4.0, 16.0) - 0.15625).abs() < 1e-6,
+            "smoothstep a quarter in"
+        );
+        assert_eq!(
+            ramp(8.0, 16.0),
+            ramp(8.0, -16.0),
+            "both are half way at the middle"
+        );
     }
 
     // Walking the ring's centre line clockwise, arc length grows by the distance walked and
@@ -389,7 +527,11 @@ mod tests {
                 for _ in 0..60 {
                     let mid = (lo + hi) * 0.5;
                     let q = [dir[0] * mid, dir[1] * mid];
-                    if sd(q, [size[0] * 0.5, size[1] * 0.5], radii) + h < 0.0 { lo = mid } else { hi = mid }
+                    if sd(q, [size[0] * 0.5, size[1] * 0.5], radii) + h < 0.0 {
+                        lo = mid
+                    } else {
+                        hi = mid
+                    }
                 }
                 points.push([size[0] * 0.5 + dir[0] * lo, size[1] * 0.5 + dir[1] * lo]);
             }
@@ -399,8 +541,12 @@ mod tests {
             for n in 1..=steps {
                 let (a, b) = (points[n - 1], points[n % steps]);
                 let chord = sqrtf((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2));
-                let ds = (ring_arc(b, size, radii, bw).0 - ring_arc(a, size, radii, bw).0).rem_euclid(total);
-                assert!(ds > chord - 1e-3 && ds < chord * 1.5 + 1e-3, "{size:?} {radii:?} step {n}: {ds} vs {chord}");
+                let ds = (ring_arc(b, size, radii, bw).0 - ring_arc(a, size, radii, bw).0)
+                    .rem_euclid(total);
+                assert!(
+                    ds > chord - 1e-3 && ds < chord * 1.5 + 1e-3,
+                    "{size:?} {radii:?} step {n}: {ds} vs {chord}"
+                );
                 trip += ds;
             }
             assert!((trip - total).abs() < 1e-2, "{trip} vs {total}");
@@ -424,7 +570,10 @@ mod tests {
         // One nominal period of phase is one whole stretched period.
         for n in 0..50 {
             let s = n as f32 * 1.3;
-            assert!((dash_cov(s, 100.0, [4.0, 3.0, 7.0]) - dash_cov(s, 100.0, [4.0, 3.0, 0.0])).abs() < 1e-3);
+            assert!(
+                (dash_cov(s, 100.0, [4.0, 3.0, 7.0]) - dash_cov(s, 100.0, [4.0, 3.0, 0.0])).abs()
+                    < 1e-3
+            );
         }
     }
 }

@@ -14,12 +14,15 @@ mod light;
 use std::sync::Arc;
 use std::time::Instant;
 
-use light::{DOT_HUES, DOT0, Frame, Hit, N_CTL, Panel, SLIDER, Spring, TOGGLE0, Track, accent_for, caption, chat_scene, flashlight_scene, lin, sc, set_scale};
-use rune::color::oklcha;
-use rune_light::Light;
+use light::{
+    DOT_HUES, DOT0, Frame, Hit, N_CTL, Panel, SLIDER, Spring, TOGGLE0, Track, accent_for, caption,
+    chat_scene, flashlight_scene, lin, sc, set_scale,
+};
 use rune::color::Color;
+use rune::color::oklcha;
 use rune::render::Renderer;
 use rune::text::TextSystem;
+use rune_light::Light;
 use rune_light::{LightRenderer, Scene};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
@@ -143,7 +146,11 @@ struct Gfx {
 fn layer(device: &wgpu::Device, label: &str, (w, h): (u32, u32)) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
         label: Some(label),
-        size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -154,12 +161,27 @@ fn layer(device: &wgpu::Device, label: &str, (w, h): (u32, u32)) -> wgpu::Textur
 }
 
 impl Gfx {
-    fn new(device: wgpu::Device, queue: wgpu::Queue, size: (u32, u32), format: wgpu::TextureFormat) -> Gfx {
+    fn new(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        size: (u32, u32),
+        format: wgpu::TextureFormat,
+    ) -> Gfx {
         let rune = Renderer::new(&device, wgpu::TextureFormat::Rgba16Float);
         let light = LightRenderer::new(&device, &queue, size.0, size.1, format);
         let base = layer(&device, "ui base", size);
         let text = layer(&device, "ui text", size);
-        Gfx { device, queue, rune, ts: TextSystem::default(), light, base, text, size, format }
+        Gfx {
+            device,
+            queue,
+            rune,
+            ts: TextSystem::default(),
+            light,
+            base,
+            text,
+            size,
+            format,
+        }
     }
 
     fn resize(&mut self, size: (u32, u32)) {
@@ -178,22 +200,51 @@ impl Gfx {
         s.seed = 0.0;
         let bv = self.base.create_view(&Default::default());
         let tv = self.text.create_view(&Default::default());
-        self.rune.prepare(&self.device, &self.queue, &mut self.ts.atlas, &base, self.size);
+        self.rune.prepare(
+            &self.device,
+            &self.queue,
+            &mut self.ts.atlas,
+            &base,
+            self.size,
+        );
         let mut enc = self.device.create_command_encoder(&Default::default());
-        self.rune.draw(&mut enc, &bv, [clear.r, clear.g, clear.b, 1.0]);
+        self.rune
+            .draw(&mut enc, &bv, [clear.r, clear.g, clear.b, 1.0]);
         self.queue.submit([enc.finish()]);
-        self.rune.prepare(&self.device, &self.queue, &mut self.ts.atlas, &text, self.size);
+        self.rune.prepare(
+            &self.device,
+            &self.queue,
+            &mut self.ts.atlas,
+            &text,
+            self.size,
+        );
         let mut enc = self.device.create_command_encoder(&Default::default());
         self.rune.draw(&mut enc, &tv, [0.0; 4]);
         self.queue.submit([enc.finish()]);
         let mut enc = self.device.create_command_encoder(&Default::default());
-        let scene = Scene { prims: &prims, lights: &lights, settings: s, emission: None };
-        self.light.render(&self.device, &self.queue, &mut enc, &scene, &bv, &tv, target);
+        let scene = Scene {
+            prims: &prims,
+            lights: &lights,
+            settings: s,
+            emission: None,
+        };
+        self.light.render(
+            &self.device,
+            &self.queue,
+            &mut enc,
+            &scene,
+            &bv,
+            &tv,
+            target,
+        );
         self.queue.submit([enc.finish()]);
     }
 }
 
-fn request_device(instance: &wgpu::Instance, surface: Option<&wgpu::Surface<'_>>) -> (wgpu::Adapter, wgpu::Device, wgpu::Queue) {
+fn request_device(
+    instance: &wgpu::Instance,
+    surface: Option<&wgpu::Surface<'_>>,
+) -> (wgpu::Adapter, wgpu::Device, wgpu::Queue) {
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
         power_preference: wgpu::PowerPreference::HighPerformance,
         force_fallback_adapter: false,
@@ -300,7 +351,8 @@ impl State {
     }
 
     fn now(&self) -> f64 {
-        self.fake.unwrap_or_else(|| self.start.elapsed().as_secs_f64())
+        self.fake
+            .unwrap_or_else(|| self.start.elapsed().as_secs_f64())
     }
 
     fn jump(&mut self, p: [f32; 2]) {
@@ -339,7 +391,10 @@ impl State {
         let pad = 4.0;
         self.hits.iter().rev().find(|h| {
             let r = h.rect;
-            p[0] >= r[0] - pad && p[0] <= r[0] + r[2] + pad && p[1] >= r[1] - pad && p[1] <= r[1] + r[3] + pad
+            p[0] >= r[0] - pad
+                && p[0] <= r[0] + r[2] + pad
+                && p[1] >= r[1] - pad
+                && p[1] <= r[1] + r[3] + pad
         })
     }
 
@@ -369,12 +424,17 @@ impl State {
         {
             self.dragging = true;
         }
-        if self.active == Some(SLIDER) && self.dragging
+        if self.active == Some(SLIDER)
+            && self.dragging
             && let Some(v) = self.slider_value(p)
         {
             self.volume = Track::at(v);
         }
-        let over = if self.active.is_some() { self.active } else { self.hit(p).map(|h| h.id) };
+        let over = if self.active.is_some() {
+            self.active
+        } else {
+            self.hit(p).map(|h| h.id)
+        };
         self.set_hover(over);
         match self.which {
             Which::Flashlight => self.follow(p, FOLLOW),
@@ -425,7 +485,13 @@ impl State {
         busy(&self.x, t, 0.05)
             || busy(&self.y, t, 0.05)
             || busy(&self.volume, t, 1e-3)
-            || self.toggles.iter().chain(&self.accent).chain(&self.hover).chain(&self.pressed).any(|tr| busy(tr, t, 1e-3))
+            || self
+                .toggles
+                .iter()
+                .chain(&self.accent)
+                .chain(&self.hover)
+                .chain(&self.pressed)
+                .any(|tr| busy(tr, t, 1e-3))
     }
 
     fn panel(&self, t: f64) -> Panel {
@@ -480,7 +546,14 @@ impl State {
         let since = t - self.mode_at;
         let alpha = (1.0 - ((since - 1.2) / 0.4).clamp(0.0, 1.0)) as f32;
         if self.which == Which::Flashlight && alpha > 0.0 {
-            caption(ts, &mut f, 24.0, 772.0, self.mode.label(), oklcha(1.0, 0.0, 0.0, alpha));
+            caption(
+                ts,
+                &mut f,
+                24.0,
+                772.0,
+                self.mode.label(),
+                oklcha(1.0, 0.0, 0.0, alpha),
+            );
         }
         (f, self.animating(t) || since < 1.7)
     }
@@ -522,13 +595,18 @@ struct App {
 impl Live {
     /// Device px per point: the window's scale at the native 1280×800 pt size, fitted when resized.
     fn k(&self) -> f32 {
-        (self.config.width as f32 / PT_W).min(self.config.height as f32 / PT_H).max(0.1)
+        (self.config.width as f32 / PT_W)
+            .min(self.config.height as f32 / PT_H)
+            .max(0.1)
     }
 
     /// Device-px offset of the fitted canvas, centred in the window (whole px so text stays crisp).
     fn offset(&self) -> [f32; 2] {
         let k = self.k();
-        [((self.config.width as f32 - PT_W * k) * 0.5).round(), ((self.config.height as f32 - PT_H * k) * 0.5).round()]
+        [
+            ((self.config.width as f32 - PT_W * k) * 0.5).round(),
+            ((self.config.height as f32 - PT_H * k) * 0.5).round(),
+        ]
     }
 }
 
@@ -546,15 +624,27 @@ impl ApplicationHandler for App {
         let surface = instance.create_surface(window.clone()).expect("surface");
         let (adapter, device, queue) = request_device(&instance, Some(&surface));
         let phys = window.inner_size();
-        let mut config = surface.get_default_config(&adapter, phys.width.max(1), phys.height.max(1)).expect("surface config");
+        let mut config = surface
+            .get_default_config(&adapter, phys.width.max(1), phys.height.max(1))
+            .expect("surface config");
         let caps = surface.get_capabilities(&adapter);
-        config.format = caps.formats.iter().copied().find(|f| f.is_srgb()).unwrap_or(config.format);
+        config.format = caps
+            .formats
+            .iter()
+            .copied()
+            .find(|f| f.is_srgb())
+            .unwrap_or(config.format);
         config.present_mode = wgpu::PresentMode::AutoVsync;
         config.desired_maximum_frame_latency = 2;
         surface.configure(&device, &config);
         let gfx = Gfx::new(device, queue, (config.width, config.height), config.format);
         window.request_redraw();
-        self.live = Some(Live { window, surface, config, gfx });
+        self.live = Some(Live {
+            window,
+            surface,
+            config,
+            gfx,
+        });
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
@@ -568,14 +658,23 @@ impl ApplicationHandler for App {
                 l.surface.configure(&l.gfx.device, &l.config);
                 l.window.request_redraw();
             }
-            WindowEvent::ScaleFactorChanged { .. } | WindowEvent::Occluded(false) => l.window.request_redraw(),
+            WindowEvent::ScaleFactorChanged { .. } | WindowEvent::Occluded(false) => {
+                l.window.request_redraw()
+            }
             WindowEvent::CursorMoved { position, .. } => {
                 // winit reports physical px from the content view's top-left; undo the centring, then px → pt.
                 let (k, o) = (l.k(), l.offset());
-                st.pointer_move([(position.x as f32 - o[0]) / k, (position.y as f32 - o[1]) / k]);
+                st.pointer_move([
+                    (position.x as f32 - o[0]) / k,
+                    (position.y as f32 - o[1]) / k,
+                ]);
                 l.window.request_redraw();
             }
-            WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
+            WindowEvent::MouseInput {
+                state,
+                button: MouseButton::Left,
+                ..
+            } => {
                 st.button(state == ElementState::Pressed);
                 l.window.request_redraw();
             }
@@ -608,12 +707,16 @@ impl ApplicationHandler for App {
                 l.gfx.resize((l.config.width, l.config.height));
                 set_scale(l.k());
                 let mut status = l.surface.get_current_texture();
-                if matches!(status, wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost) {
+                if matches!(
+                    status,
+                    wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost
+                ) {
                     l.surface.configure(&l.gfx.device, &l.config);
                     status = l.surface.get_current_texture();
                 }
                 let surface_tex = match status {
-                    wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
+                    wgpu::CurrentSurfaceTexture::Success(f)
+                    | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
                     // Uncovering the window redraws it (below). Redrawing now would spin a core.
                     wgpu::CurrentSurfaceTexture::Occluded => return,
                     // A timeout already waited for a drawable; anything else needs a new event.
@@ -640,7 +743,15 @@ impl ApplicationHandler for App {
 
 // ---------------------------------------------------------------- headless snapshot
 
-fn snap(path: &str, which: Which, at: Option<[f32; 2]>, rays: bool, click: Option<bool>, after: f64, opts: (Mode, bool, bool)) {
+fn snap(
+    path: &str,
+    which: Which,
+    at: Option<[f32; 2]>,
+    rays: bool,
+    click: Option<bool>,
+    after: f64,
+    opts: (Mode, bool, bool),
+) {
     let (w, h) = (2560u32, 1600u32);
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let (_, device, queue) = request_device(&instance, None);
@@ -668,7 +779,11 @@ fn snap(path: &str, which: Which, at: Option<[f32; 2]>, rays: bool, click: Optio
     st.fake = Some(after);
     let out = gfx.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("snap"),
-        size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -686,14 +801,32 @@ fn snap(path: &str, which: Which, at: Option<[f32; 2]>, rays: bool, click: Optio
     });
     let mut enc = gfx.device.create_command_encoder(&Default::default());
     enc.copy_texture_to_buffer(
-        wgpu::TexelCopyTextureInfo { texture: &out, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
-        wgpu::TexelCopyBufferInfo { buffer: &buf, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(w * 4), rows_per_image: Some(h) } },
-        wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+        wgpu::TexelCopyTextureInfo {
+            texture: &out,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyBufferInfo {
+            buffer: &buf,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(w * 4),
+                rows_per_image: Some(h),
+            },
+        },
+        wgpu::Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        },
     );
     gfx.queue.submit([enc.finish()]);
     let slice = buf.slice(..);
     slice.map_async(wgpu::MapMode::Read, |r| r.expect("map"));
-    gfx.device.poll(wgpu::PollType::wait_indefinitely()).expect("poll");
+    gfx.device
+        .poll(wgpu::PollType::wait_indefinitely())
+        .expect("poll");
     let px = slice.get_mapped_range().expect("range").to_vec();
     rune::render::write_png(std::path::Path::new(path), w, h, &px).unwrap();
     eprintln!("wrote {path}");
@@ -701,26 +834,52 @@ fn snap(path: &str, which: Which, at: Option<[f32; 2]>, rays: bool, click: Optio
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let arg = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned();
-    let which = if arg("--scene").as_deref() == Some("chat") { Which::Chat } else { Which::Flashlight };
+    let arg = |name: &str| {
+        args.iter()
+            .position(|a| a == name)
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+    };
+    let which = if arg("--scene").as_deref() == Some("chat") {
+        Which::Chat
+    } else {
+        Which::Flashlight
+    };
     if let Some(path) = arg("--snap") {
         let at = arg("--at").and_then(|s| {
             let (x, y) = s.split_once(',')?;
             Some([x.parse().ok()?, y.parse().ok()?])
         });
         let flag = |f: &str| args.iter().any(|a| a == f);
-        let click = if flag("--click") { Some(true) } else if flag("--down") { Some(false) } else { None };
+        let click = if flag("--click") {
+            Some(true)
+        } else if flag("--down") {
+            Some(false)
+        } else {
+            None
+        };
         let after = arg("--after").and_then(|s| s.parse().ok()).unwrap_or(1.0);
         let mode = match arg("--mode").as_deref() {
             Some("overhead") => Mode::Overhead,
             Some("backlight") => Mode::Backlight,
             _ => Mode::Behind,
         };
-        snap(&path, which, at, flag("--rays"), click, after, (mode, !flag("--soft"), flag("--bare")));
+        snap(
+            &path,
+            which,
+            at,
+            flag("--rays"),
+            click,
+            after,
+            (mode, !flag("--soft"), flag("--bare")),
+        );
         return;
     }
     let event_loop = EventLoop::new().expect("event loop");
     event_loop.set_control_flow(ControlFlow::Wait);
-    let mut app = App { state: State::new(which), live: None };
+    let mut app = App {
+        state: State::new(which),
+        live: None,
+    };
     event_loop.run_app(&mut app).expect("run");
 }

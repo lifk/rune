@@ -12,7 +12,12 @@ pub struct Knob {
 }
 
 const fn k(name: &'static str, min: f32, max: f32, default: f32) -> Knob {
-    Knob { name, min, max, default }
+    Knob {
+        name,
+        min,
+        max,
+        default,
+    }
 }
 
 // ---------------------------------------------------------------- params
@@ -98,7 +103,11 @@ pub enum PulseStyle {
     Heartbeat,
     /// A comet that launches from `from` along `dir`, travels `travel` pt with anticipation and a
     /// decelerating landing, then blooms and cools at its destination.
-    Ping { from: [f32; 2], dir: [f32; 2], travel: f32 },
+    Ping {
+        from: [f32; 2],
+        dir: [f32; 2],
+        travel: f32,
+    },
     /// Ripple from a tap point, confined to the shape.
     Ripple { at: [f32; 2] },
 }
@@ -161,7 +170,10 @@ impl PulseParams {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ElectricStyle {
-    Arc { a: [f32; 2], b: [f32; 2] },
+    Arc {
+        a: [f32; 2],
+        b: [f32; 2],
+    },
     Border,
     /// Calm UI variant: low amplitude, slow crawl, travelling beads of charge, rare tiny sparks.
     Charged,
@@ -411,22 +423,70 @@ impl Default for LensParams {
 
 #[derive(Clone, Copy, Debug)]
 pub enum DistortParams {
-    HeatHaze { height: f32, scale: f32, speed: f32, amount: f32, whole_shape: bool },
-    Shockwave { at: [f32; 2], reach: f32, width: f32, amount: f32, chroma: f32, t0: f32, duration: f32 },
+    HeatHaze {
+        height: f32,
+        scale: f32,
+        speed: f32,
+        amount: f32,
+        whole_shape: bool,
+    },
+    Shockwave {
+        at: [f32; 2],
+        reach: f32,
+        width: f32,
+        amount: f32,
+        chroma: f32,
+        t0: f32,
+        duration: f32,
+    },
     Lens(LensParams),
-    Crt { bulge: f32, scanline: f32, scan_depth: f32, chroma: f32, vignette: f32, glow: f32, roll: f32, feather: f32 },
-    ChromaSplit { offset: [f32; 2], glitch: f32, feather: f32 },
+    Crt {
+        bulge: f32,
+        scanline: f32,
+        scan_depth: f32,
+        chroma: f32,
+        vignette: f32,
+        glow: f32,
+        roll: f32,
+        feather: f32,
+    },
+    ChromaSplit {
+        offset: [f32; 2],
+        glitch: f32,
+        feather: f32,
+    },
 }
 
 impl DistortParams {
     pub fn shockwave(at: [f32; 2], t0: f32) -> Self {
-        DistortParams::Shockwave { at, reach: 160.0, width: 14.0, amount: 9.0, chroma: 0.35, t0, duration: 0.9 }
+        DistortParams::Shockwave {
+            at,
+            reach: 160.0,
+            width: 14.0,
+            amount: 9.0,
+            chroma: 0.35,
+            t0,
+            duration: 0.9,
+        }
     }
     pub fn crt() -> Self {
-        DistortParams::Crt { bulge: 0.08, scanline: 1.5, scan_depth: 0.28, chroma: 0.8, vignette: 0.6, glow: 0.35, roll: 1.0, feather: 2.0 }
+        DistortParams::Crt {
+            bulge: 0.08,
+            scanline: 1.5,
+            scan_depth: 0.28,
+            chroma: 0.8,
+            vignette: 0.6,
+            glow: 0.35,
+            roll: 1.0,
+            feather: 2.0,
+        }
     }
     pub fn chroma_split(offset: [f32; 2]) -> Self {
-        DistortParams::ChromaSplit { offset, glitch: 0.0, feather: 2.0 }
+        DistortParams::ChromaSplit {
+            offset,
+            glitch: 0.0,
+            feather: 2.0,
+        }
     }
 }
 
@@ -484,7 +544,13 @@ pub struct Pose {
 
 impl Default for Pose {
     fn default() -> Self {
-        Pose { x: 0.0, y: 0.0, rotation: 0.0, scale: 1.0, opacity: 1.0 }
+        Pose {
+            x: 0.0,
+            y: 0.0,
+            rotation: 0.0,
+            scale: 1.0,
+            opacity: 1.0,
+        }
     }
 }
 
@@ -536,14 +602,25 @@ pub(crate) fn invert(m: [f32; 6]) -> [f32; 6] {
 }
 
 pub(crate) fn corners(r: Rect) -> [[f32; 2]; 4] {
-    [[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]]
+    [
+        [r.x, r.y],
+        [r.x + r.w, r.y],
+        [r.x, r.y + r.h],
+        [r.x + r.w, r.y + r.h],
+    ]
 }
 
 impl MotionSamples {
     /// Sample `track` (a pose for any time) inside the shutter interval centred on `t`.
     /// The sample count scales with on-screen travel: 1 at rest, so a resting node costs nothing
     /// extra (`is_moving()` is false and the caller draws the node normally).
-    pub fn from_track(p: &MotionBlurParams, rest: Rect, t: f32, scale: f32, track: impl Fn(f32) -> Pose) -> MotionSamples {
+    pub fn from_track(
+        p: &MotionBlurParams,
+        rest: Rect,
+        t: f32,
+        scale: f32,
+        track: impl Fn(f32) -> Pose,
+    ) -> MotionSamples {
         let open = p.frame_dt * p.shutter_angle / 360.0;
         let t0 = t - open * 0.5;
         let t1 = t + open * 0.5;
@@ -573,14 +650,27 @@ impl MotionSamples {
         let want = ((travel_px / p.px_per_sample.max(0.25)).ceil() as usize).clamp(1, max);
         let put = |s: &mut MotionSamples, i: usize, pose: &Pose, w: f32| {
             let inv = invert(pose.affine(rest));
-            s.xforms[i] = [inv[0], inv[1], inv[2], inv[3], inv[4], inv[5], w * pose.opacity, 0.0];
+            s.xforms[i] = [
+                inv[0],
+                inv[1],
+                inv[2],
+                inv[3],
+                inv[4],
+                inv[5],
+                w * pose.opacity,
+                0.0,
+            ];
             let mut b: Option<Rect> = None;
             for c in corners(rest) {
                 let q = pose.apply(rest, c);
                 let r = Rect::new(q[0], q[1], 0.0, 0.0);
                 b = Some(b.map_or(r, |bb| bb.union(r)));
             }
-            s.bounds = if i == 0 { b.unwrap() } else { s.bounds.union(b.unwrap()) };
+            s.bounds = if i == 0 {
+                b.unwrap()
+            } else {
+                s.bounds.union(b.unwrap())
+            };
         };
         if want <= 1 || open <= 0.0 {
             put(&mut s, 0, &pm, 1.0);
@@ -592,7 +682,11 @@ impl MotionSamples {
                 let mut sum = 0.0;
                 for (i, wi) in w.iter_mut().enumerate().take(want) {
                     let u = (i as f32 + 0.5) / want as f32;
-                    *wi = if p.smooth_shutter { 0.5 - 0.5 * (std::f32::consts::TAU * u).cos() } else { 1.0 };
+                    *wi = if p.smooth_shutter {
+                        0.5 - 0.5 * (std::f32::consts::TAU * u).cos()
+                    } else {
+                        1.0
+                    };
                     sum += *wi;
                 }
                 for i in 0..want {
@@ -669,7 +763,15 @@ pub struct SparkleParams {
 
 impl Default for SparkleParams {
     fn default() -> Self {
-        SparkleParams { color: rgb(0xffe6a8), count: 6, life: 1.5, size: 7.0, intensity: 1.0, margin: 10.0, burst: None }
+        SparkleParams {
+            color: rgb(0xffe6a8),
+            count: 6,
+            life: 1.5,
+            size: 7.0,
+            intensity: 1.0,
+            margin: 10.0,
+            burst: None,
+        }
     }
 }
 
@@ -715,7 +817,10 @@ pub struct GrainParams {
 
 impl Default for GrainParams {
     fn default() -> Self {
-        GrainParams { amount: 0.03, fps: 0.0, feather: 0.0 }
+        GrainParams {
+            amount: 0.03,
+            fps: 0.0,
+            feather: 0.0,
+        }
     }
 }
-

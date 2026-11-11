@@ -111,7 +111,14 @@ impl WindowTitlebar {
     }
 
     pub fn build(self, k: &Kit) -> El {
-        let slot = row().key(format!("{}-tabs", self.key)).grow(1.0).shrink().min_w(0.0).h_full().center_y().children(self.tabs);
+        let slot = row()
+            .key(format!("{}-tabs", self.key))
+            .grow(1.0)
+            .shrink()
+            .min_w(0.0)
+            .h_full()
+            .center_y()
+            .children(self.tabs);
         // Right to left the row's left padding is its start side: the insets keep their sides.
         let (left_inset, right_inset) = match self.direction {
             Direction::Rtl => (self.trailing_inset, self.leading_inset),

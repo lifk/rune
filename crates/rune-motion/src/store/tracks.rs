@@ -40,10 +40,13 @@ impl AnimationStore {
 
     /// Like [`touched`](Self::touched), with track ids.
     pub fn touched_tracks(&self) -> impl Iterator<Item = (TrackId, NodeId, PropId)> + '_ {
-        self.touched.iter().filter(|&&id| self.contains(id)).map(|&id| {
-            let m = &self.t_meta[id.index as usize];
-            (id, m.node, m.prop)
-        })
+        self.touched
+            .iter()
+            .filter(|&&id| self.contains(id))
+            .map(|&id| {
+                let m = &self.t_meta[id.index as usize];
+                (id, m.node, m.prop)
+            })
     }
 }
 
@@ -65,6 +68,9 @@ impl AnimationStore {
                 p = self.pending[p as usize].next;
             }
         }
-        self.set_touched.push(TrackId { index: t as u32, generation: self.t_meta[t].generation });
+        self.set_touched.push(TrackId {
+            index: t as u32,
+            generation: self.t_meta[t].generation,
+        });
     }
 }

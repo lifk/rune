@@ -5,7 +5,9 @@ fn equivalent(accelerator: &str) -> (String, usize) {
     let e = KeyEquivalent::new(&accelerator.parse().unwrap());
     (e.key, e.mask)
 }
-fn eq(key: &str, mask: usize) -> (String, usize) { (key.into(), mask) }
+fn eq(key: &str, mask: usize) -> (String, usize) {
+    (key.into(), mask)
+}
 
 #[test]
 fn equivalents_are_the_characters_the_accelerators_name() {
@@ -20,7 +22,10 @@ fn equivalents_are_the_characters_the_accelerators_name() {
     // Shift stays in the mask beside the unshifted character.
     assert_eq!(equivalent("cmd+shift+z"), eq("z", SHIFT | COMMAND));
     assert_eq!(equivalent("cmd+shift+="), eq("=", SHIFT | COMMAND));
-    assert_eq!(equivalent("ctrl+alt+shift+cmd+k"), eq("k", CONTROL | OPTION | SHIFT | COMMAND));
+    assert_eq!(
+        equivalent("ctrl+alt+shift+cmd+k"),
+        eq("k", CONTROL | OPTION | SHIFT | COMMAND)
+    );
 }
 
 #[test]
@@ -39,9 +44,40 @@ fn named_keys_use_appkit_characters() {
 
 #[test]
 fn every_key_has_one_lowercase_character() {
-    let names = ["a", "z", "0", "9", "minus", "equal", "comma", "period", "slash", "semicolon", "quote",
-        "bracketleft", "bracketright", "backslash", "backquote", "f1", "f24", "escape", "enter", "space", "tab",
-        "backspace", "delete", "insert", "home", "end", "pageup", "pagedown", "left", "right", "up", "down"];
+    let names = [
+        "a",
+        "z",
+        "0",
+        "9",
+        "minus",
+        "equal",
+        "comma",
+        "period",
+        "slash",
+        "semicolon",
+        "quote",
+        "bracketleft",
+        "bracketright",
+        "backslash",
+        "backquote",
+        "f1",
+        "f24",
+        "escape",
+        "enter",
+        "space",
+        "tab",
+        "backspace",
+        "delete",
+        "insert",
+        "home",
+        "end",
+        "pageup",
+        "pagedown",
+        "left",
+        "right",
+        "up",
+        "down",
+    ];
     for name in names {
         let (key, _) = equivalent(&format!("cmd+{name}"));
         assert_eq!(key.chars().count(), 1, "{name}: {key:?}");
@@ -64,7 +100,21 @@ fn menu_keycaps_show_the_accelerator() {
 /// Dvorak's characters at QWERTY positions, by Carbon key code, under any modifiers.
 #[cfg(target_os = "macos")]
 fn dvorak(key: u32, _modifiers: u32) -> Option<String> {
-    Some(match key { 11 => "x", 45 => "b", 3 => "u", 16 => "f", 15 => "p", 1 => "o", 6 => ";", 24 => "]", 27 => "[", _ => return None }.into())
+    Some(
+        match key {
+            11 => "x",
+            45 => "b",
+            3 => "u",
+            16 => "f",
+            15 => "p",
+            1 => "o",
+            6 => ";",
+            24 => "]",
+            27 => "[",
+            _ => return None,
+        }
+        .into(),
+    )
 }
 
 #[cfg(target_os = "macos")]
@@ -75,13 +125,24 @@ fn dvorak_moves_keycaps_but_not_menu_equivalents() {
     // Layout labels follow the key's position: QWERTY B types "x" on Dvorak.
     assert_eq!(shortcut("cmd+b").keycaps(), ["⌘", "X"]);
     assert_eq!(shortcut("cmd+=").keycaps(), ["⌘", "]"]);
-    for (accelerator, key, mask) in [("cmd+b", "b", COMMAND), ("cmd+=", "=", COMMAND), ("cmd+-", "-", COMMAND),
-        ("cmd+r", "r", COMMAND), ("ctrl+cmd+s", "s", CONTROL | COMMAND), ("ctrl+cmd+f", "f", CONTROL | COMMAND),
-        ("cmd+shift+z", "z", SHIFT | COMMAND), ("cmd+left", "\u{f702}", COMMAND), ("f5", "\u{f708}", 0)] {
+    for (accelerator, key, mask) in [
+        ("cmd+b", "b", COMMAND),
+        ("cmd+=", "=", COMMAND),
+        ("cmd+-", "-", COMMAND),
+        ("cmd+r", "r", COMMAND),
+        ("ctrl+cmd+s", "s", CONTROL | COMMAND),
+        ("ctrl+cmd+f", "f", CONTROL | COMMAND),
+        ("cmd+shift+z", "z", SHIFT | COMMAND),
+        ("cmd+left", "\u{f702}", COMMAND),
+        ("f5", "\u{f708}", 0),
+    ] {
         assert_eq!(equivalent(accelerator), eq(key, mask), "{accelerator}");
         let caps = shortcut(accelerator).menu_keycaps();
         let label = caps.last().unwrap();
-        assert!(key.chars().all(|c| c as u32 >= 0xf700) || *label == key.to_uppercase(), "{accelerator}: {caps:?}");
+        assert!(
+            key.chars().all(|c| c as u32 >= 0xf700) || *label == key.to_uppercase(),
+            "{accelerator}: {caps:?}"
+        );
     }
     crate::shortcuts::force_layout(None);
 }

@@ -114,13 +114,20 @@ impl<S: 'static> Frame<'_, S> {
     /// reused staging memory and lands in `buffer` at `offset` ahead of the commands recorded
     /// into `encoder` after this call. `offset` and `data.len()` are multiples of 4.
     pub fn write_buffer(&mut self, buffer: &wgpu::Buffer, offset: u64, data: &[u8]) {
-        self.ui.write_buffer(self.device, self.queue, self.encoder, buffer, offset, data);
+        self.ui
+            .write_buffer(self.device, self.queue, self.encoder, buffer, offset, data);
     }
 
     /// The default frame: every instance into the target, cleared to the window colour.
     pub fn draw_ui(&mut self) {
         let clear = self.rt.clear_color();
-        self.ui.prepare(self.device, self.queue, &mut self.rt.text.atlas, &self.rt.instances, self.size);
+        self.ui.prepare(
+            self.device,
+            self.queue,
+            &mut self.rt.text.atlas,
+            &self.rt.instances,
+            self.size,
+        );
         self.ui.draw(self.encoder, self.target, clear);
     }
 }

@@ -30,12 +30,15 @@ impl TextEdit {
         }
         self.soft_breaks.sort_unstable();
         self.soft_breaks.dedup();
-        self.soft_breaks.retain(|&idx| idx > 0 && (idx as usize) < line_count);
+        self.soft_breaks
+            .retain(|&idx| idx > 0 && (idx as usize) < line_count);
         self.normalize_marks();
         self.snap_to_pills();
         let anchor_line = self.line_of_byte(self.anchor);
         if let Some((armed, ref mut marks)) = self.pending {
-            if armed != (self.anchor, self.focus) || self.blocks.get(anchor_line) == Some(&Block::Code) {
+            if armed != (self.anchor, self.focus)
+                || self.blocks.get(anchor_line) == Some(&Block::Code)
+            {
                 self.pending = None;
             } else if let Some(bits) = self.allowed_marks {
                 marks.retain(|m| bits & 1 << m.kind_order() != 0);
@@ -84,12 +87,20 @@ impl TextEdit {
                         break;
                     }
                     if start < cr.start {
-                        out.push(MarkRange { start, end: cr.start, mark: m.mark.clone() });
+                        out.push(MarkRange {
+                            start,
+                            end: cr.start,
+                            mark: m.mark.clone(),
+                        });
                     }
                     start = start.max(cr.end);
                 }
                 if start < m.end {
-                    out.push(MarkRange { start, end: m.end, mark: m.mark });
+                    out.push(MarkRange {
+                        start,
+                        end: m.end,
+                        mark: m.mark,
+                    });
                 }
             }
             self.marks = out;
@@ -122,7 +133,8 @@ impl TextEdit {
                 }
             } else if kind_idx == 5 {
                 // `Mark::Link`: resolve overlaps so later links overwrite earlier ones, then merge adjacent equal URLs.
-                let mut bounds: Vec<(usize, usize)> = list.iter().map(|m| (m.start, m.end)).collect();
+                let mut bounds: Vec<(usize, usize)> =
+                    list.iter().map(|m| (m.start, m.end)).collect();
                 bounds.sort_unstable();
                 let overlapping = bounds.windows(2).any(|w| w[1].0 < w[0].1);
                 let mut resolved: Vec<MarkRange> = Vec::new();
@@ -205,7 +217,13 @@ impl TextEdit {
         }
         let mut out = Vec::new();
         for m in &self.marks {
-            if m.start < pos && pos <= m.end && !m.mark.is_pill() && !out.iter().any(|existing: &Mark| existing.same_kind(&m.mark)) {
+            if m.start < pos
+                && pos <= m.end
+                && !m.mark.is_pill()
+                && !out
+                    .iter()
+                    .any(|existing: &Mark| existing.same_kind(&m.mark))
+            {
                 out.push(m.mark.clone());
             }
         }
@@ -249,7 +267,8 @@ impl TextEdit {
         }
         let mut out = Vec::new();
         for m in &self.marks {
-            if m.start <= a && b <= m.end && !out.iter().any(|existing: &Mark| existing == &m.mark) {
+            if m.start <= a && b <= m.end && !out.iter().any(|existing: &Mark| existing == &m.mark)
+            {
                 out.push(m.mark.clone());
             }
         }
@@ -279,17 +298,22 @@ impl TextEdit {
                 return p.iter().find_map(Mark::link_url);
             }
             let line_idx = self.line_of_byte(a);
-            if self.blocks.get(line_idx) == Some(&Block::Code) || a <= self.line_range(line_idx).start {
+            if self.blocks.get(line_idx) == Some(&Block::Code)
+                || a <= self.line_range(line_idx).start
+            {
                 return None;
             }
-            return self
-                .marks
-                .iter()
-                .find_map(|m| (m.start < a && a <= m.end).then(|| m.mark.link_url()).flatten());
+            return self.marks.iter().find_map(|m| {
+                (m.start < a && a <= m.end)
+                    .then(|| m.mark.link_url())
+                    .flatten()
+            });
         }
-        self.marks
-            .iter()
-            .find_map(|m| (m.start <= a && b <= m.end).then(|| m.mark.link_url()).flatten())
+        self.marks.iter().find_map(|m| {
+            (m.start <= a && b <= m.end)
+                .then(|| m.mark.link_url())
+                .flatten()
+        })
     }
 
     fn edit_pending_marks(&mut self, pos: usize, f: impl FnOnce(&mut Vec<Mark>)) {
@@ -314,7 +338,8 @@ impl TextEdit {
             if !mark.is_pill() {
                 self.edit_pending_marks(a, |active| {
                     if let Some(pos) = active.iter().position(|m| m.same_kind(&mark)) {
-                        if active[pos] == mark || matches!(mark, Mark::Link(ref u) if u.is_empty()) {
+                        if active[pos] == mark || matches!(mark, Mark::Link(ref u) if u.is_empty())
+                        {
                             active.remove(pos);
                         } else {
                             active[pos] = mark;
@@ -355,9 +380,14 @@ impl TextEdit {
         self.break_history_group();
         let before = self.snapshot();
         if mark.is_pill() {
-            self.marks.retain(|m| !m.mark.is_pill() || m.end <= a || m.start >= b);
+            self.marks
+                .retain(|m| !m.mark.is_pill() || m.end <= a || m.start >= b);
         }
-        self.marks.push(MarkRange { start: a, end: b, mark });
+        self.marks.push(MarkRange {
+            start: a,
+            end: b,
+            mark,
+        });
         self.pending = None;
         self.normalize_marks();
         self.record_change(before, EditKind::Other);
@@ -387,10 +417,18 @@ impl TextEdit {
                 // A pill goes whole: its label stays as plain text.
             } else {
                 if m.start < a {
-                    out.push(MarkRange { start: m.start, end: a, mark: m.mark.clone() });
+                    out.push(MarkRange {
+                        start: m.start,
+                        end: a,
+                        mark: m.mark.clone(),
+                    });
                 }
                 if m.end > b {
-                    out.push(MarkRange { start: b, end: m.end, mark: m.mark });
+                    out.push(MarkRange {
+                        start: b,
+                        end: m.end,
+                        mark: m.mark,
+                    });
                 }
             }
         }
@@ -435,7 +473,13 @@ impl TextEdit {
     /// Whether any paragraph in the current selection is a bullet or numbered list item.
     pub fn selection_in_list(&self) -> bool {
         let (first, last) = self.selected_line_range();
-        (first..=last).any(|i| self.blocks.get(i).copied().unwrap_or(Block::Paragraph).is_list())
+        (first..=last).any(|i| {
+            self.blocks
+                .get(i)
+                .copied()
+                .unwrap_or(Block::Paragraph)
+                .is_list()
+        })
     }
 
     /// Set the [`Block`] attribute for all paragraphs in the current selection, unless the field
@@ -471,7 +515,11 @@ impl TextEdit {
         self.sync_invariants();
         let (first, last) = self.selected_line_range();
         let all_match = (first..=last).all(|i| {
-            self.blocks.get(i).copied().unwrap_or(Block::Paragraph).same_kind(block)
+            self.blocks
+                .get(i)
+                .copied()
+                .unwrap_or(Block::Paragraph)
+                .same_kind(block)
         });
         if all_match {
             self.set_block(Block::Paragraph);

@@ -18,7 +18,11 @@ pub(super) enum CaretMotion {
 impl CaretMotion {
     pub(super) fn of(layout: &Layout<Ink>, hidden: bool) -> CaretMotion {
         let bidi = layout.is_rtl() || layout.lines().any(|line| line.runs().any(|r| r.is_rtl()));
-        if bidi && !hidden { CaretMotion::Visual } else { CaretMotion::Logical }
+        if bidi && !hidden {
+            CaretMotion::Visual
+        } else {
+            CaretMotion::Logical
+        }
     }
 }
 
@@ -83,7 +87,14 @@ pub(super) fn visual(layout: &Layout<Ink>, at: usize, arrow: Arrow) -> Landing {
                     Arrow::WordRight => c.next_visual_word(layout),
                 }
                 .index();
-                step(state, if j == at { Tried::Stayed } else { Tried::Moved(j) })
+                step(
+                    state,
+                    if j == at {
+                        Tried::Stayed
+                    } else {
+                        Tried::Moved(j)
+                    },
+                )
             }
             Seek::Found(j) => return Landing::At(j),
             Seek::Edge => return Landing::Edge,

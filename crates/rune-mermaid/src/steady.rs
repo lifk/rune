@@ -32,11 +32,22 @@ impl Memo {
         if ids.is_empty() || self.ids.is_empty() {
             return self.clone();
         }
-        let was: HashMap<&str, usize> = self.ids.iter().enumerate().map(|(i, id)| (id.as_str(), i)).collect();
+        let was: HashMap<&str, usize> = self
+            .ids
+            .iter()
+            .enumerate()
+            .map(|(i, id)| (id.as_str(), i))
+            .collect();
         let old: Vec<Option<usize>> = ids.iter().map(|id| was.get(id.as_str()).copied()).collect();
         Memo {
-            rank: old.iter().map(|o| o.and_then(|o| self.rank.get(o).copied()).unwrap_or(0)).collect(),
-            along: old.iter().map(|o| o.and_then(|o| self.along.get(o).copied().flatten())).collect(),
+            rank: old
+                .iter()
+                .map(|o| o.and_then(|o| self.rank.get(o).copied()).unwrap_or(0))
+                .collect(),
+            along: old
+                .iter()
+                .map(|o| o.and_then(|o| self.along.get(o).copied().flatten()))
+                .collect(),
             depth: self.depth.clone(),
             ids: ids.to_vec(),
         }
@@ -72,9 +83,14 @@ pub(crate) fn build<R>(prev: Option<Rc<Memory>>, f: impl FnOnce() -> R) -> (R, M
             BUILD.set(self.0.take());
         }
     }
-    let restore = Restore(BUILD.replace(Some(Build { prev, next: Memory::default() })));
+    let restore = Restore(BUILD.replace(Some(Build {
+        prev,
+        next: Memory::default(),
+    })));
     let out = f();
-    let next = BUILD.with_borrow_mut(|b| b.take().map(|b| b.next)).unwrap_or_default();
+    let next = BUILD
+        .with_borrow_mut(|b| b.take().map(|b| b.next))
+        .unwrap_or_default();
     drop(restore);
     (out, next)
 }
@@ -82,11 +98,19 @@ pub(crate) fn build<R>(prev: Option<Rc<Memory>>, f: impl FnOnce() -> R) -> (R, M
 /// Runs one layout of nodes named `ids`: `place` gets the memo this layout's counterpart in the
 /// last build left (`None` outside a streaming build, or for a first one) and returns what it
 /// placed and the memo for the next build.
-pub(crate) fn layout<T>(ids: &[String], place: impl FnOnce(Option<&Memo>) -> Option<(T, Memo)>) -> Option<T> {
-    let Some((prev, at)) = BUILD.with_borrow(|b| b.as_ref().map(|b| (b.prev.clone(), b.next.layouts.len()))) else {
+pub(crate) fn layout<T>(
+    ids: &[String],
+    place: impl FnOnce(Option<&Memo>) -> Option<(T, Memo)>,
+) -> Option<T> {
+    let Some((prev, at)) =
+        BUILD.with_borrow(|b| b.as_ref().map(|b| (b.prev.clone(), b.next.layouts.len())))
+    else {
         return place(None).map(|p| p.0);
     };
-    let held = prev.as_ref().and_then(|m| m.layouts.get(at)).map(|m| m.renamed(ids));
+    let held = prev
+        .as_ref()
+        .and_then(|m| m.layouts.get(at))
+        .map(|m| m.renamed(ids));
     let placed = place(held.as_ref());
     let (out, mut memo) = placed.map_or((None, Memo::default()), |(t, m)| (Some(t), m));
     memo.ids = ids.to_vec();
@@ -100,7 +124,11 @@ pub(crate) fn layout<T>(ids: &[String], place: impl FnOnce(Option<&Memo>) -> Opt
 
 /// Whether the last build turned a horizontal diagram upright, so this one stays turned.
 pub(crate) fn turned() -> bool {
-    BUILD.with_borrow(|b| b.as_ref().and_then(|b| b.prev.as_ref()).is_some_and(|m| m.turned))
+    BUILD.with_borrow(|b| {
+        b.as_ref()
+            .and_then(|b| b.prev.as_ref())
+            .is_some_and(|m| m.turned)
+    })
 }
 
 pub(crate) fn set_turned(turned: bool) {
@@ -116,8 +144,14 @@ pub(crate) fn set_turned(turned: bool) {
 /// than before doesn't move them back. A turned diagram starts afresh.
 pub(crate) fn origin(b: [f32; 4], turned: bool) -> [f32; 2] {
     BUILD.with_borrow_mut(|build| {
-        let Some(build) = build else { return [b[0], b[1]] };
-        let was = build.prev.as_ref().filter(|m| m.turned == turned).and_then(|m| m.origin);
+        let Some(build) = build else {
+            return [b[0], b[1]];
+        };
+        let was = build
+            .prev
+            .as_ref()
+            .filter(|m| m.turned == turned)
+            .and_then(|m| m.origin);
         let o = was.map_or([b[0], b[1]], |o| [o[0].min(b[0]), o[1].min(b[1])]);
         build.next.origin = Some(o);
         o

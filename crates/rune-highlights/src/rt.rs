@@ -18,7 +18,9 @@ pub fn trap() -> ! {
 
 #[inline(always)]
 pub fn bitmask(v: V128) -> i32 {
-    v.iter().enumerate().fold(0, |r, (i, b)| r | (((b >> 7) as i32) << i))
+    v.iter()
+        .enumerate()
+        .fold(0, |r, (i, b)| r | (((b >> 7) as i32) << i))
 }
 
 #[inline(always)]
@@ -47,7 +49,9 @@ fn read<const N: usize>(mem: &[u8], at: usize) -> [u8; N] {
 
 #[inline(always)]
 fn write<const N: usize>(mem: &mut [u8], at: usize, v: [u8; N]) {
-    mem.get_mut(at..at + N).unwrap_or_else(|| trap()).copy_from_slice(&v);
+    mem.get_mut(at..at + N)
+        .unwrap_or_else(|| trap())
+        .copy_from_slice(&v);
 }
 
 impl super::Wasm {
@@ -127,6 +131,9 @@ impl super::Wasm {
 
     pub fn fill(&mut self, dst: i32, v: i32, n: i32) {
         let (d, n) = (dst as u32 as usize, n as u32 as usize);
-        self.mem.get_mut(d..d + n).unwrap_or_else(|| trap()).fill(v as u8);
+        self.mem
+            .get_mut(d..d + n)
+            .unwrap_or_else(|| trap())
+            .fill(v as u8);
     }
 }

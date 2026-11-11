@@ -69,7 +69,14 @@ pub(crate) struct A11y {
 
 impl A11y {
     pub(crate) const EMPTY: A11y = A11y {
-        level: None, expanded: None, secure: false, checked: None, disabled: false, hidden: false, live: None, more: None,
+        level: None,
+        expanded: None,
+        secure: false,
+        checked: None,
+        disabled: false,
+        hidden: false,
+        live: None,
+        more: None,
     };
 
     fn more(&mut self) -> &mut A11yMore {
@@ -89,7 +96,9 @@ impl El {
         self.cold_mut().a11y.more().href = Some(url.clone());
         self.set_role_name("link");
         self.handlers.on_press = Some(std::rc::Rc::new(move |_, tx: &mut crate::Tx| {
-            if url.contains(':') { let _ = tx.open_url(&url); }
+            if url.contains(':') {
+                let _ = tx.open_url(&url);
+            }
         }));
         self
     }
@@ -141,14 +150,30 @@ impl El {
     /// `aria-valuemin` and `aria-valuemax`). Assistive technology increments it through
     /// [`El::on_step`].
     pub fn range_value(mut self, value: f64, min: f64, max: f64) -> Self {
-        let step = self.cold.a11y.more.as_ref().and_then(|m| m.range).and_then(|r| r.step);
-        self.cold_mut().a11y.more().range = Some(Range { value, min, max, step });
+        let step = self
+            .cold
+            .a11y
+            .more
+            .as_ref()
+            .and_then(|m| m.range)
+            .and_then(|r| r.step);
+        self.cold_mut().a11y.more().range = Some(Range {
+            value,
+            min,
+            max,
+            step,
+        });
         self
     }
     /// The amount one step of [`El::on_step`] moves a [`range_value`](Self::range_value).
     pub fn range_step(mut self, step: f64) -> Self {
         let more = self.cold_mut().a11y.more();
-        let range = more.range.get_or_insert(Range { value: 0.0, min: 0.0, max: 0.0, step: None });
+        let range = more.range.get_or_insert(Range {
+            value: 0.0,
+            min: 0.0,
+            max: 0.0,
+            step: None,
+        });
         range.step = Some(step);
         self
     }
@@ -169,7 +194,11 @@ impl El {
         if disabled || !self.cold.is_empty() {
             let cold = self.cold_mut();
             cold.a11y.disabled = disabled;
-            if disabled { let f = &mut *cold.focus; f.enabled = false; f.opt_out = true; }
+            if disabled {
+                let f = &mut *cold.focus;
+                f.enabled = false;
+                f.opt_out = true;
+            }
         }
         self
     }

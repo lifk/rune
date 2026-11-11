@@ -47,9 +47,13 @@ pub(crate) fn eligible(ppem: f64) -> bool {
 }
 
 fn eval(m: HintMetrics, scale: f64, d: f64, x_target: f64, cap_target: f64) -> HintTransform {
-    let stem = (if m.stem_height == 0.0 { m.cap_height } else { m.stem_height })
-        .min(m.x_height * 0.333)
-        .min((m.cap_height - m.x_height) * 0.5)
+    let stem = (if m.stem_height == 0.0 {
+        m.cap_height
+    } else {
+        m.stem_height
+    })
+    .min(m.x_height * 0.333)
+    .min((m.cap_height - m.x_height) * 0.5)
         * scale;
     let lo = stem + d;
     let x = m.x_height.mul_add(scale, d);
@@ -70,7 +74,9 @@ fn eval(m: HintMetrics, scale: f64, d: f64, x_target: f64, cap_target: f64) -> H
         s2 = slope(mt - xt, middle - x);
         s3 = 1.0;
     }
-    HintTransform { values: [-d, lo, x, xt, middle, mt, cap, ct, s1, s2, s3] }
+    HintTransform {
+        values: [-d, lo, x, xt, middle, mt, cap, ct, s1, s2, s3],
+    }
 }
 
 /// The transform for radius `d` at `ppem`, or None when the size or the metrics don't take it.
@@ -88,10 +94,13 @@ pub(crate) fn autohint(m: HintMetrics, ppem: f64, d: f64) -> Option<HintTransfor
     let plain_cap = r(m.cap_height * scale);
     if plain_x != xt {
         let cost = |x, c| {
-            [reference, 0.0].iter().map(|&d| {
-                let t = eval(m, scale, d, x, c);
-                (t.values[8] - 1.0).abs() + (t.values[9] - 1.0).abs()
-            }).sum::<f64>()
+            [reference, 0.0]
+                .iter()
+                .map(|&d| {
+                    let t = eval(m, scale, d, x, c);
+                    (t.values[8] - 1.0).abs() + (t.values[9] - 1.0).abs()
+                })
+                .sum::<f64>()
         };
         if cost(xt, ct) > cost(plain_x, plain_cap) {
             xt = plain_x;
@@ -99,12 +108,20 @@ pub(crate) fn autohint(m: HintMetrics, ppem: f64, d: f64) -> Option<HintTransfor
         }
     }
     let t = eval(m, scale, d, xt, ct);
-    if m.x_height / m.cap_height > 0.85 && t.values[9] < 0.33 { None } else { Some(t) }
+    if m.x_height / m.cap_height > 0.85 && t.values[9] < 0.33 {
+        None
+    } else {
+        Some(t)
+    }
 }
 
 /// Metrics for a TrueType (`glyf`) face from its 'o' and 'X' outlines (at `coords`), `head`
 /// and the known descriptor stemH. Other formats return None, so they aren't hinted.
-pub(crate) fn truetype_metrics(font: FontRef<'_>, coords: &[i16], cx: &mut ScaleContext) -> Option<HintMetrics> {
+pub(crate) fn truetype_metrics(
+    font: FontRef<'_>,
+    coords: &[i16],
+    cx: &mut ScaleContext,
+) -> Option<HintMetrics> {
     font.table(u32::from_be_bytes(*b"glyf"))?;
     let head = font.table(u32::from_be_bytes(*b"head"))?;
     let upem = font.metrics(coords).units_per_em as f64;
@@ -114,20 +131,47 @@ pub(crate) fn truetype_metrics(font: FontRef<'_>, coords: &[i16], cx: &mut Scale
         if id == 0 {
             return None;
         }
-        let mut scaler = cx.builder(font).size(upem as f32).hint(false).normalized_coords(coords.iter().copied()).build();
+        let mut scaler = cx
+            .builder(font)
+            .size(upem as f32)
+            .hint(false)
+            .normalized_coords(coords.iter().copied())
+            .build();
         let outline = scaler.scale_outline(id)?;
-        Some(outline.points().iter().map(|p| p.y as f64).fold(f64::NEG_INFINITY, f64::max))
+        Some(
+            outline
+                .points()
+                .iter()
+                .map(|p| p.y as f64)
+                .fold(f64::NEG_INFINITY, f64::max),
+        )
     };
     let x_height = top('o')?;
     let cap_height = top('X')?;
-    Some(HintMetrics { upem, x_height, cap_height, max_y, stem_height: descriptor_stem_height(font) })
+    Some(HintMetrics {
+        upem,
+        x_height,
+        cap_height,
+        max_y,
+        stem_height: descriptor_stem_height(font),
+    })
 }
 
 /// The stemH CoreGraphics' font descriptor reports, which moves the hinter's lowest band. It
 /// isn't in any table swash reads (not `post`, `OS/2` or `cvt `), so these are the values
 /// macOS 15.3 reports for the faces measured; other TrueType faces, Inter among them, report 0.
 fn descriptor_stem_height(font: FontRef<'_>) -> f64 {
-    let name = font.localized_strings().find_by_id(swash::StringId::PostScript, None).map(|s| s.chars().collect::<String>()).unwrap_or_default();
+    let name = font
+        .localized_strings()
+        .find_by_id(swash::StringId::PostScript, None)
+        .map(|s| s.chars().collect::<String>())
+        .unwrap_or_default();
     // SF Pro (SFNS.ttf) at every weight and optical size tried, and Helvetica Regular.
-    if name.starts_with(".SFNS") { 79.0 } else if name == "Helvetica" { 85.0 } else { 0.0 }
+    if name.starts_with(".SFNS") {
+        79.0
+    } else if name == "Helvetica" {
+        85.0
+    } else {
+        0.0
+    }
 }

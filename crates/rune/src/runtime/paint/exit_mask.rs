@@ -31,7 +31,13 @@ impl<S: 'static> Runtime<S> {
         mask.exiting.reserve(self.nodes.len());
         for i in 0..self.nodes.len() {
             let n = &self.nodes[i];
-            let up = n.parent.is_some_and(|p| if p < i { mask.exiting[p] } else { self.subtree_exiting(p) });
+            let up = n.parent.is_some_and(|p| {
+                if p < i {
+                    mask.exiting[p]
+                } else {
+                    self.subtree_exiting(p)
+                }
+            });
             mask.exiting.push(up || self.is_exiting(n.id));
         }
         mask.commit = Some(self.commit_gen);
@@ -47,8 +53,12 @@ impl<S: 'static> Runtime<S> {
             return exiting;
         }
         loop {
-            if self.is_exiting(self.nodes[i].id) { return true; }
-            let Some(parent) = self.nodes[i].parent else { return false };
+            if self.is_exiting(self.nodes[i].id) {
+                return true;
+            }
+            let Some(parent) = self.nodes[i].parent else {
+                return false;
+            };
             i = parent;
         }
     }

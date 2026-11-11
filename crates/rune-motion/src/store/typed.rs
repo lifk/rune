@@ -10,7 +10,12 @@ impl AnimationStore {
 
     /// [`set`](Self::set), and whether it changed anything: setting a track already at rest on
     /// `value` leaves it, and what it last presented, as they are.
-    pub(crate) fn set_changed<T: Animatable>(&mut self, node: NodeId, prop: Prop<T>, value: T) -> (TrackId, bool) {
+    pub(crate) fn set_changed<T: Animatable>(
+        &mut self,
+        node: NodeId,
+        prop: Prop<T>,
+        value: T,
+    ) -> (TrackId, bool) {
         let v = lanes(&value);
         let v = &v[..T::LANES];
         if let Some(&t) = self.index.get(&(node.0, prop.id.0)) {
@@ -27,11 +32,17 @@ impl AnimationStore {
     /// Track `t` is settled exactly on `v`: nothing running, scheduled or stacked on any lane.
     fn at_rest_on(&self, t: usize, v: &[f32]) -> bool {
         let l0 = self.t_lane0[t] as usize;
-        self.t_slot[t] == NONE && self.t_meta[t].token == 0 && v.iter().enumerate().all(|(i, &x)| {
-            let l = l0 + i;
-            self.l_target[l] == x && self.l_value[l] == x && self.l_vel[l] == 0.0
-                && self.l_pending[l] == NONE && self.l_more[l] == NONE && self.l_layer[l].kind == Kind::Rest
-        })
+        self.t_slot[t] == NONE
+            && self.t_meta[t].token == 0
+            && v.iter().enumerate().all(|(i, &x)| {
+                let l = l0 + i;
+                self.l_target[l] == x
+                    && self.l_value[l] == x
+                    && self.l_vel[l] == 0.0
+                    && self.l_pending[l] == NONE
+                    && self.l_more[l] == NONE
+                    && self.l_layer[l].kind == Kind::Rest
+            })
     }
 
     /// Animates a property to `target`. Retargets from the exact current position and velocity.
@@ -48,7 +59,13 @@ impl AnimationStore {
     }
 
     /// [`animate`](Self::animate), and whether it changed anything (an unchanged target doesn't).
-    pub(crate) fn animate_changed<T: Animatable>(&mut self, node: NodeId, prop: Prop<T>, target: T, anim: Anim) -> (TrackId, bool) {
+    pub(crate) fn animate_changed<T: Animatable>(
+        &mut self,
+        node: NodeId,
+        prop: Prop<T>,
+        target: T,
+        anim: Anim,
+    ) -> (TrackId, bool) {
         match self.index.get(&(node.0, prop.id.0)).copied() {
             None => self.set_changed(node, prop, target),
             Some(t) => {
@@ -77,21 +94,41 @@ impl AnimationStore {
     }
 
     /// Hands a released gesture to physics, from its current value and the given velocity.
-    pub fn release<T: Animatable>(&mut self, node: NodeId, prop: Prop<T>, velocity: T, how: Release<T>) -> TrackId {
+    pub fn release<T: Animatable>(
+        &mut self,
+        node: NodeId,
+        prop: Prop<T>,
+        velocity: T,
+        how: Release<T>,
+    ) -> TrackId {
         let vel = lanes(&velocity);
-        let cur = lanes(&self.sample(node, prop).expect("release: set the value before releasing it"));
+        let cur = lanes(
+            &self
+                .sample(node, prop)
+                .expect("release: set the value before releasing it"),
+        );
         let t = self.index[&(node.0, prop.id.0)] as usize;
         let n = T::LANES;
         match how {
             Release::Spring { target, spring } => {
                 let tg = lanes(&target);
-                self.animate_raw(t, &tg[..n], Anim::new(Curve::Spring(spring)), Some(&vel[..n]));
+                self.animate_raw(
+                    t,
+                    &tg[..n],
+                    Anim::new(Curve::Spring(spring)),
+                    Some(&vel[..n]),
+                );
             }
             Release::Decay(d) => {
                 // The decay's target is computed per lane from (x, v); pass the current values.
                 self.animate_raw(t, &cur[..n], Anim::new(Curve::Decay(d)), Some(&vel[..n]));
             }
-            Release::DecayClamped { decay, min, max, spring } => {
+            Release::DecayClamped {
+                decay,
+                min,
+                max,
+                spring,
+            } => {
                 let (lo, hi) = (lanes(&min), lanes(&max));
                 let k = decay.k();
                 let l0 = self.t_lane0[t] as usize;
@@ -103,23 +140,40 @@ impl AnimationStore {
                     self.cancel_pending(l);
                     if x < lo[i] || x > hi[i] {
                         let bound = x.clamp(lo[i], hi[i]);
-                        self.start_lane(l, now, bound, Curve::Spring(spring), Blend::Merge, Some(v), eps);
+                        self.start_lane(
+                            l,
+                            now,
+                            bound,
+                            Curve::Spring(spring),
+                            Blend::Merge,
+                            Some(v),
+                            eps,
+                        );
                         continue;
                     }
                     let proj = x + v / k;
                     self.start_lane(l, now, x, Curve::Decay(decay), Blend::Merge, Some(v), eps);
-                    let bound = if proj > hi[i] { Some(hi[i]) } else if proj < lo[i] { Some(lo[i]) } else { None };
+                    let bound = if proj > hi[i] {
+                        Some(hi[i])
+                    } else if proj < lo[i] {
+                        Some(lo[i])
+                    } else {
+                        None
+                    };
                     if let Some(b) = bound {
                         // x + (v/k)(1 − e^{−kτ}) = b  →  τ = −ln(1 − (b − x)k/v) / k
                         let tau = -((1.0 - (b - x) * k / v) as f64).ln() / k as f64;
-                        self.push_pending(l, Pending {
-                            at: now + tau.max(0.0),
-                            target: b,
-                            velocity: f32::NAN,
-                            curve: Curve::Spring(spring),
-                            blend: Blend::Merge,
-                            next: NONE,
-                        });
+                        self.push_pending(
+                            l,
+                            Pending {
+                                at: now + tau.max(0.0),
+                                target: b,
+                                velocity: f32::NAN,
+                                curve: Curve::Spring(spring),
+                                blend: Blend::Merge,
+                                next: NONE,
+                            },
+                        );
                     }
                 }
                 self.commit_scheduled(t, now, 0);
@@ -182,7 +236,9 @@ impl AnimationStore {
     }
 
     pub fn is_animating<T>(&self, node: NodeId, prop: Prop<T>) -> bool {
-        self.index.get(&(node.0, prop.id.0)).is_some_and(|&t| self.t_slot[t as usize] != NONE)
+        self.index
+            .get(&(node.0, prop.id.0))
+            .is_some_and(|&t| self.t_slot[t as usize] != NONE)
     }
 
     /// True when any property track on `node` is currently active.
@@ -198,12 +254,16 @@ impl AnimationStore {
     }
 
     pub fn track_id<T>(&self, node: NodeId, prop: Prop<T>) -> Option<TrackId> {
-        self.index.get(&(node.0, prop.id.0)).map(|&t| self.id_of(t as usize))
+        self.index
+            .get(&(node.0, prop.id.0))
+            .map(|&t| self.id_of(t as usize))
     }
 
     /// Is this exact track (not a reused slot) alive?
     pub fn contains(&self, id: TrackId) -> bool {
-        self.t_meta.get(id.index as usize).is_some_and(|m| m.alive && m.generation == id.generation)
+        self.t_meta
+            .get(id.index as usize)
+            .is_some_and(|m| m.alive && m.generation == id.generation)
     }
 
     /// True once the track is at rest (or gone).
@@ -214,7 +274,8 @@ impl AnimationStore {
     /// Bumps every time the track gets a new animation; choreography uses it to tell whether a
     /// track it started was taken over by something else.
     pub fn epoch(&self, id: TrackId) -> Option<u32> {
-        self.contains(id).then(|| self.t_meta[id.index as usize].epoch)
+        self.contains(id)
+            .then(|| self.t_meta[id.index as usize].epoch)
     }
 
     /// When the track's latest animation logically completes (SwiftUI `.logicallyComplete`), in
@@ -229,7 +290,13 @@ impl AnimationStore {
             }
             let rem = at - self.time_of(t);
             let scale = self.clocks[self.t_clock[t] as usize].scale as f64;
-            if rem <= 0.0 { self.now + rem } else if scale == 0.0 { f64::INFINITY } else { self.now + rem / scale }
+            if rem <= 0.0 {
+                self.now + rem
+            } else if scale == 0.0 {
+                f64::INFINITY
+            } else {
+                self.now + rem / scale
+            }
         })
     }
 

@@ -22,15 +22,25 @@ impl PresentWorker {
     pub(crate) fn spawn() -> Option<PresentWorker> {
         let (jobs, inbox) = mpsc::channel::<Job>();
         let (finished, done) = mpsc::channel();
-        let thread = std::thread::Builder::new().name("rune present".into()).spawn(move || {
-            #[cfg(target_os = "macos")]
-            interactive();
-            while let Ok(job) = inbox.recv() {
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job));
-                if finished.send(result).is_err() { break; }
-            }
-        }).ok()?;
-        Some(PresentWorker { jobs: Some(jobs), done, in_flight: false, thread: Some(thread) })
+        let thread = std::thread::Builder::new()
+            .name("rune present".into())
+            .spawn(move || {
+                #[cfg(target_os = "macos")]
+                interactive();
+                while let Ok(job) = inbox.recv() {
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job));
+                    if finished.send(result).is_err() {
+                        break;
+                    }
+                }
+            })
+            .ok()?;
+        Some(PresentWorker {
+            jobs: Some(jobs),
+            done,
+            in_flight: false,
+            thread: Some(thread),
+        })
     }
 
     /// Runs `job` on the thread once the job before it has finished.
@@ -46,7 +56,9 @@ impl PresentWorker {
     /// Blocks until the job in flight, if any, has finished. A job that panicked panics here,
     /// on the owner's thread, as it would have without the worker.
     pub(crate) fn wait(&mut self) {
-        if !std::mem::take(&mut self.in_flight) { return; }
+        if !std::mem::take(&mut self.in_flight) {
+            return;
+        }
         if let Ok(Err(panic)) = self.done.recv() {
             self.jobs = None;
             std::panic::resume_unwind(panic);
@@ -56,9 +68,13 @@ impl PresentWorker {
 
 impl Drop for PresentWorker {
     fn drop(&mut self) {
-        if self.in_flight && !std::thread::panicking() { self.wait(); }
+        if self.in_flight && !std::thread::panicking() {
+            self.wait();
+        }
         self.jobs = None;
-        if let Some(thread) = self.thread.take() { let _ = thread.join(); }
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
     }
 }
 

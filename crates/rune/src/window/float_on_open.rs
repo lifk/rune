@@ -8,7 +8,11 @@ use winit::window::{Window, WindowAttributes};
 use crate::windows::WindowOptions;
 
 /// `attrs` with the window's size as both its minimum and its maximum.
-pub(super) fn fixed(attrs: WindowAttributes, options: &WindowOptions, size: (f32, f32)) -> WindowAttributes {
+pub(super) fn fixed(
+    attrs: WindowAttributes,
+    options: &WindowOptions,
+    size: (f32, f32),
+) -> WindowAttributes {
     let fixed: Size = match options.physical_size {
         Some((w, h)) => PhysicalSize::new(w, h).into(),
         None => LogicalSize::new(size.0, size.1).into(),

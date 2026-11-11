@@ -35,7 +35,9 @@ impl TimerWake {
         match (self, event) {
             (_, TimerWakeEvent::Asked { at }) => (TimerWake::Asked { at }, None),
             (_, TimerWakeEvent::PollAlone) => (TimerWake::Idle, None),
-            (TimerWake::Asked { at }, TimerWakeEvent::Frame { due: false }) => (TimerWake::Taken { polled_at: at }, Some(at)),
+            (TimerWake::Asked { at }, TimerWakeEvent::Frame { due: false }) => {
+                (TimerWake::Taken { polled_at: at }, Some(at))
+            }
             (_, TimerWakeEvent::Frame { .. }) => (TimerWake::Idle, None),
             (TimerWake::Asked { at }, TimerWakeEvent::Cancel) => (TimerWake::Idle, Some(at)),
             (state, TimerWakeEvent::Cancel) => (state, None),
@@ -57,7 +59,9 @@ impl TimerWake {
         }
     }
 
-    fn asked(&self) -> bool { matches!(self, TimerWake::Asked { .. }) }
+    fn asked(&self) -> bool {
+        matches!(self, TimerWake::Asked { .. })
+    }
 }
 
 impl<S: 'static> Runtime<S> {
@@ -83,7 +87,9 @@ impl<S: 'static> Runtime<S> {
     /// `poll_hidden`, leaving the poll's `wake_after`s in `pending`.
     fn poll_alone(&mut self) -> bool {
         self.timer_wake = self.timer_wake.step(TimerWakeEvent::PollAlone).0;
-        if let Some(clock) = self.wall_clock() { self.clock = clock; }
+        if let Some(clock) = self.wall_clock() {
+            self.clock = clock;
+        }
         // An `update`'s `wake_after` counts from now; no frame may come to schedule it.
         let wakes = std::mem::take(&mut self.pending.wakes);
         self.schedule_wakes(wakes);
@@ -92,11 +98,20 @@ impl<S: 'static> Runtime<S> {
         let due = self.wake_deadlines.partition_point(|t| *t <= self.clock);
         self.wake_deadlines.drain(..due);
         let patched = self.patch_pending();
-        let Some(poll) = self.poll else { return patched };
+        let Some(poll) = self.poll else {
+            return patched;
+        };
         let mut one = self.transaction();
-        let changed = self.idle_meter.polled(crate::tooling::perf_warn::timed("poll", || app_call!(poll, &mut self.state, self.clock, &mut one)));
+        let changed = self
+            .idle_meter
+            .polled(crate::tooling::perf_warn::timed("poll", || {
+                app_call!(poll, &mut self.state, self.clock, &mut one)
+            }));
         self.dirty |= changed;
-        let asks_frame = one.srgb_blend.is_some_and(|b| b != self.srgb_blend) || one.font_smoothing.is_some_and(|m| m != self.text.smoothing) || self.changes_families(&one) || (one.blur && self.focus.path().is_some());
+        let asks_frame = one.srgb_blend.is_some_and(|b| b != self.srgb_blend)
+            || one.font_smoothing.is_some_and(|m| m != self.text.smoothing)
+            || self.changes_families(&one)
+            || (one.blur && self.focus.path().is_some());
         self.latch_requests(&mut one);
         let stale = changed || one.frame_work() || patched || asks_frame;
         merge(&mut self.pending, one);
@@ -111,7 +126,9 @@ impl<S: 'static> Runtime<S> {
     /// hover or tooltip delay, a loop, a live value, `SurfaceDraw` content, or a poll stepping
     /// every frame.
     pub(crate) fn resting_wake(&mut self) -> Option<bool> {
-        if !self.rests() { return None; }
+        if !self.rests() {
+            return None;
+        }
         let stale = self.poll_alone();
         let steps = self.pending.wakes.iter().any(|d| d.is_zero());
         Some(stale || self.window_frame.is_some() || steps)
@@ -121,7 +138,10 @@ impl<S: 'static> Runtime<S> {
     /// and its timers count from it; without one they count from the poll.
     pub(crate) fn resting_wake_frame(&mut self, frame: bool) {
         if frame {
-            self.timer_wake = self.timer_wake.step(TimerWakeEvent::Asked { at: self.clock }).0;
+            self.timer_wake = self
+                .timer_wake
+                .step(TimerWakeEvent::Asked { at: self.clock })
+                .0;
         } else {
             let wakes = std::mem::take(&mut self.pending.wakes);
             self.schedule_wakes(wakes);
@@ -141,16 +161,30 @@ impl<S: 'static> Runtime<S> {
     /// Nothing but a timer asks this runtime for a frame.
     pub(crate) fn rests(&self) -> bool {
         #[cfg(feature = "hot")]
-        if self.hot.is_some() { return false; }
-        !self.animating && !self.stale() && !self.settle && self.loop_wake.is_none() && self.window_frame.is_none()
-            && self.hover_pending.is_empty() && !self.tooltip_waiting() && !self.press_repeat_waiting() && !self.drag_ends_pending()
-            && self.drag_out_request.is_none() && !self.files_held() && !self.live_pending()
-            && self.surfaces.is_empty() && !self.steps_frames()
+        if self.hot.is_some() {
+            return false;
+        }
+        !self.animating
+            && !self.stale()
+            && !self.settle
+            && self.loop_wake.is_none()
+            && self.window_frame.is_none()
+            && self.hover_pending.is_empty()
+            && !self.tooltip_waiting()
+            && !self.press_repeat_waiting()
+            && !self.drag_ends_pending()
+            && self.drag_out_request.is_none()
+            && !self.files_held()
+            && !self.live_pending()
+            && self.surfaces.is_empty()
+            && !self.steps_frames()
     }
 
     /// The last poll asked for the next frame (`wake_after(ZERO)`, due at once): it steps
     /// something every frame.
     fn steps_frames(&self) -> bool {
-        self.wake_deadlines.first().is_some_and(|t| *t <= self.clock)
+        self.wake_deadlines
+            .first()
+            .is_some_and(|t| *t <= self.clock)
     }
 }

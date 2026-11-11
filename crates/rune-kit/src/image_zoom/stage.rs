@@ -32,12 +32,19 @@ pub enum StageGesture {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum StageEvent {
-    PointerDown { zoomed: bool, at: [f32; 2] },
-    PointerMoved { at: [f32; 2] },
+    PointerDown {
+        zoomed: bool,
+        at: [f32; 2],
+    },
+    PointerMoved {
+        at: [f32; 2],
+    },
     PointerUp,
     PointerCancel,
     /// Fit, a click, a pinch or a wheel zoom changed whether the image shows above fit.
-    ZoomChanged { zoomed: bool },
+    ZoomChanged {
+        zoomed: bool,
+    },
     Click,
 }
 
@@ -56,7 +63,9 @@ pub fn stage_step(state: &mut StageGesture, event: StageEvent) -> Effects<StageE
         }
         (StageGesture::Panning { moved, origin }, StageEvent::PointerMoved { at }) => {
             let delta = [at[0] - origin[0], at[1] - origin[1]];
-            if delta == [0.0, 0.0] || (!moved && delta[0].hypot(delta[1]) < DRAG_THRESHOLD) { return Effects::none(); }
+            if delta == [0.0, 0.0] || (!moved && delta[0].hypot(delta[1]) < DRAG_THRESHOLD) {
+                return Effects::none();
+            }
             *state = StageGesture::Panning { moved: true, origin: at };
             Effects::one(StageEffect::Pan(delta))
         }
@@ -101,16 +110,27 @@ struct Geom {
 
 impl Default for StageZoom {
     fn default() -> StageZoom {
-        StageZoom { zoom: 1.0, pan: [0.0, 0.0], gesture: StageGesture::Idle, geom: Cell::new(Geom { fit: 1.0, size: [0.0; 2], natural: [1.0; 2] }) }
+        StageZoom {
+            zoom: 1.0,
+            pan: [0.0, 0.0],
+            gesture: StageGesture::Idle,
+            geom: Cell::new(Geom { fit: 1.0, size: [0.0; 2], natural: [1.0; 2] }),
+        }
     }
 }
 
 impl StageZoom {
-    pub fn zoomed(&self) -> bool { self.zoom > 1.0 }
+    pub fn zoomed(&self) -> bool {
+        self.zoom > 1.0
+    }
 
-    fn min_zoom(&self) -> f32 { 0.25f32.min(1.0 / self.geom.get().fit) }
+    fn min_zoom(&self) -> f32 {
+        0.25f32.min(1.0 / self.geom.get().fit)
+    }
 
-    fn max_zoom(&self) -> f32 { 8.0f32.max(1.0 / self.geom.get().fit) }
+    fn max_zoom(&self) -> f32 {
+        8.0f32.max(1.0 / self.geom.get().fit)
+    }
 
     /// Keeps the fitted footprint covered, its letterboxing included.
     fn bound(&self, offset: f32, natural: f32) -> f32 {
@@ -130,7 +150,9 @@ impl StageZoom {
         tx.instant();
     }
 
-    pub fn reset(&mut self, tx: &mut Tx) { self.set_zoom(1.0, [0.0, 0.0], tx) }
+    pub fn reset(&mut self, tx: &mut Tx) {
+        self.set_zoom(1.0, [0.0, 0.0], tx)
+    }
 
     /// Zoom to `zoom` about `at` (points from the stage's top-left).
     fn zoom_at(&mut self, zoom: f32, at: [f32; 2], tx: &mut Tx) {
@@ -207,7 +229,13 @@ impl<S: 'static> Stage<S> {
     }
 
     /// The controls' tooltips and names, and the group's name.
-    pub fn labels(mut self, zoom_in: impl Into<String>, zoom_out: impl Into<String>, fit: impl Into<String>, group: impl Into<String>) -> Self {
+    pub fn labels(
+        mut self,
+        zoom_in: impl Into<String>,
+        zoom_out: impl Into<String>,
+        fit: impl Into<String>,
+        group: impl Into<String>,
+    ) -> Self {
         self.labels = [zoom_in.into(), zoom_out.into(), fit.into(), group.into()];
         self
     }
@@ -226,18 +254,21 @@ impl<S: 'static> Stage<S> {
             (true, _) => Cursor::Grab,
             _ => Cursor::Default,
         };
-        let image = self.image
-            .absolute(x, y)
-            .size(w, h)
-            .cursor(cursor)
-            .on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| {
+        let image =
+            self.image.absolute(x, y).size(w, h).cursor(cursor).on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| {
                 let z = lens(s);
                 let [x, y, _, _] = z.rect();
                 let at = [x + d.x, y + d.y];
                 match d.phase {
-                    Phase::Down => { z.run(StageEvent::PointerDown { zoomed: z.zoomed(), at }, tx); }
-                    Phase::Move => { z.run(StageEvent::PointerMoved { at }, tx); }
-                    Phase::Up if d.cancelled() => { z.run(StageEvent::PointerCancel, tx); }
+                    Phase::Down => {
+                        z.run(StageEvent::PointerDown { zoomed: z.zoomed(), at }, tx);
+                    }
+                    Phase::Move => {
+                        z.run(StageEvent::PointerMoved { at }, tx);
+                    }
+                    Phase::Up if d.cancelled() => {
+                        z.run(StageEvent::PointerCancel, tx);
+                    }
                     Phase::Up => {
                         z.run(StageEvent::PointerUp, tx);
                         if z.run(StageEvent::Click, tx).is_some() {
@@ -256,7 +287,9 @@ impl<S: 'static> Stage<S> {
             .on_wheel(move |s: &mut S, e: rune::WheelEvent, tx: &mut Tx| {
                 let z = lens(s);
                 let pinch = e.mods.ctrl || e.mods.cmd;
-                if !pinch && z.zoom <= 1.0 { return false; }
+                if !pinch && z.zoom <= 1.0 {
+                    return false;
+                }
                 if pinch {
                     // A browser's delta runs the other way.
                     z.zoom_at(z.zoom * (e.dy / 100.0).exp(), [e.x, e.y], tx);
@@ -292,8 +325,15 @@ impl<S: 'static> Stage<S> {
                 .on_press_tx(move |s: &mut S, tx: &mut Tx| f(lens(s), tx))
                 .build(k)
         };
-        let mut bar = row().key("preview-controls").role("group").label(group).padding(4.0).center_y().radius(8.0)
-            .fill(k.c.bg_base).border(0.5, k.c.border_base);
+        let mut bar = row()
+            .key("preview-controls")
+            .role("group")
+            .label(group)
+            .padding(4.0)
+            .center_y()
+            .radius(8.0)
+            .fill(k.c.bg_base)
+            .border(0.5, k.c.border_base);
         bar = crate::shadows(k, bar, &k.elevation.raised);
         bar.pin(None, None, Some(12.0), Some(12.0))
             .child(button(glyphs[0], zin, zoom.zoom >= zoom.max_zoom(), Rc::new(|z, tx| z.zoom_by(1.25, tx))))

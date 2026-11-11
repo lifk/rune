@@ -26,7 +26,11 @@ impl FileDrop {
         match self.steps.last_mut() {
             Some(FileStep::Enter(files)) if !drop => files.push(path),
             Some(FileStep::Drop(files)) if drop => files.push(path),
-            _ => self.steps.push(if drop { FileStep::Drop(vec![path]) } else { FileStep::Enter(vec![path]) }),
+            _ => self.steps.push(if drop {
+                FileStep::Drop(vec![path])
+            } else {
+                FileStep::Enter(vec![path])
+            }),
         }
     }
 }

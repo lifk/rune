@@ -33,7 +33,10 @@ impl<S: 'static> Runtime<S> {
         std::iter::successors(Some(i), |&p| self.nodes[p].parent)
             .take_while(|&p| self.allowed(p))
             .map(|p| self.nodes[p].focus.preserve_on_press)
-            .fold(OnPress::default(), |a, b| OnPress { focus: a.focus || b.focus, selection: a.selection || b.selection })
+            .fold(OnPress::default(), |a, b| OnPress {
+                focus: a.focus || b.focus,
+                selection: a.selection || b.selection,
+            })
     }
 
     /// A press on node `i` keeps the text selection (and so the focus too).
@@ -50,13 +53,17 @@ impl<S: 'static> Runtime<S> {
     /// The selection side of a primary press on `target` at (x, y): it starts or clears a
     /// selection, unless the press is on an [`El::keeps_text_selection`] element.
     pub(in crate::runtime) fn press_selection(&mut self, target: Option<usize>, x: f32, y: f32) {
-        if target.is_some_and(|t| self.press_keeps_selection(t)) { return; }
+        if target.is_some_and(|t| self.press_keeps_selection(t)) {
+            return;
+        }
         self.selection_down(self.selectable_at(x, y), x, y);
     }
 
     /// The selection's focus comes before its anchor.
     pub(in crate::runtime) fn selection_backward(&self) -> bool {
-        let Some(h) = self.selection_holder_end() else { return false };
+        let Some(h) = self.selection_holder_end() else {
+            return false;
+        };
         match self.focus_holder_end(h) {
             Some(f) if f != h => self.tree_order(f) < self.tree_order(h),
             Some(_) => self.text_sel.focus < self.text_sel.anchor,

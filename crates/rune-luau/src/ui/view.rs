@@ -21,7 +21,10 @@ pub(crate) unsafe extern "C-unwind" fn view_memo(state: *mut ffi::lua_State) -> 
             Value::Str(s) => s.to_owned(),
             Value::Num(n) => props::format_num(n),
             other => {
-                let message = format!("view:Memo key must be a string or number, got {}", props::name(other));
+                let message = format!(
+                    "view:Memo key must be a string or number, got {}",
+                    props::name(other)
+                );
                 return guard(state, || Err(message));
             }
         };
@@ -33,14 +36,18 @@ pub(crate) unsafe extern "C-unwind" fn view_memo(state: *mut ffi::lua_State) -> 
             return guard(state, || Err("view:Memo needs a build function".into()));
         }
         let Some((salt, prefix)) = top(|f| (f.env.salt, f.env.prefix.clone())) else {
-            return guard(state, || Err("view:Memo can only be called while rendering".into()));
+            return guard(state, || {
+                Err("view:Memo can only be called while rendering".into())
+            });
         };
         let mut failed: Option<String> = None;
         // Memo ids are the window's: under the script's prefix, two scripts' "panel" memos are
         // two entries. The subtree's root takes the memo's id, as `rune::memo` keys it.
         let key = format!("{prefix}{key}");
         let id = key.clone();
-        let el = rune::memo::memo_with_hash(key, mix(version, salt), || build(state, &mut failed).key(id));
+        let el = rune::memo::memo_with_hash(key, mix(version, salt), || {
+            build(state, &mut failed).key(id)
+        });
         if let Some(message) = failed {
             // The salt bump after this render keeps the empty placeholder the memo stored from
             // being reused, even if the script catches the error.
@@ -49,7 +56,8 @@ pub(crate) unsafe extern "C-unwind" fn view_memo(state: *mut ffi::lua_State) -> 
             return guard(state, || Err(message));
         }
         guard(state, || {
-            let handle = top(|f| f.put(el)).ok_or("view:Memo can only be called while rendering")??;
+            let handle =
+                top(|f| f.put(el)).ok_or("view:Memo can only be called while rendering")??;
             ffi::lua_pushlightuserdata(state, handle);
             Ok(1)
         })
@@ -106,7 +114,12 @@ pub(crate) unsafe fn version_hash(state: *mut ffi::lua_State, idx: c_int) -> Res
         Value::Bool(b) => (1u8, b).hash(&mut h),
         Value::Num(n) => (2u8, n.to_bits()).hash(&mut h),
         Value::Str(s) => (3u8, s).hash(&mut h),
-        other => return Err(format!("a memo version must be nil, a boolean, a number or a string, got {}", props::name(other))),
+        other => {
+            return Err(format!(
+                "a memo version must be nil, a boolean, a number or a string, got {}",
+                props::name(other)
+            ));
+        }
     }
     Ok(h.finish())
 }

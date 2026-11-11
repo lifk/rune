@@ -15,7 +15,12 @@ pub struct LocaleInfo {
 
 impl LocaleInfo {
     pub const fn new(id: &'static str, tag: &'static str, label: &'static str, rtl: bool) -> Self {
-        Self { id, tag, label, rtl }
+        Self {
+            id,
+            tag,
+            label,
+            rtl,
+        }
     }
 
     pub const fn id(&self) -> &'static str {
@@ -80,7 +85,13 @@ impl Catalog {
         locales: &'static [LocaleInfo],
         messages: &'static [Messages],
     ) -> Self {
-        Self { keys, plurals, plural_forms, locales, messages }
+        Self {
+            keys,
+            plurals,
+            plural_forms,
+            locales,
+            messages,
+        }
     }
 
     pub const fn keys(&self) -> &'static [&'static str] {
@@ -97,7 +108,11 @@ impl Catalog {
 
     /// The key index for each CLDR category of a plural base, in [`crate::PluralCategory`] order.
     pub(crate) fn plural_forms(&self, key: PluralKey) -> [Option<usize>; 6] {
-        let forms = self.plural_forms.get(key.0 as usize).copied().unwrap_or([u32::MAX; 6]);
+        let forms = self
+            .plural_forms
+            .get(key.0 as usize)
+            .copied()
+            .unwrap_or([u32::MAX; 6]);
         forms.map(|k| (k != u32::MAX).then_some(k as usize))
     }
 

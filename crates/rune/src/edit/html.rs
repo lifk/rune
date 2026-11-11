@@ -72,7 +72,10 @@ pub(crate) fn decode_entities(input: &str) -> String {
             out.push('&');
             continue;
         }
-        let decoded = if let Some(hex) = entity.strip_prefix("#x").or_else(|| entity.strip_prefix("#X")) {
+        let decoded = if let Some(hex) = entity
+            .strip_prefix("#x")
+            .or_else(|| entity.strip_prefix("#X"))
+        {
             u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
         } else if let Some(dec) = entity.strip_prefix('#') {
             dec.parse::<u32>().ok().and_then(char::from_u32)
@@ -132,7 +135,9 @@ fn extract_attr(attrs: &str, name: &str) -> Option<String> {
             i += 1;
         }
         let key_start = i;
-        while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || matches!(bytes[i], b'-' | b'_' | b':')) {
+        while i < bytes.len()
+            && (bytes[i].is_ascii_alphanumeric() || matches!(bytes[i], b'-' | b'_' | b':'))
+        {
             i += 1;
         }
         if i == key_start {
@@ -167,7 +172,11 @@ fn extract_attr(attrs: &str, name: &str) -> Option<String> {
             v
         } else {
             let val_start = i;
-            while i < bytes.len() && !bytes[i].is_ascii_whitespace() && bytes[i] != b'>' && bytes[i] != b'/' {
+            while i < bytes.len()
+                && !bytes[i].is_ascii_whitespace()
+                && bytes[i] != b'>'
+                && bytes[i] != b'/'
+            {
                 i += 1;
             }
             &attrs[val_start..i]
@@ -182,7 +191,9 @@ fn extract_attr(attrs: &str, name: &str) -> Option<String> {
 /// Parses inline CSS `style="..."` for `font-weight`, `font-style`, and `text-decoration`.
 fn parse_style_marks(style: &str, add: &mut Vec<Mark>, remove: &mut Vec<Mark>) {
     for decl in style.split(';') {
-        let Some((prop, val)) = decl.split_once(':') else { continue };
+        let Some((prop, val)) = decl.split_once(':') else {
+            continue;
+        };
         let prop = prop.trim();
         let val = val.trim();
         if prop.eq_ignore_ascii_case("font-weight") {
@@ -250,40 +261,44 @@ pub(crate) fn parse_html(html: &str) -> TextEdit {
     let mut line_open = false;
     let mut line_has_content = false;
 
-    let current_default_block = |list_stack: &[ListKind], in_pre: usize, in_quote: usize, in_li: usize| -> Block {
-        if in_pre > 0 {
-            Block::Code
-        } else if in_li > 0 && let Some(&kind) = list_stack.last() {
-            let level = (list_stack.len() - 1).min(MAX_LIST_LEVEL as usize) as u8;
-            match kind {
-                ListKind::Bullet => Block::Bullet(level),
-                ListKind::Numbered => Block::Numbered(level),
-            }
-        } else if in_quote > 0 {
-            Block::Quote
-        } else {
-            Block::Paragraph
-        }
-    };
-
-    let flush_active_marks = |active: &mut [ActiveMark], marks: &mut Vec<MarkRange>, pos: usize, in_pre: usize| {
-        if in_pre == 0 {
-            for a in active.iter_mut() {
-                if a.start < pos {
-                    marks.push(MarkRange {
-                        start: a.start,
-                        end: pos,
-                        mark: a.mark.clone(),
-                    });
+    let current_default_block =
+        |list_stack: &[ListKind], in_pre: usize, in_quote: usize, in_li: usize| -> Block {
+            if in_pre > 0 {
+                Block::Code
+            } else if in_li > 0
+                && let Some(&kind) = list_stack.last()
+            {
+                let level = (list_stack.len() - 1).min(MAX_LIST_LEVEL as usize) as u8;
+                match kind {
+                    ListKind::Bullet => Block::Bullet(level),
+                    ListKind::Numbered => Block::Numbered(level),
                 }
-                a.start = pos;
+            } else if in_quote > 0 {
+                Block::Quote
+            } else {
+                Block::Paragraph
             }
-        } else {
-            for a in active.iter_mut() {
-                a.start = pos;
+        };
+
+    let flush_active_marks =
+        |active: &mut [ActiveMark], marks: &mut Vec<MarkRange>, pos: usize, in_pre: usize| {
+            if in_pre == 0 {
+                for a in active.iter_mut() {
+                    if a.start < pos {
+                        marks.push(MarkRange {
+                            start: a.start,
+                            end: pos,
+                            mark: a.mark.clone(),
+                        });
+                    }
+                    a.start = pos;
+                }
+            } else {
+                for a in active.iter_mut() {
+                    a.start = pos;
+                }
             }
-        }
-    };
+        };
 
     let start_new_paragraph = |text: &mut String,
                                blocks: &mut Vec<Block>,
@@ -379,7 +394,18 @@ pub(crate) fn parse_html(html: &str) -> TextEdit {
             let self_closing = raw_tag.ends_with('/')
                 || matches!(
                     tag.as_str(),
-                    "area" | "base" | "col" | "embed" | "hr" | "img" | "input" | "link" | "meta" | "source" | "track" | "wbr"
+                    "area"
+                        | "base"
+                        | "col"
+                        | "embed"
+                        | "hr"
+                        | "img"
+                        | "input"
+                        | "link"
+                        | "meta"
+                        | "source"
+                        | "track"
+                        | "wbr"
                 );
 
             if !is_closing && matches!(tag.as_str(), "script" | "style" | "head") {
@@ -395,7 +421,9 @@ pub(crate) fn parse_html(html: &str) -> TextEdit {
                             && html[search..search + pat.len()].eq_ignore_ascii_case(&pat)
                         {
                             // No `>` after this means none after any later match either.
-                            found = html[search + pat.len()..].find('>').map(|gt| search + pat.len() + gt + 1);
+                            found = html[search + pat.len()..]
+                                .find('>')
+                                .map(|gt| search + pat.len() + gt + 1);
                             break;
                         }
                         search += 1;
@@ -407,13 +435,27 @@ pub(crate) fn parse_html(html: &str) -> TextEdit {
 
             if !is_closing && tag == "br" {
                 if deferred_br == Some((text.len(), blocks.len())) {
-                    push_br(&mut text, &mut blocks, &mut soft_breaks, &mut active_marks, &mut marks, in_pre);
+                    push_br(
+                        &mut text,
+                        &mut blocks,
+                        &mut soft_breaks,
+                        &mut active_marks,
+                        &mut marks,
+                        in_pre,
+                    );
                     line_has_block = true;
                     line_open = true;
                 }
                 deferred_br = None;
                 if in_pre > 0 {
-                    push_br(&mut text, &mut blocks, &mut soft_breaks, &mut active_marks, &mut marks, in_pre);
+                    push_br(
+                        &mut text,
+                        &mut blocks,
+                        &mut soft_breaks,
+                        &mut active_marks,
+                        &mut marks,
+                        in_pre,
+                    );
                     line_has_content = false;
                 } else {
                     // A `<br>` only breaks the line when something follows it in the same block,
@@ -514,7 +556,9 @@ pub(crate) fn parse_html(html: &str) -> TextEdit {
                 let mut to_add = Vec::new();
                 let mut to_suppress = Vec::new();
                 match tag.as_str() {
-                    "b" | "strong" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => to_add.push(Mark::Bold),
+                    "b" | "strong" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
+                        to_add.push(Mark::Bold)
+                    }
                     "i" | "em" => to_add.push(Mark::Italic),
                     "u" | "ins" => to_add.push(Mark::Underline),
                     "s" | "del" | "strike" => to_add.push(Mark::Strike),
@@ -572,11 +616,17 @@ pub(crate) fn parse_html(html: &str) -> TextEdit {
                                 });
                             }
                             frame.suppressed_marks.push(old.mark);
-                            active_marks.push(ActiveMark { mark: m.clone(), start: pos });
+                            active_marks.push(ActiveMark {
+                                mark: m.clone(),
+                                start: pos,
+                            });
                             frame.added_marks.push(m);
                         }
                     } else {
-                        active_marks.push(ActiveMark { mark: m.clone(), start: pos });
+                        active_marks.push(ActiveMark {
+                            mark: m.clone(),
+                            start: pos,
+                        });
                         frame.added_marks.push(m);
                     }
                 }
@@ -589,7 +639,10 @@ pub(crate) fn parse_html(html: &str) -> TextEdit {
                 // Closing tag
                 let pos = text.len();
                 let open = open_tags.get(&tag).is_some_and(|&n| n > 0);
-                if let Some(frame_idx) = open.then(|| stack.iter().rposition(|f| f.tag == tag)).flatten() {
+                if let Some(frame_idx) = open
+                    .then(|| stack.iter().rposition(|f| f.tag == tag))
+                    .flatten()
+                {
                     while stack.len() > frame_idx {
                         let frame = stack.pop().unwrap();
                         if let Some(n) = open_tags.get_mut(&frame.tag) {
@@ -609,7 +662,10 @@ pub(crate) fn parse_html(html: &str) -> TextEdit {
                         }
                         for sup in frame.suppressed_marks {
                             if !active_marks.iter().any(|a| a.mark.same_kind(&sup)) {
-                                active_marks.push(ActiveMark { mark: sup, start: pos });
+                                active_marks.push(ActiveMark {
+                                    mark: sup,
+                                    start: pos,
+                                });
                             }
                         }
                         match frame.tag.as_str() {
@@ -676,20 +732,43 @@ pub(crate) fn parse_html(html: &str) -> TextEdit {
                 }
             } else {
                 // Outside `<pre>`: ignore pure inter-block whitespace if we're between closed blocks and a `<` follows
-                if !line_open && decoded.chars().all(char::is_whitespace) && (!line_has_block || line_has_content) {
+                if !line_open
+                    && decoded.chars().all(char::is_whitespace)
+                    && (!line_has_block || line_has_content)
+                {
                     continue;
                 }
-                if line_open && !line_has_content && decoded.chars().all(char::is_whitespace) && i < bytes.len() && html[i..].starts_with('<') {
+                if line_open
+                    && !line_has_content
+                    && decoded.chars().all(char::is_whitespace)
+                    && i < bytes.len()
+                    && html[i..].starts_with('<')
+                {
                     // Check if the next tag is a block child like `<p>` or `<li>` inside `<blockquote>` or `<ul>`
                     let rest_tag = html[i + 1..].trim_start();
-                    let next_is_block = ["p", "div", "ul", "ol", "li", "blockquote", "pre", "h1", "h2", "h3", "h4", "h5", "h6"]
-                        .iter()
-                        .any(|b| {
-                            rest_tag.len() >= b.len()
-                                && rest_tag.is_char_boundary(b.len())
-                                && rest_tag[..b.len()].eq_ignore_ascii_case(b)
-                                && rest_tag[b.len()..].starts_with(|c: char| c.is_whitespace() || c == '>' || c == '/')
-                        });
+                    let next_is_block = [
+                        "p",
+                        "div",
+                        "ul",
+                        "ol",
+                        "li",
+                        "blockquote",
+                        "pre",
+                        "h1",
+                        "h2",
+                        "h3",
+                        "h4",
+                        "h5",
+                        "h6",
+                    ]
+                    .iter()
+                    .any(|b| {
+                        rest_tag.len() >= b.len()
+                            && rest_tag.is_char_boundary(b.len())
+                            && rest_tag[..b.len()].eq_ignore_ascii_case(b)
+                            && rest_tag[b.len()..]
+                                .starts_with(|c: char| c.is_whitespace() || c == '>' || c == '/')
+                    });
                     if next_is_block {
                         continue;
                     }
@@ -724,7 +803,14 @@ pub(crate) fn parse_html(html: &str) -> TextEdit {
                     }
                 } else {
                     if deferred_br == Some((text.len(), blocks.len())) {
-                        push_br(&mut text, &mut blocks, &mut soft_breaks, &mut active_marks, &mut marks, in_pre);
+                        push_br(
+                            &mut text,
+                            &mut blocks,
+                            &mut soft_breaks,
+                            &mut active_marks,
+                            &mut marks,
+                            in_pre,
+                        );
                     }
                     deferred_br = None;
                 }
@@ -785,14 +871,25 @@ pub(crate) fn serialize_html(edit: &TextEdit, range: Range<usize>) -> String {
     // Collect paragraphs intersecting `start..end`
     let mut paras: Vec<(usize, Range<usize>, Block, bool)> = Vec::new();
     for p in edit.paragraphs() {
-        let p_end_with_nl = if p.range.end < edit.text.len() { p.range.end + 1 } else { p.range.end };
+        let p_end_with_nl = if p.range.end < edit.text.len() {
+            p.range.end + 1
+        } else {
+            p.range.end
+        };
         if p.range.start <= end && p_end_with_nl >= start {
             let sub_start = p.range.start.max(start);
             let sub_end = p.range.end.min(end);
             if sub_start <= sub_end
-                && (sub_start < sub_end || start == end || (p.range.start >= start && p.range.end <= end))
+                && (sub_start < sub_end
+                    || start == end
+                    || (p.range.start >= start && p.range.end <= end))
             {
-                paras.push((p.index, sub_start..sub_end, p.block, p.soft_break && p.range.start > start));
+                paras.push((
+                    p.index,
+                    sub_start..sub_end,
+                    p.block,
+                    p.soft_break && p.range.start > start,
+                ));
             }
         }
     }
@@ -900,7 +997,11 @@ pub(crate) fn serialize_html(edit: &TextEdit, range: Range<usize>) -> String {
 /// that cross its edges never split it; a pill cut by `range` is plain text.
 fn serialize_inline(edit: &TextEdit, range: Range<usize>, out: &mut String) {
     let mut at = range.start;
-    for m in edit.marks().iter().filter(|m| range.start <= m.start && m.end <= range.end) {
+    for m in edit
+        .marks()
+        .iter()
+        .filter(|m| range.start <= m.start && m.end <= range.end)
+    {
         let Some(id) = m.mark.pill_id() else { continue };
         serialize_marks(edit, at..m.start, out);
         out.push_str("<span data-pill=\"");

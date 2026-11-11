@@ -1,12 +1,14 @@
 use crate::prelude::*;
 use crate::{
-    BaselineLayoutStore, BaselineTaffyTree, BoxLayout, CompactCache, CompactStyle, LayoutStore, SlotId,
-    baseline_storage_stats,
+    BaselineLayoutStore, BaselineTaffyTree, BoxLayout, CompactCache, CompactStyle, LayoutStore,
+    SlotId, baseline_storage_stats,
 };
 use core::mem::size_of;
 use taffy::geometry::{Line, Point, Rect, Size};
 use taffy::style::{AvailableSpace, CoreStyle, FlexboxContainerStyle, FlexboxItemStyle, Overflow};
-use taffy::tree::{Baselines, CollapsibleMarginSet, LayoutInput, LayoutOutput, RequestedAxis, RunMode, SizingMode};
+use taffy::tree::{
+    Baselines, CollapsibleMarginSet, LayoutInput, LayoutOutput, RequestedAxis, RunMode, SizingMode,
+};
 
 #[test]
 fn compact_types_stay_within_size_budgets() {
@@ -31,17 +33,32 @@ fn compact_style_round_trips_all_length_variants() {
                 position: Position::Relative,
                 flex_direction: FlexDirection::ColumnReverse,
                 flex_wrap: FlexWrap::Wrap,
-                overflow: Point { x: Overflow::Hidden, y: Overflow::Scroll },
-                size: Size { width: w, height: h },
-                min_size: Size { width: length(10.0), height: percent(0.25) },
-                max_size: Size { width: auto(), height: length(500.0) },
+                overflow: Point {
+                    x: Overflow::Hidden,
+                    y: Overflow::Scroll,
+                },
+                size: Size {
+                    width: w,
+                    height: h,
+                },
+                min_size: Size {
+                    width: length(10.0),
+                    height: percent(0.25),
+                },
+                max_size: Size {
+                    width: auto(),
+                    height: length(500.0),
+                },
                 padding: Rect {
                     left: length(4.0),
                     right: percent(0.125),
                     top: length(8.0),
                     bottom: length(12.0),
                 },
-                gap: Size { width: length(6.0), height: percent(0.25) },
+                gap: Size {
+                    width: length(6.0),
+                    height: percent(0.25),
+                },
                 flex_basis: Dimension::ZERO,
                 flex_grow: 1.5,
                 flex_shrink: 0.25,
@@ -52,7 +69,11 @@ fn compact_style_round_trips_all_length_variants() {
                 ..Style::DEFAULT
             };
             let compact = CompactStyle::from_style(s.clone());
-            assert_eq!(compact.heap_bytes(), 0, "hot Rune style should stay 100% inline in 64 bytes");
+            assert_eq!(
+                compact.heap_bytes(),
+                0,
+                "hot Rune style should stay 100% inline in 64 bytes"
+            );
             assert!(compact == s);
             assert_eq!(compact.to_style(), s);
         }
@@ -75,17 +96,32 @@ fn compact_style_round_trips_all_length_variants() {
                 position: Position::Relative,
                 flex_direction: FlexDirection::ColumnReverse,
                 flex_wrap: FlexWrap::Wrap,
-                overflow: Point { x: Overflow::Hidden, y: Overflow::Scroll },
-                size: Size { width: w, height: h },
-                min_size: Size { width: length(10.0), height: percent(0.25) },
-                max_size: Size { width: auto(), height: length(500.0) },
+                overflow: Point {
+                    x: Overflow::Hidden,
+                    y: Overflow::Scroll,
+                },
+                size: Size {
+                    width: w,
+                    height: h,
+                },
+                min_size: Size {
+                    width: length(10.0),
+                    height: percent(0.25),
+                },
+                max_size: Size {
+                    width: auto(),
+                    height: length(500.0),
+                },
                 padding: Rect {
                     left: length(4.0),
                     right: percent(0.1),
                     top: length(8.0),
                     bottom: length(12.0),
                 },
-                gap: Size { width: length(6.0), height: percent(0.05) },
+                gap: Size {
+                    width: length(6.0),
+                    height: percent(0.05),
+                },
                 flex_basis: w,
                 flex_grow: 1.5,
                 flex_shrink: 0.25,
@@ -115,13 +151,27 @@ fn compact_cache_preserves_second_chance_and_overflow_semantics() {
         run_mode: RunMode::ComputeSize,
         sizing_mode: SizingMode::InherentSize,
         axis: RequestedAxis::Both,
-        known_dimensions: Size { width: Some(w), height: None },
-        known_dimensions_are_definite: Size { width: true, height: true },
+        known_dimensions: Size {
+            width: Some(w),
+            height: None,
+        },
+        known_dimensions_are_definite: Size {
+            width: true,
+            height: true,
+        },
         parent_size: Size::NONE,
-        available_space: Size { width: AvailableSpace::MaxContent, height: AvailableSpace::MaxContent },
+        available_space: Size {
+            width: AvailableSpace::MaxContent,
+            height: AvailableSpace::MaxContent,
+        },
         vertical_margins_are_collapsible: Line::FALSE,
     };
-    let make_out = |w: f32| LayoutOutput::from_outer_size(Size { width: w, height: w * 2.0 });
+    let make_out = |w: f32| {
+        LayoutOutput::from_outer_size(Size {
+            width: w,
+            height: w * 2.0,
+        })
+    };
 
     let mut cache = CompactCache::new();
     cache.store(&make_input(0.0), make_out(0.0));
@@ -172,11 +222,19 @@ fn compact_style_setters_match_taffy_style() {
         cs.set_max_height(length(240.0));
         ts.max_size.height = length(240.0);
         cs.set_padding_all(12.0);
-        ts.padding = Rect { left: length(12.0), right: length(12.0), top: length(12.0), bottom: length(12.0) };
+        ts.padding = Rect {
+            left: length(12.0),
+            right: length(12.0),
+            top: length(12.0),
+            bottom: length(12.0),
+        };
         cs.set_pad_left(6.0);
         ts.padding.left = length(6.0);
         cs.set_gap(8.0, 4.0);
-        ts.gap = Size { width: length(8.0), height: length(4.0) };
+        ts.gap = Size {
+            width: length(8.0),
+            height: length(4.0),
+        };
         cs.set_grow(1.5);
         ts.flex_grow = 1.5;
         ts.flex_shrink = 1.0;
@@ -184,7 +242,10 @@ fn compact_style_setters_match_taffy_style() {
         cs.set_flex_wrap(FlexWrap::Wrap);
         ts.flex_wrap = FlexWrap::Wrap;
         cs.set_overflow(Overflow::Hidden, Overflow::Scroll);
-        ts.overflow = Point { x: Overflow::Hidden, y: Overflow::Scroll };
+        ts.overflow = Point {
+            x: Overflow::Hidden,
+            y: Overflow::Scroll,
+        };
         cs.set_align_items(AlignItems::CENTER);
         ts.align_items = AlignItems::CENTER;
         cs.set_align_self(Some(AlignSelf::STRETCH));
@@ -200,12 +261,19 @@ fn compact_style_setters_match_taffy_style() {
         assert_eq!(cs.to_style(), ts);
         cs.set_aspect_ratio(None);
         ts.aspect_ratio = None;
-        assert_eq!(cs.heap_bytes(), 0, "clearing last cold field drops extra Box");
+        assert_eq!(
+            cs.heap_bytes(),
+            0,
+            "clearing last cold field drops extra Box"
+        );
         assert_eq!(cs.to_style(), ts);
     }
 
     for pos in [Position::Static, Position::Relative, Position::Absolute] {
-        let s = Style { position: pos, ..Style::DEFAULT };
+        let s = Style {
+            position: pos,
+            ..Style::DEFAULT
+        };
         let c = CompactStyle::from_style(s.clone());
         assert_eq!(c.position(), pos);
         assert_eq!(c.to_style(), s);
@@ -221,8 +289,22 @@ fn a_taken_box_placement_keeps_the_overflow_on_the_wrapper() {
             cs.set_aspect_ratio(Some(2.0));
         }
         let outer = cs.take_box_placement();
-        assert_eq!(outer.overflow(), Point { x: Overflow::Hidden, y: Overflow::Scroll }, "cold {cold}");
-        assert_eq!(cs.overflow(), Point { x: Overflow::Hidden, y: Overflow::Scroll }, "cold {cold}");
+        assert_eq!(
+            outer.overflow(),
+            Point {
+                x: Overflow::Hidden,
+                y: Overflow::Scroll
+            },
+            "cold {cold}"
+        );
+        assert_eq!(
+            cs.overflow(),
+            Point {
+                x: Overflow::Hidden,
+                y: Overflow::Scroll
+            },
+            "cold {cold}"
+        );
     }
 }
 
@@ -276,8 +358,18 @@ fn sync_pair(
     }
     let measure = spec.leaf.map(|(h, ..)| h);
     let cs_style = CompactStyle::from_style(spec.style.clone());
-    let (c_slot, dirty) = comp.sync_node(spec.key, me as u32, cs_style.clone(), measure, false, c_mark, kids_dirty);
-    let (b_slot, _) = base.sync_node(spec.key, me as u32, cs_style, measure, false, b_mark, kids_dirty);
+    let (c_slot, dirty) = comp.sync_node(
+        spec.key,
+        me as u32,
+        cs_style.clone(),
+        measure,
+        false,
+        c_mark,
+        kids_dirty,
+    );
+    let (b_slot, _) = base.sync_node(
+        spec.key, me as u32, cs_style, measure, false, b_mark, kids_dirty,
+    );
     out[me].comp_slot = c_slot;
     out[me].base_slot = b_slot;
     (c_slot, dirty, b_slot)
@@ -293,42 +385,62 @@ fn commit_and_assert_parity(
     base.begin_commit();
     let mut entries = Vec::new();
     let (mut c_root, _, mut b_root) = sync_pair(root, None, comp, base, &mut entries);
-    comp.end_commit(&mut c_root, |me, slot| entries[me as usize].comp_slot = slot);
-    base.end_commit(&mut b_root, |me, slot| entries[me as usize].base_slot = slot);
+    comp.end_commit(&mut c_root, |me, slot| {
+        entries[me as usize].comp_slot = slot
+    });
+    base.end_commit(&mut b_root, |me, slot| {
+        entries[me as usize].base_slot = slot
+    });
     assert_eq!(comp.live_count(), entries.len());
     assert_eq!(base.live_count(), entries.len());
 
-    let eval_leaf = |inputs: LayoutInput, ctx: Option<usize>, style: &CompactStyle, log: &mut Vec<u64>| {
-        let mut baselines = Baselines::NONE;
-        let mut out = taffy::compute_leaf_layout(inputs, style, |_, _| 0.0, |known, avail| {
-            let Some(i) = ctx else { return Size::ZERO };
-            log.push(entries[i].key);
-            let (full_w, line_h, baseline) = entries[i].leaf.expect("ctx must point to measured leaf");
-            let max_w = known.width.or(match avail.width {
-                AvailableSpace::Definite(w) => Some(w),
-                AvailableSpace::MinContent => Some((full_w * 0.25).max(20.0)),
-                AvailableSpace::MaxContent => None,
-            });
-            let (w, lines) = match max_w {
-                Some(limit) if full_w > limit && limit > 0.0 => (limit, (full_w / limit).ceil().max(1.0)),
-                _ => (full_w, 1.0),
-            };
-            if baseline > 0.0 {
-                baselines = Baselines { first: Some(baseline), last: Some((lines - 1.0) * line_h + baseline) };
-            }
-            Size {
-                width: known.width.unwrap_or(w),
-                height: known.height.unwrap_or(lines * line_h),
-            }
-        });
-        out.baselines = baselines;
-        out
-    };
+    let eval_leaf =
+        |inputs: LayoutInput, ctx: Option<usize>, style: &CompactStyle, log: &mut Vec<u64>| {
+            let mut baselines = Baselines::NONE;
+            let mut out = taffy::compute_leaf_layout(
+                inputs,
+                style,
+                |_, _| 0.0,
+                |known, avail| {
+                    let Some(i) = ctx else { return Size::ZERO };
+                    log.push(entries[i].key);
+                    let (full_w, line_h, baseline) =
+                        entries[i].leaf.expect("ctx must point to measured leaf");
+                    let max_w = known.width.or(match avail.width {
+                        AvailableSpace::Definite(w) => Some(w),
+                        AvailableSpace::MinContent => Some((full_w * 0.25).max(20.0)),
+                        AvailableSpace::MaxContent => None,
+                    });
+                    let (w, lines) = match max_w {
+                        Some(limit) if full_w > limit && limit > 0.0 => {
+                            (limit, (full_w / limit).ceil().max(1.0))
+                        }
+                        _ => (full_w, 1.0),
+                    };
+                    if baseline > 0.0 {
+                        baselines = Baselines {
+                            first: Some(baseline),
+                            last: Some((lines - 1.0) * line_h + baseline),
+                        };
+                    }
+                    Size {
+                        width: known.width.unwrap_or(w),
+                        height: known.height.unwrap_or(lines * line_h),
+                    }
+                },
+            );
+            out.baselines = baselines;
+            out
+        };
 
     let mut c_log = Vec::new();
     let mut b_log = Vec::new();
-    comp.compute_layout(c_root, room, |inputs, ctx, style| eval_leaf(inputs, ctx, style, &mut c_log));
-    base.compute_layout(b_root, room, |inputs, ctx, style| eval_leaf(inputs, ctx, style, &mut b_log));
+    comp.compute_layout(c_root, room, |inputs, ctx, style| {
+        eval_leaf(inputs, ctx, style, &mut c_log)
+    });
+    base.compute_layout(b_root, room, |inputs, ctx, style| {
+        eval_leaf(inputs, ctx, style, &mut b_log)
+    });
 
     for (i, e) in entries.iter().enumerate() {
         assert_eq!(
@@ -348,15 +460,25 @@ fn differential_flex_grid_oof_scroll_text_baselines_reorder_and_removal() {
 
     let text_style = Style {
         flex_shrink: 1.0,
-        min_size: Size { width: length(0.0), height: auto() },
-        max_size: Size { width: length(180.0), height: length(100.0) },
+        min_size: Size {
+            width: length(0.0),
+            height: auto(),
+        },
+        max_size: Size {
+            width: length(180.0),
+            height: length(100.0),
+        },
         ..Style::DEFAULT
     };
     let build_scene = |reordered: bool, scaled: bool, removed: bool| {
         let t1 = SpecNode {
             key: 11,
             style: text_style.clone(),
-            leaf: Some(if scaled { (2, 310.0, 20.0, 15.5) } else { (1, 240.0, 18.0, 14.0) }),
+            leaf: Some(if scaled {
+                (2, 310.0, 20.0, 15.5)
+            } else {
+                (1, 240.0, 18.0, 14.0)
+            }),
             children: vec![],
         };
         let t2 = SpecNode {
@@ -372,20 +494,41 @@ fn differential_flex_grid_oof_scroll_text_baselines_reorder_and_removal() {
                 flex_direction: FlexDirection::Row,
                 flex_wrap: FlexWrap::Wrap,
                 align_items: AlignItems::BASELINE,
-                gap: Size { width: length(8.25), height: length(4.5) },
-                padding: Rect { left: length(10.5), right: length(10.5), top: length(6.25), bottom: length(6.25) },
+                gap: Size {
+                    width: length(8.25),
+                    height: length(4.5),
+                },
+                padding: Rect {
+                    left: length(10.5),
+                    right: length(10.5),
+                    top: length(6.25),
+                    bottom: length(6.25),
+                },
                 ..Style::DEFAULT
             },
             leaf: None,
-            children: if reordered { vec![t2, t1] } else { vec![t1, t2] },
+            children: if reordered {
+                vec![t2, t1]
+            } else {
+                vec![t1, t2]
+            },
         };
 
         let mut grid_kids = vec![SpecNode {
             key: 21,
             style: Style {
-                grid_column: Line { start: line(1), end: span(2) },
-                grid_row: Line { start: line(1), end: span(1) },
-                size: Size { width: auto(), height: length(28.5) },
+                grid_column: Line {
+                    start: line(1),
+                    end: span(2),
+                },
+                grid_row: Line {
+                    start: line(1),
+                    end: span(1),
+                },
+                size: Size {
+                    width: auto(),
+                    height: length(28.5),
+                },
                 ..Style::DEFAULT
             },
             leaf: None,
@@ -395,8 +538,14 @@ fn differential_flex_grid_oof_scroll_text_baselines_reorder_and_removal() {
             grid_kids.push(SpecNode {
                 key: 22,
                 style: Style {
-                    grid_column: Line { start: line(3), end: span(1) },
-                    grid_row: Line { start: line(1), end: span(1) },
+                    grid_column: Line {
+                        start: line(3),
+                        end: span(1),
+                    },
+                    grid_row: Line {
+                        start: line(1),
+                        end: span(1),
+                    },
                     aspect_ratio: Some(1.5),
                     ..Style::DEFAULT
                 },
@@ -409,8 +558,14 @@ fn differential_flex_grid_oof_scroll_text_baselines_reorder_and_removal() {
             style: Style {
                 display: Display::Grid,
                 grid_template_columns: vec![fr(1.0), fr(2.0), minmax(length(40.0), fr(1.0))],
-                gap: Size { width: length(6.0), height: length(6.0) },
-                size: Size { width: percent(1.0), height: auto() },
+                gap: Size {
+                    width: length(6.0),
+                    height: length(6.0),
+                },
+                size: Size {
+                    width: percent(1.0),
+                    height: auto(),
+                },
                 ..Style::DEFAULT
             },
             leaf: None,
@@ -423,18 +578,31 @@ fn differential_flex_grid_oof_scroll_text_baselines_reorder_and_removal() {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
                 position: Position::Relative,
-                overflow: Point { x: Overflow::Hidden, y: Overflow::Scroll },
+                overflow: Point {
+                    x: Overflow::Hidden,
+                    y: Overflow::Scroll,
+                },
                 flex_grow: 1.0,
                 flex_shrink: 1.0,
                 flex_basis: length(0.0),
-                min_size: Size { width: length(0.0), height: length(0.0) },
+                min_size: Size {
+                    width: length(0.0),
+                    height: length(0.0),
+                },
                 ..Style::DEFAULT
             },
             leaf: None,
             children: vec![
                 SpecNode {
                     key: 31,
-                    style: Style { size: Size { width: percent(1.0), height: length(420.0) }, flex_shrink: 0.0, ..Style::DEFAULT },
+                    style: Style {
+                        size: Size {
+                            width: percent(1.0),
+                            height: length(420.0),
+                        },
+                        flex_shrink: 0.0,
+                        ..Style::DEFAULT
+                    },
                     leaf: None,
                     children: vec![],
                 },
@@ -442,8 +610,16 @@ fn differential_flex_grid_oof_scroll_text_baselines_reorder_and_removal() {
                     key: 32,
                     style: Style {
                         position: Position::Absolute,
-                        inset: Rect { left: length(12.25), top: length(8.75), right: auto(), bottom: auto() },
-                        size: Size { width: length(64.0), height: length(24.0) },
+                        inset: Rect {
+                            left: length(12.25),
+                            top: length(8.75),
+                            right: auto(),
+                            bottom: auto(),
+                        },
+                        size: Size {
+                            width: length(64.0),
+                            height: length(24.0),
+                        },
                         ..Style::DEFAULT
                     },
                     leaf: None,
@@ -458,8 +634,14 @@ fn differential_flex_grid_oof_scroll_text_baselines_reorder_and_removal() {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
                 position: Position::Relative,
-                size: Size { width: length(360.0), height: length(240.0) },
-                gap: Size { width: length(0.0), height: length(8.0) },
+                size: Size {
+                    width: length(360.0),
+                    height: length(240.0),
+                },
+                gap: Size {
+                    width: length(0.0),
+                    height: length(8.0),
+                },
                 ..Style::DEFAULT
             },
             leaf: None,
@@ -471,10 +653,16 @@ fn differential_flex_grid_oof_scroll_text_baselines_reorder_and_removal() {
         width: AvailableSpace::Definite(360.0),
         height: AvailableSpace::Definite(240.0),
     };
-    let (_, c1, b1) = commit_and_assert_parity(&build_scene(false, false, false), room, &mut comp, &mut base);
+    let (_, c1, b1) = commit_and_assert_parity(
+        &build_scene(false, false, false),
+        room,
+        &mut comp,
+        &mut base,
+    );
     assert_eq!(c1, b1);
 
-    let (_, c2, b2) = commit_and_assert_parity(&build_scene(true, true, true), room, &mut comp, &mut base);
+    let (_, c2, b2) =
+        commit_and_assert_parity(&build_scene(true, true, true), room, &mut comp, &mut base);
     assert_eq!(c2, b2);
 }
 
@@ -492,20 +680,35 @@ fn large_to_small_swap_shrinks_retained_memory_and_matches_baseline() {
                 style: Style {
                     display: Display::Flex,
                     flex_direction: FlexDirection::Row,
-                    size: Size { width: percent(1.0), height: length(32.0) },
+                    size: Size {
+                        width: percent(1.0),
+                        height: length(32.0),
+                    },
                     ..Style::DEFAULT
                 },
                 leaf: None,
                 children: vec![
                     SpecNode {
                         key: base_key + 1,
-                        style: Style { size: Size { width: length(120.0), height: length(18.0) }, ..Style::DEFAULT },
+                        style: Style {
+                            size: Size {
+                                width: length(120.0),
+                                height: length(18.0),
+                            },
+                            ..Style::DEFAULT
+                        },
                         leaf: Some((i as u64 + 1, 120.0, 18.0, 14.0)),
                         children: vec![],
                     },
                     SpecNode {
                         key: base_key + 2,
-                        style: Style { size: Size { width: length(20.0), height: length(20.0) }, ..Style::DEFAULT },
+                        style: Style {
+                            size: Size {
+                                width: length(20.0),
+                                height: length(20.0),
+                            },
+                            ..Style::DEFAULT
+                        },
                         leaf: None,
                         children: vec![],
                     },
@@ -517,7 +720,10 @@ fn large_to_small_swap_shrinks_retained_memory_and_matches_baseline() {
             style: Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
-                size: Size { width: length(1000.0), height: length(900.0) },
+                size: Size {
+                    width: length(1000.0),
+                    height: length(900.0),
+                },
                 ..Style::DEFAULT
             },
             leaf: None,
@@ -566,7 +772,10 @@ fn differential_hoisted_oof_aspect_fit_anchored_fit_and_cache_hits() {
             display: Display::Flex,
             flex_direction: FlexDirection::Column,
             position: Position::Relative,
-            size: Size { width: length(400.0), height: length(300.0) },
+            size: Size {
+                width: length(400.0),
+                height: length(300.0),
+            },
             ..Style::DEFAULT
         },
         leaf: None,
@@ -576,7 +785,12 @@ fn differential_hoisted_oof_aspect_fit_anchored_fit_and_cache_hits() {
                 style: Style {
                     display: Display::Flex,
                     position: Position::Static,
-                    padding: Rect { left: length(7.25), right: length(7.25), top: length(5.5), bottom: length(5.5) },
+                    padding: Rect {
+                        left: length(7.25),
+                        right: length(7.25),
+                        top: length(5.5),
+                        bottom: length(5.5),
+                    },
                     ..Style::DEFAULT
                 },
                 leaf: None,
@@ -584,8 +798,16 @@ fn differential_hoisted_oof_aspect_fit_anchored_fit_and_cache_hits() {
                     key: 11,
                     style: Style {
                         position: Position::Absolute,
-                        inset: Rect { left: auto(), right: length(14.5), top: length(9.25), bottom: auto() },
-                        size: Size { width: length(88.0), height: length(36.0) },
+                        inset: Rect {
+                            left: auto(),
+                            right: length(14.5),
+                            top: length(9.25),
+                            bottom: auto(),
+                        },
+                        size: Size {
+                            width: length(88.0),
+                            height: length(36.0),
+                        },
                         ..Style::DEFAULT
                     },
                     leaf: None,
@@ -596,7 +818,10 @@ fn differential_hoisted_oof_aspect_fit_anchored_fit_and_cache_hits() {
                 key: 20,
                 style: Style {
                     flex_grow: 1.0,
-                    size: Size { width: percent(1.0), height: auto() },
+                    size: Size {
+                        width: percent(1.0),
+                        height: auto(),
+                    },
                     ..Style::DEFAULT
                 },
                 leaf: None,
@@ -606,14 +831,28 @@ fn differential_hoisted_oof_aspect_fit_anchored_fit_and_cache_hits() {
                 key: 30,
                 style: Style {
                     position: Position::Absolute,
-                    inset: Rect { left: length(0.0), top: length(0.0), right: auto(), bottom: auto() },
-                    size: Size { width: length(160.0), height: auto() },
+                    inset: Rect {
+                        left: length(0.0),
+                        top: length(0.0),
+                        right: auto(),
+                        bottom: auto(),
+                    },
+                    size: Size {
+                        width: length(160.0),
+                        height: auto(),
+                    },
                     ..Style::DEFAULT
                 },
                 leaf: None,
                 children: vec![SpecNode {
                     key: 31,
-                    style: Style { size: Size { width: percent(1.0), height: auto() }, ..Style::DEFAULT },
+                    style: Style {
+                        size: Size {
+                            width: percent(1.0),
+                            height: auto(),
+                        },
+                        ..Style::DEFAULT
+                    },
                     leaf: Some((99, 160.0, 320.0, 0.0)),
                     children: vec![],
                 }],
@@ -641,19 +880,24 @@ fn differential_hoisted_oof_aspect_fit_anchored_fit_and_cache_hits() {
     let fit_w = room_sz.width.min(room_sz.height * (16.0 / 9.0));
     let fit_h = fit_w / (16.0 / 9.0);
     let fitted = CompactStyle::from_style(Style {
-        size: Size { width: length(fit_w), height: length(fit_h) },
+        size: Size {
+            width: length(fit_w),
+            height: length(fit_h),
+        },
         flex_shrink: 0.0,
         ..Style::DEFAULT
     });
     comp.set_style_and_mark_ancestors(
         entries[aspect_idx].comp_slot,
         fitted.clone(),
-        core::iter::successors(entries[aspect_idx].parent, |&p| entries[p].parent).map(|p| entries[p].comp_slot),
+        core::iter::successors(entries[aspect_idx].parent, |&p| entries[p].parent)
+            .map(|p| entries[p].comp_slot),
     );
     base.set_style_and_mark_ancestors(
         entries[aspect_idx].base_slot,
         fitted,
-        core::iter::successors(entries[aspect_idx].parent, |&p| entries[p].parent).map(|p| entries[p].base_slot),
+        core::iter::successors(entries[aspect_idx].parent, |&p| entries[p].parent)
+            .map(|p| entries[p].base_slot),
     );
 
     let mut ov_style = comp.style(entries[ov_idx].comp_slot).clone();
@@ -661,31 +905,56 @@ fn differential_hoisted_oof_aspect_fit_anchored_fit_and_cache_hits() {
     comp.set_style_and_mark_ancestors(
         entries[ov_idx].comp_slot,
         ov_style.clone(),
-        core::iter::successors(entries[ov_idx].parent, |&p| entries[p].parent).map(|p| entries[p].comp_slot),
+        core::iter::successors(entries[ov_idx].parent, |&p| entries[p].parent)
+            .map(|p| entries[p].comp_slot),
     );
     base.set_style_and_mark_ancestors(
         entries[ov_idx].base_slot,
         ov_style,
-        core::iter::successors(entries[ov_idx].parent, |&p| entries[p].parent).map(|p| entries[p].base_slot),
+        core::iter::successors(entries[ov_idx].parent, |&p| entries[p].parent)
+            .map(|p| entries[p].base_slot),
     );
 
     let mut c_pass2 = 0usize;
     let mut b_pass2 = 0usize;
     comp.compute_layout(entries[0].comp_slot, room, |inputs, _ctx, style| {
-        taffy::compute_leaf_layout(inputs, style, |_, _| 0.0, |known, _| {
-            c_pass2 += 1;
-            Size { width: known.width.unwrap_or(160.0), height: known.height.unwrap_or(320.0) }
-        })
+        taffy::compute_leaf_layout(
+            inputs,
+            style,
+            |_, _| 0.0,
+            |known, _| {
+                c_pass2 += 1;
+                Size {
+                    width: known.width.unwrap_or(160.0),
+                    height: known.height.unwrap_or(320.0),
+                }
+            },
+        )
     });
     base.compute_layout(entries[0].base_slot, room, |inputs, _ctx, style| {
-        taffy::compute_leaf_layout(inputs, style, |_, _| 0.0, |known, _| {
-            b_pass2 += 1;
-            Size { width: known.width.unwrap_or(160.0), height: known.height.unwrap_or(320.0) }
-        })
+        taffy::compute_leaf_layout(
+            inputs,
+            style,
+            |_, _| 0.0,
+            |known, _| {
+                b_pass2 += 1;
+                Size {
+                    width: known.width.unwrap_or(160.0),
+                    height: known.height.unwrap_or(320.0),
+                }
+            },
+        )
     });
-    assert_eq!(c_pass2, b_pass2, "measure call count mismatch after aspect_fit + anchored_fit refit");
+    assert_eq!(
+        c_pass2, b_pass2,
+        "measure call count mismatch after aspect_fit + anchored_fit refit"
+    );
     for (i, e) in entries.iter().enumerate() {
-        assert_eq!(comp.box_layout(e.comp_slot), base.box_layout(e.base_slot), "refit mismatch at {i}");
+        assert_eq!(
+            comp.box_layout(e.comp_slot),
+            base.box_layout(e.base_slot),
+            "refit mismatch at {i}"
+        );
     }
 }
 
@@ -698,9 +967,20 @@ fn layout_store_carries_cache_across_commits_and_matches_upstream_bit_for_bit() 
             flex_direction: FlexDirection::Row,
             flex_shrink: 0.0,
             position: Position::Relative,
-            size: Size { width: percent(1.0), height: auto() },
-            padding: Rect { left: length(8.0), right: length(8.0), top: length(4.0), bottom: length(4.0) },
-            gap: Size { width: length(6.0), height: length(0.0) },
+            size: Size {
+                width: percent(1.0),
+                height: auto(),
+            },
+            padding: Rect {
+                left: length(8.0),
+                right: length(8.0),
+                top: length(4.0),
+                bottom: length(4.0),
+            },
+            gap: Size {
+                width: length(6.0),
+                height: length(0.0),
+            },
             align_items: AlignItems::CENTER,
             ..Style::DEFAULT
         },
@@ -708,7 +988,14 @@ fn layout_store_carries_cache_across_commits_and_matches_upstream_bit_for_bit() 
         children: vec![
             SpecNode {
                 key: id_base + 1,
-                style: Style { size: Size { width: length(16.0), height: length(16.0) }, flex_shrink: 0.0, ..Style::DEFAULT },
+                style: Style {
+                    size: Size {
+                        width: length(16.0),
+                        height: length(16.0),
+                    },
+                    flex_shrink: 0.0,
+                    ..Style::DEFAULT
+                },
                 leaf: None,
                 children: vec![],
             },
@@ -718,7 +1005,10 @@ fn layout_store_carries_cache_across_commits_and_matches_upstream_bit_for_bit() 
                     flex_grow: 1.0,
                     flex_shrink: 1.0,
                     flex_basis: length(0.0),
-                    min_size: Size { width: length(0.0), height: auto() },
+                    min_size: Size {
+                        width: length(0.0),
+                        height: auto(),
+                    },
                     ..Style::DEFAULT
                 },
                 leaf: Some((hash, text_w, 16.0, 0.0)),
@@ -733,8 +1023,14 @@ fn layout_store_carries_cache_across_commits_and_matches_upstream_bit_for_bit() 
             style: Style {
                 display: Display::Grid,
                 position: Position::Relative,
-                size: Size { width: percent(1.0), height: auto() },
-                gap: Size { width: length(8.0), height: length(4.0) },
+                size: Size {
+                    width: percent(1.0),
+                    height: auto(),
+                },
+                gap: Size {
+                    width: length(8.0),
+                    height: length(4.0),
+                },
                 grid_template_columns: vec![fr(1.0), fr(2.0)],
                 ..Style::DEFAULT
             },
@@ -742,13 +1038,25 @@ fn layout_store_carries_cache_across_commits_and_matches_upstream_bit_for_bit() 
             children: vec![
                 SpecNode {
                     key: 11,
-                    style: Style { size: Size { width: auto(), height: length(24.0) }, ..Style::DEFAULT },
+                    style: Style {
+                        size: Size {
+                            width: auto(),
+                            height: length(24.0),
+                        },
+                        ..Style::DEFAULT
+                    },
                     leaf: None,
                     children: vec![],
                 },
                 SpecNode {
                     key: 12,
-                    style: Style { size: Size { width: auto(), height: length(24.0) }, ..Style::DEFAULT },
+                    style: Style {
+                        size: Size {
+                            width: auto(),
+                            height: length(24.0),
+                        },
+                        ..Style::DEFAULT
+                    },
                     leaf: Some((999, 180.0, 18.0, 0.0)),
                     children: vec![],
                 },
@@ -756,8 +1064,16 @@ fn layout_store_carries_cache_across_commits_and_matches_upstream_bit_for_bit() 
                     key: 13,
                     style: Style {
                         position: Position::Absolute,
-                        inset: Rect { left: auto(), top: length(2.0), right: length(4.0), bottom: auto() },
-                        size: Size { width: length(20.0), height: length(12.0) },
+                        inset: Rect {
+                            left: auto(),
+                            top: length(2.0),
+                            right: length(4.0),
+                            bottom: auto(),
+                        },
+                        size: Size {
+                            width: length(20.0),
+                            height: length(12.0),
+                        },
                         ..Style::DEFAULT
                     },
                     leaf: None,
@@ -767,14 +1083,29 @@ fn layout_store_carries_cache_across_commits_and_matches_upstream_bit_for_bit() 
         };
         let static_oof = SpecNode {
             key: 20,
-            style: Style { position: Position::Static, size: Size { width: percent(1.0), height: length(10.0) }, ..Style::DEFAULT },
+            style: Style {
+                position: Position::Static,
+                size: Size {
+                    width: percent(1.0),
+                    height: length(10.0),
+                },
+                ..Style::DEFAULT
+            },
             leaf: None,
             children: vec![SpecNode {
                 key: 21,
                 style: Style {
                     position: Position::Absolute,
-                    inset: Rect { left: length(12.0), top: auto(), right: length(12.0), bottom: length(6.0) },
-                    size: Size { width: auto(), height: length(18.0) },
+                    inset: Rect {
+                        left: length(12.0),
+                        top: auto(),
+                        right: length(12.0),
+                        bottom: length(6.0),
+                    },
+                    size: Size {
+                        width: auto(),
+                        height: length(18.0),
+                    },
                     ..Style::DEFAULT
                 },
                 leaf: None,
@@ -783,7 +1114,14 @@ fn layout_store_carries_cache_across_commits_and_matches_upstream_bit_for_bit() 
         };
         let hidden = SpecNode {
             key: 30,
-            style: Style { display: Display::None, size: Size { width: length(90.0), height: length(90.0) }, ..Style::DEFAULT },
+            style: Style {
+                display: Display::None,
+                size: Size {
+                    width: length(90.0),
+                    height: length(90.0),
+                },
+                ..Style::DEFAULT
+            },
             leaf: None,
             children: vec![make_row(31, 100.0, 31)],
         };
@@ -795,9 +1133,20 @@ fn layout_store_carries_cache_across_commits_and_matches_upstream_bit_for_bit() 
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
                 position: Position::Relative,
-                size: Size { width: length(vp_w), height: length(500.0) },
-                padding: Rect { left: length(10.0), right: length(10.0), top: length(8.0), bottom: length(8.0) },
-                gap: Size { width: length(0.0), height: length(4.0) },
+                size: Size {
+                    width: length(vp_w),
+                    height: length(500.0),
+                },
+                padding: Rect {
+                    left: length(10.0),
+                    right: length(10.0),
+                    top: length(8.0),
+                    bottom: length(8.0),
+                },
+                gap: Size {
+                    width: length(0.0),
+                    height: length(4.0),
+                },
                 ..Style::DEFAULT
             },
             leaf: None,
@@ -811,30 +1160,62 @@ fn layout_store_carries_cache_across_commits_and_matches_upstream_bit_for_bit() 
         width: AvailableSpace::Definite(vp_w),
         height: AvailableSpace::Definite(500.0),
     };
-    let rows_1: Vec<SpecNode> = (0..8).map(|i| make_row(100 + i * 10, 220.0 + (i as f32) * 35.0, 1000 + i)).collect();
+    let rows_1: Vec<SpecNode> = (0..8)
+        .map(|i| make_row(100 + i * 10, 220.0 + (i as f32) * 35.0, 1000 + i))
+        .collect();
 
     // Commit 1 (Cold): measures leaves and matches BaselineLayoutStore bit-for-bit.
-    let (entries_1, keys_1, _) = commit_and_assert_parity(&make_tree(rows_1.clone(), 360.0), room(360.0), &mut comp, &mut base);
+    let (entries_1, keys_1, _) = commit_and_assert_parity(
+        &make_tree(rows_1.clone(), 360.0),
+        room(360.0),
+        &mut comp,
+        &mut base,
+    );
     assert!(keys_1.len() >= 9);
     let mut raw_base = BaselineTaffyTree::<usize>::new();
     let raw_leaf = raw_base.new_leaf(Style::DEFAULT).unwrap();
-    let base_bytes = baseline_storage_stats(&raw_base, Some(raw_leaf), entries_1.len()).total_retained_bytes;
+    let base_bytes =
+        baseline_storage_stats(&raw_base, Some(raw_leaf), entries_1.len()).total_retained_bytes;
     assert!(comp.storage_stats().total_retained_bytes * 2 < base_bytes);
 
     // Commit 2 (Warm identical): hits root cache — 0 leaf measurements!
-    let (_, keys_2, _) = commit_and_assert_parity(&make_tree(rows_1.clone(), 360.0), room(360.0), &mut comp, &mut base);
-    assert!(keys_2.is_empty(), "warm commit with no changes must invoke measure 0 times");
+    let (_, keys_2, _) = commit_and_assert_parity(
+        &make_tree(rows_1.clone(), 360.0),
+        room(360.0),
+        &mut comp,
+        &mut base,
+    );
+    assert!(
+        keys_2.is_empty(),
+        "warm commit with no changes must invoke measure 0 times"
+    );
 
     // Commit 3 (Insert row 90 at front — shifts every existing row's `me` index by +3!):
     let mut rows_3 = vec![make_row(90, 310.0, 9999)];
     rows_3.extend(rows_1);
-    let (_, keys_3, _) = commit_and_assert_parity(&make_tree(rows_3.clone(), 360.0), room(360.0), &mut comp, &mut base);
+    let (_, keys_3, _) = commit_and_assert_parity(
+        &make_tree(rows_3.clone(), 360.0),
+        room(360.0),
+        &mut comp,
+        &mut base,
+    );
     assert!(!keys_3.is_empty());
-    assert!(keys_3.iter().all(|&k| k == 92), "only newly inserted row leaf (key=92) may measure; got {keys_3:?}");
+    assert!(
+        keys_3.iter().all(|&k| k == 92),
+        "only newly inserted row leaf (key=92) may measure; got {keys_3:?}"
+    );
 
     // Commit 4 (Narrow viewport width from 360 -> 280 after index shift):
-    let (_, keys_4, _) = commit_and_assert_parity(&make_tree(rows_3.clone(), 280.0), room(280.0), &mut comp, &mut base);
-    assert!(keys_4.len() >= 9, "narrowed viewport must re-measure shifted leaves");
+    let (_, keys_4, _) = commit_and_assert_parity(
+        &make_tree(rows_3.clone(), 280.0),
+        room(280.0),
+        &mut comp,
+        &mut base,
+    );
+    assert!(
+        keys_4.len() >= 9,
+        "narrowed viewport must re-measure shifted leaves"
+    );
 
     // Commit 5 (Remove 3 rows, reorder remaining rows, insert 2 new rows recycling freed slots, mutate 1 leaf hash):
     let mut rows_5 = vec![
@@ -845,9 +1226,13 @@ fn layout_store_carries_cache_across_commits_and_matches_upstream_bit_for_bit() 
         rows_3[0].clone(),
     ];
     rows_5[2].children[1].leaf = Some((77777, 480.0, 16.0, 0.0));
-    let (_, keys_5, _) = commit_and_assert_parity(&make_tree(rows_5, 280.0), room(280.0), &mut comp, &mut base);
+    let (_, keys_5, _) =
+        commit_and_assert_parity(&make_tree(rows_5, 280.0), room(280.0), &mut comp, &mut base);
     assert!(keys_5.contains(&502) && keys_5.contains(&512) && keys_5.contains(&112));
-    assert!(!keys_5.contains(&92) && !keys_5.contains(&142), "unchanged reordered rows must hit cache");
+    assert!(
+        !keys_5.contains(&92) && !keys_5.contains(&142),
+        "unchanged reordered rows must hit cache"
+    );
 }
 
 #[test]
@@ -888,8 +1273,14 @@ fn memo_reuse_and_retry_mutation_guard_match_baseline() {
     // Commit 2, Pass 2 (retry without apply): `can_reuse` must reject `slot` because Pass 1 mutated it!
     comp.begin_commit();
     base.begin_commit();
-    assert!(!comp.can_reuse(10, slot_c), "mutated slot must not be reused across intra-commit retry");
-    assert!(!base.can_reuse(10, slot_b), "baseline store must match retry mutation guard");
+    assert!(
+        !comp.can_reuse(10, slot_c),
+        "mutated slot must not be reused across intra-commit retry"
+    );
+    assert!(
+        !base.can_reuse(10, slot_b),
+        "baseline store must match retry mutation guard"
+    );
 
     // Normal flatten restores `s1` and applies.
     let m_c = comp.begin_children();

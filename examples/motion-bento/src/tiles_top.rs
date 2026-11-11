@@ -44,7 +44,12 @@ pub fn scenes(s: &State, k: &Kit) -> El {
                 .h_full()
                 .center()
                 .on_press(move |s: &mut State| s.act(Action::Scene(i as u8)))
-                .child(text(*name).font(font(14.0, 560.0)).color(c(if on { color::ON_ACCENT } else { color::TEXT_2 })).motion(snap)),
+                .child(
+                    text(*name)
+                        .font(font(14.0, 560.0))
+                        .color(c(if on { color::ON_ACCENT } else { color::TEXT_2 }))
+                        .motion(snap),
+                ),
         );
     }
 
@@ -58,7 +63,12 @@ pub fn scenes(s: &State, k: &Kit) -> El {
             .radius(12.0)
             .fill(c(color::WELL))
             .child(caption(label))
-            .child(RollingText::new(format!("stat-{label}"), value).font(nums(16.0, 600.0)).color(c(color::TEXT)).build(k))
+            .child(
+                RollingText::new(format!("stat-{label}"), value)
+                    .font(nums(16.0, 600.0))
+                    .color(c(color::TEXT))
+                    .build(k),
+            )
     };
     let summary = row()
         .h(inner_h(grid::ROW1) - SEG_H - 16.0)
@@ -78,19 +88,37 @@ pub fn scenes(s: &State, k: &Kit) -> El {
             col()
                 .gap(4.0)
                 .grow(1.0)
-                .child(RollingText::new("scene-name", SCENES[m.scene]).value(m.scene as f64).font(font(30.0, 650.0)).color(c(color::TEXT)).build(k))
-                .child(text(SCENE_NOTES[m.scene]).font(font(13.0, 460.0)).color(c(color::TEXT_2))),
+                .child(
+                    RollingText::new("scene-name", SCENES[m.scene])
+                        .value(m.scene as f64)
+                        .font(font(30.0, 650.0))
+                        .color(c(color::TEXT))
+                        .build(k),
+                )
+                .child(
+                    text(SCENE_NOTES[m.scene])
+                        .font(font(13.0, 460.0))
+                        .color(c(color::TEXT_2)),
+                ),
         )
         .child(stat("Lights", format!("{lights_on} of 4")))
         .child(stat("Target", m.temp_label()))
         .child(stat("Genres", picked.to_string()));
 
-    let swatch = row()
-        .gap(8.0)
-        .center_y()
-        .child(caption("Mood"))
-        .child(el().size(14.0, 14.0).radius(7.0).fill(c(mood)).shadow(0.0, 8.0, c(mood.alpha(0.6))).motion(morph));
-    tile("scene", "Scenes", swatch, col().gap(16.0).child(segments).child(summary)).w(inner_w(2.0) + 2.0 * grid::TILE_PAD)
+    let swatch = row().gap(8.0).center_y().child(caption("Mood")).child(
+        el().size(14.0, 14.0)
+            .radius(7.0)
+            .fill(c(mood))
+            .shadow(0.0, 8.0, c(mood.alpha(0.6)))
+            .motion(morph),
+    );
+    tile(
+        "scene",
+        "Scenes",
+        swatch,
+        col().gap(16.0).child(segments).child(summary),
+    )
+    .w(inner_w(2.0) + 2.0 * grid::TILE_PAD)
 }
 
 /// The thermostat ring's arc: 270° from the lower left, clockwise, as points.
@@ -110,32 +138,67 @@ pub const RING: f32 = 150.0;
 pub fn thermostat(s: &State, k: &Kit) -> El {
     let m = &s.m;
     let points = arc(RING, 9.0);
-    let track = Shape::new().stroke_with(points.clone(), false, 10.0, LineCap::Round, c(color::WELL_HI));
+    let track = Shape::new().stroke_with(
+        points.clone(),
+        false,
+        10.0,
+        LineCap::Round,
+        c(color::WELL_HI),
+    );
     let fill = Shape::new().stroke_with(points, false, 10.0, LineCap::Round, c(color::ACCENT));
     let ring = el()
         .size(RING, RING)
         .child(canvas(track).size(RING, RING).absolute(0.0, 0.0))
-        .child(canvas(fill).size(RING, RING).absolute(0.0, 0.0).live_trim(s.ring.smooth(spring(s.springs.travel))))
+        .child(
+            canvas(fill)
+                .size(RING, RING)
+                .absolute(0.0, 0.0)
+                .live_trim(s.ring.smooth(spring(s.springs.travel))),
+        )
         .child(
             col()
                 .size(RING, RING)
                 .absolute(0.0, 0.0)
                 .center()
                 .gap(0.0)
-                .child(RollingText::new("temp", m.temp_label()).value(m.temp as f64).font(nums(34.0, 640.0)).color(c(color::TEXT)).build(k))
+                .child(
+                    RollingText::new("temp", m.temp_label())
+                        .value(m.temp as f64)
+                        .font(nums(34.0, 640.0))
+                        .color(c(color::TEXT))
+                        .build(k),
+                )
                 .child(caption("Target")),
         );
     let heating = m.temp > 21.0;
     let aside = row()
         .gap(6.0)
         .center_y()
-        .child(el().size(8.0, 8.0).radius(4.0).fill(c(if heating { color::WARM } else { color::ACCENT })).motion(spring(s.springs.morph)))
-        .child(RollingText::new("mode", if heating { "Heating" } else { "Cooling" }).font(font(12.0, 460.0)).color(c(color::TEXT_3)).build(k));
+        .child(
+            el().size(8.0, 8.0)
+                .radius(4.0)
+                .fill(c(if heating { color::WARM } else { color::ACCENT }))
+                .motion(spring(s.springs.morph)),
+        )
+        .child(
+            RollingText::new("mode", if heating { "Heating" } else { "Cooling" })
+                .font(font(12.0, 460.0))
+                .color(c(color::TEXT_3))
+                .build(k),
+        );
     let buttons = col()
         .gap(10.0)
         .child(well_button("up", "+", 52.0, 44.0).on_press(|s: &mut State| s.act(Action::TempUp)))
-        .child(well_button("down", "−", 52.0, 44.0).on_press(|s: &mut State| s.act(Action::TempDown)));
-    let body = row().h(inner_h(grid::ROW1)).center_y().gap(14.0).child(ring).child(spacer()).child(buttons);
+        .child(
+            well_button("down", "−", 52.0, 44.0).on_press(|s: &mut State| s.act(Action::TempDown)),
+        );
+    let body = row()
+        .h(inner_h(grid::ROW1))
+        .center_y()
+        .gap(14.0)
+        .child(ring)
+        .child(spacer())
+        .child(buttons);
     tile("thermo", "Thermostat", aside, body).w(inner_w(1.0) + 2.0 * grid::TILE_PAD)
 }
 
@@ -154,10 +217,22 @@ pub fn lights(s: &State, k: &Kit) -> El {
                     el().size(10.0, 10.0)
                         .radius(5.0)
                         .fill(c(if lit { color::WARM } else { color::WELL_HI }))
-                        .shadow(0.0, 10.0, c(if lit { color::WARM.alpha(0.7) } else { color::WARM.alpha(0.0) }))
+                        .shadow(
+                            0.0,
+                            10.0,
+                            c(if lit {
+                                color::WARM.alpha(0.7)
+                            } else {
+                                color::WARM.alpha(0.0)
+                            }),
+                        )
                         .motion(spring(s.springs.snap)),
                 )
-                .child(text(*name).font(font(14.0, 500.0)).color(c(if lit { color::TEXT } else { color::TEXT_2 })))
+                .child(text(*name).font(font(14.0, 500.0)).color(c(if lit {
+                    color::TEXT
+                } else {
+                    color::TEXT_2
+                })))
                 .child(spacer())
                 .child(
                     Switch::new(lit)
@@ -169,6 +244,10 @@ pub fn lights(s: &State, k: &Kit) -> El {
                 ),
         );
     }
-    let aside = RollingText::new("lights-on", format!("{on} on")).value(on as f64).font(font(12.0, 460.0)).color(c(color::TEXT_3)).build(k);
+    let aside = RollingText::new("lights-on", format!("{on} on"))
+        .value(on as f64)
+        .font(font(12.0, 460.0))
+        .color(c(color::TEXT_3))
+        .build(k);
     tile("lights", "Lights", aside, rows).w(inner_w(1.0) + 2.0 * grid::TILE_PAD)
 }

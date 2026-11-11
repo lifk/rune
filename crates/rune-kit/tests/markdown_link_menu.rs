@@ -2,7 +2,12 @@ use rune::{Cursor, Cx, El, Env, Key, KeyEvent, Mods, Runtime, col};
 use rune_kit::{Kit, Markdown};
 
 #[derive(Default)]
-struct S { selectable: bool, link_menus: Vec<(String, f32, f32)>, row_menus: usize, opened: Vec<String> }
+struct S {
+    selectable: bool,
+    link_menus: Vec<(String, f32, f32)>,
+    row_menus: usize,
+    opened: Vec<String>,
+}
 
 fn view(s: &S, _: &mut Cx<S>) -> El {
     let k = Kit::neutral(true);
@@ -15,7 +20,9 @@ fn view(s: &S, _: &mut Cx<S>) -> El {
 }
 
 fn tick(rt: &mut Runtime<S>) {
-    for _ in 0..4 { rt.frame(1.0 / 60.0); }
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
 }
 
 fn right_click(rt: &mut Runtime<S>, x: f32, y: f32) {

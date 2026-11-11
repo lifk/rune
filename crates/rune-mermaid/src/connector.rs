@@ -3,7 +3,9 @@
 
 use rune::{Align, Color, TextStyle};
 
-use super::canvas::{Canvas, Measured, arrowhead, diamond_head, ellipse, lerp, rounded_rect, smooth, unit};
+use super::canvas::{
+    Canvas, Measured, arrowhead, diamond_head, ellipse, lerp, rounded_rect, smooth, unit,
+};
 use super::layered_draw::{Edge, Head, Line};
 use super::parts::{Kind, Part};
 use super::route::{Ctx, Route};
@@ -18,7 +20,12 @@ pub(crate) fn label_box(m: &Measured) -> [f32; 2] {
 
 /// A subgraph's title drawn from `at`, with a little air.
 pub(crate) fn title_box(m: &Measured, at: [f32; 2]) -> [f32; 4] {
-    [at[0] - 4.0, at[1] - 4.0, at[0] + m.size[0] + 4.0, at[1] + m.size[1] + 4.0]
+    [
+        at[0] - 4.0,
+        at[1] - 4.0,
+        at[0] + m.size[0] + 4.0,
+        at[1] + m.size[1] + 4.0,
+    ]
 }
 
 /// How far a head of kind `h` takes its end of the line back.
@@ -41,7 +48,9 @@ fn pen(e: &Edge, paint: &DiagramStyle) -> (Color, f32) {
         Line::Thick => 2.5,
         _ => 1.25,
     });
-    let color = e.style.stroke.map_or(paint.line, |col| adapt_stroke(paint.line, col, paint.node_fill.to_oklab()[0] < 0.5));
+    let color = e.style.stroke.map_or(paint.line, |col| {
+        adapt_stroke(paint.line, col, paint.node_fill.to_oklab()[0] < 0.5)
+    });
     (color, width)
 }
 
@@ -51,7 +60,17 @@ fn pen(e: &Edge, paint: &DiagramStyle) -> (Color, f32) {
 /// cross text, another edge's label or a subgraph's title (`titles`), the line breaks around it
 /// the way it does around its own label.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn edges(c: &mut Canvas, ctx: &Ctx, edges: &[Edge], labels: &[Option<Measured>], backs: &[Color], titles: &[[f32; 4]], flip: bool, font: TextStyle, paint: &DiagramStyle) {
+pub(crate) fn edges(
+    c: &mut Canvas,
+    ctx: &Ctx,
+    edges: &[Edge],
+    labels: &[Option<Measured>],
+    backs: &[Color],
+    titles: &[[f32; 4]],
+    flip: bool,
+    font: TextStyle,
+    paint: &DiagramStyle,
+) {
     let routes: Vec<Option<(Route, Option<[f32; 4]>)>> = (0..edges.len())
         .map(|i| {
             let e = &edges[i];
@@ -59,7 +78,12 @@ pub(crate) fn edges(c: &mut Canvas, ctx: &Ctx, edges: &[Edge], labels: &[Option<
                 let r = ctx.route(i, flip, [inset(e.start), inset(e.end)]);
                 let gap = labels[i].as_ref().zip(r.label).map(|(m, at)| {
                     let s = label_box(m);
-                    [at[0] - s[0] / 2.0, at[1] - s[1] / 2.0, at[0] + s[0] / 2.0, at[1] + s[1] / 2.0]
+                    [
+                        at[0] - s[0] / 2.0,
+                        at[1] - s[1] / 2.0,
+                        at[0] + s[0] / 2.0,
+                        at[1] + s[1] / 2.0,
+                    ]
                 });
                 (r, gap)
             })
@@ -74,20 +98,51 @@ pub(crate) fn edges(c: &mut Canvas, ctx: &Ctx, edges: &[Edge], labels: &[Option<
         match &routes[i] {
             None => {
                 let s = labels[i].as_ref().map_or(0.0, |m| label_box(m)[0]);
-                let at = self_loop(c, e, ctx.screen(ctx.placed.centers[e.from]), ctx.sizes[e.from], paint);
+                let at = self_loop(
+                    c,
+                    e,
+                    ctx.screen(ctx.placed.centers[e.from]),
+                    ctx.sizes[e.from],
+                    paint,
+                );
                 if let Some(m) = &labels[i] {
                     let b = label_box(m);
-                    lit_label = Some((c.labels.len(), [at[0], at[1] - b[1] / 2.0, at[0] + b[0], at[1] + b[1] / 2.0], back));
-                    c.label(m, [at[0] + s / 2.0, at[1]], font, paint.muted, Align::Center);
+                    lit_label = Some((
+                        c.labels.len(),
+                        [at[0], at[1] - b[1] / 2.0, at[0] + b[0], at[1] + b[1] / 2.0],
+                        back,
+                    ));
+                    c.label(
+                        m,
+                        [at[0] + s / 2.0, at[1]],
+                        font,
+                        paint.muted,
+                        Align::Center,
+                    );
                 }
             }
             Some((r, gap)) => {
-                let others = routes.iter().enumerate().filter(|&(j, _)| j != i).filter_map(|(_, o)| o.as_ref().and_then(|o| o.1));
+                let others = routes
+                    .iter()
+                    .enumerate()
+                    .filter(|&(j, _)| j != i)
+                    .filter_map(|(_, o)| o.as_ref().and_then(|o| o.1));
                 let mut runs = vec![r.curve.clone()];
-                for rect in gap.iter().copied().chain(titles.iter().copied()).chain(others) {
+                for rect in gap
+                    .iter()
+                    .copied()
+                    .chain(titles.iter().copied())
+                    .chain(others)
+                {
                     runs = runs.iter().flat_map(|run| outside(run, rect)).collect();
                 }
-                connector(c, &runs, [(r.tip_start, r.dir_start), (r.tip_end, r.dir_end)], e, paint);
+                connector(
+                    c,
+                    &runs,
+                    [(r.tip_start, r.dir_start), (r.tip_end, r.dir_end)],
+                    e,
+                    paint,
+                );
                 if let (Some(m), Some(at), Some(g)) = (&labels[i], r.label, *gap) {
                     // A label left on a subgraph's border hides it, as the line does around it.
                     if ctx.on_border(g) {
@@ -136,14 +191,23 @@ pub(crate) fn outside(curve: &[[f32; 2]], rect: [f32; 4]) -> Vec<Vec<[f32; 2]>> 
 fn inside_span(a: [f32; 2], b: [f32; 2], rect: [f32; 4]) -> Option<(f32, f32)> {
     let d = [b[0] - a[0], b[1] - a[1]];
     let (mut t0, mut t1) = (0.0f32, 1.0f32);
-    for (p, q) in [(-d[0], a[0] - rect[0]), (d[0], rect[2] - a[0]), (-d[1], a[1] - rect[1]), (d[1], rect[3] - a[1])] {
+    for (p, q) in [
+        (-d[0], a[0] - rect[0]),
+        (d[0], rect[2] - a[0]),
+        (-d[1], a[1] - rect[1]),
+        (d[1], rect[3] - a[1]),
+    ] {
         if p.abs() < 1e-9 {
             if q < 0.0 {
                 return None;
             }
         } else {
             let r = q / p;
-            if p < 0.0 { t0 = t0.max(r) } else { t1 = t1.min(r) }
+            if p < 0.0 {
+                t0 = t0.max(r)
+            } else {
+                t1 = t1.min(r)
+            }
         }
     }
     (t0 < t1).then_some((t0, t1))
@@ -151,7 +215,13 @@ fn inside_span(a: [f32; 2], b: [f32; 2], rect: [f32; 4]) -> Option<(f32, f32)> {
 
 /// Draws `e` along `runs` (its curve, broken where a label sits) with its heads at `tips`
 /// (`[start, end]`, each a tip and the unit direction it points).
-pub(crate) fn connector(c: &mut Canvas, runs: &[Vec<[f32; 2]>], tips: [([f32; 2], [f32; 2]); 2], e: &Edge, paint: &DiagramStyle) {
+pub(crate) fn connector(
+    c: &mut Canvas,
+    runs: &[Vec<[f32; 2]>],
+    tips: [([f32; 2], [f32; 2]); 2],
+    e: &Edge,
+    paint: &DiagramStyle,
+) {
     let (color, width) = pen(e, paint);
     for run in runs {
         match e.line {
@@ -164,43 +234,108 @@ pub(crate) fn connector(c: &mut Canvas, runs: &[Vec<[f32; 2]>], tips: [([f32; 2]
     head(c, e.start, tips[0].0, tips[0].1, width, color, paint);
 }
 
-fn head(c: &mut Canvas, h: Head, tip: [f32; 2], d: [f32; 2], width: f32, color: Color, paint: &DiagramStyle) {
+fn head(
+    c: &mut Canvas,
+    h: Head,
+    tip: [f32; 2],
+    d: [f32; 2],
+    width: f32,
+    color: Color,
+    paint: &DiagramStyle,
+) {
     let back = |by: f32| [tip[0] - d[0] * by, tip[1] - d[1] * by];
     match h {
         Head::None => {}
         Head::Arrow => c.fill(arrowhead(tip, d, ARROW + width, 6.5 + width * 1.6), color),
         Head::OpenTriangle => c.shape(arrowhead(tip, d, 10.0, 9.0), paint.node_fill, color, width),
         Head::DiamondFilled => c.fill(diamond_head(tip, d, 12.0, 8.0), color),
-        Head::DiamondOpen => c.shape(diamond_head(tip, d, 12.0, 8.0), paint.node_fill, color, width),
+        Head::DiamondOpen => c.shape(
+            diamond_head(tip, d, 12.0, 8.0),
+            paint.node_fill,
+            color,
+            width,
+        ),
         Head::Circle => c.shape(ellipse(back(4.0), 4.0, 4.0), paint.node_fill, color, width),
         Head::Contains => {
             let (m, n) = (back(6.0), [-d[1], d[0]]);
             c.shape(ellipse(m, 6.0, 6.0), paint.node_fill, color, width);
             c.stroke(vec![back(0.0), back(12.0)], false, width, color);
-            c.stroke(vec![[m[0] + n[0] * 6.0, m[1] + n[1] * 6.0], [m[0] - n[0] * 6.0, m[1] - n[1] * 6.0]], false, width, color);
+            c.stroke(
+                vec![
+                    [m[0] + n[0] * 6.0, m[1] + n[1] * 6.0],
+                    [m[0] - n[0] * 6.0, m[1] - n[1] * 6.0],
+                ],
+                false,
+                width,
+                color,
+            );
         }
         Head::Cross => {
             let m = back(4.0);
             let (a, b) = ([d[0] + d[1], d[1] - d[0]], [d[0] - d[1], d[1] + d[0]]);
             let k = 3.5 / std::f32::consts::SQRT_2;
-            c.stroke(vec![[m[0] - a[0] * k, m[1] - a[1] * k], [m[0] + a[0] * k, m[1] + a[1] * k]], false, width, color);
-            c.stroke(vec![[m[0] - b[0] * k, m[1] - b[1] * k], [m[0] + b[0] * k, m[1] + b[1] * k]], false, width, color);
+            c.stroke(
+                vec![
+                    [m[0] - a[0] * k, m[1] - a[1] * k],
+                    [m[0] + a[0] * k, m[1] + a[1] * k],
+                ],
+                false,
+                width,
+                color,
+            );
+            c.stroke(
+                vec![
+                    [m[0] - b[0] * k, m[1] - b[1] * k],
+                    [m[0] + b[0] * k, m[1] + b[1] * k],
+                ],
+                false,
+                width,
+                color,
+            );
         }
-        Head::OnlyOne | Head::ZeroOrOne | Head::OneOrMore | Head::ZeroOrMore => crow(c, h, tip, d, width, color, paint),
+        Head::OnlyOne | Head::ZeroOrOne | Head::OneOrMore | Head::ZeroOrMore => {
+            crow(c, h, tip, d, width, color, paint)
+        }
     }
 }
 
 /// A crow's-foot cardinality at `tip`: a foot for many, a bar for one, a ring for zero, with the
 /// inner mark (minimum) furthest from the entity.
-fn crow(c: &mut Canvas, h: Head, tip: [f32; 2], d: [f32; 2], width: f32, color: Color, paint: &DiagramStyle) {
+fn crow(
+    c: &mut Canvas,
+    h: Head,
+    tip: [f32; 2],
+    d: [f32; 2],
+    width: f32,
+    color: Color,
+    paint: &DiagramStyle,
+) {
     let back = |by: f32| [tip[0] - d[0] * by, tip[1] - d[1] * by];
     let n = [-d[1], d[0]];
-    let bar = |c: &mut Canvas, at: [f32; 2]| c.stroke(vec![[at[0] + n[0] * 6.0, at[1] + n[1] * 6.0], [at[0] - n[0] * 6.0, at[1] - n[1] * 6.0]], false, width, color);
+    let bar = |c: &mut Canvas, at: [f32; 2]| {
+        c.stroke(
+            vec![
+                [at[0] + n[0] * 6.0, at[1] + n[1] * 6.0],
+                [at[0] - n[0] * 6.0, at[1] - n[1] * 6.0],
+            ],
+            false,
+            width,
+            color,
+        )
+    };
     let many = matches!(h, Head::OneOrMore | Head::ZeroOrMore);
     if many {
         let heel = back(12.0);
         for side in [1.0, -1.0] {
-            c.stroke(vec![heel, [tip[0] + n[0] * 6.5 * side, tip[1] + n[1] * 6.5 * side]], false, width, color);
+            c.stroke(
+                vec![
+                    heel,
+                    [tip[0] + n[0] * 6.5 * side, tip[1] + n[1] * 6.5 * side],
+                ],
+                false,
+                width,
+                color,
+            );
         }
     } else {
         bar(c, back(5.0));
@@ -208,20 +343,49 @@ fn crow(c: &mut Canvas, h: Head, tip: [f32; 2], d: [f32; 2], width: f32, color: 
     let inner = if many { 16.0 } else { 10.0 };
     match h {
         Head::OnlyOne | Head::OneOrMore => bar(c, back(inner)),
-        _ => c.shape(ellipse(back(inner + 4.0), 4.0, 4.0), paint.surface, color, width),
+        _ => c.shape(
+            ellipse(back(inner + 4.0), 4.0, 4.0),
+            paint.surface,
+            color,
+            width,
+        ),
     }
 }
 
 /// A loop off the node's right side; returns the left middle of where its label goes.
-fn self_loop(c: &mut Canvas, e: &Edge, ctr: [f32; 2], size: [f32; 2], paint: &DiagramStyle) -> [f32; 2] {
+fn self_loop(
+    c: &mut Canvas,
+    e: &Edge,
+    ctr: [f32; 2],
+    size: [f32; 2],
+    paint: &DiagramStyle,
+) -> [f32; 2] {
     let x = ctr[0] + size[0] / 2.0;
     let (a, b) = ([x, ctr[1] - size[1] / 4.0], [x, ctr[1] + size[1] / 4.0]);
-    let mut path = [a, [x + 18.0, a[1] - 4.0], [x + 26.0, ctr[1]], [x + 18.0, b[1] + 4.0], b];
+    let mut path = [
+        a,
+        [x + 18.0, a[1] - 4.0],
+        [x + 26.0, ctr[1]],
+        [x + 18.0, b[1] + 4.0],
+        b,
+    ];
     let n = path.len();
     let (dir_end, dir_start) = (unit(path[n - 2], path[n - 1]), unit(path[1], path[0]));
     let (tip_end, tip_start) = (path[n - 1], path[0]);
-    path[n - 1] = [tip_end[0] - dir_end[0] * inset(e.end), tip_end[1] - dir_end[1] * inset(e.end)];
-    path[0] = [tip_start[0] - dir_start[0] * inset(e.start), tip_start[1] - dir_start[1] * inset(e.start)];
-    connector(c, &[smooth(&path)], [(tip_start, dir_start), (tip_end, dir_end)], e, paint);
+    path[n - 1] = [
+        tip_end[0] - dir_end[0] * inset(e.end),
+        tip_end[1] - dir_end[1] * inset(e.end),
+    ];
+    path[0] = [
+        tip_start[0] - dir_start[0] * inset(e.start),
+        tip_start[1] - dir_start[1] * inset(e.start),
+    ];
+    connector(
+        c,
+        &[smooth(&path)],
+        [(tip_start, dir_start), (tip_end, dir_end)],
+        e,
+        paint,
+    );
     [x + 30.0, ctr[1]]
 }

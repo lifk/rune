@@ -24,10 +24,14 @@ pub(crate) struct PaintedDeco {
 
 impl std::ops::Deref for PaintedDeco {
     type Target = Deco;
-    fn deref(&self) -> &Deco { &self.deco }
+    fn deref(&self) -> &Deco {
+        &self.deco
+    }
 }
 impl std::ops::DerefMut for PaintedDeco {
-    fn deref_mut(&mut self) -> &mut Deco { &mut self.deco }
+    fn deref_mut(&mut self) -> &mut Deco {
+        &mut self.deco
+    }
 }
 
 pub(super) trait Decoration {
@@ -36,19 +40,36 @@ pub(super) trait Decoration {
     fn extend_to(&mut self, _byte: u32) {}
 }
 impl Decoration for Deco {
-    fn new(deco: Deco, _: Option<(Color, f32)>, _: u32) -> Self { deco }
-    fn paint(&mut self) -> (&mut Deco, Option<(Color, f32)>) { (self, None) }
+    fn new(deco: Deco, _: Option<(Color, f32)>, _: u32) -> Self {
+        deco
+    }
+    fn paint(&mut self) -> (&mut Deco, Option<(Color, f32)>) {
+        (self, None)
+    }
 }
 impl Decoration for PaintedDeco {
-    fn new(deco: Deco, ring: Option<(Color, f32)>, byte: u32) -> Self { Self { deco, ring, byte } }
-    fn paint(&mut self) -> (&mut Deco, Option<(Color, f32)>) { (&mut self.deco, self.ring) }
-    fn extend_to(&mut self, byte: u32) { self.byte = self.byte.max(byte); }
+    fn new(deco: Deco, ring: Option<(Color, f32)>, byte: u32) -> Self {
+        Self { deco, ring, byte }
+    }
+    fn paint(&mut self) -> (&mut Deco, Option<(Color, f32)>) {
+        (&mut self.deco, self.ring)
+    }
+    fn extend_to(&mut self, byte: u32) {
+        self.byte = self.byte.max(byte);
+    }
 }
 
 impl TextSystem {
     /// Backgrounds and underlines for `spans` (device px, layout top-left at `origin`). Touching
     /// runs with the same background merge into one rect rounded by [`SPAN_RADIUS`].
-    pub fn decorations(&self, layout: &Layout<Ink>, spans: &[Span], scale: f32, origin: [f32; 2], out: &mut Vec<Deco>) {
+    pub fn decorations(
+        &self,
+        layout: &Layout<Ink>,
+        spans: &[Span],
+        scale: f32,
+        origin: [f32; 2],
+        out: &mut Vec<Deco>,
+    ) {
         self.decorations_into(layout, spans, &[], SPAN_RADIUS, scale, origin, out);
     }
 
@@ -70,10 +91,19 @@ impl TextSystem {
 
     #[allow(clippy::too_many_arguments)]
     fn decorations_into<D: Decoration>(
-        &self, layout: &Layout<Ink>, spans: &[Span], rings: &[(u32, u32, Color, f32)],
-        radius: f32, scale: f32, origin: [f32; 2], out: &mut Vec<D>,
+        &self,
+        layout: &Layout<Ink>,
+        spans: &[Span],
+        rings: &[(u32, u32, Color, f32)],
+        radius: f32,
+        scale: f32,
+        origin: [f32; 2],
+        out: &mut Vec<D>,
     ) {
-        if spans.iter().all(|s| s.bg.is_none() && s.underline.is_none()) {
+        if spans
+            .iter()
+            .all(|s| s.bg.is_none() && s.underline.is_none())
+        {
             return;
         }
         let radius = radius * scale;
@@ -81,12 +111,16 @@ impl TextSystem {
         for line in layout.lines() {
             let m = line.metrics();
             for item in line.items() {
-                let PositionedLayoutItem::GlyphRun(gr) = item else { continue };
+                let PositionedLayoutItem::GlyphRun(gr) = item else {
+                    continue;
+                };
                 let ink = gr.style().brush.0;
                 if ink == 0 {
                     continue;
                 }
-                let Some(s) = spans.get(ink as usize - 1) else { continue };
+                let Some(s) = spans.get(ink as usize - 1) else {
+                    continue;
+                };
                 let x0 = origin[0] + gr.offset();
                 let w = gr.advance();
                 if let Some(bg) = s.bg {
@@ -97,7 +131,11 @@ impl TextSystem {
                         .map(|&(_, _, c, rw)| (c, rw * scale));
                     let pad = s.bg_pad * scale;
                     // Balanced on the cap height (not a mono face's tall line box), on whole device pixels.
-                    let cap = gr.run().font_metrics().cap_height.unwrap_or(gr.run().font_size() * 0.7);
+                    let cap = gr
+                        .run()
+                        .font_metrics()
+                        .cap_height
+                        .unwrap_or(gr.run().font_size() * 0.7);
                     let base = origin[1] + m.baseline;
                     let top = (base - cap * 1.35).round();
                     let bot = (base + cap * 0.55).round();
@@ -106,10 +144,13 @@ impl TextSystem {
                     // Touching runs with the same background and ring on one line (a span split by
                     // style, or inline code and its padding spaces in the body font) share one rect,
                     // as tall as its widest run, so a thin run in another font doesn't poke out as a sliver.
-                    let byte = (gr.run().text_range().end as u32).min(s.end).saturating_sub(1);
+                    let byte = (gr.run().text_range().end as u32)
+                        .min(s.end)
+                        .saturating_sub(1);
                     let merge = last_bg.is_some_and(|i: usize| {
                         let (d, old_ring) = out[i].paint();
-                        d.color == bg && old_ring == ring
+                        d.color == bg
+                            && old_ring == ring
                             && (d.radius - radius).abs() < 1e-3
                             && d.rect[1] < bot
                             && top < d.rect[1] + d.rect[3]
@@ -125,13 +166,29 @@ impl TextSystem {
                         painted.extend_to(byte);
                     } else {
                         last_bg = Some(out.len());
-                        out.push(D::new(Deco { rect, color: bg, radius }, ring, byte));
+                        out.push(D::new(
+                            Deco {
+                                rect,
+                                color: bg,
+                                radius,
+                            },
+                            ring,
+                            byte,
+                        ));
                     }
                 }
                 if let Some(uc) = s.underline.filter(|c| c.a > 0.0) {
                     let y = (origin[1] + m.baseline + 2.0 * scale).round();
                     let (l, r) = underline_edges(&line, origin[0], gr.offset(), gr.offset() + w);
-                    out.push(D::new(Deco { rect: [l, y, r - l, scale.max(1.0)], color: uc, radius: 0.0 }, None, 0));
+                    out.push(D::new(
+                        Deco {
+                            rect: [l, y, r - l, scale.max(1.0)],
+                            color: uc,
+                            radius: 0.0,
+                        },
+                        None,
+                        0,
+                    ));
                 }
             }
         }
@@ -159,7 +216,9 @@ impl TextSystem {
             let span_color = sc.or_else(|| {
                 spans
                     .iter()
-                    .find(|sp| (sp.start as usize) <= a && b <= (sp.end as usize) && sp.color.is_some())
+                    .find(|sp| {
+                        (sp.start as usize) <= a && b <= (sp.end as usize) && sp.color.is_some()
+                    })
                     .and_then(|sp| sp.color)
             });
             let color = span_color.unwrap_or(default_color);
@@ -168,7 +227,9 @@ impl TextSystem {
                 if w <= 0.0 {
                     continue;
                 }
-                let Some(line) = layout.get(line_idx) else { continue };
+                let Some(line) = layout.get(line_idx) else {
+                    continue;
+                };
                 let m = line.metrics();
                 let mut strike_off = m.line_height * 0.25;
                 let mut h = scale.round().max(1.0);
@@ -186,7 +247,15 @@ impl TextSystem {
                 }
                 let x0 = origin[0] + bb.x0 as f32;
                 let y = (origin[1] + m.baseline - strike_off).round();
-                out.push(PaintedDeco::new(Deco { rect: [x0, y, w, h], color, radius: 0.0 }, None, 0));
+                out.push(PaintedDeco::new(
+                    Deco {
+                        rect: [x0, y, w, h],
+                        color,
+                        radius: 0.0,
+                    },
+                    None,
+                    0,
+                ));
             }
         }
     }
@@ -219,7 +288,10 @@ impl TextSystem {
                     continue;
                 }
                 let x0 = origin[0] + bb.x0 as f32;
-                let (mut top, mut bot) = ((origin[1] + bb.y0 as f32).round(), (origin[1] + bb.y1 as f32).round());
+                let (mut top, mut bot) = (
+                    (origin[1] + bb.y0 as f32).round(),
+                    (origin[1] + bb.y1 as f32).round(),
+                );
                 if let Some(l) = layout.get(line_idx) {
                     let base = origin[1] + l.metrics().baseline;
                     let (mut asc, mut desc) = (0.0f32, 0.0f32);
@@ -236,10 +308,12 @@ impl TextSystem {
                     }
                 }
                 let rect = [x0 - pad, top, w + 2.0 * pad, (bot - top).max(0.0)];
-                let merge = last.filter(|&(li, _)| li == line_idx).is_some_and(|(_, k)| {
-                    let (d, _) = out[k].paint();
-                    (d.rect[0] + d.rect[2] - rect[0] - 2.0 * pad).abs() < 1.0
-                });
+                let merge = last
+                    .filter(|&(li, _)| li == line_idx)
+                    .is_some_and(|(_, k)| {
+                        let (d, _) = out[k].paint();
+                        (d.rect[0] + d.rect[2] - rect[0] - 2.0 * pad).abs() < 1.0
+                    });
                 if merge {
                     let (d, _) = out[last.unwrap().1].paint();
                     if rect[3] > d.rect[3] {
@@ -248,7 +322,15 @@ impl TextSystem {
                     d.rect[2] = rect[0] + rect[2] - d.rect[0];
                 } else {
                     last = Some((line_idx, out.len()));
-                    out.push(PaintedDeco::new(Deco { rect, color: h.bg, radius }, ring, (b as u32).saturating_sub(1)));
+                    out.push(PaintedDeco::new(
+                        Deco {
+                            rect,
+                            color: h.bg,
+                            radius,
+                        },
+                        ring,
+                        (b as u32).saturating_sub(1),
+                    ));
                 }
             }
         }

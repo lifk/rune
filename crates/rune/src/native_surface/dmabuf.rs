@@ -295,12 +295,8 @@ impl Importer {
                 (DmaBufFormat::R8, DmaBufFormat::R8G8)
             };
             let mut y = frame.to_external_plane(0, y_format, width, height)?;
-            let mut uv = frame.to_external_plane(
-                1,
-                uv_format,
-                width.div_ceil(2),
-                height.div_ceil(2),
-            )?;
+            let mut uv =
+                frame.to_external_plane(1, uv_format, width.div_ceil(2), height.div_ceil(2))?;
             let y_destination = plane_texture(device, &y, "DMA-BUF luma");
             let uv_destination = plane_texture(device, &uv, "DMA-BUF chroma");
             let y_copy: DmaBufImport = self.inner.copy_into(&mut y, &y_destination);

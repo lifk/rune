@@ -16,11 +16,13 @@ use std::time::Duration;
 
 use motion_bento_chaos::hud::{Readout, Replay};
 use motion_bento_chaos::look::{Springs, color, grid};
-use motion_bento_chaos::stress::Wall;
 use motion_bento_chaos::model::SCENES;
 use motion_bento_chaos::schedule::START;
+use motion_bento_chaos::stress::Wall;
 use motion_bento_chaos::{Action, Config, Meter, Model, Player, script_json};
-use rune::{AppSpec, Cx, El, FrameOutcome, Key, KeyEvent, Live, Tx, col, el, memo, row, spacer, text};
+use rune::{
+    AppSpec, Cx, El, FrameOutcome, Key, KeyEvent, Live, Tx, col, el, memo, row, spacer, text,
+};
 use rune_kit::{Kit, RollingText};
 
 use style::{c, caption, font, nums, spring};
@@ -79,7 +81,10 @@ impl State {
             written: false,
             wall: cfg.load.as_ref().map(|_| Wall::new(cfg.seed)),
             t: 0.0,
-            replay: cfg.hud_from.as_ref().map(|p| Replay::load(p).unwrap_or_else(|e| panic!("--hud-from: {e}"))),
+            replay: cfg
+                .hud_from
+                .as_ref()
+                .map(|p| Replay::load(p).unwrap_or_else(|e| panic!("--hud-from: {e}"))),
             readout: None,
             live: (cfg.load.is_some() && !cfg.naive).then(stress::Bindings::new),
         }
@@ -140,7 +145,10 @@ fn poll(s: &mut State, t: f64, tx: &mut Tx) -> bool {
         tx.wake_after(Duration::ZERO);
         // Idiomatic: the bars, numbers and colours are live values; only a reshuffle or a new
         // level runs the view. Naive: every frame does.
-        changed |= s.live.as_mut().is_none_or(|b| b.sync(wall, t, s.readout.as_ref()));
+        changed |= s
+            .live
+            .as_mut()
+            .is_none_or(|b| b.sync(wall, t, s.readout.as_ref()));
     }
     if !s.begun && t >= START {
         s.begun = true;
@@ -202,12 +210,29 @@ fn header(s: &State) -> El {
         .fill(c(color::TILE))
         .border(1.0, c(color::EDGE))
         .motion(spring(s.springs.layout))
-        .child(el().size(10.0, 10.0).radius(5.0).fill(c(mood)).motion(spring(s.springs.morph)))
-        .child(RollingText::new("head-scene", SCENES[s.m.scene]).value(s.m.scene as f64).font(font(13.0, 560.0)).color(c(color::TEXT)).build(k));
+        .child(
+            el().size(10.0, 10.0)
+                .radius(5.0)
+                .fill(c(mood))
+                .motion(spring(s.springs.morph)),
+        )
+        .child(
+            RollingText::new("head-scene", SCENES[s.m.scene])
+                .value(s.m.scene as f64)
+                .font(font(13.0, 560.0))
+                .color(c(color::TEXT))
+                .build(k),
+        );
     let events = row()
         .gap(6.0)
         .center_y()
-        .child(RollingText::new("events", s.m.events.to_string()).value(s.m.events as f64).font(nums(13.0, 600.0)).color(c(color::TEXT)).build(k))
+        .child(
+            RollingText::new("events", s.m.events.to_string())
+                .value(s.m.events as f64)
+                .font(nums(13.0, 600.0))
+                .color(c(color::TEXT))
+                .build(k),
+        )
         .child(caption("events"));
     row()
         .w_full()
@@ -237,7 +262,11 @@ fn hud(s: &State) -> El {
         .border(1.0, c(color::ACCENT.alpha(0.4)))
         .raise();
     for l in &s.hud_lines {
-        lines = lines.child(text(l.clone()).font(nums(11.0, 500.0).mono()).color(c(color::TEXT_2)));
+        lines = lines.child(
+            text(l.clone())
+                .font(nums(11.0, 500.0).mono())
+                .color(c(color::TEXT_2)),
+        );
     }
     lines
 }
@@ -263,18 +292,37 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
             row()
                 .h(grid::ROW1)
                 .gap(grid::GAP)
-                .child(memo("scene", (m.scene, m.lights, m.chips, m.temp.to_bits()), || tiles_top::scenes(s, k)))
-                .child(memo("thermo", m.temp.to_bits(), || tiles_top::thermostat(s, k)))
+                .child(memo(
+                    "scene",
+                    (m.scene, m.lights, m.chips, m.temp.to_bits()),
+                    || tiles_top::scenes(s, k),
+                ))
+                .child(memo("thermo", m.temp.to_bits(), || {
+                    tiles_top::thermostat(s, k)
+                }))
                 .child(memo("lights", m.lights, || tiles_top::lights(s, k))),
         )
         .child(
             row()
                 .h(grid::ROW2)
                 .gap(grid::GAP)
-                .child(memo("mixer", m.faders.map(f32::to_bits), || tiles_mid::mixer(s, k)))
+                .child(memo("mixer", m.faders.map(f32::to_bits), || {
+                    tiles_mid::mixer(s, k)
+                }))
                 .child(memo("xy", m.puck.map(f32::to_bits), || tiles_mid::xy(s, k)))
-                .child(memo("queue", m.queue.iter().map(|c| (c.id, c.track)).collect::<Vec<_>>(), || tiles_mid::queue(s, k)))
-                .child(memo("feed", m.feed.iter().map(|f| (f.id, f.kind, f.minute)).collect::<Vec<_>>(), || tiles_mid::feed(s, k))),
+                .child(memo(
+                    "queue",
+                    m.queue.iter().map(|c| (c.id, c.track)).collect::<Vec<_>>(),
+                    || tiles_mid::queue(s, k),
+                ))
+                .child(memo(
+                    "feed",
+                    m.feed
+                        .iter()
+                        .map(|f| (f.id, f.kind, f.minute))
+                        .collect::<Vec<_>>(),
+                    || tiles_mid::feed(s, k),
+                )),
         )
         .child(dock::dock(s, k));
     if s.hud {
@@ -289,7 +337,8 @@ fn main() {
         std::process::exit(2);
     });
     if let Some(path) = &cfg.emit_script {
-        std::fs::write(path, script_json(&cfg)).unwrap_or_else(|e| panic!("writing {}: {e}", path.display()));
+        std::fs::write(path, script_json(&cfg))
+            .unwrap_or_else(|e| panic!("writing {}: {e}", path.display()));
         return;
     }
     let _ = CONFIG.set(cfg);
@@ -306,13 +355,20 @@ fn main() {
         poll: Some(poll),
         on_key: Some(on_key),
         min_size: Some((grid::WIDTH, grid::HEIGHT)),
-        ..AppSpec::new("Motion bento", (grid::WIDTH, grid::HEIGHT), State::new, view)
+        ..AppSpec::new(
+            "Motion bento",
+            (grid::WIDTH, grid::HEIGHT),
+            State::new,
+            view,
+        )
     };
     rune::App::new(spec)
         .args(rest.into_iter().skip(1))
         .on_close(on_close)
         .on_frame_encoded(|f| {
-            let (FrameOutcome::Drawn, Some(start)) = (f.outcome(), f.started()) else { return };
+            let (FrameOutcome::Drawn, Some(start)) = (f.outcome(), f.started()) else {
+                return;
+            };
             let build = f.update_ms().unwrap_or(0.0);
             let work = build + f.encode_ms().unwrap_or(0.0);
             METER.with(|m| {

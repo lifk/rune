@@ -19,10 +19,14 @@ pub(super) fn scroll_commits(rec: &Recording, out: &mut Vec<Finding>) {
             continue;
         }
         let from = k;
-        while k < rec.scrolled.len() && rec.scrolled[k].0 { k += 1; }
+        while k < rec.scrolled.len() && rec.scrolled[k].0 {
+            k += 1;
+        }
         let run = &rec.scrolled[from..k];
         let committed: Vec<usize> = (from..k).filter(|&f| rec.scrolled[f].1 != 0).collect();
-        if committed.len() < COMMITS || (committed.len() as f32) < share * run.len() as f32 { continue; }
+        if committed.len() < COMMITS || (committed.len() as f32) < share * run.len() as f32 {
+            continue;
+        }
         let why = run.iter().fold(0, |b, f| b | f.1);
         out.push(Finding {
             kind: "scroll-commit",

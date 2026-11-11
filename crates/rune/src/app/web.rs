@@ -4,7 +4,10 @@
 use super::*;
 
 /// `fonts` and one more, kept for the life of the process as `AppSpec::fonts` requires.
-pub(crate) fn with_font(fonts: &'static [&'static [u8]], bytes: Vec<u8>) -> &'static [&'static [u8]] {
+pub(crate) fn with_font(
+    fonts: &'static [&'static [u8]],
+    bytes: Vec<u8>,
+) -> &'static [&'static [u8]] {
     let mut all = fonts.to_vec();
     all.push(Box::leak(bytes.into_boxed_slice()));
     Box::leak(all.into_boxed_slice())

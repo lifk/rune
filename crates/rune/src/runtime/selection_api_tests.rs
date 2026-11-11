@@ -4,7 +4,9 @@ use super::*;
 use crate::{Cx, El, Env, Key, Mods, PhysicalInput, PhysicalKeyCode, TextStyle, col, text};
 
 #[derive(Default)]
-struct S { seen: Option<String> }
+struct S {
+    seen: Option<String>,
+}
 
 fn view(_: &S, _: &mut Cx<S>) -> El {
     col()
@@ -16,7 +18,13 @@ fn view(_: &S, _: &mut Cx<S>) -> El {
             s.seen = tx.text_selection().map(|sel| sel.text().to_owned());
             false
         })
-        .child(text("lone text here").key("lone").font(TextStyle::new(14.0, 400.0)).w_full().selectable(true))
+        .child(
+            text("lone text here")
+                .key("lone")
+                .font(TextStyle::new(14.0, 400.0))
+                .w_full()
+                .selectable(true),
+        )
 }
 
 #[test]
@@ -27,12 +35,26 @@ fn a_physical_copy_in_the_same_frame_copies_what_code_selected() {
     rt.use_clipboard(&clipboard);
     rt.set_focus(Some("root".to_owned()), false);
     rt.update(|_, tx| tx.select_text("lone", 5..9));
-    let cmd = Mods { cmd: true, ..Mods::default() };
+    let cmd = Mods {
+        cmd: true,
+        ..Mods::default()
+    };
     rt.physical_with_fallback(
-        PhysicalInput::Key { key: PhysicalKeyCode::KeyC, mods: cmd, pressed: true, repeat: false },
-        Some(KeyEvent { key: Key::Command('c'), mods: cmd }),
+        PhysicalInput::Key {
+            key: PhysicalKeyCode::KeyC,
+            mods: cmd,
+            pressed: true,
+            repeat: false,
+        },
+        Some(KeyEvent {
+            key: Key::Command('c'),
+            mods: cmd,
+        }),
     );
     rt.frame(1.0 / 60.0);
     assert_eq!(rt.state.seen.as_deref(), Some("text"));
-    assert_eq!(clipboard.text().as_deref().map(String::as_str), Some("text"));
+    assert_eq!(
+        clipboard.text().as_deref().map(String::as_str),
+        Some("text")
+    );
 }

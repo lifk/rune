@@ -1,27 +1,27 @@
 //! System-wide shortcuts. Native registrations belong to the app's event-loop thread.
 //! Nothing connects to the desktop until the first registration.
-mod parse;
 mod keys;
 #[cfg(target_os = "macos")]
 mod layout_macos;
-#[cfg(all(test, target_os = "macos"))]
-pub(crate) use layout_macos::force as force_layout;
+mod parse;
 pub use keys::{PhysicalKeyCode, modifier_keycaps};
 pub(crate) use keys::{capital, us_char};
-mod service;
+#[cfg(all(test, target_os = "macos"))]
+pub(crate) use layout_macos::force as force_layout;
 #[cfg(target_os = "macos")]
 mod macos;
+mod service;
+#[cfg(all(target_os = "linux", feature = "dbus"))]
+mod wayland;
 #[cfg(target_os = "windows")]
 mod windows;
 #[cfg(target_os = "linux")]
 mod x11;
 #[cfg(any(target_os = "linux", test))]
 mod x11_repeat;
-#[cfg(all(target_os = "linux", feature = "dbus"))]
-mod wayland;
 
 pub use parse::Shortcut;
-pub(crate) use service::{Hub, Guard};
+pub(crate) use service::{Guard, Hub};
 use std::sync::Arc;
 
 /// An opaque registration, unique within this process. It is not an accelerator hash.
@@ -46,7 +46,9 @@ impl std::fmt::Display for ShortcutError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Conflict => f.write_str("shortcut is already registered"),
-            Self::Unsupported => f.write_str("global shortcuts are unsupported in this desktop session"),
+            Self::Unsupported => {
+                f.write_str("global shortcuts are unsupported in this desktop session")
+            }
             Self::InvalidAccelerator(s) => write!(f, "invalid accelerator: {s}"),
             Self::NotRunning => f.write_str("the shortcut's app is not running"),
             Self::UnknownId => f.write_str("unknown shortcut registration"),
@@ -77,12 +79,21 @@ fn backend(wayland: bool, sink: Sink) -> Result<NativeBackend, ShortcutError> {
     #[cfg(target_os = "linux")]
     return if wayland {
         #[cfg(feature = "dbus")]
-        { Ok(Box::new(wayland::Native::new(sink)?)) }
+        {
+            Ok(Box::new(wayland::Native::new(sink)?))
+        }
         #[cfg(not(feature = "dbus"))]
-        { Err(ShortcutError::Unsupported) }
-    } else { Ok(Box::new(x11::Native::new(sink)?)) };
+        {
+            Err(ShortcutError::Unsupported)
+        }
+    } else {
+        Ok(Box::new(x11::Native::new(sink)?))
+    };
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-    { let _ = sink; Err(ShortcutError::Unsupported) }
+    {
+        let _ = sink;
+        Err(ShortcutError::Unsupported)
+    }
 }
 
 /// The desktop's own claim on a chord. Only macOS publishes one (its symbolic hotkeys).
@@ -90,7 +101,10 @@ fn system_owner(shortcut: &Shortcut) -> Option<String> {
     #[cfg(target_os = "macos")]
     return macos::system_owner(shortcut);
     #[cfg(not(target_os = "macos"))]
-    { let _ = shortcut; None }
+    {
+        let _ = shortcut;
+        None
+    }
 }
 
 // Keep native status mapping pure so tests can inject failures without grabbing the desktop.
@@ -108,7 +122,9 @@ impl<S: 'static> crate::App<S> {
     /// Errors are reported once to stderr and retained by `AppHandle::take_shortcut_errors`.
     /// Headless scripts register virtually, without connecting to the desktop.
     pub fn global_shortcut(self, accelerator: &str, handler: fn(&mut S, &mut crate::Tx)) -> Self {
-        self.shared.shortcuts.pending(accelerator.parse(), Arc::new(handler));
+        self.shared
+            .shortcuts
+            .pending(accelerator.parse(), Arc::new(handler));
         self
     }
 
@@ -127,7 +143,11 @@ impl<S: 'static> crate::AppHandle<S> {
     /// Do not join such callers from the app thread. Linux registrations can run off-thread;
     /// use a worker for Wayland consent dialogs to keep the UI responsive. Portal consent is
     /// bounded to two minutes and the user may choose a different trigger.
-    pub fn register_shortcut(&self, shortcut: Shortcut, handler: impl Fn(&mut S, &mut crate::Tx) + Send + Sync + 'static) -> Result<ShortcutId, ShortcutError> {
+    pub fn register_shortcut(
+        &self,
+        shortcut: Shortcut,
+        handler: impl Fn(&mut S, &mut crate::Tx) + Send + Sync + 'static,
+    ) -> Result<ShortcutId, ShortcutError> {
         self.shared.shortcuts.register(shortcut, Arc::new(handler))
     }
 
@@ -154,5 +174,7 @@ impl<S: 'static> crate::AppHandle<S> {
 impl crate::Tx {
     /// Wayland's compositor-issued token for this shortcut activation. Forward it to
     /// `AppHandle::activate(token)` to show and focus the quick panel. None on other backends.
-    pub fn activation_token(&self) -> Option<&str> { self.shortcut_activation_token.as_deref() }
+    pub fn activation_token(&self) -> Option<&str> {
+        self.shortcut_activation_token.as_deref()
+    }
 }

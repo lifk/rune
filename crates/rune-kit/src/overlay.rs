@@ -228,9 +228,13 @@ impl Popover {
         if !self.open {
             return trigger;
         }
-        let mut content = col().key(format!("{}-content", self.key)).role("dialog")
+        let mut content = col()
+            .key(format!("{}-content", self.key))
+            .role("dialog")
             .description(self.description.clone().unwrap_or_default())
-            .focus_return(&anchor_key).min_w(200.0).max_w(320.0);
+            .focus_return(&anchor_key)
+            .min_w(200.0)
+            .max_w(320.0);
         if let Some(l) = &self.label {
             content = content.label(l.clone());
         }
@@ -321,9 +325,11 @@ impl TooltipStyle {
         };
         match appearance {
             TooltipAppearance::Compact => base,
-            TooltipAppearance::Large => {
-                TooltipStyle { padding: (12.0, 12.0), font: tabular(TextStyle { weight: 530.0, ..k.ty.ui_compact }), ..base }
-            }
+            TooltipAppearance::Large => TooltipStyle {
+                padding: (12.0, 12.0),
+                font: tabular(TextStyle { weight: 530.0, ..k.ty.ui_compact }),
+                ..base
+            },
             TooltipAppearance::Standard => TooltipStyle {
                 fill: c.surface_float,
                 border: Some((1.0, c.border_weak)),
@@ -510,13 +516,18 @@ impl Tooltip {
             return row().key(anchor_key).children(self.trigger);
         }
         // While it shows, the tooltip's text describes its trigger (ARIA `aria-describedby`).
-        let words: Vec<&str> = self.value.iter().filter_map(|c| match c {
-            Content::Text(s, _) => Some(s.as_str()),
-            Content::El(_) => None,
-        }).collect();
+        let words: Vec<&str> = self
+            .value
+            .iter()
+            .filter_map(|c| match c {
+                Content::Text(s, _) => Some(s.as_str()),
+                Content::El(_) => None,
+            })
+            .collect();
         let described = words.join(" ");
         let named = described.clone();
-        let trigger = row().key(anchor_key.clone())
+        let trigger = row()
+            .key(anchor_key.clone())
             .children(self.trigger.map(|t| if described.is_empty() { t } else { t.description(described) }));
         let value = self.value.into_iter().map(|c| match c {
             // Wrapping text may shrink below its one-line width, so it wraps inside the box.

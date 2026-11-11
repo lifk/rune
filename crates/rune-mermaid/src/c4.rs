@@ -10,7 +10,9 @@ use rune::{Color, TextStyle, oklch};
 use super::canvas::{Scene, measure_wrap};
 use super::chart::{bold, ink, small};
 use super::layered::Spacing;
-use super::layered_draw::{ClusterSpec, Dir, DrawNode, Edge, Head, Line, NodeShape, PERSON, draw_layered};
+use super::layered_draw::{
+    ClusterSpec, Dir, DrawNode, Edge, Head, Line, NodeShape, PERSON, draw_layered,
+};
 use super::{DiagramStyle, EdgeStyle, Hover, MAX_DEPTH, MAX_ITEMS, clean_quoted, word};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -87,7 +89,9 @@ pub(crate) fn parse(header: &str, body: &[&str]) -> Option<C4> {
             d.title = Some(clean_quoted(rest)).filter(|t| !t.is_empty());
             continue;
         }
-        let Some((open, close)) = l.find('(').zip(l.rfind(')')).filter(|(o, c)| o < c) else { continue };
+        let Some((open, close)) = l.find('(').zip(l.rfind(')')).filter(|(o, c)| o < c) else {
+            continue;
+        };
         let name = l[..open].trim();
         let (args, named) = args(&l[open + 1..close]);
         let arg = |i: usize| args.get(i).cloned().unwrap_or_default();
@@ -95,28 +99,60 @@ pub(crate) fn parse(header: &str, body: &[&str]) -> Option<C4> {
             if stack.len() >= MAX_DEPTH {
                 return None;
             }
-            let ty = args.get(2).cloned().filter(|t| !t.is_empty()).or_else(|| kind.map(str::to_owned));
+            let ty = args
+                .get(2)
+                .cloned()
+                .filter(|t| !t.is_empty())
+                .or_else(|| kind.map(str::to_owned));
             let label = args.get(1).or(args.first()).cloned().unwrap_or_default();
             let title = match ty {
                 Some(t) => format!("{label}\n[{t}]"),
                 None => label,
             };
-            d.boundaries.push(Boundary { title, parent: stack.last().copied() });
+            d.boundaries.push(Boundary {
+                title,
+                parent: stack.last().copied(),
+            });
             if l[close + 1..].trim_start().starts_with('{') {
                 stack.push(d.boundaries.len() - 1);
             }
         } else if let Some((base, store, external)) = element(name) {
-            let Some(alias) = args.first().filter(|a| !a.is_empty()) else { continue };
-            let (techn, descr) = if matches!(base, Base::Container | Base::Component) { (arg(2), arg(3)) } else { (String::new(), arg(2)) };
+            let Some(alias) = args.first().filter(|a| !a.is_empty()) else {
+                continue;
+            };
+            let (techn, descr) = if matches!(base, Base::Container | Base::Component) {
+                (arg(2), arg(3))
+            } else {
+                (String::new(), arg(2))
+            };
             let techn = named.get("techn").cloned().unwrap_or(techn);
             let descr = named.get("descr").cloned().unwrap_or(descr);
             ids.insert(alias.clone(), d.elements.len());
-            d.elements.push(Element { base, store, external, label: arg(1), techn, descr, boundary: stack.last().copied() });
+            d.elements.push(Element {
+                base,
+                store,
+                external,
+                label: arg(1),
+                techn,
+                descr,
+                boundary: stack.last().copied(),
+            });
         } else if let Some((both, way, indexed)) = relation(name) {
-            let a = if indexed { &args[args.len().min(1)..] } else { &args[..] };
+            let a = if indexed {
+                &args[args.len().min(1)..]
+            } else {
+                &args[..]
+            };
             let get = |i: usize| a.get(i).cloned().unwrap_or_default();
             let techn = named.get("techn").cloned().unwrap_or_else(|| get(3));
-            rels.push(Rel { from: get(0), to: get(1), label: get(2), techn, both, way });
+            rels.push(Rel {
+                from: get(0),
+                to: get(1),
+                label: get(2),
+                techn,
+                both,
+                way,
+            });
         }
         if d.elements.len() + d.boundaries.len() + rels.len() > MAX_ITEMS {
             return None;
@@ -124,9 +160,15 @@ pub(crate) fn parse(header: &str, body: &[&str]) -> Option<C4> {
     }
     let mut n = 0;
     for r in rels {
-        let (Some(&a), Some(&b)) = (ids.get(&r.from), ids.get(&r.to)) else { continue };
+        let (Some(&a), Some(&b)) = (ids.get(&r.from), ids.get(&r.to)) else {
+            continue;
+        };
         n += 1;
-        let mut label = if dynamic { format!("{n}: {}", r.label) } else { r.label };
+        let mut label = if dynamic {
+            format!("{n}: {}", r.label)
+        } else {
+            r.label
+        };
         if !r.techn.is_empty() {
             label = format!("{label}\n[{}]", r.techn);
         }
@@ -137,7 +179,17 @@ pub(crate) fn parse(header: &str, body: &[&str]) -> Option<C4> {
             Way::Back => (a, b, Head::Arrow, other),
         };
         let label = Some(label).filter(|l| !l.trim().is_empty());
-        d.edges.push(Edge { from, to, label, line: Line::Solid, start, end, minlen: 1, style: EdgeStyle::default(), on_cluster: [None; 2] });
+        d.edges.push(Edge {
+            from,
+            to,
+            label,
+            line: Line::Solid,
+            start,
+            end,
+            minlen: 1,
+            style: EdgeStyle::default(),
+            on_cluster: [None; 2],
+        });
     }
     (!d.elements.is_empty()).then_some(d)
 }
@@ -183,10 +235,17 @@ fn boundary(name: &str) -> Option<Option<&'static str>> {
 
 /// `Person`, `SystemDb_Ext`, `ContainerQueue`, …
 fn element(name: &str) -> Option<(Base, Store, bool)> {
-    let (name, external) = name.strip_suffix("_Ext").map_or((name, false), |n| (n, true));
-    let (base, rest) = [("Person", Base::Person), ("System", Base::System), ("Container", Base::Container), ("Component", Base::Component)]
-        .into_iter()
-        .find_map(|(w, b)| name.strip_prefix(w).map(|r| (b, r)))?;
+    let (name, external) = name
+        .strip_suffix("_Ext")
+        .map_or((name, false), |n| (n, true));
+    let (base, rest) = [
+        ("Person", Base::Person),
+        ("System", Base::System),
+        ("Container", Base::Container),
+        ("Component", Base::Component),
+    ]
+    .into_iter()
+    .find_map(|(w, b)| name.strip_prefix(w).map(|r| (b, r)))?;
     let store = match rest {
         "" => Store::Plain,
         "Db" if base != Base::Person => Store::Db,
@@ -207,7 +266,9 @@ fn relation(name: &str) -> Option<(bool, Way, bool)> {
         "Index" => Some((both, Way::Down, true)),
         "_Back" => Some((both, Way::Back, false)),
         "_U" | "_Up" => Some((both, Way::Up, false)),
-        "" | "_D" | "_Down" | "_L" | "_Left" | "_R" | "_Right" | "_Neighbor" => Some((both, Way::Down, false)),
+        "" | "_D" | "_Down" | "_L" | "_Left" | "_R" | "_Right" | "_Neighbor" => {
+            Some((both, Way::Down, false))
+        }
         _ => None,
     }
 }
@@ -225,7 +286,10 @@ fn stereotype(e: &Element) -> String {
         Store::Db => "_db",
         Store::Queue => "_queue",
     };
-    format!("«{}{base}{store}»", if e.external { "external_" } else { "" })
+    format!(
+        "«{}{base}{store}»",
+        if e.external { "external_" } else { "" }
+    )
 }
 
 /// C4's blues, deepest for people; external elements in grey.
@@ -238,42 +302,96 @@ fn fill(e: &Element) -> Color {
         (Base::Container, false) => 0.6,
         (Base::Component, false) => 0.76,
     };
-    if e.external { oklch(l, 0.0, 0.0) } else { oklch(l, 0.11 - (l - 0.36) * 0.12, 252.0) }
+    if e.external {
+        oklch(l, 0.0, 0.0)
+    } else {
+        oklch(l, 0.11 - (l - 0.36) * 0.12, 252.0)
+    }
 }
 
-const SPACING: Spacing = Spacing { node: 44.0, rank: 64.0, cluster: 20.0 };
+const SPACING: Spacing = Spacing {
+    node: 44.0,
+    rank: 64.0,
+    cluster: 20.0,
+};
 
 pub(crate) fn draw(d: &C4, paint: &DiagramStyle, hover: Option<(Hover, Color)>) -> Option<Scene> {
     let note = small(paint);
-    let fonts: [TextStyle; 3] = [TextStyle { italic: true, ..small(paint) }, bold(paint.font), TextStyle { italic: true, ..note }];
+    let fonts: [TextStyle; 3] = [
+        TextStyle {
+            italic: true,
+            ..small(paint)
+        },
+        bold(paint.font),
+        TextStyle {
+            italic: true,
+            ..note
+        },
+    ];
     let nodes: Vec<DrawNode> = d
         .elements
         .iter()
         .map(|e| {
-            let techn = (!e.techn.is_empty()).then(|| format!("[{}]", e.techn)).unwrap_or_default();
-            let lines: Vec<_> = [(stereotype(e), fonts[0]), (e.label.clone(), fonts[1]), (techn, fonts[2]), (e.descr.clone(), note)]
-                .into_iter()
-                .filter(|(t, _)| !t.is_empty())
-                .map(|(t, f)| (measure_wrap(&t, f, 190.0), f))
-                .collect();
+            let techn = (!e.techn.is_empty())
+                .then(|| format!("[{}]", e.techn))
+                .unwrap_or_default();
+            let lines: Vec<_> = [
+                (stereotype(e), fonts[0]),
+                (e.label.clone(), fonts[1]),
+                (techn, fonts[2]),
+                (e.descr.clone(), note),
+            ]
+            .into_iter()
+            .filter(|(t, _)| !t.is_empty())
+            .map(|(t, f)| (measure_wrap(&t, f, 190.0), f))
+            .collect();
             let shape = match e.store {
                 Store::Plain => NodeShape::Round,
                 Store::Db => NodeShape::Cylinder,
                 Store::Queue => NodeShape::HCylinder,
             };
-            let w = lines.iter().map(|l| l.0.size[0]).fold(0.0, f32::max) + if shape == NodeShape::HCylinder { 52.0 } else { 32.0 };
+            let w = lines.iter().map(|l| l.0.size[0]).fold(0.0, f32::max)
+                + if shape == NodeShape::HCylinder {
+                    52.0
+                } else {
+                    32.0
+                };
             let person = e.base == Base::Person;
-            let mut h = lines.iter().map(|l| l.0.size[1] + 3.0).sum::<f32>() + 22.0 + if person { PERSON } else { 0.0 };
+            let mut h = lines.iter().map(|l| l.0.size[1] + 3.0).sum::<f32>()
+                + 22.0
+                + if person { PERSON } else { 0.0 };
             if shape == NodeShape::Cylinder {
                 h += 3.0 * super::shape::rim(w.max(150.0));
             }
             let f = fill(e);
             let border = oklch((f.to_oklab()[0] - 0.1).max(0.2), 0.06, 252.0);
-            DrawNode::Card { shape, lines, size: [w.max(150.0), h.max(64.0)], cluster: e.boundary, colors: [f, border, ink(f)], person }
+            DrawNode::Card {
+                shape,
+                lines,
+                size: [w.max(150.0), h.max(64.0)],
+                cluster: e.boundary,
+                colors: [f, border, ink(f)],
+                person,
+            }
         })
         .collect();
-    let clusters: Vec<ClusterSpec> = d.boundaries.iter().map(|b| ClusterSpec { title: b.title.clone(), parent: b.parent }).collect();
-    draw_layered(Dir::Down, &nodes, &d.edges, &clusters, &SPACING, paint, hover)
+    let clusters: Vec<ClusterSpec> = d
+        .boundaries
+        .iter()
+        .map(|b| ClusterSpec {
+            title: b.title.clone(),
+            parent: b.parent,
+        })
+        .collect();
+    draw_layered(
+        Dir::Down,
+        &nodes,
+        &d.edges,
+        &clusters,
+        &SPACING,
+        paint,
+        hover,
+    )
 }
 
 #[cfg(test)]

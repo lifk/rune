@@ -33,7 +33,11 @@ pub(crate) struct Drawn<'a> {
 
 #[cfg(debug_assertions)]
 #[derive(Clone, Copy)]
-struct Start { quiet: bool, timer: bool, live: bool }
+struct Start {
+    quiet: bool,
+    timer: bool,
+    live: bool,
+}
 
 #[cfg(debug_assertions)]
 #[derive(Default)]
@@ -55,7 +59,9 @@ impl IdleMeter {
     #[inline(always)]
     pub(crate) fn polled(&mut self, changed: bool) -> bool {
         #[cfg(debug_assertions)]
-        { self.meter.polled |= changed; }
+        {
+            self.meter.polled |= changed;
+        }
         changed
     }
 
@@ -69,13 +75,25 @@ impl IdleMeter {
     /// The frame drew `drawn` at `clock` seconds, leaving motion running if `animating`. `name`
     /// names the window, when it has a title.
     #[cfg(debug_assertions)]
-    pub(crate) fn ends(&mut self, clock: f64, animating: bool, drawn: Drawn, name: impl Fn() -> Option<String>) {
+    pub(crate) fn ends(
+        &mut self,
+        clock: f64,
+        animating: bool,
+        drawn: Drawn,
+        name: impl Fn() -> Option<String>,
+    ) {
         let m = &mut self.meter;
         let Some(start) = m.frame.take() else { return };
         let polled = std::mem::take(&mut m.polled);
         let quiet = start.quiet && !drawn.opaque;
         // Whether it drew what the last frame did: unknown unless that one was quiet too.
-        let same = quiet.then(|| m.last.as_ref().map(|(bytes, key)| *key == drawn.key && bytes[..] == *drawn.instances)).flatten();
+        let same = quiet
+            .then(|| {
+                m.last
+                    .as_ref()
+                    .map(|(bytes, key)| *key == drawn.key && bytes[..] == *drawn.instances)
+            })
+            .flatten();
         if quiet {
             let (bytes, key) = m.last.get_or_insert_default();
             bytes.clear();
@@ -90,22 +108,33 @@ impl IdleMeter {
             m.poll_streak = if same { m.poll_streak + 1 } else { 0 };
             if m.poll_streak == POLL_FRAMES {
                 let window = site();
-                super::warn_once(format!("idle-poll{window}"), || format!(
-                    "`poll`{} returned true but nothing changed ({POLL_FRAMES} frames in a row); return \
-                     true only when visible state changed", if window.is_empty() { String::new() } else { format!(" of window{window}") }
-                ));
+                super::warn_once(format!("idle-poll{window}"), || {
+                    format!(
+                        "`poll`{} returned true but nothing changed ({POLL_FRAMES} frames in a row); return \
+                     true only when visible state changed",
+                        if window.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" of window{window}")
+                        }
+                    )
+                });
             }
         }
         if !quiet || animating || same == Some(false) {
             m.idle_frames = 0;
             return;
         }
-        if same.is_none() || !(start.timer || start.live) { return }
+        if same.is_none() || !(start.timer || start.live) {
+            return;
+        }
         if m.idle_frames == 0 || clock - m.idle_from > IDLE_SECS {
             (m.idle_from, m.idle_frames, m.woken) = (clock, 0, [false; 3]);
         }
         m.idle_frames += 1;
-        for (woke, by) in m.woken.iter_mut().zip([start.timer, start.live, polled]) { *woke |= by; }
+        for (woke, by) in m.woken.iter_mut().zip([start.timer, start.live, polled]) {
+            *woke |= by;
+        }
         if m.idle_frames == IDLE_FRAMES {
             let window = site();
             let by = match m.woken {
@@ -115,10 +144,12 @@ impl IdleMeter {
                 [false, ..] => "a live value",
             };
             let secs = clock - m.idle_from;
-            super::warn_once(format!("idle-draw{window}"), || format!(
-                "idle window{window} still drawing: check `wake_after` loops ({IDLE_FRAMES} frames in {secs:.1} s \
+            super::warn_once(format!("idle-draw{window}"), || {
+                format!(
+                    "idle window{window} still drawing: check `wake_after` loops ({IDLE_FRAMES} frames in {secs:.1} s \
                  with no input, motion or visible change, woken by {by})"
-            ));
+                )
+            });
         }
     }
 }

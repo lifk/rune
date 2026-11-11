@@ -43,7 +43,15 @@ impl El {
     /// scale.
     pub fn anchored(mut self, key: impl Into<String>, side: Side, align: Align, gap: f32) -> Self {
         self.style.set_position_absolute();
-        self.cold_mut().above = Some(Anchor { key: key.into(), side, align, gap, fit: false, unscaled: false, round: false });
+        self.cold_mut().above = Some(Anchor {
+            key: key.into(),
+            side,
+            align,
+            gap,
+            fit: false,
+            unscaled: false,
+            round: false,
+        });
         self
     }
     /// [`El::anchored`], sized to the window as Floating UI's `size` middleware sizes a
@@ -89,8 +97,23 @@ impl El {
 /// let r = anchor_rect([20.0, 250.0, 60.0, 270.0], (100.0, 80.0), Side::Bottom, Align::Start, 4.0, (400.0, 300.0));
 /// assert_eq!(r, [20.0, 166.0, 120.0, 246.0]);
 /// ```
-pub fn anchor_rect(trigger: [f32; 4], size: (f32, f32), side: Side, align: Align, gap: f32, window: (f32, f32)) -> [f32; 4] {
-    let a = Anchor { key: String::new(), side, align, gap, fit: false, unscaled: false, round: false };
+pub fn anchor_rect(
+    trigger: [f32; 4],
+    size: (f32, f32),
+    side: Side,
+    align: Align,
+    gap: f32,
+    window: (f32, f32),
+) -> [f32; 4] {
+    let a = Anchor {
+        key: String::new(),
+        side,
+        align,
+        gap,
+        fit: false,
+        unscaled: false,
+        round: false,
+    };
     let (x, y) = crate::runtime::anchor_position(&a, trigger, size, window);
     [x, y, x + size.0, y + size.1]
 }

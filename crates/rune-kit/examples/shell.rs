@@ -12,7 +12,8 @@ use std::borrow::Cow;
 
 use rune::{AppSpec, Chrome, Cx, El, Icon, KeyEvent, Spring, TextEdit, Tx, col, oklch, row, text};
 use rune_kit::shell::{
-    self, Page, PaneMotion, PaneState, Reorder, RowStatus, Sidebar, SidebarPeek, SidebarRow, SidebarToggle, SplitView, Toolbar,
+    self, Page, PaneMotion, PaneState, Reorder, RowStatus, Sidebar, SidebarPeek, SidebarRow, SidebarToggle, SplitView,
+    Toolbar,
 };
 use rune_kit::{Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, Kit, Switch, glyphs};
 
@@ -89,7 +90,8 @@ fn init() -> App {
     let page = args.iter().any(|a| a == "page");
     let page_pair = args.iter().any(|a| a == "page-pair");
     if virtualised {
-        sessions = (0..5000).map(|i| s(&format!("v{i}"), &format!("Session {}", 5000 - i), i % 4, Status::Idle)).collect();
+        sessions =
+            (0..5000).map(|i| s(&format!("v{i}"), &format!("Session {}", 5000 - i), i % 4, Status::Idle)).collect();
     }
     App {
         sidebar: PaneState::new(276.0).range(136.0, 640.0),
@@ -143,10 +145,16 @@ fn session_row(s: &App, i: usize, k: &Kit) -> El {
                 s.renaming = Some(id.clone());
             }
         })
-        .reorder(&s.reorder, i, s.sessions.len(), |s: &mut App| &mut s.reorder, |s: &mut App, from, to| {
-            let x = s.sessions.remove(from);
-            s.sessions.insert(to, x);
-        });
+        .reorder(
+            &s.reorder,
+            i,
+            s.sessions.len(),
+            |s: &mut App| &mut s.reorder,
+            |s: &mut App, from, to| {
+                let x = s.sessions.remove(from);
+                s.sessions.insert(to, x);
+            },
+        );
     match session.status {
         Status::Busy => r = r.status(RowStatus::Busy),
         Status::Attention => r = r.status(RowStatus::Attention),
@@ -159,7 +167,9 @@ fn session_row(s: &App, i: usize, k: &Kit) -> El {
             |s: &mut App| &mut s.rename,
             |s: &mut App, _| {
                 let (id, title) = (s.renaming.take(), s.rename.text.trim().to_owned());
-                if let Some(x) = s.sessions.iter_mut().find(|x| Some(&x.id) == id.as_ref()).filter(|_| !title.is_empty()) {
+                if let Some(x) =
+                    s.sessions.iter_mut().find(|x| Some(&x.id) == id.as_ref()).filter(|_| !title.is_empty())
+                {
                     x.title = title;
                 }
             },
@@ -191,7 +201,11 @@ fn sidebar(s: &App, k: &Kit) -> El {
         let kit = k.clone();
         return sb
             .row_height(ROW)
-            .virtual_rows(s.sessions.len(), |s: &App, i| Cow::Borrowed(s.sessions[i].id.as_str()), move |s: &App, i| session_row(s, i, &kit))
+            .virtual_rows(
+                s.sessions.len(),
+                |s: &App, i| Cow::Borrowed(s.sessions[i].id.as_str()),
+                move |s: &App, i| session_row(s, i, &kit),
+            )
             .build(k);
     }
     (0..s.sessions.len()).fold(sb, |sb, i| sb.child(session_row(s, i, k))).build(k)
@@ -218,22 +232,16 @@ fn settings_page(dark: bool, inset: f32) -> El {
             )
             .child(Switch::new(on).build(&k))
     };
-    let body = col()
-        .key("settings-body")
-        .w_full()
-        .h_full()
-        .padding(24.0)
-        .items_center()
-        .child(
-            col()
-                .w_full()
-                .max_w(520.0)
-                .gap(12.0)
-                .child(text("Workspace Settings").font(k.ty.body_medium).color(c.text_base))
-                .child(setting("Unlock with Touch ID", "Prompt for biometrics when returning after idle", true))
-                .child(setting("Clear clipboard automatically", "Remove copied secrets after 30 seconds", true))
-                .child(setting("Show sidebar unread badges", "Highlight active background tasks in the toggle", false)),
-        );
+    let body = col().key("settings-body").w_full().h_full().padding(24.0).items_center().child(
+        col()
+            .w_full()
+            .max_w(520.0)
+            .gap(12.0)
+            .child(text("Workspace Settings").font(k.ty.body_medium).color(c.text_base))
+            .child(setting("Unlock with Touch ID", "Prompt for biometrics when returning after idle", true))
+            .child(setting("Clear clipboard automatically", "Remove copied secrets after 30 seconds", true))
+            .child(setting("Show sidebar unread badges", "Highlight active background tasks in the toggle", false)),
+    );
     let back = Button::new("Back")
         .variant(ButtonVariant::Ghost)
         .control_size(ControlSize::Regular)
@@ -281,7 +289,10 @@ fn view(s: &App, cx: &mut Cx<App>) -> El {
         .child(line("Virtualising the rows keeps layout to the viewport and two screens either side, so a commit costs the rows that changed.", c.text_muted))
         .child(line("Next: keep the selected row's height when its preview text grows, so the list doesn't jump under the pointer.", c.text_muted));
     let field = |label: &str, value: &str| {
-        col().gap(2.0).child(text(label.to_owned()).font(k.ty.small).color(c.text_faint)).child(text(value.to_owned()).font(k.ty.ui).color(c.text_base))
+        col()
+            .gap(2.0)
+            .child(text(label.to_owned()).font(k.ty.small).color(c.text_faint))
+            .child(text(value.to_owned()).font(k.ty.ui).color(c.text_base))
     };
     let inspector = col()
         .key("details")
@@ -311,7 +322,15 @@ fn view(s: &App, cx: &mut Cx<App>) -> El {
         .frame_inset(8.0)
         .toolbar_in_panel()
         .sidebar_padding(18.0, 10.0)
-        .sidebar_toggle(SidebarToggle::new().size(ControlSize::Large).past_lights(16.0).edge(18.0).gap(4.0).in_header().unread(unread))
+        .sidebar_toggle(
+            SidebarToggle::new()
+                .size(ControlSize::Large)
+                .past_lights(16.0)
+                .edge(18.0)
+                .gap(4.0)
+                .in_header()
+                .unread(unread),
+        )
         .pane_motion(PaneMotion::new().spring(Spring::new(0.3, 0.0)).scale_with_width(480.0, 0.15, 0.3).fade_tail(0.15))
         .sidebar_peek(
             SidebarPeek::new()
@@ -344,5 +363,7 @@ fn on_key(s: &mut App, ev: &KeyEvent, _: &mut Tx) -> bool {
 fn main() {
     // The traffic lights centred on the toolbar, 8 points down in the framed pane: 32 points.
     let chrome = Chrome { full_size_content: true, traffic_lights: Some((16.0, 25.0)), drag_regions: true };
-    rune::App::new(AppSpec { on_key: Some(on_key), ..AppSpec::new("Shell", (1040.0, 640.0), init, view) }).chrome(chrome).run();
+    rune::App::new(AppSpec { on_key: Some(on_key), ..AppSpec::new("Shell", (1040.0, 640.0), init, view) })
+        .chrome(chrome)
+        .run();
 }

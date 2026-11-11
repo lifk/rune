@@ -75,7 +75,12 @@ impl Bp {
     pub const STEPS: [u16; 6] = [0, 400, 560, 760, 860, 1000];
 
     pub fn of(width: f32) -> Bp {
-        let at = Self::STEPS.iter().rev().copied().find(|&s| width >= f32::from(s)).unwrap_or(0);
+        let at = Self::STEPS
+            .iter()
+            .rev()
+            .copied()
+            .find(|&s| width >= f32::from(s))
+            .unwrap_or(0);
         Bp { at }
     }
     /// Under 400: 16 pt gutters.
@@ -102,12 +107,24 @@ impl Bp {
         if self.narrow() { 16.0 } else { 24.0 }
     }
     pub fn h1(self) -> TextStyle {
-        if self.phone() { TextStyle::new(36.0, 500.0).lh(44.0).tracking(-0.9) } else { TextStyle::new(40.0, 500.0).lh(48.0).tracking(-1.0) }
+        if self.phone() {
+            TextStyle::new(36.0, 500.0).lh(44.0).tracking(-0.9)
+        } else {
+            TextStyle::new(40.0, 500.0).lh(48.0).tracking(-1.0)
+        }
     }
     pub fn h2(self) -> TextStyle {
-        if self.phone() { TextStyle::new(24.0, 500.0).lh(32.0).tracking(-0.48) } else { TextStyle::new(28.0, 500.0).lh(36.0).tracking(-0.56) }
+        if self.phone() {
+            TextStyle::new(24.0, 500.0).lh(32.0).tracking(-0.48)
+        } else {
+            TextStyle::new(28.0, 500.0).lh(36.0).tracking(-0.56)
+        }
     }
     pub fn lede(self) -> TextStyle {
-        if self.phone() { TEXT_16 } else { TextStyle::new(18.0, 400.0).lh(28.0) }
+        if self.phone() {
+            TEXT_16
+        } else {
+            TextStyle::new(18.0, 400.0).lh(28.0)
+        }
     }
 }

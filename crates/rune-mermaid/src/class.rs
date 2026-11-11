@@ -7,7 +7,10 @@ use rune::Color;
 use super::canvas::Scene;
 use super::layered::Spacing;
 use super::layered_draw::{ClusterSpec, Dir, DrawNode, Edge, Head, Line, class_box, draw_layered};
-use super::{DiagramStyle, EdgeStyle, Hover, MAX_ITEMS, NodeStyle, StyleSheet, clean, clean_quoted, statements};
+use super::{
+    DiagramStyle, EdgeStyle, Hover, MAX_ITEMS, NodeStyle, StyleSheet, clean, clean_quoted,
+    statements,
+};
 
 #[derive(Debug)]
 pub(crate) struct ClassNode {
@@ -57,7 +60,13 @@ const RELS: &[(&str, Head, Head, Line)] = &[
 
 pub(crate) fn parse(header: &str, body: &[&str]) -> Option<ClassDiagram> {
     let mut p = Parser {
-        d: ClassDiagram { title: None, dir: Dir::Down, classes: Vec::new(), edges: Vec::new(), namespaces: Vec::new() },
+        d: ClassDiagram {
+            title: None,
+            dir: Dir::Down,
+            classes: Vec::new(),
+            edges: Vec::new(),
+            namespaces: Vec::new(),
+        },
         ids: HashMap::new(),
         active_class: None,
         active_ns: None,
@@ -108,7 +117,8 @@ struct Parser {
 
 impl Parser {
     fn budget(&mut self) -> Option<()> {
-        self.over |= self.d.classes.len() + self.d.edges.len() + self.d.namespaces.len() >= MAX_ITEMS;
+        self.over |=
+            self.d.classes.len() + self.d.edges.len() + self.d.namespaces.len() >= MAX_ITEMS;
         (!self.over).then_some(())
     }
 
@@ -125,7 +135,10 @@ impl Parser {
             self.active_ns.take()?;
             return Some(());
         }
-        let word = s.split(|c: char| c.is_whitespace() || c == ':').next().unwrap_or("");
+        let word = s
+            .split(|c: char| c.is_whitespace() || c == ':')
+            .next()
+            .unwrap_or("");
         match word {
             "title" => {
                 let t = clean_quoted(s["title".len()..].trim());
@@ -145,7 +158,9 @@ impl Parser {
                 }
                 let rest = s["namespace".len()..].trim().strip_suffix('{')?.trim();
                 self.budget()?;
-                self.d.namespaces.push(Namespace { title: clean_quoted(rest) });
+                self.d.namespaces.push(Namespace {
+                    title: clean_quoted(rest),
+                });
                 self.active_ns = Some(self.d.namespaces.len() - 1);
             }
             "class" => self.class_decl(s["class".len()..].trim())?,
@@ -190,7 +205,11 @@ impl Parser {
 
     fn class_decl(&mut self, rest: &str) -> Option<()> {
         let opens = rest.ends_with('{');
-        let core = if opens { rest[..rest.len() - 1].trim() } else { rest };
+        let core = if opens {
+            rest[..rest.len() - 1].trim()
+        } else {
+            rest
+        };
         let (core, inline_stereo) = if let Some(at) = core.find("<<") {
             let end = core[at + 2..].find(">>")?;
             let st = clean(&core[at + 2..at + 2 + end]);
@@ -202,7 +221,10 @@ impl Parser {
         let (id, label) = if let Some(b) = core.find('[')
             && core.ends_with(']')
         {
-            (core[..b].trim(), Some(clean_quoted(&core[b + 1..core.len() - 1])))
+            (
+                core[..b].trim(),
+                Some(clean_quoted(&core[b + 1..core.len() - 1])),
+            )
         } else if let Some((id, alias)) = core.split_once(" as ") {
             (id.trim(), Some(clean_quoted(alias)))
         } else {
@@ -282,13 +304,25 @@ impl Parser {
         } else {
             (from, to, start_h, end_h)
         };
-        self.d.edges.push(Edge { from, to, label, line, start, end, minlen: 1, style: EdgeStyle::default(), on_cluster: [None; 2] });
+        self.d.edges.push(Edge {
+            from,
+            to,
+            label,
+            line,
+            start,
+            end,
+            minlen: 1,
+            style: EdgeStyle::default(),
+            on_cluster: [None; 2],
+        });
         Some(())
     }
 
     fn ensure_class(&mut self, raw: &str) -> Option<usize> {
         let (id, generic) = match raw.find('~') {
-            Some(at) if raw.ends_with('~') && at > 0 => (&raw[..at], Some(&raw[at + 1..raw.len() - 1])),
+            Some(at) if raw.ends_with('~') && at > 0 => {
+                (&raw[..at], Some(&raw[at + 1..raw.len() - 1]))
+            }
             _ => (raw, None),
         };
         let id = id.trim().trim_matches('`');
@@ -326,7 +360,9 @@ impl Parser {
 }
 
 fn valid_class_id(s: &str) -> bool {
-    !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.'))
+    !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.'))
 }
 
 fn tilde_generics(s: &str) -> String {
@@ -348,7 +384,11 @@ fn find_colon_outside_quotes(s: &str) -> Option<usize> {
     for (i, ch) in s.char_indices() {
         if ch == '"' {
             quoted = !quoted;
-        } else if ch == ':' && !quoted && s.as_bytes().get(i + 1) != Some(&b':') && i.checked_sub(1).and_then(|p| s.as_bytes().get(p)) != Some(&b':') {
+        } else if ch == ':'
+            && !quoted
+            && s.as_bytes().get(i + 1) != Some(&b':')
+            && i.checked_sub(1).and_then(|p| s.as_bytes().get(p)) != Some(&b':')
+        {
             return Some(i);
         }
     }
@@ -370,7 +410,10 @@ fn find_rel(s: &str) -> Option<(usize, &'static (&'static str, Head, Head, Line)
             // `--` only counts as a relation when whitespace or a quote borders it.
             let prev = s[..i].chars().next_back();
             let next = s[i + rel.0.len()..].chars().next();
-            if rel.0 == "--" && prev.is_some_and(|c| c.is_alphanumeric()) && next.is_some_and(|c| c.is_alphanumeric()) {
+            if rel.0 == "--"
+                && prev.is_some_and(|c| c.is_alphanumeric())
+                && next.is_some_and(|c| c.is_alphanumeric())
+            {
                 continue;
             }
             return Some((i, rel));
@@ -398,11 +441,40 @@ fn parse_side(s: &str, left: bool) -> Option<(String, Option<String>)> {
     Some((s.to_owned(), None))
 }
 
-const SPACING: Spacing = Spacing { node: 38.0, rank: 48.0, cluster: 16.0 };
+const SPACING: Spacing = Spacing {
+    node: 38.0,
+    rank: 48.0,
+    cluster: 16.0,
+};
 
-pub(crate) fn draw(d: &ClassDiagram, paint: &DiagramStyle, hover: Option<(Hover, Color)>) -> Option<Scene> {
-    let nodes: Vec<DrawNode> = d.classes.iter().map(|c| class_box(c.stereo.as_deref(), &c.label, &c.fields, &c.methods, c.namespace, c.style, paint)).collect();
-    let clusters: Vec<ClusterSpec> = d.namespaces.iter().map(|n| ClusterSpec { title: n.title.clone(), parent: None }).collect();
+pub(crate) fn draw(
+    d: &ClassDiagram,
+    paint: &DiagramStyle,
+    hover: Option<(Hover, Color)>,
+) -> Option<Scene> {
+    let nodes: Vec<DrawNode> = d
+        .classes
+        .iter()
+        .map(|c| {
+            class_box(
+                c.stereo.as_deref(),
+                &c.label,
+                &c.fields,
+                &c.methods,
+                c.namespace,
+                c.style,
+                paint,
+            )
+        })
+        .collect();
+    let clusters: Vec<ClusterSpec> = d
+        .namespaces
+        .iter()
+        .map(|n| ClusterSpec {
+            title: n.title.clone(),
+            parent: None,
+        })
+        .collect();
     draw_layered(d.dir, &nodes, &d.edges, &clusters, &SPACING, paint, hover)
 }
 

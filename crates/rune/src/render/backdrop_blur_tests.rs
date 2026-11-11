@@ -11,7 +11,10 @@ fn levels_cover_the_range_continuously() {
         let (n, share) = levels(sigma, top);
         let (a, b) = (SIGMAS[n - 1], SIGMAS[n]);
         let got = (a * a + share * (b * b - a * a)).sqrt();
-        assert!((got - sigma.clamp(SIGMAS[0], SIGMAS[top])).abs() < 1e-3, "sigma {sigma}: {got}");
+        assert!(
+            (got - sigma.clamp(SIGMAS[0], SIGMAS[top])).abs() < 1e-3,
+            "sigma {sigma}: {got}"
+        );
         assert!(got >= last);
         last = got;
     }

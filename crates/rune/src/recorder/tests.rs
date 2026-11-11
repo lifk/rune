@@ -22,7 +22,12 @@ impl Drop for Scratch {
 
 /// A headless runtime, which starts this thread's virtual clock at 0.
 fn runtime() -> crate::Runtime<()> {
-    crate::Runtime::new((), |_: &(), _: &mut crate::Cx<()>| crate::el().size(10.0, 10.0), (10.0, 10.0), crate::Env::new(true, 2.0))
+    crate::Runtime::new(
+        (),
+        |_: &(), _: &mut crate::Cx<()>| crate::el().size(10.0, 10.0),
+        (10.0, 10.0),
+        crate::Env::new(true, 2.0),
+    )
 }
 
 #[track_caller]
@@ -90,11 +95,19 @@ fn a_known_sine_reads_its_known_peak_and_rms() {
     let level = rec.level();
     // Peak 0.5 is -6.02 dBFS; a sine's RMS is 3.01 dB below its peak.
     near(level.peak_db() as f64, 20.0 * 0.5f64.log10(), 0.01);
-    near(level.rms_db() as f64, 20.0 * (0.5 / 2f64.sqrt()).log10(), 0.01);
+    near(
+        level.rms_db() as f64,
+        20.0 * (0.5 / 2f64.sqrt()).log10(),
+        0.01,
+    );
     near(level.meter() as f64, (60.0 - 9.0309) / 60.0, 0.001);
     assert_eq!(rec.live_level().get(), level.meter());
     rec.pause();
-    assert_eq!(rec.level(), Level::SILENT, "a paused recorder hears nothing");
+    assert_eq!(
+        rec.level(),
+        Level::SILENT,
+        "a paused recorder hears nothing"
+    );
     assert_eq!(rec.live_level().get(), 0.0);
     rec.stop().unwrap();
 
@@ -122,15 +135,24 @@ fn the_meter_rises_fast_and_falls_slowly() {
         m.push(0.5, 0.125, 0.01);
     }
     let rising = m.level();
-    assert!(rising.rms_db() > -12.0, "30 ms in, the RMS is close: {rising:?}");
+    assert!(
+        rising.rms_db() > -12.0,
+        "30 ms in, the RMS is close: {rising:?}"
+    );
     for _ in 0..10 {
         m.push(0.0, 0.0, 0.01);
     }
     let falling = m.level();
-    assert!(falling.rms_db() > -13.0 && falling.rms_db() < rising.rms_db(), "100 ms of silence: {falling:?}");
+    assert!(
+        falling.rms_db() > -13.0 && falling.rms_db() < rising.rms_db(),
+        "100 ms of silence: {falling:?}"
+    );
     near(falling.peak_db() as f64, -6.0206 - 2.0, 0.01);
     m.push(f64::NAN, f64::INFINITY, 0.01);
-    assert!(m.level().rms_db().is_finite(), "bad samples never poison the meter");
+    assert!(
+        m.level().rms_db().is_finite(),
+        "bad samples never poison the meter"
+    );
 }
 
 /// A bound meter shows this frame's level in this frame, and draws nothing while idle.
@@ -140,7 +162,11 @@ fn a_bound_meter_follows_the_level_on_the_same_frame() {
     FakeMicrophone::sine(1000.0, 0.5).install();
     let rec = Recorder::to_file(dir.join("a.wav"));
     let view = |r: &Recorder, _: &mut crate::Cx<Recorder>| {
-        crate::el().key("meter").size(10.0, 10.0).fill(crate::Color::WHITE).live_opacity(&r.live_level())
+        crate::el()
+            .key("meter")
+            .size(10.0, 10.0)
+            .fill(crate::Color::WHITE)
+            .live_opacity(&r.live_level())
     };
     let mut rt = crate::Runtime::new(rec.clone(), view, (10.0, 10.0), crate::Env::new(true, 2.0));
     rt.frame(0.0);
@@ -148,7 +174,11 @@ fn a_bound_meter_follows_the_level_on_the_same_frame() {
     assert!(!rt.frame(0.1), "an idle recorder asks for no frames");
     rec.start();
     rt.frame(1.0);
-    near(rt.presented("meter").unwrap().1 as f64, rec.level().meter() as f64, 1e-6);
+    near(
+        rt.presented("meter").unwrap().1 as f64,
+        rec.level().meter() as f64,
+        1e-6,
+    );
     assert!(rec.level().meter() > 0.8);
     rec.stop().unwrap();
     rt.frame(0.1);
@@ -189,7 +219,11 @@ fn an_aac_recorder_on_a_fake_microphone_writes_wav_beside_its_path() {
     assert_eq!(note.path, dir.join("note.wav"));
     assert!(note.path.exists());
     assert!(!dir.join("note.m4a").exists());
-    assert_eq!(rec.path(), dir.join("note.m4a"), "a device would write the m4a");
+    assert_eq!(
+        rec.path(),
+        dir.join("note.m4a"),
+        "a device would write the m4a"
+    );
 }
 
 /// The format picks the extension, so AVAudioRecorder (which picks its container by the
@@ -199,19 +233,40 @@ fn the_format_decides_the_file_extension() {
     let dir = Scratch::new("extension");
     FakeMicrophone::silence().install();
     let path = |rec: Recorder| rec.path().strip_prefix(&dir.0).unwrap().to_path_buf();
-    assert_eq!(path(Recorder::to_file(dir.join("x.wav")).format(RecordFormat::Aac)), PathBuf::from("x.m4a"));
-    assert_eq!(path(Recorder::to_file(dir.join("x.m4a")).format(RecordFormat::Wav)), PathBuf::from("x.wav"));
-    assert_eq!(path(Recorder::to_file(dir.join("x"))), PathBuf::from("x.m4a"));
-    assert_eq!(path(Recorder::to_file(dir.join("x.mp3"))), PathBuf::from("x.m4a"));
-    assert_eq!(path(Recorder::to_file(dir.join("x.MP4"))), PathBuf::from("x.MP4"));
-    assert_eq!(path(Recorder::to_file(dir.join("x.WAV"))), PathBuf::from("x.WAV"));
+    assert_eq!(
+        path(Recorder::to_file(dir.join("x.wav")).format(RecordFormat::Aac)),
+        PathBuf::from("x.m4a")
+    );
+    assert_eq!(
+        path(Recorder::to_file(dir.join("x.m4a")).format(RecordFormat::Wav)),
+        PathBuf::from("x.wav")
+    );
+    assert_eq!(
+        path(Recorder::to_file(dir.join("x"))),
+        PathBuf::from("x.m4a")
+    );
+    assert_eq!(
+        path(Recorder::to_file(dir.join("x.mp3"))),
+        PathBuf::from("x.m4a")
+    );
+    assert_eq!(
+        path(Recorder::to_file(dir.join("x.MP4"))),
+        PathBuf::from("x.MP4")
+    );
+    assert_eq!(
+        path(Recorder::to_file(dir.join("x.WAV"))),
+        PathBuf::from("x.WAV")
+    );
 
     let wav = Recorder::to_file(dir.join("note.m4a")).format(RecordFormat::Wav);
     wav.start();
     let note = wav.stop().unwrap();
     assert_eq!(note.path, dir.join("note.wav"));
     assert_eq!(&std::fs::read(&note.path).unwrap()[..4], b"RIFF");
-    assert!(!dir.join("note.m4a").exists(), "no RIFF bytes behind an .m4a name");
+    assert!(
+        !dir.join("note.m4a").exists(),
+        "no RIFF bytes behind an .m4a name"
+    );
 }
 
 /// Dropping the last handle mid-recording keeps what was captured, whether recording or
@@ -302,7 +357,11 @@ fn frame_rate_never_moves_a_sample_level_or_unplug() {
     for _ in 0..18 {
         rt.frame(1.0 / 60.0);
     }
-    assert!(matches!(rec.state(), RecorderState::Interrupted(_)), "unplugs on the 18th frame: {:?}", rec.state());
+    assert!(
+        matches!(rec.state(), RecorderState::Interrupted(_)),
+        "unplugs on the 18th frame: {:?}",
+        rec.state()
+    );
     assert_eq!(rec.stop().unwrap().duration, 0.3);
 }
 
@@ -318,13 +377,21 @@ fn a_restarted_recorder_is_followed_once() {
         rt.frame(0.1);
         rec.stop().unwrap();
     }
-    let followed = HEADLESS.with_borrow(|h| h.iter().filter(|w| std::ptr::eq(w.as_ptr(), Arc::as_ptr(&rec.shared))).count());
+    let followed = HEADLESS.with_borrow(|h| {
+        h.iter()
+            .filter(|w| std::ptr::eq(w.as_ptr(), Arc::as_ptr(&rec.shared)))
+            .count()
+    });
     assert_eq!(followed, 1);
 }
 
 #[test]
 fn levels_pack_into_one_word() {
-    for level in [Level::SILENT, Level::new(-6.0, -9.0), Level::new(0.0, -160.0)] {
+    for level in [
+        Level::SILENT,
+        Level::new(-6.0, -9.0),
+        Level::new(0.0, -160.0),
+    ] {
         assert_eq!(unpack(pack(level)), level);
     }
 }
@@ -357,7 +424,10 @@ fn finishing_on_the_recorder_thread_doesnt_wait_on_itself() {
     .join()
     .unwrap();
     assert!(begun.elapsed() < std::time::Duration::from_secs(1));
-    assert!(commands.try_recv().is_err(), "nothing was asked of the thread");
+    assert!(
+        commands.try_recv().is_err(),
+        "nothing was asked of the thread"
+    );
 }
 
 #[test]
@@ -393,27 +463,38 @@ fn cancel_deletes_the_file_of_a_recording_in_progress() {
 fn starting_without_permission_fails_clearly() {
     let dir = Scratch::new("permission");
     let path = dir.join("note.wav");
-    FakeMicrophone::silence().permission(MicPermission::Denied).install();
+    FakeMicrophone::silence()
+        .permission(MicPermission::Denied)
+        .install();
     assert_eq!(Recorder::permission(), MicPermission::Denied);
     let rec = Recorder::to_file(&path);
     rec.start();
-    let RecorderState::Failed(message) = rec.state() else { panic!("{:?}", rec.state()) };
+    let RecorderState::Failed(message) = rec.state() else {
+        panic!("{:?}", rec.state())
+    };
     assert!(message.contains("denied"), "{message}");
     assert!(!rec.is_recording());
     assert!(!path.exists(), "nothing is written without permission");
     assert_eq!(rec.stop(), Err(message));
 
-    FakeMicrophone::silence().permission(MicPermission::Restricted).install();
+    FakeMicrophone::silence()
+        .permission(MicPermission::Restricted)
+        .install();
     rec.start();
     assert!(matches!(rec.state(), RecorderState::Failed(m) if m.contains("restricted")));
 
     // Undetermined: starting asks, and the answer sticks.
-    FakeMicrophone::silence().permission(MicPermission::Undetermined).answers(MicPermission::Denied).install();
+    FakeMicrophone::silence()
+        .permission(MicPermission::Undetermined)
+        .answers(MicPermission::Denied)
+        .install();
     rec.start();
     assert!(matches!(rec.state(), RecorderState::Failed(m) if m.contains("denied")));
     assert_eq!(Recorder::permission(), MicPermission::Denied);
 
-    FakeMicrophone::silence().permission(MicPermission::Undetermined).install();
+    FakeMicrophone::silence()
+        .permission(MicPermission::Undetermined)
+        .install();
     let answer = Arc::new(Mutex::new(None));
     let heard = answer.clone();
     Recorder::request_permission(move |p| *heard.lock().unwrap() = Some(p));
@@ -423,7 +504,11 @@ fn starting_without_permission_fails_clearly() {
     assert_eq!(rec.state(), RecorderState::Recording);
 
     // A recorder's own fake microphone decides for it.
-    let own = Recorder::to_file(dir.join("own.wav")).fake(FakeMicrophone::silence().permission(MicPermission::Undetermined).answers(MicPermission::Granted));
+    let own = Recorder::to_file(dir.join("own.wav")).fake(
+        FakeMicrophone::silence()
+            .permission(MicPermission::Undetermined)
+            .answers(MicPermission::Granted),
+    );
     own.start();
     assert_eq!(own.state(), RecorderState::Recording);
 }
@@ -431,7 +516,9 @@ fn starting_without_permission_fails_clearly() {
 #[test]
 fn an_unplugged_microphone_keeps_what_was_captured() {
     let dir = Scratch::new("unplug");
-    FakeMicrophone::sine(440.0, 0.25).unplug_after(0.5).install();
+    FakeMicrophone::sine(440.0, 0.25)
+        .unplug_after(0.5)
+        .install();
     let rec = Recorder::to_file(dir.join("note.wav"));
     let changes = Arc::new(AtomicUsize::new(0));
     let count = changes.clone();
@@ -444,8 +531,15 @@ fn an_unplugged_microphone_keeps_what_was_captured() {
     assert_eq!(rec.state(), RecorderState::Recording);
     let before = changes.load(SeqCst);
     rt.frame(0.4);
-    assert_eq!(changes.load(SeqCst), before + 1, "the frame that unplugs wakes the app");
-    assert_eq!(rec.state(), RecorderState::Interrupted("the microphone went away".into()));
+    assert_eq!(
+        changes.load(SeqCst),
+        before + 1,
+        "the frame that unplugs wakes the app"
+    );
+    assert_eq!(
+        rec.state(),
+        RecorderState::Interrupted("the microphone went away".into())
+    );
     near(rec.elapsed(), 0.5, 1e-9);
     assert_eq!(rec.level(), Level::SILENT);
     let note = rec.stop().unwrap();
@@ -457,7 +551,10 @@ fn an_unplugged_microphone_keeps_what_was_captured() {
     rt.frame(0.6);
     assert!(matches!(rec.state(), RecorderState::Interrupted(_)));
     rec.cancel();
-    assert!(!note.path.exists(), "cancel deletes an interrupted recording");
+    assert!(
+        !note.path.exists(),
+        "cancel deletes an interrupted recording"
+    );
 }
 
 #[test]
@@ -488,7 +585,8 @@ fn the_waker_hears_state_changes_not_progress() {
 fn wav_and_sample_inputs_record_their_samples() {
     let dir = Scratch::new("wav");
     let ramp: Vec<f32> = (0..800).map(|i| i as f32 / 800.0 - 0.5).collect();
-    let rec = Recorder::to_file(dir.join("ramp.wav")).fake(FakeMicrophone::samples(8_000, ramp.clone()));
+    let rec =
+        Recorder::to_file(dir.join("ramp.wav")).fake(FakeMicrophone::samples(8_000, ramp.clone()));
     let mut rt = runtime();
     rec.start();
     rt.frame(0.25); // 2000 samples: the 800-sample ramp loops.
@@ -508,7 +606,8 @@ fn wav_and_sample_inputs_record_their_samples() {
         near(*a as f64, *b as f64, 1.0 / 32_000.0);
     }
 
-    let missing = Recorder::to_file(dir.join("x.wav")).fake(FakeMicrophone::wav(dir.join("missing.wav")));
+    let missing =
+        Recorder::to_file(dir.join("x.wav")).fake(FakeMicrophone::wav(dir.join("missing.wav")));
     missing.start();
     assert!(matches!(missing.state(), RecorderState::Failed(m) if m.contains("couldn't read")));
 }
@@ -516,9 +615,18 @@ fn wav_and_sample_inputs_record_their_samples() {
 #[test]
 fn an_unwritable_path_fails_to_start() {
     FakeMicrophone::silence().install();
-    let rec = Recorder::to_file(std::env::temp_dir().join("rune-recorder-missing-dir").join("deeper").join("note.wav"));
+    let rec = Recorder::to_file(
+        std::env::temp_dir()
+            .join("rune-recorder-missing-dir")
+            .join("deeper")
+            .join("note.wav"),
+    );
     rec.start();
-    assert!(matches!(rec.state(), RecorderState::Failed(m) if m.contains("couldn't write")), "{:?}", rec.state());
+    assert!(
+        matches!(rec.state(), RecorderState::Failed(m) if m.contains("couldn't write")),
+        "{:?}",
+        rec.state()
+    );
 }
 
 #[test]
@@ -552,12 +660,21 @@ fn the_macos_recorder_builds_without_capturing() {
     use objc2_video::runtime::Bool;
     let dir = Scratch::new("macos");
     for (name, format) in [("a.m4a", RecordFormat::Aac), ("b.wav", RecordFormat::Wav)] {
-        let opts = Options { format, sample_rate: 44_100, channels: 1, fake: None };
-        let recorder = macos::make_recorder(&dir.join(name), &opts).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let opts = Options {
+            format,
+            sample_rate: 44_100,
+            channels: 1,
+            fake: None,
+        };
+        let recorder =
+            macos::make_recorder(&dir.join(name), &opts).unwrap_or_else(|e| panic!("{name}: {e}"));
         let recording: Bool = unsafe { msg_send![&*recorder, isRecording] };
         assert!(!recording.as_bool());
     }
-    assert!(macos::preflight().is_ok(), "an unbundled test binary is attributed to its terminal");
+    assert!(
+        macos::preflight().is_ok(),
+        "an unbundled test binary is attributed to its terminal"
+    );
     // Reading the status never prompts.
     let _ = macos::permission();
 }

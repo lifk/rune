@@ -62,8 +62,16 @@ impl Toolbar {
     pub fn build(self, k: &Kit) -> El {
         let c = &k.c;
         let pl = self.pad.unwrap_or(PAD);
-        let mut band =
-            row().key("toolbar").role("toolbar").w_full().h(TOOLBAR_HEIGHT).pl(pl).pr(PAD).gap(8.0).center_y().window_drag();
+        let mut band = row()
+            .key("toolbar")
+            .role("toolbar")
+            .w_full()
+            .h(TOOLBAR_HEIGHT)
+            .pl(pl)
+            .pr(PAD)
+            .gap(8.0)
+            .center_y()
+            .window_drag();
         if let Some(t) = &self.title {
             band = band.label(t.clone());
         }

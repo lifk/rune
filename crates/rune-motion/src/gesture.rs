@@ -69,8 +69,17 @@ impl<T: Animatable> VelocityTracker<T> {
     const STOP_GAP: f64 = 0.040;
 
     pub fn new() -> Self {
-        assert!(T::LANES <= 4, "VelocityTracker supports values of up to 4 lanes");
-        VelocityTracker { t: [0.0; SAMPLES], x: [[0.0; 4]; SAMPLES], len: 0, head: 0, _t: core::marker::PhantomData }
+        assert!(
+            T::LANES <= 4,
+            "VelocityTracker supports values of up to 4 lanes"
+        );
+        VelocityTracker {
+            t: [0.0; SAMPLES],
+            x: [[0.0; 4]; SAMPLES],
+            len: 0,
+            head: 0,
+            _t: core::marker::PhantomData,
+        }
     }
 
     /// Records a position at event time `t` (seconds).
@@ -108,13 +117,22 @@ impl<T: Animatable> VelocityTracker<T> {
             }
             if n >= 2 {
                 let mean_t = idx[..n].iter().map(|&i| self.t[i] - t_new).sum::<f64>() / n as f64;
-                let var: f64 = idx[..n].iter().map(|&i| (self.t[i] - t_new - mean_t).powi(2)).sum();
+                let var: f64 = idx[..n]
+                    .iter()
+                    .map(|&i| (self.t[i] - t_new - mean_t).powi(2))
+                    .sum();
                 if var > 1e-12 {
                     for (lane, o) in out.iter_mut().enumerate().take(T::LANES) {
-                        let mean_x = idx[..n].iter().map(|&i| self.x[i][lane] as f64).sum::<f64>() / n as f64;
+                        let mean_x = idx[..n]
+                            .iter()
+                            .map(|&i| self.x[i][lane] as f64)
+                            .sum::<f64>()
+                            / n as f64;
                         let cov: f64 = idx[..n]
                             .iter()
-                            .map(|&i| (self.t[i] - t_new - mean_t) * (self.x[i][lane] as f64 - mean_x))
+                            .map(|&i| {
+                                (self.t[i] - t_new - mean_t) * (self.x[i][lane] as f64 - mean_x)
+                            })
                             .sum();
                         *o = (cov / var) as f32;
                     }

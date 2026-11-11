@@ -8,15 +8,22 @@
 fn main() {}
 
 #[cfg(target_os = "macos")]
-fn main() { mac::main() }
+fn main() {
+    mac::main()
+}
 
 #[cfg(target_os = "macos")]
 mod mac {
-    use std::sync::{Mutex, OnceLock, atomic::{AtomicUsize, Ordering}};
-    use std::time::{Duration, Instant};
     use rune::*;
+    use std::sync::{
+        Mutex, OnceLock,
+        atomic::{AtomicUsize, Ordering},
+    };
+    use std::time::{Duration, Instant};
 
-    struct State { label: String }
+    struct State {
+        label: String,
+    }
 
     static POLLS: AtomicUsize = AtomicUsize::new(0);
     static INBOX: Mutex<Vec<String>> = Mutex::new(Vec::new());
@@ -37,7 +44,9 @@ mod mac {
             return false;
         }
         POLLS.fetch_add(1, Ordering::SeqCst);
-        let Some(label) = INBOX.lock().unwrap().pop() else { return false };
+        let Some(label) = INBOX.lock().unwrap().pop() else {
+            return false;
+        };
         s.label = label;
         true
     }
@@ -45,21 +54,33 @@ mod mac {
     fn wait(what: &str, f: impl Fn() -> bool) {
         let start = Instant::now();
         while !f() {
-            assert!(start.elapsed() < Duration::from_secs(5), "timed out waiting for {what}");
+            assert!(
+                start.elapsed() < Duration::from_secs(5),
+                "timed out waiting for {what}"
+            );
             std::thread::sleep(Duration::from_millis(2));
         }
     }
 
     fn rendered(label: &str) -> Option<bool> {
-        RENDERS.lock().unwrap().iter().find(|(l, _)| l == label).map(|(_, visible)| *visible)
+        RENDERS
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(l, _)| l == label)
+            .map(|(_, visible)| *visible)
     }
 
     fn wake_with(handle: &AppHandle<State>, label: &str) {
         let before = POLLS.load(Ordering::SeqCst);
         INBOX.lock().unwrap().push(label.into());
         handle.wake();
-        wait(&format!("poll for {label}"), || POLLS.load(Ordering::SeqCst) > before);
-        wait(&format!("a render of {label}"), || rendered(label).is_some());
+        wait(&format!("poll for {label}"), || {
+            POLLS.load(Ordering::SeqCst) > before
+        });
+        wait(&format!("a render of {label}"), || {
+            rendered(label).is_some()
+        });
     }
 
     pub fn main() {
@@ -67,19 +88,39 @@ mod mac {
             println!("launcher_wakes: skipped (set RUNE_GUI_TESTS=1 in a GUI session)");
             return;
         }
-        std::thread::spawn(|| { std::thread::sleep(Duration::from_secs(60)); eprintln!("timeout"); std::process::exit(2) });
-        let spec = AppSpec { poll: Some(poll), ..AppSpec::new("launcher wakes", (240.0, 80.0), || State { label: "initial".into() }, view) };
+        std::thread::spawn(|| {
+            std::thread::sleep(Duration::from_secs(60));
+            eprintln!("timeout");
+            std::process::exit(2)
+        });
+        let spec = AppSpec {
+            poll: Some(poll),
+            ..AppSpec::new(
+                "launcher wakes",
+                (240.0, 80.0),
+                || State {
+                    label: "initial".into(),
+                },
+                view,
+            )
+        };
         let (ready_tx, ready_rx) = std::sync::mpsc::channel();
-        let app = App::new(spec).args(Vec::new()).keep_running()
+        let app = App::new(spec)
+            .args(Vec::new())
+            .keep_running()
             .configured_options(WindowOptions::launcher_panel())
-            .on_ready(move |_| { let _ = ready_tx.send(()); });
+            .on_ready(move |_| {
+                let _ = ready_tx.send(());
+            });
         let handle = app.handle();
         let _ = HANDLE.set(handle.clone());
         let result = std::sync::Arc::new(Mutex::new(None));
         let out = result.clone();
         std::thread::spawn(move || {
             let run = std::panic::catch_unwind(|| {
-                ready_rx.recv_timeout(Duration::from_secs(10)).expect("launcher ready");
+                ready_rx
+                    .recv_timeout(Duration::from_secs(10))
+                    .expect("launcher ready");
                 hidden_and_shown_wakes(&handle);
                 reveal_after_update(&handle);
             });
@@ -94,11 +135,18 @@ mod mac {
     fn hidden_and_shown_wakes(handle: &AppHandle<State>) {
         assert!(!handle.is_visible());
         wake_with(handle, "hidden");
-        assert_eq!(rendered("hidden"), Some(false), "a hidden poll change renders the cached frame hidden");
+        assert_eq!(
+            rendered("hidden"),
+            Some(false),
+            "a hidden poll change renders the cached frame hidden"
+        );
         let polls = POLLS.load(Ordering::SeqCst);
         std::thread::sleep(Duration::from_millis(300));
         // A loop would poll every frame; AppKit may still ask for a stray hidden redraw.
-        assert!(POLLS.load(Ordering::SeqCst) <= polls + 2, "a hidden launcher must not run a frame loop");
+        assert!(
+            POLLS.load(Ordering::SeqCst) <= polls + 2,
+            "a hidden launcher must not run a frame loop"
+        );
         assert!(!handle.is_visible());
 
         handle.open();
@@ -121,9 +169,19 @@ mod mac {
         std::thread::sleep(Duration::from_millis(30));
         requests();
         let start = Instant::now();
-        while !handle.is_visible() { assert!(start.elapsed() < Duration::from_secs(5), "timed out waiting for reveal"); }
+        while !handle.is_visible() {
+            assert!(
+                start.elapsed() < Duration::from_secs(5),
+                "timed out waiting for reveal"
+            );
+        }
         let shown = Instant::now();
-        shown - UNBLOCKED.lock().unwrap().take().expect("blocking update ran")
+        shown
+            - UNBLOCKED
+                .lock()
+                .unwrap()
+                .take()
+                .expect("blocking update ran")
     }
 
     fn hide(handle: &AppHandle<State>) {
@@ -144,7 +202,11 @@ mod mac {
                 handle.update(move |s, _| s.label = update);
                 handle.open();
             }));
-            assert_eq!(rendered(&label), Some(false), "the update rendered hidden before the reveal");
+            assert_eq!(
+                rendered(&label),
+                Some(false),
+                "the update rendered hidden before the reveal"
+            );
             hide(handle);
         }
         INBOX.lock().unwrap().clear();
@@ -153,12 +215,22 @@ mod mac {
             handle.wake();
             handle.open();
         });
-        assert_eq!(rendered("polled"), Some(false), "a wake's poll ran and rendered before the reveal");
+        assert_eq!(
+            rendered("polled"),
+            Some(false),
+            "a wake's poll ran and rendered before the reveal"
+        );
         hide(handle);
         if latency {
-            let median = |v: &mut Vec<Duration>| { v.sort(); v[v.len() / 2].as_secs_f64() * 1000.0 };
+            let median = |v: &mut Vec<Duration>| {
+                v.sort();
+                v[v.len() / 2].as_secs_f64() * 1000.0
+            };
             let (cached, fresh) = (median(&mut cached), median(&mut fresh));
-            println!("launcher_wakes: reveal median {cached:.2} ms cached, {fresh:.2} ms after an update (+{:.2} ms)", fresh - cached);
+            println!(
+                "launcher_wakes: reveal median {cached:.2} ms cached, {fresh:.2} ms after an update (+{:.2} ms)",
+                fresh - cached
+            );
         }
     }
 }

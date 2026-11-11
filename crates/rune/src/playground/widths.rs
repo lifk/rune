@@ -27,7 +27,10 @@ impl Widths {
         Self {
             load: Some(Box::new(move || {
                 let p = Prefs::open(&load_id);
-                (p.get(PREF_SIDEBAR).unwrap_or(SIDEBAR), p.get(PREF_SIDE).unwrap_or(SIDE))
+                (
+                    p.get(PREF_SIDEBAR).unwrap_or(SIDEBAR),
+                    p.get(PREF_SIDE).unwrap_or(SIDE),
+                )
             })),
             save: Some(Rc::new(move |sidebar, side| {
                 let mut p = Prefs::open(&save_id);
@@ -49,15 +52,28 @@ impl Widths {
 impl<S: 'static> Playground<S> {
     /// Keeps the story list's and side column's widths from one run to the next. Windowed apps
     /// that don't set this store them in [`Prefs`] automatically.
-    pub fn widths(mut self, load: impl FnOnce() -> (f32, f32) + 'static, save: impl Fn(f32, f32) + 'static) -> Self {
-        self.widths = Widths { load: Some(Box::new(load)), save: Some(Rc::new(save)) };
+    pub fn widths(
+        mut self,
+        load: impl FnOnce() -> (f32, f32) + 'static,
+        save: impl Fn(f32, f32) + 'static,
+    ) -> Self {
+        self.widths = Widths {
+            load: Some(Box::new(load)),
+            save: Some(Rc::new(save)),
+        };
         self
     }
 }
 
 pub(super) fn clamp_pair(sidebar: f32, side: f32, viewport_w: f32) -> (f32, f32) {
-    let side = side.clamp(SIDE_MIN, SIDE_MAX.min((viewport_w - SIDEBAR_MIN - STAGE_MIN - 2.0).max(SIDE_MIN)));
-    let sidebar = sidebar.clamp(SIDEBAR_MIN, SIDEBAR_MAX.min((viewport_w - side - STAGE_MIN - 2.0).max(SIDEBAR_MIN)));
+    let side = side.clamp(
+        SIDE_MIN,
+        SIDE_MAX.min((viewport_w - SIDEBAR_MIN - STAGE_MIN - 2.0).max(SIDE_MIN)),
+    );
+    let sidebar = sidebar.clamp(
+        SIDEBAR_MIN,
+        SIDEBAR_MAX.min((viewport_w - side - STAGE_MIN - 2.0).max(SIDEBAR_MIN)),
+    );
     (sidebar, side)
 }
 

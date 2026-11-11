@@ -27,23 +27,46 @@ fn region_at(rects: &[(&'static str, [f32; 4])], x: f32, y: f32) -> Option<&'sta
 /// The whole layer, to add over the app's root (it draws nothing while closed). `lens` finds
 /// the app's `Knobs` in its state. Region rects are read in window points, so put it where
 /// its top-left is the window's and nothing scales it.
-pub fn layer<S: 'static>(k: &Knobs, groups: &'static [Group], st: Style, lens: fn(&mut S) -> &mut Knobs) -> El {
+pub fn layer<S: 'static>(
+    k: &Knobs,
+    groups: &'static [Group],
+    st: Style,
+    lens: fn(&mut S) -> &mut Knobs,
+) -> El {
     let l = overlay(k, groups, st, lens, "knobs-layer");
     if !k.open {
         return l;
     }
-    l.child(row().key("knobs-dock").absolute(0.0, 0.0).w_full().pt(12.0).pr(12.0).child(spacer()).child(panel(k, groups, st, lens, None)))
+    l.child(
+        row()
+            .key("knobs-dock")
+            .absolute(0.0, 0.0)
+            .w_full()
+            .pt(12.0)
+            .pr(12.0)
+            .child(spacer())
+            .child(panel(k, groups, st, lens, None)),
+    )
 }
 
 /// Region picking and the outline around a group's region, over the element keyed `key`
 /// (which this is): it reads that element's place to put window rects inside it.
-pub(crate) fn overlay<S: 'static>(k: &Knobs, groups: &'static [Group], st: Style, lens: fn(&mut S) -> &mut Knobs, key: &'static str) -> El {
+pub(crate) fn overlay<S: 'static>(
+    k: &Knobs,
+    groups: &'static [Group],
+    st: Style,
+    lens: fn(&mut S) -> &mut Knobs,
+    key: &'static str,
+) -> El {
     let mut l = el().key(key).absolute(0.0, 0.0).w_full().h_full();
     if !k.open {
         return l;
     }
     let (ox, oy) = rune::memo::window_layout(key).map_or((0.0, 0.0), |r| (r[0], r[1]));
-    let rects: Vec<(&'static str, [f32; 4])> = groups.iter().filter_map(|g| rune::memo::window_layout(g.region).map(|r| (g.name, r))).collect();
+    let rects: Vec<(&'static str, [f32; 4])> = groups
+        .iter()
+        .filter_map(|g| rune::memo::window_layout(g.region).map(|r| (g.name, r)))
+        .collect();
     let picking = k.picking;
     if picking {
         let at = rects.clone();
@@ -80,9 +103,25 @@ pub(crate) fn overlay<S: 'static>(k: &Knobs, groups: &'static [Group], st: Style
     }
     let outlined = k.hover.clone();
     if let Some((name, r)) = outlined.and_then(|n| rects.iter().find(|(g, _)| *g == n).copied()) {
-        let mut o = el().key("knobs-outline").absolute(r[0] - ox, r[1] - oy).w(r[2]).h(r[3]).radius(6.0).border(1.0, st.outline);
+        let mut o = el()
+            .key("knobs-outline")
+            .absolute(r[0] - ox, r[1] - oy)
+            .w(r[2])
+            .h(r[3])
+            .radius(6.0)
+            .border(1.0, st.outline);
         if picking {
-            o = o.child(row().key("knobs-tag").absolute(6.0, 6.0).h(20.0).px(7.0).center_y().radius(5.0).fill(st.bg).child(text(name).font(TAG).color(st.fg)));
+            o = o.child(
+                row()
+                    .key("knobs-tag")
+                    .absolute(6.0, 6.0)
+                    .h(20.0)
+                    .px(7.0)
+                    .center_y()
+                    .radius(5.0)
+                    .fill(st.bg)
+                    .child(text(name).font(TAG).color(st.fg)),
+            );
         }
         l = l.child(o);
     }
@@ -94,7 +133,13 @@ pub(crate) fn overlay<S: 'static>(k: &Knobs, groups: &'static [Group], st: Style
 /// ↑ ↓ ← → with [`Knobs::panel_key`]; `active` marks the knob those keys move. It fills its
 /// parent's width, and its rows lay out from the width they get (a slider's track grows with
 /// it), so a 240 pt column and a 300 pt one both read.
-pub fn inline<S: 'static>(k: &Knobs, groups: &'static [Group], st: Style, lens: fn(&mut S) -> &mut Knobs, active: bool) -> El {
+pub fn inline<S: 'static>(
+    k: &Knobs,
+    groups: &'static [Group],
+    st: Style,
+    lens: fn(&mut S) -> &mut Knobs,
+    active: bool,
+) -> El {
     panel(k, groups, st, lens, Some(active))
 }
 
@@ -102,7 +147,15 @@ pub fn inline<S: 'static>(k: &Knobs, groups: &'static [Group], st: Style, lens: 
 /// triggers ("R  Replay", "F  Finish a task"). The app binds the keys. It fills its parent's
 /// width up to 300 pt.
 pub fn actions<S: 'static>(st: Style, items: &[Action<S>]) -> El {
-    let mut card = col().key("knobs-actions").w_full().max_w(W).padding(4.0).gap(2.0).radius(12.0).fill(st.bg).border_gradient(0.5, st.rim, st.border);
+    let mut card = col()
+        .key("knobs-actions")
+        .w_full()
+        .max_w(W)
+        .padding(4.0)
+        .gap(2.0)
+        .radius(12.0)
+        .fill(st.bg)
+        .border_gradient(0.5, st.rim, st.border);
     for (i, a) in items.iter().enumerate() {
         let run = a.run;
         card = card.child(
@@ -118,14 +171,32 @@ pub fn actions<S: 'static>(st: Style, items: &[Action<S>]) -> El {
                 .radius(8.0)
                 .hover(st.fill_hover)
                 .on_press_tx(move |s: &mut S, tx: &mut Tx| run(s, tx))
-                .child(row().key("cap").h(20.0).min_w(22.0).px(6.0).radius(5.0).fill(st.fill_selected).center().child(text(a.cap).font(VALUE).color(st.fg)))
+                .child(
+                    row()
+                        .key("cap")
+                        .h(20.0)
+                        .min_w(22.0)
+                        .px(6.0)
+                        .radius(5.0)
+                        .fill(st.fill_selected)
+                        .center()
+                        .child(text(a.cap).font(VALUE).color(st.fg)),
+                )
                 .child(text(a.label).font(LABEL).color(st.fg2)),
         );
     }
     card
 }
 
-pub(crate) fn tool<S: 'static>(st: Style, key: &str, glyph: &'static Icon, label: &str, enabled: bool, lens: fn(&mut S) -> &mut Knobs, f: impl Fn(&mut Knobs, &mut Tx) + 'static) -> El {
+pub(crate) fn tool<S: 'static>(
+    st: Style,
+    key: &str,
+    glyph: &'static Icon,
+    label: &str,
+    enabled: bool,
+    lens: fn(&mut S) -> &mut Knobs,
+    f: impl Fn(&mut Knobs, &mut Tx) + 'static,
+) -> El {
     let b = row()
         .key(key)
         .role("button")
@@ -139,37 +210,106 @@ pub(crate) fn tool<S: 'static>(st: Style, key: &str, glyph: &'static Icon, label
     if !enabled {
         return b.opacity(0.3);
     }
-    b.hover(st.fill_hover).on_press_tx(move |s: &mut S, tx: &mut Tx| {
-        tx.instant();
-        f(lens(s), tx);
-    })
+    b.hover(st.fill_hover)
+        .on_press_tx(move |s: &mut S, tx: &mut Tx| {
+            tx.instant();
+            f(lens(s), tx);
+        })
 }
 
 /// The panel's title and its tools: pick a part (with `pick`), Random and Reset for `g`, Undo,
 /// Copy values.
-pub(crate) fn head<S: 'static>(k: &Knobs, groups: &'static [Group], st: Style, lens: fn(&mut S) -> &mut Knobs, g: Option<Group>, title: &str, pick: bool) -> El {
-    let mut head = row().key("knobs-head").w_full().h(22.0).gap(2.0).center_y().child(text(title.to_owned()).font(TITLE).color(st.fg).truncate_fade().shrink()).child(spacer());
+pub(crate) fn head<S: 'static>(
+    k: &Knobs,
+    groups: &'static [Group],
+    st: Style,
+    lens: fn(&mut S) -> &mut Knobs,
+    g: Option<Group>,
+    title: &str,
+    pick: bool,
+) -> El {
+    let mut head = row()
+        .key("knobs-head")
+        .w_full()
+        .h(22.0)
+        .gap(2.0)
+        .center_y()
+        .child(
+            text(title.to_owned())
+                .font(TITLE)
+                .color(st.fg)
+                .truncate_fade()
+                .shrink(),
+        )
+        .child(spacer());
     if pick {
-        head = head.child(tool(st, "knobs-repick", &icons::TARGET, "Pick a part", true, lens, |k, _| k.pick_region()));
+        head = head.child(tool(
+            st,
+            "knobs-repick",
+            &icons::TARGET,
+            "Pick a part",
+            true,
+            lens,
+            |k, _| k.pick_region(),
+        ));
     }
     if let Some(g) = g {
         head = head
-            .child(tool(st, "knobs-random", &icons::RANDOM, "Random", true, lens, move |k, _| k.random(&g)))
-            .child(tool(st, "knobs-reset", &icons::RESET, "Reset", k.can_reset(&g), lens, move |k, _| k.reset(&g)));
+            .child(tool(
+                st,
+                "knobs-random",
+                &icons::RANDOM,
+                "Random",
+                true,
+                lens,
+                move |k, _| k.random(&g),
+            ))
+            .child(tool(
+                st,
+                "knobs-reset",
+                &icons::RESET,
+                "Reset",
+                k.can_reset(&g),
+                lens,
+                move |k, _| k.reset(&g),
+            ));
     }
-    head.child(tool(st, "knobs-undo", &icons::UNDO, "Undo", k.can_undo(), lens, |k, _| {
-        k.undo();
-    })).child(tool(st, "knobs-copy", &icons::COPY, "Copy values", true, lens, move |k, tx| {
-        let all: Vec<Group> = match k.current(groups) {
-            Some(g) => vec![g],
-            None => groups.to_vec(),
-        };
-        tx.copy(all.iter().map(|g| k.code(g)).collect::<Vec<_>>().join("\n"));
-    }))
+    head.child(tool(
+        st,
+        "knobs-undo",
+        &icons::UNDO,
+        "Undo",
+        k.can_undo(),
+        lens,
+        |k, _| {
+            k.undo();
+        },
+    ))
+    .child(tool(
+        st,
+        "knobs-copy",
+        &icons::COPY,
+        "Copy values",
+        true,
+        lens,
+        move |k, tx| {
+            let all: Vec<Group> = match k.current(groups) {
+                Some(g) => vec![g],
+                None => groups.to_vec(),
+            };
+            tx.copy(all.iter().map(|g| k.code(g)).collect::<Vec<_>>().join("\n"));
+        },
+    ))
 }
 
 /// `inline` is `Some(active)` for [`inline`].
-fn panel<S: 'static>(k: &Knobs, groups: &'static [Group], st: Style, lens: fn(&mut S) -> &mut Knobs, inline: Option<bool>) -> El {
+fn panel<S: 'static>(
+    k: &Knobs,
+    groups: &'static [Group],
+    st: Style,
+    lens: fn(&mut S) -> &mut Knobs,
+    inline: Option<bool>,
+) -> El {
     let g = k.current(groups);
     let title = match (inline, groups) {
         (Some(_), [one]) => one.name,
@@ -202,18 +342,35 @@ fn panel<S: 'static>(k: &Knobs, groups: &'static [Group], st: Style, lens: fn(&m
                     lens(s).pick(name);
                 })
                 .child(spacer())
-                .child(text(name).font(CHIP).color(if lit { st.fg } else { st.fg2 }))
+                .child(
+                    text(name)
+                        .font(CHIP)
+                        .color(if lit { st.fg } else { st.fg2 }),
+                )
                 .child(spacer())
-                .child(el().key("bar").w_full().h(1.5).radius(1.0).fill(if on { st.handle } else { Color::TRANSPARENT })),
+                .child(el().key("bar").w_full().h(1.5).radius(1.0).fill(if on {
+                    st.handle
+                } else {
+                    Color::TRANSPARENT
+                })),
         );
     }
 
     let p = col().key("knobs-panel");
     let p = if inline.is_some() { p.w_full() } else { p.w(W) };
-    let p = p.padding(PAD).radius(12.0).fill(st.bg).border_gradient(0.5, st.rim, st.border);
+    let p = p
+        .padding(PAD)
+        .radius(12.0)
+        .fill(st.bg)
+        .border_gradient(0.5, st.rim, st.border);
     if let Some(active) = inline {
         let p = p.child(head.pl(PAD));
-        let p = if groups.len() > 1 { p.child(tabs.mt(4.0)).child(el().key("knobs-rule").w_full().h(0.5).fill(st.border)) } else { p };
+        let p = if groups.len() > 1 {
+            p.child(tabs.mt(4.0))
+                .child(el().key("knobs-rule").w_full().h(0.5).fill(st.border))
+        } else {
+            p
+        };
         return match g {
             Some(g) => body(true, p, k, groups, &g, st, lens, active),
             None => p,
@@ -243,18 +400,41 @@ fn panel<S: 'static>(k: &Knobs, groups: &'static [Group], st: Style, lens: fn(&m
         .child(tabs.mt(4.0))
         .child(el().key("knobs-rule").w_full().h(0.5).fill(st.border));
     let Some(g) = g else {
-        return p.child(text("Click a part of the window to tune it.").key("knobs-hint").font(LABEL).color(st.fg3).px(PAD).mt(12.0).mb(4.0));
+        return p.child(
+            text("Click a part of the window to tune it.")
+                .key("knobs-hint")
+                .font(LABEL)
+                .color(st.fg3)
+                .px(PAD)
+                .mt(12.0)
+                .mb(4.0),
+        );
     };
     body(false, p, k, groups, &g, st, lens, k.kbd)
 }
 
 /// The presets and the knobs' card, under the panel's head; `active` marks the keyboard's knob.
-fn body<S: 'static>(inline: bool, p: El, k: &Knobs, groups: &[Group], g: &Group, st: Style, lens: fn(&mut S) -> &mut Knobs, active: bool) -> El {
-    let cx = Ctx { k, st, lens, w: if inline { INLINE_CARD_W } else { CARD_W } };
+fn body<S: 'static>(
+    inline: bool,
+    p: El,
+    k: &Knobs,
+    groups: &[Group],
+    g: &Group,
+    st: Style,
+    lens: fn(&mut S) -> &mut Knobs,
+    active: bool,
+) -> El {
+    let cx = Ctx {
+        k,
+        st,
+        lens,
+        w: if inline { INLINE_CARD_W } else { CARD_W },
+    };
     let gi = groups.iter().position(|x| x.name == g.name).unwrap_or(0);
     let all: Vec<usize> = (0..g.knobs.len()).collect();
     let mark = (active && !all.is_empty()).then(|| k.cursor.min(all.len() - 1));
-    p.child(presets(cx, g).mt(PAD)).child(card(cx, g, gi, &all, mark).mt(PAD))
+    p.child(presets(cx, g).mt(PAD))
+        .child(card(cx, g, gi, &all, mark).mt(PAD))
 }
 
 #[cfg(test)]

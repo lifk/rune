@@ -24,11 +24,13 @@ fn shared_gpu() -> Result<Arc<Gpu>, String> {
 pub fn prewarm() {
     static STARTED: OnceLock<()> = OnceLock::new();
     STARTED.get_or_init(|| {
-        let _ = std::thread::Builder::new().name("rune-embed-prewarm".into()).spawn(|| {
-            if let Ok(gpu) = shared_gpu() {
-                let _ = Renderer::new(&gpu.device, wgpu::TextureFormat::Bgra8Unorm);
-            }
-        });
+        let _ = std::thread::Builder::new()
+            .name("rune-embed-prewarm".into())
+            .spawn(|| {
+                if let Ok(gpu) = shared_gpu() {
+                    let _ = Renderer::new(&gpu.device, wgpu::TextureFormat::Bgra8Unorm);
+                }
+            });
     });
 }
 
@@ -90,8 +92,11 @@ impl<S: 'static> LayerHost<S> {
         let px_w = ((viewport.0.max(1.0) * scale).round() as u32).clamp(1, max_dim);
         let px_h = ((viewport.1.max(1.0) * scale).round() as u32).clamp(1, max_dim);
         let srgb_blend = true;
-        let (config, _) = crate::window::surface_config(&surface, &gpu.adapter, (px_w, px_h), srgb_blend)
-            .ok_or_else(|| "CAMetalLayer has no supported wgpu surface configuration".to_owned())?;
+        let (config, _) =
+            crate::window::surface_config(&surface, &gpu.adapter, (px_w, px_h), srgb_blend)
+                .ok_or_else(|| {
+                    "CAMetalLayer has no supported wgpu surface configuration".to_owned()
+                })?;
         surface.configure(&gpu.device, &config);
         let target_format = config.format.remove_srgb_suffix();
         let mut renderer = Renderer::new(&gpu.device, target_format);
@@ -151,7 +156,8 @@ impl<S: 'static> LayerHost<S> {
             self.config.height = px_h;
             self.surface.configure(&self.gpu.device, &self.config);
         }
-        self.rt.set_viewport((px_w as f32 / scale, px_h as f32 / scale), scale);
+        self.rt
+            .set_viewport((px_w as f32 / scale, px_h as f32 / scale), scale);
     }
 
     /// Steps animations and layout to `Instant::now()` and presents one Metal frame.
@@ -166,23 +172,34 @@ impl<S: 'static> LayerHost<S> {
         if self.rt.popup_menu().is_some() {
             self.rt.cancel_popups();
         }
-        self.rt.refuse_file_dialog("native file dialogs are unsupported in embedded views");
+        self.rt
+            .refuse_file_dialog("native file dialogs are unsupported in embedded views");
 
         let comp_animating = self.compositor.as_ref().is_some_and(|c| c.animating());
         let frame = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
+            wgpu::CurrentSurfaceTexture::Success(f)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
             wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                 self.surface.configure(&self.gpu.device, &self.config);
-                return EmbedFrame { animating: true, ..EmbedFrame::default() };
+                return EmbedFrame {
+                    animating: true,
+                    ..EmbedFrame::default()
+                };
             }
-            _ => return EmbedFrame { animating: animating || comp_animating, ..EmbedFrame::default() },
+            _ => {
+                return EmbedFrame {
+                    animating: animating || comp_animating,
+                    ..EmbedFrame::default()
+                };
+            }
         };
 
         let target = frame.texture.create_view(&wgpu::TextureViewDescriptor {
             format: Some(self.renderer.format()),
             ..Default::default()
         });
-        self.renderer.upload_images(&self.gpu.device, &self.gpu.queue, &mut self.rt.images);
+        self.renderer
+            .upload_images(&self.gpu.device, &self.gpu.queue, &mut self.rt.images);
         let mut encoder = self.gpu.device.create_command_encoder(&Default::default());
         let size = (self.config.width, self.config.height);
         let format = self.renderer.format();
@@ -208,7 +225,8 @@ impl<S: 'static> LayerHost<S> {
                 &self.rt.instances,
                 size,
             );
-            self.renderer.draw(&mut encoder, &target, self.rt.clear_color());
+            self.renderer
+                .draw(&mut encoder, &target, self.rt.clear_color());
         }
         self.renderer.submit(&self.gpu.queue, encoder);
         self.gpu.queue.present(frame);
@@ -219,7 +237,8 @@ impl<S: 'static> LayerHost<S> {
             Some((d - elapsed).max(0.0))
         });
         let comp_animating = self.compositor.as_ref().is_some_and(|c| c.animating());
-        let keep_ticking = animating || comp_animating || self.rt.has_pending_input() || self.rt.live_pending();
+        let keep_ticking =
+            animating || comp_animating || self.rt.has_pending_input() || self.rt.live_pending();
         EmbedFrame {
             drew: true,
             animating: keep_ticking,
@@ -231,8 +250,8 @@ impl<S: 'static> LayerHost<S> {
 
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
-    use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicU32, Ordering};
 
     use objc2_video::{
         msg_send,
@@ -252,7 +271,8 @@ mod tests {
         fn render(&mut self, f: &mut Frame<'_, ()>) {
             for (idx, inst) in f.rt.instances.iter().enumerate() {
                 if inst.params[1] == KIND_EFFECT {
-                    self.0.store(f.rt.marks.get(idx).copied().unwrap_or(0), Ordering::Relaxed);
+                    self.0
+                        .store(f.rt.marks.get(idx).copied().unwrap_or(0), Ordering::Relaxed);
                 }
             }
             f.draw_ui();
@@ -261,9 +281,12 @@ mod tests {
 
     #[test]
     fn layer_host_runs_compositor_with_tracked_marks() {
-        let layer: Retained<AnyObject> = unsafe { msg_send![AnyClass::get(c"CAMetalLayer").expect("QuartzCore"), new] };
+        let layer: Retained<AnyObject> =
+            unsafe { msg_send![AnyClass::get(c"CAMetalLayer").expect("QuartzCore"), new] };
         let seen = Arc::new(AtomicU32::new(0));
-        let view = |_: &(), _: &mut Cx<()>| -> El { col().size(120.0, 80.0).child(effect(42).size(60.0, 20.0)) };
+        let view = |_: &(), _: &mut Cx<()>| -> El {
+            col().size(120.0, 80.0).child(effect(42).size(60.0, 20.0))
+        };
         let spec = AppSpec::new("embed-test", (120.0, 80.0), || (), view);
         let host = unsafe {
             LayerHost::from_core_animation_layer(

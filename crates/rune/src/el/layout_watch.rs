@@ -33,7 +33,9 @@ impl El {
     pub fn on_layout<S: 'static>(mut self, f: impl Fn(&mut S, [f32; 4]) + 'static) -> Self {
         self.handlers.on_layout = Some(Rc::new(move |s, r, _| f(downcast::<S>(s), r)));
         #[cfg(debug_assertions)]
-        { self.handlers.sites.layout = Some(std::panic::Location::caller()); }
+        {
+            self.handlers.sites.layout = Some(std::panic::Location::caller());
+        }
         self
     }
     /// [`El::on_layout`] with a [`Tx`]. A handler that only moves live values (a marker beside
@@ -47,10 +49,15 @@ impl El {
     /// })
     /// ```
     #[track_caller]
-    pub fn on_layout_tx<S: 'static>(mut self, f: impl Fn(&mut S, [f32; 4], &mut Tx) + 'static) -> Self {
+    pub fn on_layout_tx<S: 'static>(
+        mut self,
+        f: impl Fn(&mut S, [f32; 4], &mut Tx) + 'static,
+    ) -> Self {
         self.handlers.on_layout = Some(Rc::new(move |s, r, tx| f(downcast::<S>(s), r, tx)));
         #[cfg(debug_assertions)]
-        { self.handlers.sites.layout = Some(std::panic::Location::caller()); }
+        {
+            self.handlers.sites.layout = Some(std::panic::Location::caller());
+        }
         self
     }
     /// [`El::on_layout`] in global screen points: `[x, y, w, h]` from the top-left of the
@@ -81,7 +88,9 @@ impl El {
     pub fn on_drawn_layout<S: 'static>(mut self, f: impl Fn(&mut S, [f32; 4]) + 'static) -> Self {
         self.handlers.on_drawn_layout = Some(Rc::new(move |s, r, _| f(downcast::<S>(s), r)));
         #[cfg(debug_assertions)]
-        { self.handlers.sites.drawn_layout = Some(std::panic::Location::caller()); }
+        {
+            self.handlers.sites.drawn_layout = Some(std::panic::Location::caller());
+        }
         self
     }
     /// [`El::on_drawn_layout`] with a [`Tx`]. A toolbar that floats over a selection by its own
@@ -95,10 +104,15 @@ impl El {
     /// })
     /// ```
     #[track_caller]
-    pub fn on_drawn_layout_tx<S: 'static>(mut self, f: impl Fn(&mut S, [f32; 4], &mut Tx) + 'static) -> Self {
+    pub fn on_drawn_layout_tx<S: 'static>(
+        mut self,
+        f: impl Fn(&mut S, [f32; 4], &mut Tx) + 'static,
+    ) -> Self {
         self.handlers.on_drawn_layout = Some(Rc::new(move |s, r, tx| f(downcast::<S>(s), r, tx)));
         #[cfg(debug_assertions)]
-        { self.handlers.sites.drawn_layout = Some(std::panic::Location::caller()); }
+        {
+            self.handlers.sites.drawn_layout = Some(std::panic::Location::caller());
+        }
         self
     }
     /// Called with `true` when this element comes on screen and `false` when it leaves, as a
@@ -149,13 +163,19 @@ impl El {
 
     #[doc(hidden)]
     pub fn chain_scroll_offset(mut self, f: impl Fn(ScrollPos) + 'static) -> Self {
-        self.handlers.on_scroll_offset = Some(match self.handlers.get_mut_if_some().and_then(|h| h.on_scroll_offset.take()) {
-            Some(prev) => Rc::new(move |at| {
-                prev(at);
-                f(at);
-            }),
-            None => Rc::new(f),
-        });
+        self.handlers.on_scroll_offset = Some(
+            match self
+                .handlers
+                .get_mut_if_some()
+                .and_then(|h| h.on_scroll_offset.take())
+            {
+                Some(prev) => Rc::new(move |at| {
+                    prev(at);
+                    f(at);
+                }),
+                None => Rc::new(f),
+            },
+        );
         self
     }
 }

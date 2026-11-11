@@ -11,9 +11,9 @@
 //! don't depend on the frame rate), and `stop` writes a real WAV.
 
 mod fake;
-mod meter;
 #[cfg(target_os = "macos")]
 mod macos;
+mod meter;
 #[cfg(target_os = "macos")]
 use macos as backend;
 #[cfg(not(target_os = "macos"))]
@@ -25,10 +25,10 @@ pub use fake::FakeMicrophone;
 pub use meter::Level;
 
 use crate::live::Live;
+use crate::time::Instant;
 use crate::video::headless_clock;
 use meter::Meter;
 use std::path::{Path, PathBuf};
-use crate::time::Instant;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, Weak};
 use std::time::Duration;
@@ -121,7 +121,11 @@ pub struct Recorder {
 impl std::fmt::Debug for Recorder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let c = self.shared.ctl.lock().unwrap();
-        f.debug_struct("Recorder").field("path", &self.shared.path).field("state", &c.state).field("elapsed", &c.elapsed).finish_non_exhaustive()
+        f.debug_struct("Recorder")
+            .field("path", &self.shared.path)
+            .field("state", &c.state)
+            .field("elapsed", &c.elapsed)
+            .finish_non_exhaustive()
     }
 }
 
@@ -209,7 +213,8 @@ pub(crate) fn headless_frame(_clock: f64) {
 /// A new runtime on this thread starts its clock at 0: fake recordings keep their elapsed
 /// time and go on from there.
 pub(crate) fn headless_reset() {
-    let recorders: Vec<Arc<Shared>> = HEADLESS.with_borrow(|h| h.iter().filter_map(Weak::upgrade).collect());
+    let recorders: Vec<Arc<Shared>> =
+        HEADLESS.with_borrow(|h| h.iter().filter_map(Weak::upgrade).collect());
     for r in recorders {
         let mut c = r.ctl.lock().unwrap();
         c.advance();
@@ -231,9 +236,20 @@ impl Recorder {
     /// [`start`](Self::start); each start overwrites the file.
     pub fn to_file(path: impl Into<PathBuf>) -> Self {
         let path = path.into();
-        let wav = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("wav"));
-        let format = if wav { RecordFormat::Wav } else { RecordFormat::Aac };
-        let opts = Options { format, sample_rate: 44_100, channels: 1, fake: None };
+        let wav = path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("wav"));
+        let format = if wav {
+            RecordFormat::Wav
+        } else {
+            RecordFormat::Aac
+        };
+        let opts = Options {
+            format,
+            sample_rate: 44_100,
+            channels: 1,
+            fake: None,
+        };
         let ctl = Control {
             state: RecorderState::Idle,
             generation: 0,
@@ -293,14 +309,22 @@ impl Recorder {
     /// Microphone access now. Headless: the installed [`FakeMicrophone`]'s (default
     /// `Granted`). Never asks.
     pub fn permission() -> MicPermission {
-        if devices() { backend::permission() } else { FakeMicrophone::installed().permission }
+        if devices() {
+            backend::permission()
+        } else {
+            FakeMicrophone::installed().permission
+        }
     }
     /// Asks for microphone access if it's `Undetermined`, then calls `callback` with the
     /// answer, from any thread (at once when already decided, and always at once headless).
     /// macOS shows its prompt with the app's `NSMicrophoneUsageDescription`; a bundled app
     /// without one gets `Denied` rather than the crash macOS would cause.
     pub fn request_permission(callback: impl FnOnce(MicPermission) + Send + 'static) {
-        if devices() { backend::request_permission(Box::new(callback)) } else { callback(FakeMicrophone::request_installed()) }
+        if devices() {
+            backend::request_permission(Box::new(callback))
+        } else {
+            callback(FakeMicrophone::request_installed())
+        }
     }
 
     /// Starts recording, from `Idle`, `Stopped`, `Interrupted` or `Failed` (an interrupted
@@ -311,7 +335,10 @@ impl Recorder {
         let fake = shared.fake_mic();
         let attempt = {
             let mut c = shared.ctl.lock().unwrap();
-            if matches!(c.state, RecorderState::Starting | RecorderState::Recording | RecorderState::Paused) {
+            if matches!(
+                c.state,
+                RecorderState::Starting | RecorderState::Recording | RecorderState::Paused
+            ) {
                 return;
             }
             c.attempt += 1;
@@ -320,7 +347,11 @@ impl Recorder {
             c.fake = None;
             shared.faked.store(false, Ordering::Relaxed);
             c.saved = None;
-            let format = if fake.is_some() { RecordFormat::Wav } else { shared.opts.lock().unwrap().format };
+            let format = if fake.is_some() {
+                RecordFormat::Wav
+            } else {
+                shared.opts.lock().unwrap().format
+            };
             c.path = with_format_extension(&shared.path, format);
             c.virtual_clock = fake.is_some() && !devices();
             c.set(RecorderState::Starting);
@@ -418,7 +449,13 @@ impl Recorder {
         let shared = &self.shared;
         let path = {
             let mut c = shared.ctl.lock().unwrap();
-            if !matches!(c.state, RecorderState::Starting | RecorderState::Recording | RecorderState::Paused | RecorderState::Interrupted(_)) {
+            if !matches!(
+                c.state,
+                RecorderState::Starting
+                    | RecorderState::Recording
+                    | RecorderState::Paused
+                    | RecorderState::Interrupted(_)
+            ) {
                 return;
             }
             c.attempt += 1;
@@ -426,7 +463,10 @@ impl Recorder {
             c.set(RecorderState::Idle);
             // A device recording in progress deletes its own file, as it alone knows whether
             // it created one yet.
-            c.fake.take().map(|f| f.path).or_else(|| c.saved.take().map(|s| s.path))
+            c.fake
+                .take()
+                .map(|f| f.path)
+                .or_else(|| c.saved.take().map(|s| s.path))
         };
         shared.publish(Level::SILENT);
         let session = shared.native.lock().unwrap().take();
@@ -474,11 +514,16 @@ impl Recorder {
     }
 }
 
-const DENIED: &str = "microphone access is denied: allow it in System Settings > Privacy & Security > Microphone";
+const DENIED: &str =
+    "microphone access is denied: allow it in System Settings > Privacy & Security > Microphone";
 const RESTRICTED: &str = "microphone access is restricted on this device";
 
 fn denial(answer: MicPermission) -> String {
-    if answer == MicPermission::Restricted { RESTRICTED.into() } else { DENIED.into() }
+    if answer == MicPermission::Restricted {
+        RESTRICTED.into()
+    } else {
+        DENIED.into()
+    }
 }
 
 impl Control {
@@ -489,7 +534,11 @@ impl Control {
         }
     }
     fn now(&self) -> Option<f64> {
-        if self.virtual_clock { headless_clock() } else { Some(wall_now()) }
+        if self.virtual_clock {
+            headless_clock()
+        } else {
+            Some(wall_now())
+        }
     }
     /// Elapsed follows the clock while recording. A clock behind the anchor (a new runtime on
     /// this thread) restarts from here.
@@ -590,14 +639,23 @@ impl Shared {
         }
         match opened {
             Ok(input) => {
-                c.fake = Some(FakeSession { input, path, meter: Meter::default(), metered: 0, unplug: mic.unplug });
+                c.fake = Some(FakeSession {
+                    input,
+                    path,
+                    meter: Meter::default(),
+                    metered: 0,
+                    unplug: mic.unplug,
+                });
                 self.faked.store(true, Ordering::Relaxed);
                 c.anchor = c.now().map(|now| (now, 0.0));
                 c.set(RecorderState::Recording);
                 if c.virtual_clock {
                     HEADLESS.with_borrow_mut(|h| {
                         h.retain(|w| w.strong_count() > 0);
-                        if !h.iter().any(|w| std::ptr::eq(w.as_ptr(), Arc::as_ptr(self))) {
+                        if !h
+                            .iter()
+                            .any(|w| std::ptr::eq(w.as_ptr(), Arc::as_ptr(self)))
+                        {
                             h.push(Arc::downgrade(self));
                         }
                     });
@@ -624,8 +682,13 @@ impl Shared {
                 let frames = frames_at(unplug, f.input.rate);
                 match fake::write_wav(&f.path, &f.input, frames) {
                     Ok(()) => {
-                        c.saved = Some(Recording { path: f.path, duration: frames as f64 / f.input.rate as f64 });
-                        c.set(RecorderState::Interrupted("the microphone went away".into()));
+                        c.saved = Some(Recording {
+                            path: f.path,
+                            duration: frames as f64 / f.input.rate as f64,
+                        });
+                        c.set(RecorderState::Interrupted(
+                            "the microphone went away".into(),
+                        ));
                     }
                     Err(e) => c.set(RecorderState::Failed(e)),
                 }
@@ -638,10 +701,15 @@ impl Shared {
             let target = frames_at(elapsed, rate);
             let block = (rate / 100).max(1) as u64;
             // Only the last few seconds still show in the meter.
-            f.metered = f.metered.max(target.saturating_sub(10 * rate as u64) / block * block);
+            f.metered = f
+                .metered
+                .max(target.saturating_sub(10 * rate as u64) / block * block);
             while f.metered + block <= target {
                 let input = &f.input;
-                f.meter.push_samples((f.metered..f.metered + block).map(|i| input.sample(i)), rate);
+                f.meter.push_samples(
+                    (f.metered..f.metered + block).map(|i| input.sample(i)),
+                    rate,
+                );
                 f.metered += block;
             }
             f.meter.level()
@@ -659,7 +727,10 @@ impl Shared {
         match c.state.clone() {
             RecorderState::Recording | RecorderState::Paused => {}
             RecorderState::Interrupted(_) => {
-                let saved = c.saved.take().ok_or_else(|| "the interrupted recording wasn't saved".to_string());
+                let saved = c
+                    .saved
+                    .take()
+                    .ok_or_else(|| "the interrupted recording wasn't saved".to_string());
                 c.set(RecorderState::Stopped);
                 return saved;
             }
@@ -679,14 +750,19 @@ impl Shared {
         let result = match c.fake.take() {
             Some(f) => {
                 let frames = frames_at(c.elapsed, f.input.rate);
-                fake::write_wav(&f.path, &f.input, frames).map(|()| Recording { path: f.path, duration: frames as f64 / f.input.rate as f64 })
+                fake::write_wav(&f.path, &f.input, frames).map(|()| Recording {
+                    path: f.path,
+                    duration: frames as f64 / f.input.rate as f64,
+                })
             }
             None => {
                 let path = c.path.clone();
                 drop(c);
                 let session = self.native.lock().unwrap().take();
                 let stopped = match session {
-                    Some((_, session)) => backend::stop(session).map(|duration| Recording { path, duration }),
+                    Some((_, session)) => {
+                        backend::stop(session).map(|duration| Recording { path, duration })
+                    }
                     None => Err("not recording".into()),
                 };
                 c = self.ctl.lock().unwrap();
@@ -732,7 +808,11 @@ impl Shared {
         // Only this attempt's session: a late report from an earlier one leaves a newer alone.
         let session = {
             let mut native = self.native.lock().unwrap();
-            if native.as_ref().is_some_and(|(a, _)| *a == attempt) { native.take() } else { None }
+            if native.as_ref().is_some_and(|(a, _)| *a == attempt) {
+                native.take()
+            } else {
+                None
+            }
         };
         drop(session);
         self.settle();
@@ -742,12 +822,17 @@ impl Shared {
     pub(crate) fn interrupted(&self, attempt: u64, reason: String, duration: f64) {
         {
             let mut c = self.ctl.lock().unwrap();
-            if c.attempt != attempt || !matches!(c.state, RecorderState::Recording | RecorderState::Paused) {
+            if c.attempt != attempt
+                || !matches!(c.state, RecorderState::Recording | RecorderState::Paused)
+            {
                 return;
             }
             c.advance();
             c.anchor = None;
-            c.saved = Some(Recording { path: c.path.clone(), duration });
+            c.saved = Some(Recording {
+                path: c.path.clone(),
+                duration,
+            });
             c.set(RecorderState::Interrupted(reason));
         }
         self.publish(Level::SILENT);
@@ -777,7 +862,12 @@ impl Drop for Shared {
             let elapsed = f.unplug.map_or(c.elapsed, |t| c.elapsed.min(t));
             let _ = fake::write_wav(&f.path, &f.input, frames_at(elapsed, f.input.rate));
         }
-        if let Some((_, session)) = self.native.get_mut().unwrap_or_else(PoisonError::into_inner).take() {
+        if let Some((_, session)) = self
+            .native
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+        {
             backend::finish(session);
         }
     }
@@ -794,12 +884,19 @@ fn frames_at(seconds: f64, rate: u32) -> u64 {
 
 /// `path` with an extension that holds `format`, which AVAudioRecorder picks the container by.
 fn with_format_extension(path: &Path, format: RecordFormat) -> PathBuf {
-    let ext = path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase);
     let (keep, want): (&[&str], &str) = match format {
         RecordFormat::Aac => (&["m4a", "mp4"], "m4a"),
         RecordFormat::Wav => (&["wav"], "wav"),
     };
-    if ext.as_deref().is_some_and(|e| keep.contains(&e)) { path.to_path_buf() } else { path.with_extension(want) }
+    if ext.as_deref().is_some_and(|e| keep.contains(&e)) {
+        path.to_path_buf()
+    } else {
+        path.with_extension(want)
+    }
 }
 
 fn pack(level: Level) -> u64 {
@@ -807,7 +904,10 @@ fn pack(level: Level) -> u64 {
 }
 
 fn unpack(bits: u64) -> Level {
-    Level::new(f32::from_bits((bits >> 32) as u32), f32::from_bits(bits as u32))
+    Level::new(
+        f32::from_bits((bits >> 32) as u32),
+        f32::from_bits(bits as u32),
+    )
 }
 
 #[cfg(test)]

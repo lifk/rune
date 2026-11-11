@@ -20,16 +20,29 @@ impl El {
     /// [`El::scroll`] in place.
     #[cfg_attr(debug_assertions, track_caller)]
     pub fn set_scroll(&mut self, spec: ScrollSpec) -> &mut Self {
-        self.viewport(spec, ScrollAxes::Y, taffy::Overflow::Hidden, taffy::Overflow::Scroll);
+        self.viewport(
+            spec,
+            ScrollAxes::Y,
+            taffy::Overflow::Hidden,
+            taffy::Overflow::Scroll,
+        );
         self
     }
     #[cfg_attr(debug_assertions, track_caller)]
-    fn viewport(&mut self, spec: ScrollSpec, axes: ScrollAxes, x: taffy::Overflow, y: taffy::Overflow) {
+    fn viewport(
+        &mut self,
+        spec: ScrollSpec,
+        axes: ScrollAxes,
+        x: taffy::Overflow,
+        y: taffy::Overflow,
+    ) {
         let cold = self.cold_mut();
         cold.scroll = Some(spec);
         cold.scroll_axes = axes;
         #[cfg(debug_assertions)]
-        { cold.scroll_source = Some(std::panic::Location::caller()); }
+        {
+            cold.scroll_source = Some(std::panic::Location::caller());
+        }
         self.style.set_overflow(x, y);
     }
     /// A horizontal scroll viewport over its children: a filmstrip, a wide code block or
@@ -58,7 +71,14 @@ impl El {
     /// [`El::scroll_x`] in place.
     #[cfg_attr(debug_assertions, track_caller)]
     pub fn set_scroll_x(&mut self) -> &mut Self {
-        self.viewport(ScrollSpec { stick_bottom: false }, ScrollAxes::X, taffy::Overflow::Scroll, taffy::Overflow::Hidden);
+        self.viewport(
+            ScrollSpec {
+                stick_bottom: false,
+            },
+            ScrollAxes::X,
+            taffy::Overflow::Scroll,
+            taffy::Overflow::Hidden,
+        );
         self
     }
     /// A viewport that scrolls both ways over its children (a wide timeline, a large
@@ -76,8 +96,15 @@ impl El {
     /// [`El::scroll_xy`] in place.
     #[cfg_attr(debug_assertions, track_caller)]
     pub fn set_scroll_xy(&mut self) -> &mut Self {
-        let spec = self.cold.scroll.unwrap_or(ScrollSpec { stick_bottom: false });
-        self.viewport(spec, ScrollAxes::Both, taffy::Overflow::Scroll, taffy::Overflow::Scroll);
+        let spec = self.cold.scroll.unwrap_or(ScrollSpec {
+            stick_bottom: false,
+        });
+        self.viewport(
+            spec,
+            ScrollAxes::Both,
+            taffy::Overflow::Scroll,
+            taffy::Overflow::Scroll,
+        );
         self
     }
     /// On a scroll viewport, called with whether it shows its bottom (within a point): once
@@ -90,8 +117,13 @@ impl El {
     /// On a scroll viewport, called with whether it stands more than its own height, and at
     /// least `min` points, above its bottom: where a chat shows its "jump to latest" button and
     /// hides it again near the end. Once after its first layout, then only when that changes.
-    pub fn on_far_from_bottom<S: 'static>(mut self, min: f32, f: impl Fn(&mut S, bool) + 'static) -> Self {
-        self.handlers.on_far_from_bottom = Some((min, Rc::new(move |s, far| f(downcast::<S>(s), far))));
+    pub fn on_far_from_bottom<S: 'static>(
+        mut self,
+        min: f32,
+        f: impl Fn(&mut S, bool) + 'static,
+    ) -> Self {
+        self.handlers.on_far_from_bottom =
+            Some((min, Rc::new(move |s, far| f(downcast::<S>(s), far))));
         self
     }
     /// On a scroll viewport, fade its top and bottom edges over `width` points (16–32 reads well),
@@ -170,13 +202,28 @@ pub(crate) struct EndFade {
 }
 
 impl FadeStyle {
-    pub(crate) const SMOOTH: FadeStyle = FadeStyle { feather: false, linear: false, below_sticky: false, end_only: false, full_at: 0.0, end: None };
+    pub(crate) const SMOOTH: FadeStyle = FadeStyle {
+        feather: false,
+        linear: false,
+        below_sticky: false,
+        end_only: false,
+        full_at: 0.0,
+        end: None,
+    };
 
     /// The style and width (points) the edge with `end` set fades by: the end edge's own when
     /// [`ScrollFade::with_end`] gave it one.
     pub(crate) fn edge(self, width: f32, end: bool) -> (FadeStyle, f32) {
         match self.end.filter(|_| end) {
-            Some(e) => (FadeStyle { linear: e.linear, full_at: e.full_at, end: None, ..self }, e.width),
+            Some(e) => (
+                FadeStyle {
+                    linear: e.linear,
+                    full_at: e.full_at,
+                    end: None,
+                    ..self
+                },
+                e.width,
+            ),
             None => (self, width),
         }
     }
@@ -188,13 +235,23 @@ impl ScrollFade {
     /// `1 - strength`. A viewport at its top (or bottom, or stuck to it) shows that edge hard.
     /// Desktop's search lists fade so (`search-list.tsx`).
     pub fn strength(width: f32) -> Self {
-        ScrollFade { width: width.max(0.0), style: FadeStyle::SMOOTH }
+        ScrollFade {
+            width: width.max(0.0),
+            style: FadeStyle::SMOOTH,
+        }
     }
     /// Each edge feathers by as much as is hidden under it, up to `max` points, on a linear ramp
     /// from nothing at the edge: CSS `mask-image: linear-gradient(transparent, black
     /// min(max, scrollTop))`, as Desktop's vertical tabs do. It appears and leaves without a jump.
     pub fn feather(max: f32) -> Self {
-        ScrollFade { width: max.max(0.0), style: FadeStyle { feather: true, linear: true, ..FadeStyle::SMOOTH } }
+        ScrollFade {
+            width: max.max(0.0),
+            style: FadeStyle {
+                feather: true,
+                linear: true,
+                ..FadeStyle::SMOOTH
+            },
+        }
     }
     /// A [`Self::strength`] fade is full once `points` are hidden, rather than 15: a small value
     /// shows the whole fade as soon as anything is hidden, as a mask a scroll listener toggles
@@ -231,7 +288,11 @@ impl ScrollFade {
     /// fades its rows 16 points under a stuck header on an eased curve but 24 points at its bottom
     /// on a linear mask (`search-list.css`). Only `end`'s width, ramp and full-at count.
     pub fn with_end(mut self, end: ScrollFade) -> Self {
-        self.style.end = Some(EndFade { width: end.width, linear: end.style.linear, full_at: end.style.full_at });
+        self.style.end = Some(EndFade {
+            width: end.width,
+            linear: end.style.linear,
+            full_at: end.style.full_at,
+        });
         self
     }
 }

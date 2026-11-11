@@ -109,7 +109,12 @@ pub(crate) enum Row {
 impl Row {
     pub(crate) fn file(self) -> usize {
         match self {
-            Row::File(f) | Row::Note(f) | Row::Gap { f, .. } | Row::Ctx { f, .. } | Row::Line { f, .. } | Row::Pair { f, .. } => f as usize,
+            Row::File(f)
+            | Row::Note(f)
+            | Row::Gap { f, .. }
+            | Row::Ctx { f, .. }
+            | Row::Line { f, .. }
+            | Row::Pair { f, .. } => f as usize,
         }
     }
 }
@@ -185,7 +190,11 @@ pub struct DiffState {
 
 impl std::fmt::Debug for DiffState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DiffState").field("files", &self.files.len()).field("rows", &self.rows.len()).field("mode", &self.mode).finish()
+        f.debug_struct("DiffState")
+            .field("files", &self.files.len())
+            .field("rows", &self.rows.len())
+            .field("mode", &self.mode)
+            .finish()
     }
 }
 
@@ -237,14 +246,17 @@ impl DiffState {
     /// Show `files` instead, every range collapsed again and the selection cleared.
     /// Annotations stay; drop or remap them with [`DiffState::set_annotations`].
     pub fn set_files(&mut self, files: Vec<FileDiff>) {
-        self.ui = files.iter().map(|f| FileUi { collapsed: false, revealed: vec![(0, 0); f.hunks.len() + 1] }).collect();
+        self.ui =
+            files.iter().map(|f| FileUi { collapsed: false, revealed: vec![(0, 0); f.hunks.len() + 1] }).collect();
         self.side_lines = files
             .iter()
             .map(|f| {
                 f.hunks
                     .iter()
                     .map(|h| {
-                        let on = |side: Side| (0..h.lines.len() as u32).filter(|&i| h.lines[i as usize].number(side).is_some()).collect();
+                        let on = |side: Side| {
+                            (0..h.lines.len() as u32).filter(|&i| h.lines[i as usize].number(side).is_some()).collect()
+                        };
                         [on(Side::Old), on(Side::New)]
                     })
                     .collect()
@@ -353,7 +365,11 @@ impl DiffState {
             // Nothing below the first range and nothing above the last to grow from.
             Expand::All => r.0 += hidden,
             Expand::Up if gap > 0 || last => {
-                if last { r.0 += hidden.min(EXPAND_STEP) } else { r.1 += hidden.min(EXPAND_STEP) }
+                if last {
+                    r.0 += hidden.min(EXPAND_STEP)
+                } else {
+                    r.1 += hidden.min(EXPAND_STEP)
+                }
             }
             Expand::Up => r.1 += hidden.min(EXPAND_STEP),
             Expand::Down if last => r.0 += hidden.min(EXPAND_STEP),
@@ -713,7 +729,12 @@ impl DiffState {
     }
 
     /// Colour-only highlights of line `n` of `side` of file `f`, relative to the line.
-    pub(crate) fn highlights(&self, f: usize, side: Side, n: u32) -> Vec<(std::ops::Range<usize>, crate::syntax::Paint)> {
+    pub(crate) fn highlights(
+        &self,
+        f: usize,
+        side: Side,
+        n: u32,
+    ) -> Vec<(std::ops::Range<usize>, crate::syntax::Paint)> {
         let lang = self.files[f].language();
         if self.highlighter.is_builtin() && !lang.is_some_and(crate::syntax::known) {
             return Vec::new();
@@ -847,7 +868,9 @@ impl DiffState {
                     LineKind::Added => format!("df{f}.n{}", l.new.unwrap_or(0)),
                 }
             }
-            Row::Pair { f, h, del, .. } => format!("df{f}.o{}", self.files[f as usize].hunks[h as usize].lines[del as usize].old.unwrap_or(0)),
+            Row::Pair { f, h, del, .. } => {
+                format!("df{f}.o{}", self.files[f as usize].hunks[h as usize].lines[del as usize].old.unwrap_or(0))
+            }
         }
     }
 
@@ -954,7 +977,11 @@ mod tests {
         s.press_line(0, LineRef::new(Side::New, 4));
         s.release_line();
         assert_eq!(s.selected_text().as_deref(), Some("keep\nnew one\nnew two\nend"));
-        s.set_selection(Some(LineRange { file: 0, start: LineRef::new(Side::Old, 3), end: LineRef::new(Side::Old, 2) }));
+        s.set_selection(Some(LineRange {
+            file: 0,
+            start: LineRef::new(Side::Old, 3),
+            end: LineRef::new(Side::Old, 2),
+        }));
         assert_eq!(s.selected_text().as_deref(), Some("old one\nold two"));
         // Pressing the one selected line clears it, unless the press drags.
         s.shift = false;

@@ -37,8 +37,16 @@ impl<S: 'static> Playground<S> {
     ///     |groups| { Prefs::open(APP_ID).set("playground_folds", &groups).ok(); },
     /// )
     /// ```
-    pub fn folds(mut self, load: impl Fn() -> Vec<String> + 'static, save: impl Fn(&[String]) + 'static) -> Self {
-        self.folds = Folds { load: Some(Box::new(load)), save: Some(Box::new(save)), start: self.folds.start };
+    pub fn folds(
+        mut self,
+        load: impl Fn() -> Vec<String> + 'static,
+        save: impl Fn(&[String]) + 'static,
+    ) -> Self {
+        self.folds = Folds {
+            load: Some(Box::new(load)),
+            save: Some(Box::new(save)),
+            start: self.folds.start,
+        };
         self
     }
 }
@@ -46,20 +54,33 @@ impl<S: 'static> Playground<S> {
 impl<S: 'static> Live<S> {
     /// Folds the groups [`Playground::folds`]' `load` names, the first time it's called.
     pub(super) fn load_folds(&mut self) {
-        let Some(load) = self.folds.load.take() else { return };
+        let Some(load) = self.folds.load.take() else {
+            return;
+        };
         let names = load();
         let start = self.folds.start;
-        self.folded = self.all_groups().into_iter().filter(|g| names.iter().any(|n| n == g) != start).collect();
+        self.folded = self
+            .all_groups()
+            .into_iter()
+            .filter(|g| names.iter().any(|n| n == g) != start)
+            .collect();
     }
 
     /// Changes which groups are folded, and saves them if that changed them.
     pub(super) fn refold(&mut self, change: impl FnOnce(&mut Vec<&'static str>)) {
         let before = self.folded.clone();
         change(&mut self.folded);
-        if self.folded == before { return; }
+        if self.folded == before {
+            return;
+        }
         let Some(save) = &self.folds.save else { return };
         let names: Vec<String> = match self.folds.start {
-            true => self.all_groups().into_iter().filter(|g| !self.folded.contains(g)).map(str::to_owned).collect(),
+            true => self
+                .all_groups()
+                .into_iter()
+                .filter(|g| !self.folded.contains(g))
+                .map(str::to_owned)
+                .collect(),
             false => self.folded.iter().map(|g| (*g).to_owned()).collect(),
         };
         save(&names);

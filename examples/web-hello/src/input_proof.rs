@@ -11,7 +11,15 @@ export function report(plain, display, single, secretLength, submits, shortcuts,
 ")]
 extern "C" {
     pub fn enabled() -> bool;
-    fn report(plain: &str, display: &str, single: &str, secret_length: usize, submits: u32, shortcuts: u32, visible: bool);
+    fn report(
+        plain: &str,
+        display: &str,
+        single: &str,
+        secret_length: usize,
+        submits: u32,
+        shortcuts: u32,
+        visible: bool,
+    );
 }
 
 struct State {
@@ -25,33 +33,75 @@ struct State {
 
 impl Default for State {
     fn default() -> Self {
-        Self { plain: TextEdit::default(), single: TextEdit::default(), secret: TextEdit::default().secure(),
-            submits: 0, shortcuts: 0, handle: None }
+        Self {
+            plain: TextEdit::default(),
+            single: TextEdit::default(),
+            secret: TextEdit::default().secure(),
+            submits: 0,
+            shortcuts: 0,
+            handle: None,
+        }
     }
 }
 
 fn view(s: &State, _: &mut Cx<State>) -> El {
     let field = |edit: &TextEdit| text_input(edit, tok::type_::BODY).w_full().h(48.0);
-    col().w_full().h_full().padding(16.0).gap(8.0)
-        .child(field(&s.plain).key("plain").on_edit(|s: &mut State| &mut s.plain)
-            .on_submit(|s: &mut State, _| s.submits += 1))
-        .child(field(&s.single).key("single").single_line().on_edit(|s: &mut State| &mut s.single)
-            .on_submit(|s: &mut State, _| s.submits += 1))
-        .child(field(&s.secret).key("secret").single_line().on_edit(|s: &mut State| &mut s.secret)
-            .on_submit(|s: &mut State, _| s.submits += 1))
-        .child(el().key("button").focusable(true).w_full().h(48.0).child(text("Button"))
-            .on_press(|s: &mut State| s.submits += 1))
+    col()
+        .w_full()
+        .h_full()
+        .padding(16.0)
+        .gap(8.0)
+        .child(
+            field(&s.plain)
+                .key("plain")
+                .on_edit(|s: &mut State| &mut s.plain)
+                .on_submit(|s: &mut State, _| s.submits += 1),
+        )
+        .child(
+            field(&s.single)
+                .key("single")
+                .single_line()
+                .on_edit(|s: &mut State| &mut s.single)
+                .on_submit(|s: &mut State, _| s.submits += 1),
+        )
+        .child(
+            field(&s.secret)
+                .key("secret")
+                .single_line()
+                .on_edit(|s: &mut State| &mut s.secret)
+                .on_submit(|s: &mut State, _| s.submits += 1),
+        )
+        .child(
+            el().key("button")
+                .focusable(true)
+                .w_full()
+                .h(48.0)
+                .child(text("Button"))
+                .on_press(|s: &mut State| s.submits += 1),
+        )
 }
 
 pub fn run() {
     let mut spec = AppSpec::new("Input proof", (390.0, 760.0), State::default, view);
     spec.poll = Some(|s, _, _| {
-        report(&s.plain.text, &s.plain.display().0, &s.single.text, s.secret.text.chars().count(),
-            s.submits, s.shortcuts, s.handle.as_ref().is_some_and(AppHandle::is_visible));
+        report(
+            &s.plain.text,
+            &s.plain.display().0,
+            &s.single.text,
+            s.secret.text.chars().count(),
+            s.submits,
+            s.shortcuts,
+            s.handle.as_ref().is_some_and(AppHandle::is_visible),
+        );
         false
     });
     spec.on_key = Some(|s, event, _| {
-        if event.key == Key::Command('k') { s.shortcuts += 1; true } else { false }
+        if event.key == Key::Command('k') {
+            s.shortcuts += 1;
+            true
+        } else {
+            false
+        }
     });
     let app = App::new(spec);
     let handle = app.handle();

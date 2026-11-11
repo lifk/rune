@@ -55,7 +55,14 @@ pub(crate) fn parse(header: &str, body: &[&str]) -> Option<GitGraph> {
         "BT" => Flow::Up,
         _ => Flow::Right,
     };
-    let mut g = GitGraph { flow, branches: vec![Branch { name: "main".into(), order: None }], commits: Vec::new() };
+    let mut g = GitGraph {
+        flow,
+        branches: vec![Branch {
+            name: "main".into(),
+            order: None,
+        }],
+        commits: Vec::new(),
+    };
     let mut heads: Vec<Option<usize>> = vec![None];
     let mut cur = 0;
     for &line in body {
@@ -70,7 +77,14 @@ pub(crate) fn parse(header: &str, body: &[&str]) -> Option<GitGraph> {
                 "commit" => {
                     let a = attrs(rest);
                     let kind = kind(&a).unwrap_or(Kind::Normal);
-                    g.commits.push(Commit { id: get(&a, "id"), tag: get(&a, "tag"), kind, branch: cur, parents: heads[cur].into_iter().collect(), picked: None });
+                    g.commits.push(Commit {
+                        id: get(&a, "id"),
+                        tag: get(&a, "tag"),
+                        kind,
+                        branch: cur,
+                        parents: heads[cur].into_iter().collect(),
+                        picked: None,
+                    });
                     heads[cur] = Some(g.commits.len() - 1);
                 }
                 "branch" => {
@@ -78,7 +92,9 @@ pub(crate) fn parse(header: &str, body: &[&str]) -> Option<GitGraph> {
                     if name.is_empty() || find(&g, &name).is_some() {
                         continue;
                     }
-                    let order = get(&attrs(rest), "order").and_then(|o| o.parse::<f32>().ok()).filter(|o| o.is_finite());
+                    let order = get(&attrs(rest), "order")
+                        .and_then(|o| o.parse::<f32>().ok())
+                        .filter(|o| o.is_finite());
                     g.branches.push(Branch { name, order });
                     heads.push(heads[cur]);
                     cur = g.branches.len() - 1;
@@ -90,24 +106,48 @@ pub(crate) fn parse(header: &str, body: &[&str]) -> Option<GitGraph> {
                 }
                 "merge" => {
                     let (name, rest) = name(rest);
-                    let Some(b) = find(&g, &name).filter(|&b| b != cur) else { continue };
-                    let (Some(theirs), ours) = (heads[b], heads[cur]) else { continue };
+                    let Some(b) = find(&g, &name).filter(|&b| b != cur) else {
+                        continue;
+                    };
+                    let (Some(theirs), ours) = (heads[b], heads[cur]) else {
+                        continue;
+                    };
                     // Nothing to merge when ours already has theirs.
                     if ours.is_some_and(|o| reaches(&g.commits, o, theirs)) {
                         continue;
                     }
                     let a = attrs(rest);
                     let parents = ours.into_iter().chain([theirs]).collect();
-                    g.commits.push(Commit { id: get(&a, "id"), tag: get(&a, "tag"), kind: kind(&a).unwrap_or(Kind::Merge), branch: cur, parents, picked: None });
+                    g.commits.push(Commit {
+                        id: get(&a, "id"),
+                        tag: get(&a, "tag"),
+                        kind: kind(&a).unwrap_or(Kind::Merge),
+                        branch: cur,
+                        parents,
+                        picked: None,
+                    });
                     heads[cur] = Some(g.commits.len() - 1);
                 }
                 "cherry-pick" => {
                     let a = attrs(rest);
-                    let Some(src) = get(&a, "id").and_then(|id| g.commits.iter().position(|c| c.id.as_deref() == Some(id.as_str()))) else { continue };
+                    let Some(src) = get(&a, "id").and_then(|id| {
+                        g.commits
+                            .iter()
+                            .position(|c| c.id.as_deref() == Some(id.as_str()))
+                    }) else {
+                        continue;
+                    };
                     if g.commits[src].branch == cur {
                         continue;
                     }
-                    g.commits.push(Commit { id: None, tag: get(&a, "tag"), kind: Kind::CherryPick, branch: cur, parents: heads[cur].into_iter().collect(), picked: Some(src) });
+                    g.commits.push(Commit {
+                        id: None,
+                        tag: get(&a, "tag"),
+                        kind: Kind::CherryPick,
+                        branch: cur,
+                        parents: heads[cur].into_iter().collect(),
+                        picked: Some(src),
+                    });
                     heads[cur] = Some(g.commits.len() - 1);
                 }
                 _ => {}
@@ -149,7 +189,12 @@ fn attrs(s: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let mut rest = s.trim();
     while let Some(colon) = rest.find(':') {
-        let key = rest[..colon].trim().rsplit(char::is_whitespace).next().unwrap_or("").to_owned();
+        let key = rest[..colon]
+            .trim()
+            .rsplit(char::is_whitespace)
+            .next()
+            .unwrap_or("")
+            .to_owned();
         let after = rest[colon + 1..].trim_start();
         let (value, next) = match after.strip_prefix('"') {
             Some(r) => match r.find('"') {
@@ -168,7 +213,10 @@ fn attrs(s: &str) -> Vec<(String, String)> {
 }
 
 fn get(a: &[(String, String)], key: &str) -> Option<String> {
-    a.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone()).filter(|v| !v.is_empty())
+    a.iter()
+        .find(|(k, _)| k == key)
+        .map(|(_, v)| v.clone())
+        .filter(|v| !v.is_empty())
 }
 
 fn kind(a: &[(String, String)]) -> Option<Kind> {
@@ -190,17 +238,42 @@ pub(crate) fn draw(g: &GitGraph, paint: &DiagramStyle) -> Option<Scene> {
     // Lanes in `order`, then creation order.
     let mut lanes: Vec<usize> = (0..g.branches.len()).collect();
     lanes.sort_by(|&a, &b| {
-        let key = |i: usize| g.branches[i].order.unwrap_or(if i == 0 { f32::MIN } else { i as f32 });
+        let key = |i: usize| {
+            g.branches[i]
+                .order
+                .unwrap_or(if i == 0 { f32::MIN } else { i as f32 })
+        };
         key(a).total_cmp(&key(b)).then(a.cmp(&b))
     });
     let mut lane_of = vec![0; g.branches.len()];
     for (pos, &b) in lanes.iter().enumerate() {
         lane_of[b] = pos;
     }
-    let labels: Vec<Measured> = g.commits.iter().map(|c| c.id.as_deref().map_or_else(Measured::default, |t| measure(t, note))).collect();
-    let tags: Vec<Measured> = g.commits.iter().map(|c| c.tag.as_deref().map_or_else(Measured::default, |t| measure(t, note))).collect();
+    let labels: Vec<Measured> = g
+        .commits
+        .iter()
+        .map(|c| {
+            c.id.as_deref()
+                .map_or_else(Measured::default, |t| measure(t, note))
+        })
+        .collect();
+    let tags: Vec<Measured> = g
+        .commits
+        .iter()
+        .map(|c| {
+            c.tag
+                .as_deref()
+                .map_or_else(Measured::default, |t| measure(t, note))
+        })
+        .collect();
     let names: Vec<Measured> = g.branches.iter().map(|b| measure(&b.name, head)).collect();
-    let boxed = |m: &Measured| if m.text.is_empty() { 0.0 } else { m.size[0] + 2.0 * PAD[0] };
+    let boxed = |m: &Measured| {
+        if m.text.is_empty() {
+            0.0
+        } else {
+            m.size[0] + 2.0 * PAD[0]
+        }
+    };
     let line_h = note.line_height + 2.0 * PAD[1];
     let across = g.flow == Flow::Right;
 
@@ -222,7 +295,11 @@ pub(crate) fn draw(g: &GitGraph, paint: &DiagramStyle) -> Option<Scene> {
     if across {
         let mut v = 0.0;
         for (pos, &b) in lanes.iter().enumerate() {
-            let tagged = g.commits.iter().zip(&tags).any(|(c, t)| c.branch == b && !t.text.is_empty());
+            let tagged = g
+                .commits
+                .iter()
+                .zip(&tags)
+                .any(|(c, t)| c.branch == b && !t.text.is_empty());
             if tagged {
                 v += line_h + 10.0;
             }
@@ -232,7 +309,8 @@ pub(crate) fn draw(g: &GitGraph, paint: &DiagramStyle) -> Option<Scene> {
     } else {
         let wide = |ms: &[Measured]| ms.iter().map(|m| boxed(m)).fold(0.0, f32::max);
         let tag_w = wide(&tags);
-        let lane = (2.0 * R + 28.0 + wide(&labels) + tag_w + if has_tags { 10.0 } else { 0.0 }).max(names.iter().map(|m| m.size[0] + 24.0).fold(0.0, f32::max));
+        let lane = (2.0 * R + 28.0 + wide(&labels) + tag_w + if has_tags { 10.0 } else { 0.0 })
+            .max(names.iter().map(|m| m.size[0] + 24.0).fold(0.0, f32::max));
         for (pos, v) in lane_v.iter_mut().enumerate() {
             *v = tag_w + pos as f32 * lane;
         }
@@ -255,13 +333,28 @@ pub(crate) fn draw(g: &GitGraph, paint: &DiagramStyle) -> Option<Scene> {
         let w = m.size[0] + 16.0;
         let h = m.size[1] + 8.0;
         let (start, at) = match g.flow {
-            Flow::Right => (pt(-2.0 * R, v), [pt(0.0, v)[0] - 2.0 * R - 10.0 - w, pt(0.0, v)[1] - h / 2.0]),
-            Flow::Down => (pt(-2.0 * R, v), [pt(0.0, v)[0] - w / 2.0, -2.0 * R - 10.0 - h]),
+            Flow::Right => (
+                pt(-2.0 * R, v),
+                [pt(0.0, v)[0] - 2.0 * R - 10.0 - w, pt(0.0, v)[1] - h / 2.0],
+            ),
+            Flow::Down => (
+                pt(-2.0 * R, v),
+                [pt(0.0, v)[0] - w / 2.0, -2.0 * R - 10.0 - h],
+            ),
             Flow::Up => (pt(-2.0 * R, v), [pt(0.0, v)[0] - w / 2.0, 2.0 * R + 10.0]),
         };
         c.dashed(&[start, pt(end, v)], 1.0, color(b).alpha(0.45), 5.0, 4.0);
-        c.fill(rounded_rect(at[0], at[1], at[0] + w, at[1] + h, h / 2.0), color(b));
-        c.label_at(m, [at[0] + 8.0, at[1] + 4.0], head, ink(color(b)), Align::Start);
+        c.fill(
+            rounded_rect(at[0], at[1], at[0] + w, at[1] + h, h / 2.0),
+            color(b),
+        );
+        c.label_at(
+            m,
+            [at[0] + 8.0, at[1] + 4.0],
+            head,
+            ink(color(b)),
+            Align::Start,
+        );
     }
     // Links: an elbow toward the lower lane, in that lane's colour.
     for (k, commit) in g.commits.iter().enumerate() {
@@ -276,12 +369,25 @@ pub(crate) fn draw(g: &GitGraph, paint: &DiagramStyle) -> Option<Scene> {
             } else {
                 elbow(a, pt(along[k], vp), b)
             };
-            let lane_color = color(if vp < vk { commit.branch } else { parent.branch });
+            let lane_color = color(if vp < vk {
+                commit.branch
+            } else {
+                parent.branch
+            });
             c.stroke(pts, false, 2.0, lane_color);
         }
         if let Some(src) = commit.picked {
-            let (a, b) = (pt(along[src], lane_of[g.commits[src].branch]), pt(along[k], lane_of[commit.branch]));
-            c.dashed(&elbow(a, pt(along[k], lane_of[g.commits[src].branch]), b), 1.5, color(commit.branch), 4.0, 3.0);
+            let (a, b) = (
+                pt(along[src], lane_of[g.commits[src].branch]),
+                pt(along[k], lane_of[commit.branch]),
+            );
+            c.dashed(
+                &elbow(a, pt(along[k], lane_of[g.commits[src].branch]), b),
+                1.5,
+                color(commit.branch),
+                4.0,
+                3.0,
+            );
         }
     }
     for (k, commit) in g.commits.iter().enumerate() {
@@ -290,16 +396,44 @@ pub(crate) fn draw(g: &GitGraph, paint: &DiagramStyle) -> Option<Scene> {
         let label = &labels[k];
         if !label.text.is_empty() {
             let w = boxed(label);
-            let o = if across { [at[0] - w / 2.0, at[1] + R + 6.0] } else { [at[0] + R + 8.0, at[1] - line_h / 2.0] };
-            c.fill(rounded_rect(o[0], o[1], o[0] + w, o[1] + line_h, 4.0), oklab_mix(paint.surface, paint.text, 0.08));
-            c.label_at(label, [o[0] + PAD[0], o[1] + PAD[1]], note, paint.muted, Align::Start);
+            let o = if across {
+                [at[0] - w / 2.0, at[1] + R + 6.0]
+            } else {
+                [at[0] + R + 8.0, at[1] - line_h / 2.0]
+            };
+            c.fill(
+                rounded_rect(o[0], o[1], o[0] + w, o[1] + line_h, 4.0),
+                oklab_mix(paint.surface, paint.text, 0.08),
+            );
+            c.label_at(
+                label,
+                [o[0] + PAD[0], o[1] + PAD[1]],
+                note,
+                paint.muted,
+                Align::Start,
+            );
         }
         let tag = &tags[k];
         if !tag.text.is_empty() {
             let w = boxed(tag);
-            let o = if across { [at[0] - w / 2.0, at[1] - R - 8.0 - line_h] } else { [at[0] - R - 8.0 - w, at[1] - line_h / 2.0] };
-            c.shape(rounded_rect(o[0], o[1], o[0] + w, o[1] + line_h, 3.0), paint.note_fill, paint.note_border, 1.0);
-            c.label_at(tag, [o[0] + PAD[0], o[1] + PAD[1]], note, paint.text, Align::Start);
+            let o = if across {
+                [at[0] - w / 2.0, at[1] - R - 8.0 - line_h]
+            } else {
+                [at[0] - R - 8.0 - w, at[1] - line_h / 2.0]
+            };
+            c.shape(
+                rounded_rect(o[0], o[1], o[0] + w, o[1] + line_h, 3.0),
+                paint.note_fill,
+                paint.note_border,
+                1.0,
+            );
+            c.label_at(
+                tag,
+                [o[0] + PAD[0], o[1] + PAD[1]],
+                note,
+                paint.text,
+                Align::Start,
+            );
         }
     }
     c.finish_fit(paint)
@@ -327,8 +461,16 @@ fn glyph(c: &mut Canvas, kind: Kind, at: [f32; 2], fill: Color, paint: &DiagramS
     let [x, y] = at;
     match kind {
         Kind::Highlight => {
-            c.shape(rounded_rect(x - R, y - R, x + R, y + R, 3.0), fill, paint.surface, 2.0);
-            c.fill(rounded_rect(x - R / 2.0, y - R / 2.0, x + R / 2.0, y + R / 2.0, 1.5), ink(fill).alpha(0.4));
+            c.shape(
+                rounded_rect(x - R, y - R, x + R, y + R, 3.0),
+                fill,
+                paint.surface,
+                2.0,
+            );
+            c.fill(
+                rounded_rect(x - R / 2.0, y - R / 2.0, x + R / 2.0, y + R / 2.0, 1.5),
+                ink(fill).alpha(0.4),
+            );
         }
         _ => c.shape(ellipse(at, R, R), fill, paint.surface, 2.0),
     }
@@ -343,7 +485,12 @@ fn glyph(c: &mut Canvas, kind: Kind, at: [f32; 2], fill: Color, paint: &DiagramS
         Kind::CherryPick => {
             c.fill(ellipse([x - 2.6, y + 2.0], 2.3, 2.3), mark);
             c.fill(ellipse([x + 2.6, y + 2.0], 2.3, 2.3), mark);
-            c.stroke(vec![[x - 2.0, y], [x + 0.5, y - 5.0], [x + 2.4, y]], false, 1.0, mark);
+            c.stroke(
+                vec![[x - 2.0, y], [x + 0.5, y - 5.0], [x + 2.4, y]],
+                false,
+                1.0,
+                mark,
+            );
         }
         _ => {}
     }

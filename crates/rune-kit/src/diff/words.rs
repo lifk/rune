@@ -92,8 +92,11 @@ fn word_char(c: char) -> bool {
 
 /// JavaScript's `\s`: WhiteSpace and LineTerminator (U+FEFF in, U+0085 out, unlike Rust's).
 fn js_space(c: char) -> bool {
-    matches!(c, '\t' | '\n' | '\u{B}' | '\u{C}' | '\r' | ' ' | '\u{A0}' | '\u{1680}' | '\u{2000}'..='\u{200A}'
-        | '\u{2028}' | '\u{2029}' | '\u{202F}' | '\u{205F}' | '\u{3000}' | '\u{FEFF}')
+    matches!(
+        c,
+        '\t' | '\n' | '\u{B}' | '\u{C}' | '\r' | ' ' | '\u{A0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200A}' | '\u{2028}' | '\u{2029}' | '\u{202F}' | '\u{205F}' | '\u{3000}' | '\u{FEFF}'
+    )
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -148,7 +151,9 @@ fn diff(old: &[&str], new: &[&str]) -> Vec<Component> {
             let can_add = add.is_some_and(|p| (0..new_len).contains(&(p.old_pos - d)));
             let can_remove = remove.is_some_and(|p| p.old_pos + 1 < old_len);
             let mut base = match (add, remove) {
-                (Some(a), r) if can_add && (!can_remove || r.is_some_and(|r| r.old_pos < a.old_pos)) => add_to_path(&mut nodes, a, Edit::Added, 0),
+                (Some(a), r) if can_add && (!can_remove || r.is_some_and(|r| r.old_pos < a.old_pos)) => {
+                    add_to_path(&mut nodes, a, Edit::Added, 0)
+                }
                 (_, Some(r)) if can_remove => add_to_path(&mut nodes, r, Edit::Removed, 1),
                 _ => {
                     best[at(d)] = None;
@@ -177,7 +182,9 @@ fn diff(old: &[&str], new: &[&str]) -> Vec<Component> {
 /// the same edit.
 fn add_to_path(nodes: &mut Vec<Node>, path: Path, edit: Edit, old_inc: isize) -> Path {
     let node = match path.last.map(|i| (i, &nodes[i])) {
-        Some((_, last)) if last.c.edit == edit => Node { c: Component { count: last.c.count + 1, edit }, prev: last.prev },
+        Some((_, last)) if last.c.edit == edit => {
+            Node { c: Component { count: last.c.count + 1, edit }, prev: last.prev }
+        }
         _ => Node { c: Component { count: 1, edit }, prev: path.last },
     };
     nodes.push(node);

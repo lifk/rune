@@ -36,7 +36,10 @@ impl Drop for Ime {
 pub(super) enum Composition {
     #[default]
     Idle,
-    Composing { text: String, cursor: Option<(usize, usize)> },
+    Composing {
+        text: String,
+        cursor: Option<(usize, usize)>,
+    },
 }
 
 /// What a composition step asks of its field.
@@ -57,7 +60,9 @@ impl Composition {
     /// Ends any composition, wiping its text: the field blurred, an edit or undo replaced the
     /// text under it, or the app cancelled it.
     pub(super) fn cancel(&mut self) {
-        if let Composition::Composing { text, .. } = self { text.zeroize(); }
+        if let Composition::Composing { text, .. } = self {
+            text.zeroize();
+        }
         *self = Composition::Idle;
     }
 }
@@ -71,7 +76,10 @@ pub(super) fn step(composition: &mut Composition, event: &Ime) -> Effects<Effect
         }
         Ime::Preedit(text, cursor) => {
             composition.cancel();
-            *composition = Composition::Composing { text: text.clone(), cursor: *cursor };
+            *composition = Composition::Composing {
+                text: text.clone(),
+                cursor: *cursor,
+            };
             Effects::none()
         }
         Ime::Commit(text) => {

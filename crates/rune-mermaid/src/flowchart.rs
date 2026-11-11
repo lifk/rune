@@ -6,11 +6,13 @@ use rune::Color;
 
 use super::canvas::{Canvas, Scene, measure_balanced};
 use super::layered::{MAX_MINLEN, Spacing};
-use super::layered_draw::{ClusterSpec, Dir, DrawNode, Edge, Head, Line, NodeShape, layered_canvas, node_size};
+use super::layered_draw::{
+    ClusterSpec, Dir, DrawNode, Edge, Head, Line, NodeShape, layered_canvas, node_size,
+};
 use super::parts::Names;
 use super::{
-    Cur, DiagramStyle, EdgeStyle, Hover, MAX_DEPTH, MAX_ITEMS, NodeStyle, StyleSheet, clean, clean_quoted,
-    parse_edge_style_props, statements,
+    Cur, DiagramStyle, EdgeStyle, Hover, MAX_DEPTH, MAX_ITEMS, NodeStyle, StyleSheet, clean,
+    clean_quoted, parse_edge_style_props, statements,
 };
 
 #[derive(Debug)]
@@ -41,11 +43,20 @@ pub(crate) struct Flowchart {
 
 /// `header` is what follows `graph`/`flowchart` on its line; `body` the remaining lines.
 pub(crate) fn parse(header: &str, body: &[&str]) -> Option<Flowchart> {
-    let (dir, rest) = header.trim_start().split_once(|c: char| c.is_whitespace() || c == ';').unwrap_or((header.trim(), ""));
+    let (dir, rest) = header
+        .trim_start()
+        .split_once(|c: char| c.is_whitespace() || c == ';')
+        .unwrap_or((header.trim(), ""));
     // A direction it doesn't know reads top-down.
     let dir = Dir::parse(dir).unwrap_or(Dir::Down);
     let mut p = Parser {
-        f: Flowchart { title: None, dir, nodes: Vec::new(), edges: Vec::new(), subgraphs: Vec::new() },
+        f: Flowchart {
+            title: None,
+            dir,
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            subgraphs: Vec::new(),
+        },
         ids: HashMap::new(),
         stack: Vec::new(),
         styles: StyleSheet::default(),
@@ -83,7 +94,13 @@ fn resolve_subgraph_endpoints(f: &mut Flowchart) {
     let mut redirects: HashMap<usize, (usize, usize, usize)> = HashMap::new();
     for (sg_idx, sg) in f.subgraphs.iter().enumerate() {
         let Some(id) = &sg.id else { continue };
-        let Some(node_idx) = f.nodes.iter().position(|n| &n.id == id && !n.explicit_shape) else { continue };
+        let Some(node_idx) = f
+            .nodes
+            .iter()
+            .position(|n| &n.id == id && !n.explicit_shape)
+        else {
+            continue;
+        };
         let members: Vec<usize> = (0..f.nodes.len())
             .filter(|&i| i != node_idx && in_cluster(i, sg_idx, &f.nodes, &f.subgraphs))
             .collect();
@@ -97,7 +114,9 @@ fn resolve_subgraph_endpoints(f: &mut Flowchart) {
     for e in &mut f.edges {
         let (from, to) = (e.from, e.to);
         let inside = |v: usize, sg: usize| match redirects.get(&v) {
-            Some(r) => std::iter::successors(Some(r.2), |&s| f.subgraphs[s].parent).take(f.subgraphs.len() + 1).any(|s| s == sg),
+            Some(r) => std::iter::successors(Some(r.2), |&s| f.subgraphs[s].parent)
+                .take(f.subgraphs.len() + 1)
+                .any(|s| s == sg),
             None => in_cluster(v, sg, &f.nodes, &f.subgraphs),
         };
         if let Some(&(_, last, sg)) = redirects.get(&from) {
@@ -117,7 +136,10 @@ fn resolve_subgraph_endpoints(f: &mut Flowchart) {
             keep.push(i);
         }
     }
-    let mut old = std::mem::take(&mut f.nodes).into_iter().enumerate().collect::<HashMap<_, _>>();
+    let mut old = std::mem::take(&mut f.nodes)
+        .into_iter()
+        .enumerate()
+        .collect::<HashMap<_, _>>();
     f.nodes = keep.into_iter().filter_map(|i| old.remove(&i)).collect();
     for e in &mut f.edges {
         e.from = remap[e.from];
@@ -169,7 +191,10 @@ impl Parser {
     }
 
     fn statement(&mut self, s: &str) -> Option<()> {
-        let word = s.split(|c: char| c.is_whitespace() || c == ':').next().unwrap_or("");
+        let word = s
+            .split(|c: char| c.is_whitespace() || c == ':')
+            .next()
+            .unwrap_or("");
         match word {
             "subgraph" => {
                 let rest = s["subgraph".len()..].trim();
@@ -180,7 +205,10 @@ impl Parser {
                         (id, clean_quoted(&rest[i + 1..rest.len() - 1]))
                     }
                     _ => {
-                        let id = (!rest.starts_with('"') && !rest.contains(char::is_whitespace) && !rest.is_empty()).then(|| rest.to_owned());
+                        let id = (!rest.starts_with('"')
+                            && !rest.contains(char::is_whitespace)
+                            && !rest.is_empty())
+                        .then(|| rest.to_owned());
                         (id, clean_quoted(rest))
                     }
                 };
@@ -189,7 +217,11 @@ impl Parser {
                     self.over = true;
                     return None;
                 }
-                self.f.subgraphs.push(Subgraph { id: sg_id, title, parent: self.stack.last().copied() });
+                self.f.subgraphs.push(Subgraph {
+                    id: sg_id,
+                    title,
+                    parent: self.stack.last().copied(),
+                });
                 self.stack.push(self.f.subgraphs.len() - 1);
             }
             "end" if s == "end" => {
@@ -203,7 +235,8 @@ impl Parser {
             }
             "direction" => {
                 let rest = s["direction".len()..].trim();
-                if self.stack.is_empty() && self.f.edges.is_empty()
+                if self.stack.is_empty()
+                    && self.f.edges.is_empty()
                     && let Some(d) = Dir::parse(rest)
                 {
                     self.f.dir = d;
@@ -259,8 +292,12 @@ impl Parser {
             c.skip_ws();
             groups.push(group(&mut c)?);
         }
-        let groups: Vec<Vec<usize>> = groups.into_iter().map(|g| g.into_iter().map(|n| self.node(n)).collect()).collect::<Option<_>>()?;
-        self.edge_ids.extend(links.iter().filter_map(|l| l.id.clone()));
+        let groups: Vec<Vec<usize>> = groups
+            .into_iter()
+            .map(|g| g.into_iter().map(|n| self.node(n)).collect())
+            .collect::<Option<_>>()?;
+        self.edge_ids
+            .extend(links.iter().filter_map(|l| l.id.clone()));
         for (link, pair) in links.iter().zip(groups.windows(2)) {
             for &from in &pair[0] {
                 for &to in &pair[1] {
@@ -467,10 +504,16 @@ fn parse_at_shape(c: &mut Cur) -> Option<(Option<String>, NodeShape)> {
     let inner = &c.rest()[..end];
     let mut kind = NodeShape::Rect;
     let mut label = None;
-    for (k, v) in split_top_commas(inner).into_iter().filter_map(|part| part.split_once(':')) {
+    for (k, v) in split_top_commas(inner)
+        .into_iter()
+        .filter_map(|part| part.split_once(':'))
+    {
         let v = v.trim();
         match k.trim() {
-            "shape" => kind = NodeShape::named(&v.trim_matches('"').to_ascii_lowercase()).unwrap_or(NodeShape::Rect),
+            "shape" => {
+                kind = NodeShape::named(&v.trim_matches('"').to_ascii_lowercase())
+                    .unwrap_or(NodeShape::Rect)
+            }
             "label" => label = Some(clean_quoted(v)),
             // Icons and images can't be fetched, so they draw as their frame with the label.
             "form" if kind == NodeShape::Rect => {
@@ -548,7 +591,9 @@ fn exact_shape(c: &mut Cur) -> Option<(Option<String>, NodeShape)> {
             return Some((Some(label), kind));
         }
     }
-    let &(open, close, kind) = SHAPES.iter().find(|(open, ..)| c.rest().starts_with(open))?;
+    let &(open, close, kind) = SHAPES
+        .iter()
+        .find(|(open, ..)| c.rest().starts_with(open))?;
     c.eat(open);
     c.skip_ws();
     let label = if c.peek() == Some('"') {
@@ -582,7 +627,8 @@ fn loose_shape(c: &mut Cur) -> (Option<String>, NodeShape) {
     };
     let skip = if at { 2 } else { 1 };
     let body = &rest[skip..];
-    let (text, used) = find_close(body, open, close).map_or((body, rest.len()), |e| (&body[..e], skip + e + 1));
+    let (text, used) =
+        find_close(body, open, close).map_or((body, rest.len()), |e| (&body[..e], skip + e + 1));
     c.i += used;
     let label = clean_quoted(text);
     ((!at && !label.is_empty()).then_some(label), NodeShape::Rect)
@@ -590,7 +636,10 @@ fn loose_shape(c: &mut Cur) -> (Option<String>, NodeShape) {
 
 fn run(c: &mut Cur) -> String {
     let start = c.i;
-    while c.peek().is_some_and(|ch| matches!(ch, '-' | '=' | '.' | '~')) {
+    while c
+        .peek()
+        .is_some_and(|ch| matches!(ch, '-' | '=' | '.' | '~'))
+    {
         c.bump();
     }
     c.s[start..c.i].to_owned()
@@ -613,7 +662,9 @@ fn end_head(c: &mut Cur) -> Head {
 pub(crate) fn link(c: &mut Cur) -> Option<Link> {
     // A v11 edge id, `A e1@--> B`, names the edge for a later `e1@{ … }`.
     let save = c.i;
-    let id = ident(c).filter(|_| c.eat("@") && matches!(c.peek(), Some('-' | '=' | '.' | '~' | '<' | 'o' | 'x')));
+    let id = ident(c).filter(|_| {
+        c.eat("@") && matches!(c.peek(), Some('-' | '=' | '.' | '~' | '<' | 'o' | 'x'))
+    });
     if id.is_none() {
         c.i = save;
     }
@@ -622,7 +673,11 @@ pub(crate) fn link(c: &mut Cur) -> Option<Link> {
     } else if matches!(c.peek(), Some('o' | 'x')) && matches!(c.peek2(), Some('-' | '=')) {
         let ch = c.peek();
         c.bump();
-        if ch == Some('o') { Head::Circle } else { Head::Cross }
+        if ch == Some('o') {
+            Head::Circle
+        } else {
+            Head::Cross
+        }
     } else {
         Head::None
     };
@@ -657,8 +712,15 @@ pub(crate) fn link(c: &mut Cur) -> Option<Link> {
     let minlen = match line {
         Line::Dotted => body.matches('.').count(),
         _ => {
-            let n = body.chars().filter(|&ch| ch == '-' || ch == '=' || ch == '~').count();
-            if end == Head::None { n.saturating_sub(2) } else { n.saturating_sub(1) }
+            let n = body
+                .chars()
+                .filter(|&ch| ch == '-' || ch == '=' || ch == '~')
+                .count();
+            if end == Head::None {
+                n.saturating_sub(2)
+            } else {
+                n.saturating_sub(1)
+            }
         }
     }
     .clamp(1, MAX_MINLEN);
@@ -672,36 +734,86 @@ pub(crate) fn link(c: &mut Cur) -> Option<Link> {
     } else {
         c.i = save;
     }
-    Some(Link { id, line, start, end, minlen, label })
+    Some(Link {
+        id,
+        line,
+        start,
+        end,
+        minlen,
+        label,
+    })
 }
 
-const SPACING: Spacing = Spacing { node: 36.0, rank: 44.0, cluster: 14.0 };
+const SPACING: Spacing = Spacing {
+    node: 36.0,
+    rank: 44.0,
+    cluster: 14.0,
+};
 
-pub(crate) fn draw(f: &Flowchart, paint: &DiagramStyle, hover: Option<(Hover, Color)>) -> Option<Scene> {
+pub(crate) fn draw(
+    f: &Flowchart,
+    paint: &DiagramStyle,
+    hover: Option<(Hover, Color)>,
+) -> Option<Scene> {
     draw_canvas(f, paint, hover)?.finish_fit(paint)
 }
 
 /// `f` drawn at full size, before [`Canvas::finish`].
-pub(crate) fn draw_canvas(f: &Flowchart, paint: &DiagramStyle, hover: Option<(Hover, Color)>) -> Option<Canvas> {
+pub(crate) fn draw_canvas(
+    f: &Flowchart,
+    paint: &DiagramStyle,
+    hover: Option<(Hover, Color)>,
+) -> Option<Canvas> {
     let nodes: Vec<DrawNode> = f
         .nodes
         .iter()
         .map(|n| {
             let label = measure_balanced(&n.label, paint.font);
-            DrawNode::Shape { shape: n.shape, size: node_size(n.shape, label.size), label, cluster: n.cluster, style: n.style }
+            DrawNode::Shape {
+                shape: n.shape,
+                size: node_size(n.shape, label.size),
+                label,
+                cluster: n.cluster,
+                style: n.style,
+            }
         })
         .collect();
-    let clusters: Vec<ClusterSpec> = f.subgraphs.iter().map(|s| ClusterSpec { title: s.title.clone(), parent: s.parent }).collect();
+    let clusters: Vec<ClusterSpec> = f
+        .subgraphs
+        .iter()
+        .map(|s| ClusterSpec {
+            title: s.title.clone(),
+            parent: s.parent,
+        })
+        .collect();
     let names = names(f);
-    let mut c = layered_canvas(f.dir, &nodes, &names.nodes, &f.edges, &clusters, &SPACING, paint, hover)?;
+    let mut c = layered_canvas(
+        f.dir,
+        &nodes,
+        &names.nodes,
+        &f.edges,
+        &clusters,
+        &SPACING,
+        paint,
+        hover,
+    )?;
     c.names = names;
     Some(c)
 }
 
 /// Nodes and subgraphs by id, edges by their ends.
 fn names(f: &Flowchart) -> Names {
-    let frames = f.subgraphs.iter().enumerate().map(|(i, s)| s.id.clone().unwrap_or_else(|| format!("#{i}"))).collect();
-    Names::new(f.nodes.iter().map(|n| n.id.clone()).collect(), &f.edges, frames)
+    let frames = f
+        .subgraphs
+        .iter()
+        .enumerate()
+        .map(|(i, s)| s.id.clone().unwrap_or_else(|| format!("#{i}")))
+        .collect();
+    Names::new(
+        f.nodes.iter().map(|n| n.id.clone()).collect(),
+        &f.edges,
+        frames,
+    )
 }
 
 #[cfg(test)]

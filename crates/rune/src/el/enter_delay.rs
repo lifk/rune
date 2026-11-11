@@ -34,7 +34,11 @@ impl El {
     /// [`opacity_motion`](Self::opacity_motion) animates the element's own opacity, which
     /// multiplies the entrance's: its own delay applies to that change only.
     pub fn enter_delay(mut self, seconds: f32) -> Self {
-        let seconds = if seconds.is_finite() { seconds.max(0.0) } else { 0.0 };
+        let seconds = if seconds.is_finite() {
+            seconds.max(0.0)
+        } else {
+            0.0
+        };
         self.vis.cold_mut().enter_delay = seconds;
         self
     }

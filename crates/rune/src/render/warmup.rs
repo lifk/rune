@@ -36,7 +36,10 @@ pub fn warm_gpu(features: wgpu::Features) {
 /// `warm_gpu`, then `prepare` on that thread with the device, new or the one a surface draws
 /// with: an app makes its own pipelines there, off the UI thread, for its compositor to find.
 /// On Windows, its first call in a process also makes the DX12-or-Vulkan choice on that thread.
-pub fn warm_gpu_with(features: wgpu::Features, prepare: impl FnOnce(&wgpu::Device) + Send + 'static) {
+pub fn warm_gpu_with(
+    features: wgpu::Features,
+    prepare: impl FnOnce(&wgpu::Device) + Send + 'static,
+) {
     #[cfg(not(any(target_os = "macos", target_arch = "wasm32")))]
     super::prewarm::warm(features, Some(Box::new(prepare)));
     #[cfg(any(target_os = "macos", target_arch = "wasm32"))]

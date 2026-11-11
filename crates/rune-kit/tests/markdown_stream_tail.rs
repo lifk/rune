@@ -62,14 +62,21 @@ fn a_header_line_draws_nothing_until_it_is_a_table() {
 /// Typed a character a frame, neither document swaps a word or jumps.
 #[test]
 fn a_stream_types_without_swaps_or_jumps() {
-    for doc in ["Then open **Settings › Appearance** and pick *Dark*, or run `theme dark`.", "| File | Change |\n|---|---|\n| a.rs | x |\n"] {
+    for doc in [
+        "Then open **Settings › Appearance** and pick *Dark*, or run `theme dark`.",
+        "| File | Change |\n|---|---|\n| a.rs | x |\n",
+    ] {
         let mut r = Run::new(Runtime::new(String::new(), streaming, (480.0, 800.0), Env::new(true, 1.0)), 60.0);
         r.step();
         for ch in doc.chars() {
             r.act("type", |rt| rt.update(|s, _| s.push(ch)));
         }
         r.play(1.0);
-        let found: Vec<String> = check(&r.rec).into_iter().filter(|f| f.kind == "text-swap" || f.kind.contains("jump")).map(|f| f.to_string()).collect();
+        let found: Vec<String> = check(&r.rec)
+            .into_iter()
+            .filter(|f| f.kind == "text-swap" || f.kind.contains("jump"))
+            .map(|f| f.to_string())
+            .collect();
         assert!(found.is_empty(), "{doc:?}:\n{}", found.join("\n"));
     }
 }

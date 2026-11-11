@@ -27,16 +27,22 @@ impl PixelBuffer {
     /// # Safety
     /// `raw` must be a live IOSurfaceRef containing complete BGRA/420v/420f pixels. It must
     /// remain immutable through all GPU uses, including through aliases in other processes.
-    pub unsafe fn from_iosurface(raw: *mut std::ffi::c_void, color: ColorInfo) -> Result<Self, String> {
+    pub unsafe fn from_iosurface(
+        raw: *mut std::ffi::c_void,
+        color: ColorInfo,
+    ) -> Result<Self, String> {
         if raw.is_null() {
             return Err("null IOSurface".into());
         }
         let mut out = null_mut();
         check(
-            unsafe { CVPixelBufferCreateWithIOSurface(None, &*raw.cast(), None, NonNull::from(&mut out)) },
+            unsafe {
+                CVPixelBufferCreateWithIOSurface(None, &*raw.cast(), None, NonNull::from(&mut out))
+            },
             "CVPixelBufferCreateWithIOSurface",
         )?;
-        let buffer = Self(unsafe { CFRetained::from_raw(NonNull::new(out).ok_or("null pixel buffer")?) });
+        let buffer =
+            Self(unsafe { CFRetained::from_raw(NonNull::new(out).ok_or("null pixel buffer")?) });
         buffer.set_color(color);
         buffer.info()?;
         Ok(buffer)
@@ -73,14 +79,23 @@ impl PixelBuffer {
             kCVPixelFormatType_32BGRA => Format::Bgra,
             kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange => Format::Nv12Video,
             kCVPixelFormatType_420YpCbCr8BiPlanarFullRange => Format::Nv12Full,
-            other => return Err(format!("unsupported CVPixelBuffer format {other:#x}; use BGRA, 420v or 420f")),
+            other => {
+                return Err(format!(
+                    "unsupported CVPixelBuffer format {other:#x}; use BGRA, 420v or 420f"
+                ));
+            }
         };
-        let size = [CVPixelBufferGetWidth(b) as u32, CVPixelBufferGetHeight(b) as u32];
+        let size = [
+            CVPixelBufferGetWidth(b) as u32,
+            CVPixelBufferGetHeight(b) as u32,
+        ];
         if size.contains(&0) || size.iter().any(|v| *v > 16384) {
             return Err("invalid video dimensions".into());
         }
         if format != Format::Bgra
-            && (!size[0].is_multiple_of(2) || !size[1].is_multiple_of(2) || CVPixelBufferGetPlaneCount(b) != 2)
+            && (!size[0].is_multiple_of(2)
+                || !size[1].is_multiple_of(2)
+                || CVPixelBufferGetPlaneCount(b) != 2)
         {
             return Err("NV12 requires two planes and even dimensions".into());
         }
@@ -95,8 +110,12 @@ impl PixelBuffer {
                     Matrix::Bt709
                 }
             }
-            Some(v) if unsafe { cf_equal(&v, kCVImageBufferYCbCrMatrix_ITU_R_601_4) } => Matrix::Bt601,
-            Some(v) if unsafe { cf_equal(&v, kCVImageBufferYCbCrMatrix_ITU_R_709_2) } => Matrix::Bt709,
+            Some(v) if unsafe { cf_equal(&v, kCVImageBufferYCbCrMatrix_ITU_R_601_4) } => {
+                Matrix::Bt601
+            }
+            Some(v) if unsafe { cf_equal(&v, kCVImageBufferYCbCrMatrix_ITU_R_709_2) } => {
+                Matrix::Bt709
+            }
             _ => return Err("unsupported YCbCr matrix; use BT.601 or BT.709".into()),
         };
         let transfer = unsafe { b.attachment(kCVImageBufferTransferFunctionKey, null_mut()) };
@@ -108,9 +127,18 @@ impl PixelBuffer {
                     Transfer::Bt709
                 }
             }
-            Some(v) if unsafe { cf_equal(&v, kCVImageBufferTransferFunction_sRGB) } => Transfer::Srgb,
-            Some(v) if unsafe { cf_equal(&v, kCVImageBufferTransferFunction_ITU_R_709_2) } => Transfer::Bt709,
-            _ => return Err("unsupported transfer function; use sRGB or BT.709 (HDR is not supported)".into()),
+            Some(v) if unsafe { cf_equal(&v, kCVImageBufferTransferFunction_sRGB) } => {
+                Transfer::Srgb
+            }
+            Some(v) if unsafe { cf_equal(&v, kCVImageBufferTransferFunction_ITU_R_709_2) } => {
+                Transfer::Bt709
+            }
+            _ => {
+                return Err(
+                    "unsupported transfer function; use sRGB or BT.709 (HDR is not supported)"
+                        .into(),
+                );
+            }
         };
         Ok((size, format, ColorInfo { matrix, transfer }))
     }
@@ -135,8 +163,14 @@ impl PixelBuffer {
         let empty = CFDictionary::<CFString, CFType>::from_slices(&[], &[]);
         let attrs = unsafe {
             CFDictionary::<CFString, CFType>::from_slices(
-                &[kCVPixelBufferIOSurfacePropertiesKey, kCVPixelBufferMetalCompatibilityKey],
-                &[AsRef::<CFType>::as_ref(&*empty), CFBoolean::new(true).as_ref()],
+                &[
+                    kCVPixelBufferIOSurfacePropertiesKey,
+                    kCVPixelBufferMetalCompatibilityKey,
+                ],
+                &[
+                    AsRef::<CFType>::as_ref(&*empty),
+                    CFBoolean::new(true).as_ref(),
+                ],
             )
         };
         let format = match frame.format {
@@ -145,12 +179,25 @@ impl PixelBuffer {
             Format::Nv12Full => kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
         };
         let mut raw = null_mut();
-        let status =
-            unsafe { CVPixelBufferCreate(None, w, h, format, Some(attrs.as_opaque()), NonNull::from(&mut raw)) };
+        let status = unsafe {
+            CVPixelBufferCreate(
+                None,
+                w,
+                h,
+                format,
+                Some(attrs.as_opaque()),
+                NonNull::from(&mut raw),
+            )
+        };
         check(status, "CVPixelBufferCreate")?;
-        let buffer = Self(unsafe { CFRetained::from_raw(NonNull::new(raw).ok_or("null created pixel buffer")?) });
+        let buffer = Self(unsafe {
+            CFRetained::from_raw(NonNull::new(raw).ok_or("null created pixel buffer")?)
+        });
         unsafe {
-            check(CVPixelBufferLockBaseAddress(&buffer.0, CVPixelBufferLockFlags(0)), "lock synthetic buffer")?;
+            check(
+                CVPixelBufferLockBaseAddress(&buffer.0, CVPixelBufferLockFlags(0)),
+                "lock synthetic buffer",
+            )?;
             for plane in 0..if nv12 { 2 } else { 1 } {
                 let (ptr, stride) = if nv12 {
                     (
@@ -158,7 +205,10 @@ impl PixelBuffer {
                         CVPixelBufferGetBytesPerRowOfPlane(&buffer.0, plane),
                     )
                 } else {
-                    (CVPixelBufferGetBaseAddress(&buffer.0), CVPixelBufferGetBytesPerRow(&buffer.0))
+                    (
+                        CVPixelBufferGetBaseAddress(&buffer.0),
+                        CVPixelBufferGetBytesPerRow(&buffer.0),
+                    )
                 };
                 let row_bytes = w * if nv12 { 1 } else { 4 };
                 let rows = if plane == 1 { h / 2 } else { h };
@@ -200,14 +250,22 @@ unsafe impl Sync for PlaneOwner {}
 impl Drop for PlaneOwner {
     fn drop(&mut self) {
         #[cfg(test)]
-        self.live_planes.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+        self.live_planes
+            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
     }
 }
 impl Importer {
     pub fn new(device: &wgpu::Device) -> Result<Self, String> {
         let mut raw = null_mut();
-        let mut create = |metal: &objc2_video::runtime::ProtocolObject<dyn objc2_metal::MTLDevice>| {
-            check(unsafe { CVMetalTextureCache::create(None, None, metal, None, NonNull::from(&mut raw)) }, "CVMetalTextureCacheCreate")
+        let mut create = |metal: &objc2_video::runtime::ProtocolObject<
+            dyn objc2_metal::MTLDevice,
+        >| {
+            check(
+                unsafe {
+                    CVMetalTextureCache::create(None, None, metal, None, NonNull::from(&mut raw))
+                },
+                "CVMetalTextureCacheCreate",
+            )
         };
         let native = if let Some(metal) = unsafe { device.as_hal::<wgpu::hal::api::Metal>() } {
             create(metal.raw_device())?;
@@ -236,8 +294,18 @@ impl Importer {
     pub fn flush(&self) {
         self.cache.flush(0);
     }
-    pub fn import(&self, buffer: &PixelBuffer, format: Format, size: [u32; 2]) -> Result<[wgpu::Texture; 2], String> {
-        let plane = |index: usize, width: u32, height: u32, metal_format, format| -> Result<wgpu::Texture, String> {
+    pub fn import(
+        &self,
+        buffer: &PixelBuffer,
+        format: Format,
+        size: [u32; 2],
+    ) -> Result<[wgpu::Texture; 2], String> {
+        let plane = |index: usize,
+                     width: u32,
+                     height: u32,
+                     metal_format,
+                     format|
+         -> Result<wgpu::Texture, String> {
             let mut raw = null_mut();
             check(
                 unsafe {
@@ -255,7 +323,8 @@ impl Importer {
                 },
                 "CVMetalTextureCacheCreateTextureFromImage (buffer must be IOSurface-backed)",
             )?;
-            let cv = unsafe { CFRetained::from_raw(NonNull::new(raw).ok_or("null CVMetalTexture")?) };
+            let cv =
+                unsafe { CFRetained::from_raw(NonNull::new(raw).ok_or("null CVMetalTexture")?) };
             let texture = CVMetalTextureGetTexture(&cv).ok_or("null MTLTexture")?;
             let owner = PlaneOwner {
                 _texture: cv,
@@ -264,11 +333,16 @@ impl Importer {
                 live_planes: self.live_planes.clone(),
             };
             #[cfg(test)]
-            self.live_planes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.live_planes
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             let desc = pipeline::descriptor(width, height, format);
             #[cfg(feature = "metal-backend")]
             if self.native {
-                return Ok(crate::gpu::metal::texture_from_raw(texture, &desc, std::sync::Arc::new(owner)));
+                return Ok(crate::gpu::metal::texture_from_raw(
+                    texture,
+                    &desc,
+                    std::sync::Arc::new(owner),
+                ));
             }
             let hal = unsafe {
                 wgpu::hal::metal::Device::texture_from_raw(
@@ -277,28 +351,59 @@ impl Importer {
                     MTLTextureType::Type2D,
                     1,
                     1,
-                    wgpu::hal::CopyExtent { width, height, depth: 1 },
+                    wgpu::hal::CopyExtent {
+                        width,
+                        height,
+                        depth: 1,
+                    },
                     Some(Box::new(move || drop(owner))),
                 )
             };
             // The raw texture comes from this device's CV cache and exactly matches this descriptor.
             Ok(unsafe {
-                self.device.create_texture_from_hal::<wgpu::hal::api::Metal>(hal, &desc, wgpu::TextureUses::RESOURCE)
+                self.device
+                    .create_texture_from_hal::<wgpu::hal::api::Metal>(
+                        hal,
+                        &desc,
+                        wgpu::TextureUses::RESOURCE,
+                    )
             })
         };
         if format == Format::Bgra {
-            let a = plane(0, size[0], size[1], MTLPixelFormat::BGRA8Unorm, wgpu::TextureFormat::Bgra8Unorm)?;
+            let a = plane(
+                0,
+                size[0],
+                size[1],
+                MTLPixelFormat::BGRA8Unorm,
+                wgpu::TextureFormat::Bgra8Unorm,
+            )?;
             Ok([a.clone(), a])
         } else {
             Ok([
-                plane(0, size[0], size[1], MTLPixelFormat::R8Unorm, wgpu::TextureFormat::R8Unorm)?,
-                plane(1, size[0] / 2, size[1] / 2, MTLPixelFormat::RG8Unorm, wgpu::TextureFormat::Rg8Unorm)?,
+                plane(
+                    0,
+                    size[0],
+                    size[1],
+                    MTLPixelFormat::R8Unorm,
+                    wgpu::TextureFormat::R8Unorm,
+                )?,
+                plane(
+                    1,
+                    size[0] / 2,
+                    size[1] / 2,
+                    MTLPixelFormat::RG8Unorm,
+                    wgpu::TextureFormat::Rg8Unorm,
+                )?,
             ])
         }
     }
 }
 fn check(status: i32, operation: &str) -> Result<(), String> {
-    if status == 0 { Ok(()) } else { Err(format!("{operation}: CoreVideo status {status}")) }
+    if status == 0 {
+        Ok(())
+    } else {
+        Err(format!("{operation}: CoreVideo status {status}"))
+    }
 }
 fn cf_equal(value: &CFType, string: &CFString) -> bool {
     value == AsRef::<CFType>::as_ref(string)

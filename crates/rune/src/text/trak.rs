@@ -19,7 +19,10 @@ impl Trak {
     /// The table of a font HarfRust tracks: one with both `trak` and `STAT`.
     pub(super) fn of(font: FontRef<'_>) -> Option<Trak> {
         font.table(swash::tag_from_bytes(b"STAT"))?;
-        Trak::parse(font.table(swash::tag_from_bytes(b"trak"))?, font.metrics(&[]).units_per_em)
+        Trak::parse(
+            font.table(swash::tag_from_bytes(b"trak"))?,
+            font.metrics(&[]).units_per_em,
+        )
     }
 
     /// Track 0 of a `trak` table, or the interpolation between the tracks around it, read the way
@@ -36,7 +39,10 @@ impl Trak {
         if horizontal == 0 {
             return None;
         }
-        let (tracks, sizes) = (u16_at(horizontal)? as usize, u16_at(horizontal.checked_add(2)?)? as usize);
+        let (tracks, sizes) = (
+            u16_at(horizontal)? as usize,
+            u16_at(horizontal.checked_add(2)?)? as usize,
+        );
         let size_table = u32::from_be_bytes(bytes(horizontal.checked_add(4)?, 4)?.try_into().ok()?);
         let entries = bytes(horizontal.checked_add(8)?, tracks.checked_mul(8)?)?;
         let size_values = bytes(usize::try_from(size_table).ok()?, sizes.checked_mul(4)?)?;
@@ -48,7 +54,10 @@ impl Trak {
         let values = |i: usize| -> Vec<f32> {
             let at = u16::from_be_bytes([entry(i)[6], entry(i)[7]]) as usize;
             match bytes(at, sizes * 2) {
-                Some(b) => b.chunks_exact(2).map(|v| i16::from_be_bytes([v[0], v[1]]) as f32).collect(),
+                Some(b) => b
+                    .chunks_exact(2)
+                    .map(|v| i16::from_be_bytes([v[0], v[1]]) as f32)
+                    .collect(),
                 None => vec![0.0; sizes],
             }
         };
@@ -62,14 +71,21 @@ impl Trak {
         }
         let (a, b) = (values(i), if i == j { Vec::new() } else { values(j) });
         let (t0, t1) = (track(i), track(j));
-        let t = if i == j || (t1 - t0).abs() < f32::EPSILON { 0.0 } else { -t0 / (t1 - t0) };
+        let t = if i == j || (t1 - t0).abs() < f32::EPSILON {
+            0.0
+        } else {
+            -t0 / (t1 - t0)
+        };
         let sizes = size_values
             .chunks_exact(4)
             .zip(&a)
             .enumerate()
             .map(|(s, (size, &a))| (fixed(size), b.get(s).map_or(a, |&b| a + t * (b - a))))
             .collect();
-        Some(Trak { sizes, units_per_em: units_per_em as f32 })
+        Some(Trak {
+            sizes,
+            units_per_em: units_per_em as f32,
+        })
     }
 
     /// Tracking at `points`, in font units: interpolated between the listed sizes and held
@@ -105,8 +121,19 @@ mod tests {
 
     /// Part of the macOS system font's track-0 row.
     fn system() -> Trak {
-        let sizes = [(12.0, 0.0), (13.0, -12.0), (14.0, -22.0), (24.0, 6.0), (28.0, 28.0), (32.0, 26.0), (36.0, 21.0)];
-        Trak { sizes: sizes.to_vec(), units_per_em: 2048.0 }
+        let sizes = [
+            (12.0, 0.0),
+            (13.0, -12.0),
+            (14.0, -22.0),
+            (24.0, 6.0),
+            (28.0, 28.0),
+            (32.0, 26.0),
+            (36.0, 21.0),
+        ];
+        Trak {
+            sizes: sizes.to_vec(),
+            units_per_em: 2048.0,
+        }
     }
 
     #[test]
@@ -121,7 +148,10 @@ mod tests {
         // Between listed sizes Core Text truncates and HarfRust rounds: 33 pt is 24.75 units.
         assert!((t.spacing(33.0, 33.0, true) - (24.0 - 25.0) * 33.0 / 2048.0).abs() < 1e-5);
         // An explicit optical size of 14 pt at 28 pt, 2x: 14 pt's -22 units, at the real size.
-        assert!((t.spacing(56.0, 14.0, true) - (-22.0 - t.units(56.0).round()) * 56.0 / 2048.0).abs() < 1e-5);
+        assert!(
+            (t.spacing(56.0, 14.0, true) - (-22.0 - t.units(56.0).round()) * 56.0 / 2048.0).abs()
+                < 1e-5
+        );
         // Beyond the table the ends hold.
         assert_eq!(t.units(8.0), 0.0);
         assert_eq!(t.units(500.0), 21.0);
@@ -142,7 +172,11 @@ mod tests {
             t.extend(((values + i * sizes.len() * 2) as u16).to_be_bytes());
         }
         t.extend(sizes.iter().flat_map(|&s| fixed(s)));
-        t.extend(tracks.iter().flat_map(|(_, v)| v.iter().flat_map(|v| v.to_be_bytes())));
+        t.extend(
+            tracks
+                .iter()
+                .flat_map(|(_, v)| v.iter().flat_map(|v| v.to_be_bytes())),
+        );
         t
     }
 
@@ -152,7 +186,9 @@ mod tests {
 
     /// Tracking that can't go wrong: finite, and 0 when there's no table.
     fn sane(t: Option<Trak>) -> f32 {
-        let spacing = t.map_or(0.0, |t| t.spacing(28.0, 14.0, true) + t.spacing(9.0, 9.0, false));
+        let spacing = t.map_or(0.0, |t| {
+            t.spacing(28.0, 14.0, true) + t.spacing(9.0, 9.0, false)
+        });
         assert!(spacing.is_finite(), "{spacing}");
         spacing
     }
@@ -160,9 +196,20 @@ mod tests {
     #[test]
     fn parse_reads_track_zero_or_interpolates_around_it() {
         let sizes = [12.0, 24.0];
-        let t = Trak::parse(&table(&[(-1.0, &[-40, -20]), (0.0, &[0, 10]), (1.0, &[40, 20])], &sizes), 2048).unwrap();
+        let t = Trak::parse(
+            &table(
+                &[(-1.0, &[-40, -20]), (0.0, &[0, 10]), (1.0, &[40, 20])],
+                &sizes,
+            ),
+            2048,
+        )
+        .unwrap();
         assert_eq!(t.sizes, [(12.0, 0.0), (24.0, 10.0)]);
-        let t = Trak::parse(&table(&[(-1.0, &[-40, -20]), (1.0, &[40, 60])], &sizes), 2048).unwrap();
+        let t = Trak::parse(
+            &table(&[(-1.0, &[-40, -20]), (1.0, &[40, 60])], &sizes),
+            2048,
+        )
+        .unwrap();
         assert_eq!(t.sizes, [(12.0, 0.0), (24.0, 20.0)]);
         let t = Trak::parse(&table(&[(0.5, &[8, 16])], &sizes), 2048).unwrap();
         assert_eq!(t.sizes, [(12.0, 8.0), (24.0, 16.0)]);
@@ -170,7 +217,10 @@ mod tests {
 
     #[test]
     fn malformed_tables_track_nothing_without_panicking() {
-        let good = table(&[(-1.0, &[-40, -20]), (0.0, &[0, 10]), (1.0, &[40, 20])], &[12.0, 24.0]);
+        let good = table(
+            &[(-1.0, &[-40, -20]), (0.0, &[0, 10]), (1.0, &[40, 20])],
+            &[12.0, 24.0],
+        );
         assert!(Trak::parse(&good, 0).is_none(), "zero units per em");
         for len in 0..good.len() {
             sane(Trak::parse(&good[..len], 2048));
@@ -187,11 +237,17 @@ mod tests {
         // Track 0's values out of bounds: it tracks by 0, as in HarfRust.
         let mut bad_values = good.clone();
         put(&mut bad_values, 20 + 8 + 6, &[0xff, 0xff]);
-        assert_eq!(Trak::parse(&bad_values, 2048).unwrap().sizes, [(12.0, 0.0), (24.0, 0.0)]);
+        assert_eq!(
+            Trak::parse(&bad_values, 2048).unwrap().sizes,
+            [(12.0, 0.0), (24.0, 0.0)]
+        );
         // A bad offset on a track that isn't used doesn't spoil the table.
         let mut bad_unused = good.clone();
         put(&mut bad_unused, 20 + 6, &[0xff, 0xff]);
-        assert_eq!(Trak::parse(&bad_unused, 2048).unwrap().sizes, [(12.0, 0.0), (24.0, 10.0)]);
+        assert_eq!(
+            Trak::parse(&bad_unused, 2048).unwrap().sizes,
+            [(12.0, 0.0), (24.0, 10.0)]
+        );
         for at in 0..good.len() {
             let mut t = good.clone();
             t[at] = 0xff;
@@ -206,6 +262,10 @@ pub(super) type Traks = HashMap<(u64, u32), Option<Rc<Trak>>>;
 pub(super) fn font_trak(traks: &mut Traks, data: &Blob<u8>, index: u32) -> Option<Rc<Trak>> {
     traks
         .entry((data.id(), index))
-        .or_insert_with(|| FontRef::from_index(data.as_ref(), index as usize).and_then(Trak::of).map(Rc::new))
+        .or_insert_with(|| {
+            FontRef::from_index(data.as_ref(), index as usize)
+                .and_then(Trak::of)
+                .map(Rc::new)
+        })
         .clone()
 }

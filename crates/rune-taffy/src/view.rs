@@ -1,14 +1,14 @@
 //! Low-level Taffy 0.15 solver trait implementations over [`LayoutStore`].
 
 use taffy::compute::{
-    compute_block_layout, compute_cached_layout, compute_flexbox_layout, compute_grid_layout, compute_hidden_layout,
-    compute_oof_layout,
+    compute_block_layout, compute_cached_layout, compute_flexbox_layout, compute_grid_layout,
+    compute_hidden_layout, compute_oof_layout,
 };
 use taffy::style::{CoreStyle, Display, Style};
 use taffy::tree::{
-    DetailedLayoutInfo, Layout, LayoutBlockContainer, LayoutContainingBlock, LayoutFlexboxContainer,
-    LayoutGridContainer, LayoutInput, LayoutOutput, LayoutPartialTree, NodeId, RunMode, TraversePartialTree,
-    TraverseTree,
+    DetailedLayoutInfo, Layout, LayoutBlockContainer, LayoutContainingBlock,
+    LayoutFlexboxContainer, LayoutGridContainer, LayoutInput, LayoutOutput, LayoutPartialTree,
+    NodeId, RunMode, TraversePartialTree, TraverseTree,
 };
 use taffy::{BlockContext, CacheTree, DetailedGridInfo};
 
@@ -121,7 +121,12 @@ where
         let s = self.slot(parent_node_id);
         debug_assert!(child_index < s.child_len() as usize);
         // SAFETY: Taffy calls `get_child_id` with `child_index < child_count(parent_node_id)`.
-        let child_slot = unsafe { *self.store.curr_children.get_unchecked(s.child_start as usize + child_index) };
+        let child_slot = unsafe {
+            *self
+                .store
+                .curr_children
+                .get_unchecked(s.child_start as usize + child_index)
+        };
         NodeId::new(child_slot as u64)
     }
 }
@@ -185,7 +190,10 @@ where
 
     #[inline(always)]
     fn get_detailed_layout_info(&self, node_id: NodeId) -> &DetailedLayoutInfo {
-        self.slot(node_id).grid_info.as_deref().unwrap_or(&NONE_DETAIL)
+        self.slot(node_id)
+            .grid_info
+            .as_deref()
+            .unwrap_or(&NONE_DETAIL)
     }
 }
 
@@ -292,6 +300,8 @@ where
 
     #[inline(always)]
     fn set_detailed_grid_info(&mut self, node_id: NodeId, detailed_grid_info: DetailedGridInfo) {
-        self.slot_mut(node_id).grid_info = Some(Box::new(DetailedLayoutInfo::Grid(Box::new(detailed_grid_info))));
+        self.slot_mut(node_id).grid_info = Some(Box::new(DetailedLayoutInfo::Grid(Box::new(
+            detailed_grid_info,
+        ))));
     }
 }

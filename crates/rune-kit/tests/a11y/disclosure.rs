@@ -13,12 +13,23 @@ fn disclosures(s: &App, _: &mut Cx<App>) -> El {
         .gap(8.0)
         .child(
             Accordion::new()
-                .item(AccordionItem::new("General").expanded(s.open).on_toggle(|s: &mut App| s.open = !s.open).child(text("Name and icon")))
+                .item(
+                    AccordionItem::new("General")
+                        .expanded(s.open)
+                        .on_toggle(|s: &mut App| s.open = !s.open)
+                        .child(text("Name and icon")),
+                )
                 .item(AccordionItem::new("Advanced").disabled(true))
                 .build(&k)
                 .key("accordion"),
         )
-        .child(Collapsible::new("Details", s.on).on_toggle(|s: &mut App| s.on = !s.on).child(text("More words")).build(&k).key("details"))
+        .child(
+            Collapsible::new("Details", s.on)
+                .on_toggle(|s: &mut App| s.on = !s.on)
+                .child(text("More words"))
+                .build(&k)
+                .key("details"),
+        )
 }
 
 #[test]
@@ -109,7 +120,11 @@ fn a_file_tree_reads_level_open_state_and_selection() {
     press_key(&mut rt, Key::Down);
     let tree = rt.accessibility_json();
     assert!(has(node(&tree, "src/lib.rs"), "selected"), "keys move the selection the tree reads");
-    assert_eq!(node(&tree, "files")["activeDescendant"], "src/lib.rs", "focus stays on the tree; a reader follows the cursor row");
+    assert_eq!(
+        node(&tree, "files")["activeDescendant"],
+        "src/lib.rs",
+        "focus stays on the tree; a reader follows the cursor row"
+    );
     press_key(&mut rt, Key::Left);
     press_key(&mut rt, Key::Left);
     assert!(!rt.state.files.is_expanded("src"));

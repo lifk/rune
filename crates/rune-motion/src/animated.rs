@@ -45,7 +45,10 @@ impl<T: Animatable> Animated<T> {
     /// Always merges; `anim.delay` and additive blending need the store.
     pub fn animate_to(&mut self, target: T, anim: impl Into<Anim>, now: f64) {
         let anim = anim.into();
-        debug_assert!(anim.delay == 0.0, "Animated doesn't schedule delays; use AnimationStore");
+        debug_assert!(
+            anim.delay == 0.0,
+            "Animated doesn't schedule delays; use AnimationStore"
+        );
         let tg = lanes(&target);
         let velocity = match anim.velocity {
             Velocity::Inherit => None,
@@ -58,7 +61,14 @@ impl<T: Animatable> Animated<T> {
         self.curve = anim.curve;
         for (i, &t) in tg.iter().enumerate().take(T::LANES) {
             let (o, v) = self.layers[i].sample(now);
-            self.restart_lane(i, self.target[i] + o, velocity.unwrap_or(v), t, anim.curve, now);
+            self.restart_lane(
+                i,
+                self.target[i] + o,
+                velocity.unwrap_or(v),
+                t,
+                anim.curve,
+                now,
+            );
         }
     }
 

@@ -30,28 +30,48 @@ impl<S: 'static> Runtime<S> {
         let mut anchors = Vec::new();
         for r in requests {
             if r.anchor {
-                let Some((i, to)) = self.anchor_offset(&r.key, r.y.unwrap_or(0.0)) else { continue };
+                let Some((i, to)) = self.anchor_offset(&r.key, r.y.unwrap_or(0.0)) else {
+                    continue;
+                };
                 jumps.push((self.nodes[i].id, false, to));
                 anchors.push((jumps.len() - 1, r.key, r.y.unwrap_or(0.0)));
-                if let Some(st) = self.scrolls.get_mut(&self.nodes[i].id) { st.halt(); }
+                if let Some(st) = self.scrolls.get_mut(&self.nodes[i].id) {
+                    st.halt();
+                }
                 continue;
             }
-            let Some(i) = self.scroll_viewport_on(&r.key, r.x.is_some(), r.y.is_some()) else { continue };
+            let Some(i) = self.scroll_viewport_on(&r.key, r.x.is_some(), r.y.is_some()) else {
+                continue;
+            };
             let (id, axes) = (self.nodes[i].id, self.nodes[i].scroll_axes);
-            let (view_w, view_h) = (f64::from(self.nodes[i].local.w), f64::from(self.nodes[i].local.h));
-            let Some(st) = self.scrolls.get_mut(&id) else { continue };
+            let (view_w, view_h) = (
+                f64::from(self.nodes[i].local.w),
+                f64::from(self.nodes[i].local.h),
+            );
+            let Some(st) = self.scrolls.get_mut(&id) else {
+                continue;
+            };
             let glide = r.glide.filter(|_| animate);
-            if glide.is_some() { st.spring = glide; }
+            if glide.is_some() {
+                st.spring = glide;
+            }
             if let Some(x) = r.x.filter(|_| axes.x()) {
                 let to = f64::from(x).max(0.0);
                 st.x.v = 0.0;
-                if let Some(spring) = glide && (to.min(st.x.max) - st.x.offset).abs() > 0.5 {
+                if let Some(spring) = glide
+                    && (to.min(st.x.max) - st.x.offset).abs() > 0.5
+                {
                     // A long trip cuts to a couple of viewports out first, as a glide to the bottom does.
                     let reach = scroll_bottom::GLIDE_REACH * view_w;
                     let end = to.min(st.x.max);
                     st.x.offset = st.x.offset.clamp(end - reach, end + reach);
                     st.x.aim = to;
-                    st.x.glide = Some(retarget_v(spring, st.x.offset, st.x.glide.unwrap_or(0.0), end));
+                    st.x.glide = Some(retarget_v(
+                        spring,
+                        st.x.offset,
+                        st.x.glide.unwrap_or(0.0),
+                        end,
+                    ));
                 } else {
                     st.x.glide = None;
                     jumps.push((id, true, to));
@@ -59,12 +79,17 @@ impl<S: 'static> Runtime<S> {
             }
             if let Some(y) = r.y.filter(|_| axes.y()) {
                 let to = f64::from(y).max(0.0);
-                if let Some(spring) = glide && (to.min(st.max) - st.offset).abs() > 0.5 {
+                if let Some(spring) = glide
+                    && (to.min(st.max) - st.offset).abs() > 0.5
+                {
                     let reach = scroll_bottom::GLIDE_REACH * view_h;
                     let end = to.min(st.max);
                     st.offset = st.offset.clamp(end - reach, end + reach);
                     let v = retarget_v(spring, st.offset, st.glide().unwrap_or(0.0), end);
-                    st.mode = ScrollMode::Glide { v, to: GlideTo::Offset(to) };
+                    st.mode = ScrollMode::Glide {
+                        v,
+                        to: GlideTo::Offset(to),
+                    };
                 } else {
                     st.halt();
                     jumps.push((id, false, to));
@@ -74,11 +99,15 @@ impl<S: 'static> Runtime<S> {
         self.apply_jumps(&jumps);
         // Landing mounts the virtual rows there, which measure and can move the end it clamped to.
         for _ in 0..3 {
-            if !self.virtual_window_changed() { break; }
+            if !self.virtual_window_changed() {
+                break;
+            }
             self.commit(&Tx::default());
             self.step_scroll(0.0);
             for (j, key, at) in &anchors {
-                if let Some((_, to)) = self.anchor_offset(key, *at) { jumps[*j].2 = to; }
+                if let Some((_, to)) = self.anchor_offset(key, *at) {
+                    jumps[*j].2 = to;
+                }
             }
             self.apply_jumps(&jumps);
         }
@@ -86,8 +115,15 @@ impl<S: 'static> Runtime<S> {
 
     fn apply_jumps(&mut self, jumps: &[(NodeId, bool, f64)]) {
         for &(id, horizontal, to) in jumps {
-            let stick = self.nodes.iter().find(|n| n.id == id).and_then(|n| n.scroll).is_some_and(|s| s.stick_bottom);
-            let Some(st) = self.scrolls.get_mut(&id) else { continue };
+            let stick = self
+                .nodes
+                .iter()
+                .find(|n| n.id == id)
+                .and_then(|n| n.scroll)
+                .is_some_and(|s| s.stick_bottom);
+            let Some(st) = self.scrolls.get_mut(&id) else {
+                continue;
+            };
             st.direct = true;
             let was = if horizontal { st.x.offset } else { st.offset };
             if horizontal {
@@ -96,16 +132,23 @@ impl<S: 'static> Runtime<S> {
                 st.offset = to.min(st.max);
                 // The jump halted the old motion when queued. Don't cancel a later
                 // request in the same transaction to glide from the new offset.
-                if st.glide().is_none() { st.land(stick); }
+                if st.glide().is_none() {
+                    st.land(stick);
+                }
             }
-            if (if horizontal { st.x.offset } else { st.offset } - was).abs() > 1e-3 { st.nudged = NUDGE_FRAMES; }
+            if (if horizontal { st.x.offset } else { st.offset } - was).abs() > 1e-3 {
+                st.nudged = NUDGE_FRAMES;
+            }
         }
     }
 
     /// The vertical viewport around the element or `TextHighlight` `key` and the offset that puts
     /// its top `at` points below the viewport's top, before clamping.
     fn anchor_offset(&self, key: &str, at: f32) -> Option<(usize, f64)> {
-        let top = self.nodes.iter().enumerate()
+        let top = self
+            .nodes
+            .iter()
+            .enumerate()
             .find_map(|(i, n)| (n.named(key) && !self.subtree_exiting(i)).then_some(n.target[1]))
             .or_else(|| {
                 let (i, [_, y0, _, _]) = self.highlight_target_in(&self.nodes, None, key)?;
@@ -118,9 +161,15 @@ impl<S: 'static> Runtime<S> {
     /// The viewport keyed (or pathed) `key`, or the nearest one around it, that scrolls
     /// horizontally (`x`) or vertically (`y`).
     fn scroll_viewport_on(&self, key: &str, x: bool, y: bool) -> Option<usize> {
-        let i = self.nodes.iter().enumerate()
+        let i = self
+            .nodes
+            .iter()
+            .enumerate()
             .position(|(i, n)| n.named(key) && !self.subtree_exiting(i))
-            .or_else(|| self.highlight_target_in(&self.nodes, None, key).map(|(i, _)| i))?;
+            .or_else(|| {
+                self.highlight_target_in(&self.nodes, None, key)
+                    .map(|(i, _)| i)
+            })?;
         std::iter::successors(Some(i), |&p| self.nodes[p].parent).find(|&p| {
             let n = &self.nodes[p];
             n.scroll.is_some() && ((x && n.scroll_axes.x()) || (y && n.scroll_axes.y()))
@@ -143,17 +192,42 @@ impl<S: 'static> Runtime<S> {
         let stack = self.stacks.get(&self.nodes[c].id)?;
         let moving = stack.moving || !stack.closing.is_empty();
         let path = &self.nodes[i].path;
-        let owned = self.keeps.iter().any(|k| k.viewport == *path) || self.scroll_reveals.iter().any(|r| r.viewport == *path);
-        let bottom = self.scroll_children(i).map(|k| self.nodes[k].target[3]).reduce(f32::max).unwrap_or(self.nodes[c].target[3]);
+        let owned = self.keeps.iter().any(|k| k.viewport == *path)
+            || self.scroll_reveals.iter().any(|r| r.viewport == *path);
+        let bottom = self
+            .scroll_children(i)
+            .map(|k| self.nodes[k].target[3])
+            .reduce(f32::max)
+            .unwrap_or(self.nodes[c].target[3]);
         let end = f64::from(bottom - self.nodes[i].target[3]).max(0.0);
         let held = self.reduced_motion || owned;
         let st = self.scrolls.get_mut(&self.nodes[i].id)?;
         st.shrink_cut = moving && (st.shrink_cut || st.direct || st.coast().abs() > 1.0);
         match st.mode {
-            ScrollMode::Glide { to: GlideTo::ShrunkEnd(_), .. } if held || st.shrink_cut || end >= st.offset => st.mode = ScrollMode::Rest,
-            ScrollMode::Glide { v, to: GlideTo::ShrunkEnd(_) } => st.mode = ScrollMode::Glide { v, to: GlideTo::ShrunkEnd(end) },
-            ScrollMode::Rest | ScrollMode::Momentum { .. } if moving && !(held || st.shrink_cut || st.offset > overflow || st.offset - end <= 0.5) => {
-                st.mode = ScrollMode::Glide { v: 0.0, to: GlideTo::ShrunkEnd(end) };
+            ScrollMode::Glide {
+                to: GlideTo::ShrunkEnd(_),
+                ..
+            } if held || st.shrink_cut || end >= st.offset => st.mode = ScrollMode::Rest,
+            ScrollMode::Glide {
+                v,
+                to: GlideTo::ShrunkEnd(_),
+            } => {
+                st.mode = ScrollMode::Glide {
+                    v,
+                    to: GlideTo::ShrunkEnd(end),
+                }
+            }
+            ScrollMode::Rest | ScrollMode::Momentum { .. }
+                if moving
+                    && !(held
+                        || st.shrink_cut
+                        || st.offset > overflow
+                        || st.offset - end <= 0.5) =>
+            {
+                st.mode = ScrollMode::Glide {
+                    v: 0.0,
+                    to: GlideTo::ShrunkEnd(end),
+                };
                 st.spring = None;
             }
             _ => {}
@@ -170,14 +244,24 @@ impl<S: 'static> Runtime<S> {
 pub(super) fn retarget_v(spring: Spring, offset: f64, v: f32, to: f64) -> f32 {
     let d = (offset - to) as f32;
     let most = spring.omega() * d.abs();
-    if v * d < 0.0 && v.abs() > most { -d.signum() * most } else { v }
+    if v * d < 0.0 && v.abs() > most {
+        -d.signum() * most
+    } else {
+        v
+    }
 }
 
 /// How near its end a glide lands, in points: its speed, in points a second, under 40 times that.
 const LAND: f32 = 0.1;
 
 /// Steps a glide on one axis toward `to` on `spring`. Returns whether it is still moving.
-pub(super) fn glide_axis(spring: Spring, offset: &mut f64, glide: &mut Option<f32>, to: f64, dt: f32) -> bool {
+pub(super) fn glide_axis(
+    spring: Spring,
+    offset: &mut f64,
+    glide: &mut Option<f32>,
+    to: f64,
+    dt: f32,
+) -> bool {
     let Some(v) = *glide else { return false };
     // Sample the displacement, not the absolute offset: f32 loses sub-point precision far down.
     let (d, v) = spring.sample((*offset - to) as f32, v, 0.0, dt);
@@ -241,23 +325,33 @@ impl ScrollState {
 
     /// Follow the bottom from here (a pinned viewport keeps how its end last stepped).
     pub(super) fn pin(&mut self) {
-        if !self.pinned() { self.mode = ScrollMode::Pinned; }
+        if !self.pinned() {
+            self.mode = ScrollMode::Pinned;
+        }
     }
 
     /// Stop following the bottom, where it stands.
     pub(super) fn unpin(&mut self) {
-        if self.pinned() { self.mode = ScrollMode::Rest; }
+        if self.pinned() {
+            self.mode = ScrollMode::Rest;
+        }
     }
 
     /// Momentum and any glide stop; a pinned viewport stays pinned.
     pub(super) fn halt(&mut self) {
-        if !self.pinned() { self.mode = ScrollMode::Rest; }
+        if !self.pinned() {
+            self.mode = ScrollMode::Rest;
+        }
     }
 
     /// A hand or an app put the offset where it is: momentum and any glide stop, and a
     /// stick-to-bottom viewport (`stick`) follows its end only if it sits there.
     pub(super) fn land(&mut self, stick: bool) {
-        if stick && self.offset >= self.max - 0.5 { self.pin() } else { self.mode = ScrollMode::Rest; }
+        if stick && self.offset >= self.max - 0.5 {
+            self.pin()
+        } else {
+            self.mode = ScrollMode::Rest;
+        }
     }
 }
 

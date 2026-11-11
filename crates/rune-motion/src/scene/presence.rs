@@ -36,7 +36,10 @@ impl Scene {
             return;
         }
         let parent = match spec.parent {
-            Some(p) => self.slot(p).unwrap_or_else(|| panic!("insert {id:?}: parent {p:?} isn't in the scene")) as u32,
+            Some(p) => self
+                .slot(p)
+                .unwrap_or_else(|| panic!("insert {id:?}: parent {p:?} isn't in the scene"))
+                as u32,
             None => NONE,
         };
         // A child rides an ancestor that is still mostly to come. Past half its entrance (and in
@@ -51,7 +54,9 @@ impl Scene {
         let rides_parent = {
             let mut a = parent;
             loop {
-                if a == NONE { break false; }
+                if a == NONE {
+                    break false;
+                }
                 match self.nodes[a as usize].phase {
                     Phase::Present if plain => a = self.nodes[a as usize].parent,
                     Phase::Present => break false,
@@ -76,7 +81,11 @@ impl Scene {
             radius: spec.radius,
             fill: spec.fill,
             transition: spec.transition,
-            phase: if animate { Phase::Entering } else { Phase::Present },
+            phase: if animate {
+                Phase::Entering
+            } else {
+                Phase::Present
+            },
             generation: 0,
             fx_a: fx_of(&ins),
             fx_b: FX_ID,
@@ -103,21 +112,45 @@ impl Scene {
             }
         };
         // Link as the last child (siblings keep insertion order).
-        let tail = if parent == NONE { self.root_tail } else { self.nodes[parent as usize].last_child };
+        let tail = if parent == NONE {
+            self.root_tail
+        } else {
+            self.nodes[parent as usize].last_child
+        };
         self.nodes[i as usize].prev_sibling = tail;
         if tail == NONE {
-            if parent == NONE { self.root_head = i; } else { self.nodes[parent as usize].first_child = i; }
+            if parent == NONE {
+                self.root_head = i;
+            } else {
+                self.nodes[parent as usize].first_child = i;
+            }
         } else {
             self.nodes[tail as usize].next_sibling = i;
         }
-        if parent == NONE { self.root_tail = i; } else { self.nodes[parent as usize].last_child = i; }
+        if parent == NONE {
+            self.root_tail = i;
+        } else {
+            self.nodes[parent as usize].last_child = i;
+        }
         self.index.insert(id.0, i);
         self.order_dirty = true;
         let enter = spec.transition.springs.enter;
         if animate {
             self.track_set(i as usize, prop::PRESENCE, 0.0);
-            let delay = if delay.is_finite() { delay.max(0.0) } else { 0.0 };
-            self.track_animate(i as usize, prop::PRESENCE, 1.0, Anim { delay, ..Anim::from(enter) });
+            let delay = if delay.is_finite() {
+                delay.max(0.0)
+            } else {
+                0.0
+            };
+            self.track_animate(
+                i as usize,
+                prop::PRESENCE,
+                1.0,
+                Anim {
+                    delay,
+                    ..Anim::from(enter)
+                },
+            );
             self.intent(id, Intent::TRANSITION | Intent::OPACITY, enter.duration);
         } else if !self.at_base(i as usize, prop::PRESENCE, 1.0) {
             self.track_set(i as usize, prop::PRESENCE, 1.0);
@@ -154,7 +187,9 @@ impl Scene {
         let target = fx_of(&rem);
         let n = &mut self.nodes[i];
         n.generation += 1;
-        n.phase = Phase::Exiting { generation: n.generation };
+        n.phase = Phase::Exiting {
+            generation: n.generation,
+        };
         if p >= 0.999 {
             n.fx_a = target;
             n.fx_b = FX_ID;
@@ -265,6 +300,8 @@ impl Scene {
     }
 
     fn presence_now(&self, i: usize) -> f32 {
-        self.nodes[i].tracks[prop::PRESENCE.id.0 as usize].and_then(|t| self.sample(t)).map_or(1.0, |(x, _)| x[0])
+        self.nodes[i].tracks[prop::PRESENCE.id.0 as usize]
+            .and_then(|t| self.sample(t))
+            .map_or(1.0, |(x, _)| x[0])
     }
 }

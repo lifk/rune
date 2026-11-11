@@ -8,7 +8,10 @@
 //! ```
 
 use rune::tok::{self, type_};
-use rune::{AppSpec, Color, Cx, El, Key, KeyEvent, Pixels, SurfaceFit, TextStyle, Transition, Tx, col, el, row, text};
+use rune::{
+    AppSpec, Color, Cx, El, Key, KeyEvent, Pixels, SurfaceFit, TextStyle, Transition, Tx, col, el,
+    row, text,
+};
 
 struct State {
     picked: usize,
@@ -29,7 +32,13 @@ const NAMES: [&str; 4] = ["Dusk", "Lake", "Haze", "Dune"];
 fn picture(i: usize) -> Pixels {
     let (w, h) = (320u32, 240u32);
     let (sky, ground, sun) = SCENES[i];
-    let mix = |a: [u8; 3], b: [u8; 3], t: f32| a.map(|v| v as f32).iter().zip(b).map(|(a, b)| a + (b as f32 - a) * t).collect::<Vec<_>>();
+    let mix = |a: [u8; 3], b: [u8; 3], t: f32| {
+        a.map(|v| v as f32)
+            .iter()
+            .zip(b)
+            .map(|(a, b)| a + (b as f32 - a) * t)
+            .collect::<Vec<_>>()
+    };
     let mut rgba = Vec::with_capacity((w * h * 4) as usize);
     for y in 0..h {
         for x in 0..w {
@@ -40,9 +49,17 @@ fn picture(i: usize) -> Pixels {
             let air = mix(sky, ground, (v / horizon).min(1.0).powf(2.2) * 0.5);
             let d = ((u - 0.3 - 0.12 * i as f32).powi(2) + ((v - 0.42) * 0.75).powi(2)).sqrt();
             let glow = (1.0 - (d / 0.16)).clamp(0.0, 1.0).powf(0.6);
-            let air: Vec<f32> = air.iter().zip(sun).map(|(a, b)| a + (b as f32 - a) * glow).collect();
+            let air: Vec<f32> = air
+                .iter()
+                .zip(sun)
+                .map(|(a, b)| a + (b as f32 - a) * glow)
+                .collect();
             let soil = mix(ground, [10, 10, 16], (v - horizon).max(0.0) * 1.6);
-            rgba.extend(air.iter().zip(soil).map(|(a, s)| (a + (s - a) * land).clamp(0.0, 255.0) as u8));
+            rgba.extend(
+                air.iter()
+                    .zip(soil)
+                    .map(|(a, s)| (a + (s - a) * land).clamp(0.0, 255.0) as u8),
+            );
             rgba.push(255);
         }
     }
@@ -52,42 +69,98 @@ fn picture(i: usize) -> Pixels {
 }
 
 fn init() -> State {
-    State { picked: 0, zoomed: false, pictures: std::array::from_fn(picture) }
+    State {
+        picked: 0,
+        zoomed: false,
+        pictures: std::array::from_fn(picture),
+    }
 }
 
 fn tile(s: &State, i: usize) -> El {
     let id = format!("tile-{}", i + 1);
-    let mut t = el().key(id.as_str()).matched(id.as_str()).grow(1.0).radius(20.0).clip_rounded(20.0)
+    let mut t = el()
+        .key(id.as_str())
+        .matched(id.as_str())
+        .grow(1.0)
+        .radius(20.0)
+        .clip_rounded(20.0)
         .fill(Color::BLACK)
         .on_press(move |s: &mut State| {
-            if s.zoomed { s.zoomed = false } else { (s.picked, s.zoomed) = (i, true) }
+            if s.zoomed {
+                s.zoomed = false
+            } else {
+                (s.picked, s.zoomed) = (i, true)
+            }
         })
-        .child(el().w_full().h_full().pixels_fit(&s.pictures[i], SurfaceFit::Fill))
-        .child(text(format!("{}  {}", i + 1, NAMES[i])).font(TextStyle::new(22.0, 600.0)).color(Color::WHITE).absolute(18.0, 14.0));
+        .child(
+            el().w_full()
+                .h_full()
+                .pixels_fit(&s.pictures[i], SurfaceFit::Fill),
+        )
+        .child(
+            text(format!("{}  {}", i + 1, NAMES[i]))
+                .font(TextStyle::new(22.0, 600.0))
+                .color(Color::WHITE)
+                .absolute(18.0, 14.0),
+        );
     if s.picked == i {
-        t = t.child(el().absolute(0.0, 0.0).w_full().h_full().radius(20.0).border(3.0, Color::WHITE));
+        t = t.child(
+            el().absolute(0.0, 0.0)
+                .w_full()
+                .h_full()
+                .radius(20.0)
+                .border(3.0, Color::WHITE),
+        );
     }
     t
 }
 
 fn view(s: &State, _: &mut Cx<State>) -> El {
     let theme = tok::theme(true);
-    let hint = text("1–4 pick    ↩ zoom    esc back").font(type_::LABEL).color(theme.text_secondary);
+    let hint = text("1–4 pick    ↩ zoom    esc back")
+        .font(type_::LABEL)
+        .color(theme.text_secondary);
     let stage = col().key("stage").w_full().grow(1.0);
     let stage = if s.zoomed {
         stage.child(tile(s, s.picked))
     } else {
         // The grid's own entrance and exit; the matched tile rides above it.
-        let pair = |a: usize| row().key(format!("row-{a}")).grow(1.0).gap(12.0).child(tile(s, a)).child(tile(s, a + 1));
-        stage.child(col().key("grid").grow(1.0).gap(12.0).transition(Transition::scale(0.96))
-            .child(pair(0)).child(pair(2)))
+        let pair = |a: usize| {
+            row()
+                .key(format!("row-{a}"))
+                .grow(1.0)
+                .gap(12.0)
+                .child(tile(s, a))
+                .child(tile(s, a + 1))
+        };
+        stage.child(
+            col()
+                .key("grid")
+                .grow(1.0)
+                .gap(12.0)
+                .transition(Transition::scale(0.96))
+                .child(pair(0))
+                .child(pair(2)),
+        )
     };
-    col().w_full().h_full().padding(24.0).gap(14.0).fill(theme.bg).child(hint).child(stage)
+    col()
+        .w_full()
+        .h_full()
+        .padding(24.0)
+        .gap(14.0)
+        .fill(theme.bg)
+        .child(hint)
+        .child(stage)
 }
 
 fn on_key(s: &mut State, e: &KeyEvent, _: &mut Tx) -> bool {
     match &e.key {
-        Key::Text(t) if !s.zoomed && let Some(n @ 1..=4) = t.parse::<usize>().ok() => s.picked = n - 1,
+        Key::Text(t)
+            if !s.zoomed
+                && let Some(n @ 1..=4) = t.parse::<usize>().ok() =>
+        {
+            s.picked = n - 1
+        }
         Key::Enter => s.zoomed = true,
         Key::Escape => s.zoomed = false,
         _ => return false,
@@ -118,7 +191,10 @@ mod tests {
         rt.update(|s, _| s.zoomed = true);
         rt.frame(1.0 / 120.0);
         let first = rt.presented("tile-4").unwrap().0;
-        assert!((first[0] - cell[0]).abs() < 8.0 && (first[2] - cell[2]).abs() < 8.0, "{cell:?} -> {first:?}");
+        assert!(
+            (first[0] - cell[0]).abs() < 8.0 && (first[2] - cell[2]).abs() < 8.0,
+            "{cell:?} -> {first:?}"
+        );
         for _ in 0..120 {
             rt.frame(1.0 / 60.0);
         }

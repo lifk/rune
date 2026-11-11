@@ -24,7 +24,12 @@ impl<S: 'static> Runtime<S> {
     /// `El::hold_landing_width` element whose width changes, and returns each such element's
     /// index with how far it shifts so its anchor child stays where it was drawn. `held` stays
     /// empty when nothing holds.
-    pub(super) fn landing_holds(&mut self, nodes: &[Node], animated: bool, held: &mut Vec<bool>) -> Vec<(usize, f32)> {
+    pub(super) fn landing_holds(
+        &mut self,
+        nodes: &[Node],
+        animated: bool,
+        held: &mut Vec<bool>,
+    ) -> Vec<(usize, f32)> {
         held.clear();
         let mut out = Vec::new();
         if !animated || self.reduced_motion {
@@ -35,17 +40,40 @@ impl<S: 'static> Runtime<S> {
             if !n.vis.cold.get().is_some_and(|c| c.hold_landing) || !self.scene.contains(n.id) {
                 continue;
             }
-            let Some(drawn) = self.scene.get(n.id, prop::FRAME) else { continue };
-            let was = self.scene.store().target(n.id, prop::FRAME).unwrap_or(drawn);
+            let Some(drawn) = self.scene.get(n.id, prop::FRAME) else {
+                continue;
+            };
+            let was = self
+                .scene
+                .store()
+                .target(n.id, prop::FRAME)
+                .unwrap_or(drawn);
             if (was.w - n.local.w).abs() < 0.5 {
                 continue;
             }
             let end = subtree_end(nodes, i);
             let present: Vec<usize> = (i + 1..end)
-                .filter(|&c| nodes[c].parent == Some(i) && self.scene.contains(nodes[c].id) && !self.is_exiting(nodes[c].id))
+                .filter(|&c| {
+                    nodes[c].parent == Some(i)
+                        && self.scene.contains(nodes[c].id)
+                        && !self.is_exiting(nodes[c].id)
+                })
                 .collect();
-            let anchor = present.iter().copied().find(|&c| last.find(&self.nodes, nodes[c].id).is_some_and(|o| self.drew(o))).or(present.first().copied());
-            let jump = anchor.and_then(|c| self.scene.get(nodes[c].id, prop::FRAME).map(|r| r.x - nodes[c].local.x)).unwrap_or(0.0);
+            let anchor = present
+                .iter()
+                .copied()
+                .find(|&c| {
+                    last.find(&self.nodes, nodes[c].id)
+                        .is_some_and(|o| self.drew(o))
+                })
+                .or(present.first().copied());
+            let jump = anchor
+                .and_then(|c| {
+                    self.scene
+                        .get(nodes[c].id, prop::FRAME)
+                        .map(|r| r.x - nodes[c].local.x)
+                })
+                .unwrap_or(0.0);
             held.resize(nodes.len(), false);
             for (j, h) in held.iter_mut().enumerate().take(end).skip(i) {
                 *h = true;
@@ -58,11 +86,14 @@ impl<S: 'static> Runtime<S> {
 
     /// Whether old node `o`, or anything under it, drew in the last build.
     fn drew(&self, o: usize) -> bool {
-        self.seen.len() == self.nodes.len() && (o..subtree_end(&self.nodes, o)).any(|j| self.seen[j])
+        self.seen.len() == self.nodes.len()
+            && (o..subtree_end(&self.nodes, o)).any(|j| self.seen[j])
     }
 }
 
 /// One past the last node of `i`'s subtree.
 fn subtree_end(nodes: &[Node], i: usize) -> usize {
-    (i + 1..nodes.len()).find(|&j| nodes[j].parent < Some(i)).unwrap_or(nodes.len())
+    (i + 1..nodes.len())
+        .find(|&j| nodes[j].parent < Some(i))
+        .unwrap_or(nodes.len())
 }

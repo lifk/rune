@@ -22,7 +22,11 @@ thread_local! {
 pub(crate) fn install(lua: &Lua) -> mlua::Result<()> {
     // SAFETY: `lua_callbacks` returns the VM's callback table, which lives as long as the VM; the
     // interrupt slot is a plain function pointer mlua leaves unset.
-    unsafe { lua.exec_raw::<()>((), |state| (*ffi::lua_callbacks(state)).interrupt = Some(interrupt)) }
+    unsafe {
+        lua.exec_raw::<()>((), |state| {
+            (*ffi::lua_callbacks(state)).interrupt = Some(interrupt)
+        })
+    }
 }
 /// Arms the deadline for one entry into a VM, unless an outer entry already did; dropping the
 /// guard disarms what it armed.

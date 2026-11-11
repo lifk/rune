@@ -31,11 +31,17 @@ pub(super) fn sniff(bytes: &[u8]) -> bool {
 }
 
 /// Decodes the first Vorbis or Opus track, handing `push` interleaved samples as they come.
-fn decode(bytes: Vec<u8>, push: &mut dyn FnMut(&[i16]) -> Result<(), String>) -> Result<Format, String> {
+fn decode(
+    bytes: Vec<u8>,
+    push: &mut dyn FnMut(&[i16]) -> Result<(), String>,
+) -> Result<Format, String> {
     let fail = |e: Error| format!("can't decode this audio: {e}");
     let ogg = bytes.starts_with(b"OggS");
     let stream = MediaSourceStream::new(Box::new(std::io::Cursor::new(bytes)), Default::default());
-    let options = FormatOptions { enable_gapless: true, ..Default::default() };
+    let options = FormatOptions {
+        enable_gapless: true,
+        ..Default::default()
+    };
     let mut format = symphonia::default::get_probe()
         .format(&Hint::new(), stream, &options, &MetadataOptions::default())
         .map_err(fail)?
@@ -49,9 +55,18 @@ fn decode(bytes: Vec<u8>, push: &mut dyn FnMut(&[i16]) -> Result<(), String>) ->
     let mut decoder = if params.codec == CODEC_TYPE_OPUS {
         Decoder::Opus(Opus::new(params.extra_data.as_deref().unwrap_or_default())?)
     } else {
-        Decoder::Vorbis(symphonia::default::get_codecs().make(&params, &DecoderOptions::default()).map_err(fail)?, None)
+        Decoder::Vorbis(
+            symphonia::default::get_codecs()
+                .make(&params, &DecoderOptions::default())
+                .map_err(fail)?,
+            None,
+        )
     };
-    let mut out = Format { rate: params.sample_rate.unwrap_or(48_000), channels: 0, keep: None };
+    let mut out = Format {
+        rate: params.sample_rate.unwrap_or(48_000),
+        channels: 0,
+        keep: None,
+    };
     loop {
         let packet = match format.next_packet() {
             Ok(packet) => packet,
@@ -67,7 +82,8 @@ fn decode(bytes: Vec<u8>, push: &mut dyn FnMut(&[i16]) -> Result<(), String>) ->
                     let spec = *audio.spec();
                     out.rate = spec.rate;
                     out.channels = spec.channels.count() as u16;
-                    let buffer = buffer.get_or_insert_with(|| SampleBuffer::new(audio.capacity() as u64, spec));
+                    let buffer = buffer
+                        .get_or_insert_with(|| SampleBuffer::new(audio.capacity() as u64, spec));
                     if buffer.capacity() < audio.capacity() * spec.channels.count() {
                         *buffer = SampleBuffer::new(audio.capacity() as u64, spec);
                     }
@@ -87,13 +103,17 @@ fn decode(bytes: Vec<u8>, push: &mut dyn FnMut(&[i16]) -> Result<(), String>) ->
     }
     // Ogg Opus ends at its last granule position, which counts the pre-skip (RFC 7845 §4).
     if let (Decoder::Opus(o), Some(end), true) = (&decoder, params.n_frames, ogg) {
-        out.keep = Some(end.saturating_sub(o.pre_skip as u64) * o.channels as u64).filter(|&keep| keep > 0);
+        out.keep = Some(end.saturating_sub(o.pre_skip as u64) * o.channels as u64)
+            .filter(|&keep| keep > 0);
     }
     Ok(out)
 }
 
 enum Decoder {
-    Vorbis(Box<dyn symphonia::core::codecs::Decoder>, Option<SampleBuffer<i16>>),
+    Vorbis(
+        Box<dyn symphonia::core::codecs::Decoder>,
+        Option<SampleBuffer<i16>>,
+    ),
     Opus(Opus),
 }
 
@@ -116,15 +136,29 @@ impl Opus {
         }
         let channels = head[9] as usize;
         if head[18] != 0 || !(1..=2).contains(&channels) {
-            return Err(format!("Opus with {channels} channels isn't supported (mono and stereo are)"));
+            return Err(format!(
+                "Opus with {channels} channels isn't supported (mono and stereo are)"
+            ));
         }
         let pre_skip = u16::from_le_bytes([head[10], head[11]]) as usize;
         let gain_db = i16::from_le_bytes([head[16], head[17]]) as f32 / 256.0;
-        let layout = if channels == 1 { opuscule::Channels::Mono } else { opuscule::Channels::Stereo };
+        let layout = if channels == 1 {
+            opuscule::Channels::Mono
+        } else {
+            opuscule::Channels::Stereo
+        };
         let decoder = opuscule::Decoder::new(opuscule::SampleRate::Hz48000, layout);
         // 120 ms, the longest packet.
         let buffer = vec![0.0; 5760 * channels];
-        Ok(Self { decoder, channels, pre_skip, skip: pre_skip, gain: 10f32.powf(gain_db / 20.0), buffer, out: Vec::new() })
+        Ok(Self {
+            decoder,
+            channels,
+            pre_skip,
+            skip: pre_skip,
+            gain: 10f32.powf(gain_db / 20.0),
+            buffer,
+            out: Vec::new(),
+        })
     }
 
     fn decode(&mut self, packet: &[u8]) -> Result<&[i16], String> {
@@ -139,7 +173,11 @@ impl Opus {
         self.skip -= start;
         let gain = self.gain;
         let samples = &self.buffer[start * self.channels..frames * self.channels];
-        self.out.extend(samples.iter().map(|s| ((s * gain).clamp(-1.0, 1.0) * 32767.0) as i16));
+        self.out.extend(
+            samples
+                .iter()
+                .map(|s| ((s * gain).clamp(-1.0, 1.0) * 32767.0) as i16),
+        );
         Ok(&self.out)
     }
 }
@@ -147,10 +185,13 @@ impl Opus {
 /// The 44-byte header of a 16-bit PCM WAV holding `samples` interleaved samples.
 fn header(rate: u32, channels: u16, samples: u64) -> Result<[u8; 44], String> {
     let too_long = || TOO_LONG.to_string();
-    let data = u32::try_from(samples.checked_mul(2).ok_or_else(too_long)?).map_err(|_| too_long())?;
+    let data =
+        u32::try_from(samples.checked_mul(2).ok_or_else(too_long)?).map_err(|_| too_long())?;
     let riff = data.checked_add(36).ok_or_else(too_long)?;
     let block = channels.checked_mul(2).ok_or("too many channels")?;
-    let byte_rate = rate.checked_mul(block as u32).ok_or("sample rate too high")?;
+    let byte_rate = rate
+        .checked_mul(block as u32)
+        .ok_or("sample rate too high")?;
     let mut h = [0u8; 44];
     let fields: [&[u8]; 12] = [
         b"RIFF",
@@ -188,7 +229,11 @@ impl Wav {
         }
         std::fs::create_dir_all(&dir).map_err(io)?;
         // Removes the file again on any failure below.
-        let wav = Self(dir.join(format!("{}-{}.wav", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed))));
+        let wav = Self(dir.join(format!(
+            "{}-{}.wav",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        )));
         let mut out = BufWriter::new(std::fs::File::create(&wav.0).map_err(io)?);
         out.write_all(&[0; 44]).map_err(io)?;
         let (mut samples, mut bytes_out) = (0u64, Vec::new());
@@ -208,7 +253,9 @@ impl Wav {
         let header = header(format.rate, format.channels, samples)?;
         let mut file = out.into_inner().map_err(|e| io(e.into_error()))?;
         file.set_len(44 + samples * 2).map_err(io)?;
-        file.seek(SeekFrom::Start(0)).and_then(|_| file.write_all(&header)).map_err(io)?;
+        file.seek(SeekFrom::Start(0))
+            .and_then(|_| file.write_all(&header))
+            .map_err(io)?;
         Ok(wav)
     }
 
@@ -225,10 +272,15 @@ impl Drop for Wav {
 
 /// Removes files a process that didn't exit cleanly left a day or more ago.
 fn sweep(dir: &Path) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     let day = std::time::Duration::from_secs(24 * 60 * 60);
     for entry in entries.flatten() {
-        let old = entry.metadata().and_then(|m| m.modified()).is_ok_and(|t| t.elapsed().is_ok_and(|age| age > day));
+        let old = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .is_ok_and(|t| t.elapsed().is_ok_and(|age| age > day));
         if old {
             let _ = std::fs::remove_file(entry.path());
         }
@@ -240,23 +292,41 @@ mod tests {
     use super::*;
 
     fn fixture(name: &str) -> Vec<u8> {
-        std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name)).unwrap()
+        std::fs::read(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures")
+                .join(name),
+        )
+        .unwrap()
     }
 
     /// A WAV's rate, channels and samples, checking its sizes agree with the file.
     fn read(path: &Path) -> (u32, u16, Vec<i16>) {
         let b = std::fs::read(path).unwrap();
         let u32_at = |i: usize| u32::from_le_bytes(b[i..i + 4].try_into().unwrap());
-        assert_eq!((&b[..4], &b[8..16], &b[36..40]), (&b"RIFF"[..], &b"WAVEfmt "[..], &b"data"[..]));
-        assert_eq!((u32_at(4) as usize, u32_at(40) as usize), (b.len() - 8, b.len() - 44));
-        let samples = b[44..].chunks(2).map(|s| i16::from_le_bytes([s[0], s[1]])).collect();
+        assert_eq!(
+            (&b[..4], &b[8..16], &b[36..40]),
+            (&b"RIFF"[..], &b"WAVEfmt "[..], &b"data"[..])
+        );
+        assert_eq!(
+            (u32_at(4) as usize, u32_at(40) as usize),
+            (b.len() - 8, b.len() - 44)
+        );
+        let samples = b[44..]
+            .chunks(2)
+            .map(|s| i16::from_le_bytes([s[0], s[1]]))
+            .collect();
         (u32_at(24), u16::from_le_bytes([b[22], b[23]]), samples)
     }
 
     /// Each fixture is 0.5 s of a 440 Hz sine.
     #[test]
     fn decodes_ogg_vorbis_ogg_opus_and_webm_opus() {
-        for (name, rate, channels) in [("sine-vorbis.ogg", 22_050, 2), ("sine-opus.ogg", 48_000, 1), ("sine-opus.webm", 48_000, 1)] {
+        for (name, rate, channels) in [
+            ("sine-vorbis.ogg", 22_050, 2),
+            ("sine-opus.ogg", 48_000, 1),
+            ("sine-opus.webm", 48_000, 1),
+        ] {
             let bytes = fixture(name);
             assert!(sniff(&bytes), "{name}");
             let wav = Wav::decode(bytes).unwrap_or_else(|e| panic!("{name}: {e}"));
@@ -265,11 +335,20 @@ mod tests {
             let duration = samples.len() as f64 / channels as f64 / rate as f64;
             assert!((duration - 0.5).abs() < 0.03, "{name}: {duration}");
             if name == "sine-opus.ogg" {
-                assert_eq!(samples.len(), 24_000, "Ogg's pre-skip and end trim, each applied once");
+                assert_eq!(
+                    samples.len(),
+                    24_000,
+                    "Ogg's pre-skip and end trim, each applied once"
+                );
             }
             // A sine, not silence: 1/8 amplitude (lavfi's default), RMS ~0.09.
             let mid = &samples[samples.len() / 4..samples.len() * 3 / 4];
-            let rms = (mid.iter().map(|&s| (s as f64 / 32768.0).powi(2)).sum::<f64>() / mid.len() as f64).sqrt();
+            let rms = (mid
+                .iter()
+                .map(|&s| (s as f64 / 32768.0).powi(2))
+                .sum::<f64>()
+                / mid.len() as f64)
+                .sqrt();
             assert!((0.05..0.6).contains(&rms), "{name}: rms {rms}");
             let path = wav.path().to_owned();
             drop(wav);

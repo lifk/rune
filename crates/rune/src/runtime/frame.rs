@@ -5,17 +5,24 @@ impl<S: 'static> Runtime<S> {
     /// Clock seconds now: the wall clock in a window (input arrives between frames), the
     /// virtual clock headless.
     pub(super) fn now_clock(&self) -> f64 {
-        self.wall_start.map_or(self.clock, |t| t.elapsed().as_secs_f64())
+        self.wall_start
+            .map_or(self.clock, |t| t.elapsed().as_secs_f64())
     }
 
     pub fn set_viewport(&mut self, viewport: (f32, f32), scale: f32) {
         // Someone resized a window that fits its content (not a page's band): back to its height.
-        if self.fit_height && !self.page.on && self.window_resting && (self.fit_asked.unwrap_or(self.viewport.1) - viewport.1).abs() > 0.5 {
+        if self.fit_height
+            && !self.page.on
+            && self.window_resting
+            && (self.fit_asked.unwrap_or(self.viewport.1) - viewport.1).abs() > 0.5
+        {
             self.fit_asked = None;
             self.relayout = true;
             self.viewport_stepped = false;
         }
-        if self.change_viewport(viewport, scale) { self.viewport_stepped = false; }
+        if self.change_viewport(viewport, scale) {
+            self.viewport_stepped = false;
+        }
     }
 
     /// The viewport one frame of the window's own resize animation moved it to. Unlike a
@@ -23,7 +30,9 @@ impl<S: 'static> Runtime<S> {
     /// springs keep going.
     pub(crate) fn step_viewport(&mut self, viewport: (f32, f32), scale: f32) {
         let fresh = !self.relayout;
-        if self.change_viewport(viewport, scale) && fresh { self.viewport_stepped = true; }
+        if self.change_viewport(viewport, scale) && fresh {
+            self.viewport_stepped = true;
+        }
     }
 
     /// Whether the change needs a layout.
@@ -36,7 +45,9 @@ impl<S: 'static> Runtime<S> {
         }
         let changed = viewport != self.viewport || scale != self.env.scale;
         if changed {
-            if scale != self.env.scale { self.flights.clear(); }
+            if scale != self.env.scale {
+                self.flights.clear();
+            }
             self.viewport = viewport;
             self.env.scale = scale;
             self.scene.set_pixel_scale(scale);
@@ -46,27 +57,47 @@ impl<S: 'static> Runtime<S> {
     }
 
     /// Whether the window has the keyboard focus, as its last focus event said.
-    pub(crate) fn has_window_focus(&self) -> bool { self.window_focused == Some(true) }
+    pub(crate) fn has_window_focus(&self) -> bool {
+        self.window_focused == Some(true)
+    }
 
     /// Queue a native focus transition. Repeated notifications do not repeat the callback.
     /// Losing focus is also `keys_lost`.
     pub fn window_focus(&mut self, focused: bool) {
         // Every focus gain, even one a hide without blur left unreported.
-        if focused { self.keys_lost = false; }
+        if focused {
+            self.keys_lost = false;
+        }
         if self.window_focused != Some(focused) {
             // Refocused, the pointer where it was hovers again; blurred, it waits for a move.
-            if focused && self.window_focused == Some(false) { self.hover_paused = false; }
+            if focused && self.window_focused == Some(false) {
+                self.hover_paused = false;
+            }
             // A focused field's selection takes its active or inactive pair (`El::selection_style`).
-            if self.window_focused.is_some() && self.focused_input().is_some_and(|i| i.selection_style.is_some()) { self.dirty = true; }
+            if self.window_focused.is_some()
+                && self
+                    .focused_input()
+                    .is_some_and(|i| i.selection_style.is_some())
+            {
+                self.dirty = true;
+            }
             self.window_focused = Some(focused);
-            if let Some(f) = self.on_focus { self.update(|s, tx| f(s, focused, tx)); }
+            if let Some(f) = self.on_focus {
+                self.update(|s, tx| f(s, focused, tx));
+            }
             // Deliver the cancelled Up before FocusLost can commit a view that removes its
             // grip (or the focus callback clears the app's drag state).
             if !focused {
                 self.cancel_pointer();
                 self.held = physical_dispatch::Activation::Up;
             }
-            if self.commits == 0 || self.dirty || self.nodes.get(self.app_root()).is_some_and(|n| n.handlers.on_window_focus.is_some()) {
+            if self.commits == 0
+                || self.dirty
+                || self
+                    .nodes
+                    .get(self.app_root())
+                    .is_some_and(|n| n.handlers.on_window_focus.is_some())
+            {
                 self.queue.push(Action::WindowFocus(focused));
             }
             if !focused {
@@ -80,7 +111,10 @@ impl<S: 'static> Runtime<S> {
                 }
             }
         }
-        if !focused { self.input_click.clear(); self.wheel_lost(); }
+        if !focused {
+            self.input_click.clear();
+            self.wheel_lost();
+        }
     }
 
     /// The window gets no more keys: it lost focus or hid, which may never report a blur. The
@@ -88,14 +122,26 @@ impl<S: 'static> Runtime<S> {
     /// until the window has focus again. A hidden host steps `hidden_timer_frame` while
     /// `keys_queued` to deliver them.
     pub(crate) fn keys_lost(&mut self) {
-        if std::mem::replace(&mut self.keys_lost, true) { return; }
+        if std::mem::replace(&mut self.keys_lost, true) {
+            return;
+        }
         self.physical_input(crate::PhysicalInput::FocusLost);
     }
 
     /// Keyboard input, a focus change, a file drag step or a file dialog answer is queued for the
     /// next frame.
     pub(crate) fn keys_queued(&self) -> bool {
-        self.queue.iter().any(|a| matches!(a, Action::Physical(..) | Action::Key { .. } | Action::KeyUp(_) | Action::WindowFocus(_) | Action::Files(_) | Action::FileDialog(..)))
+        self.queue.iter().any(|a| {
+            matches!(
+                a,
+                Action::Physical(..)
+                    | Action::Key { .. }
+                    | Action::KeyUp(_)
+                    | Action::WindowFocus(_)
+                    | Action::Files(_)
+                    | Action::FileDialog(..)
+            )
+        })
     }
 
     /// The last committed frame is out of date: state changed (an update, poll or handler), or
@@ -126,7 +172,10 @@ impl<S: 'static> Runtime<S> {
     /// (`AppHandle::update`). Runs now, so it works while no window shows; the next frame commits
     /// it with the motion `f` asked for.
     pub fn update(&mut self, f: impl FnOnce(&mut S, &mut Tx)) {
-        self.update_if(|s, tx| { f(s, tx); true });
+        self.update_if(|s, tx| {
+            f(s, tx);
+            true
+        });
     }
 
     /// `update` for a change that may be no change: `f` returns whether it changed state the
@@ -141,9 +190,18 @@ impl<S: 'static> Runtime<S> {
     /// next change.
     pub fn update_if(&mut self, f: impl FnOnce(&mut S, &mut Tx) -> bool) -> bool {
         // Its wakes count from now (`schedule_pending_wakes`), so its clock reads now too.
-        let mut one = Tx { clock: self.now_clock(), ..self.transaction() };
-        let changed = crate::tooling::perf_warn::timed("an `update` closure", || f(&mut self.state, &mut one));
-        let stale = changed || one.frame_work() || one.window_frame.is_some() || one.srgb_blend.is_some_and(|b| b != self.srgb_blend) || one.font_smoothing.is_some_and(|m| m != self.text.smoothing)
+        let mut one = Tx {
+            clock: self.now_clock(),
+            ..self.transaction()
+        };
+        let changed = crate::tooling::perf_warn::timed("an `update` closure", || {
+            f(&mut self.state, &mut one)
+        });
+        let stale = changed
+            || one.frame_work()
+            || one.window_frame.is_some()
+            || one.srgb_blend.is_some_and(|b| b != self.srgb_blend)
+            || one.font_smoothing.is_some_and(|m| m != self.text.smoothing)
             || self.changes_families(&one)
             || (one.blur && self.focus.path().is_some());
         self.latch_requests(&mut one);
@@ -171,12 +229,24 @@ impl<S: 'static> Runtime<S> {
         if let Some(fullscreen) = tx.fullscreen.take() {
             self.fullscreen_request = Some(fullscreen);
         }
-        for ev in std::mem::take(&mut tx.keys) { self.key(ev); }
+        for ev in std::mem::take(&mut tx.keys) {
+            self.key(ev);
+        }
         self.latch_playground(tx);
-        for prefix in std::mem::take(&mut tx.evict_memos) { self.invalidate_memos_by_prefix(&prefix); }
-        if !tx.open_urls.is_empty() { self.open_urls(std::mem::take(&mut tx.open_urls)); }
+        for prefix in std::mem::take(&mut tx.evict_memos) {
+            self.invalidate_memos_by_prefix(&prefix);
+        }
+        if !tx.open_urls.is_empty() {
+            self.open_urls(std::mem::take(&mut tx.open_urls));
+        }
         if std::mem::take(&mut tx.clear_secret) {
-            if self.copy_request.as_ref().is_some_and(crate::ClipboardWrite::is_secret) { self.copy_request = None; }
+            if self
+                .copy_request
+                .as_ref()
+                .is_some_and(crate::ClipboardWrite::is_secret)
+            {
+                self.copy_request = None;
+            }
             self.clear_secret_request = true;
             self.pill_copy = None;
         }
@@ -189,26 +259,39 @@ impl<S: 'static> Runtime<S> {
                     let frag = crate::TextEdit::from_html(h);
                     (
                         zeroize::Zeroizing::new(copy.content().text().to_owned()),
-                        frag.pills().map(|(r, id)| (r, id.to_owned())).collect::<Vec<_>>(),
+                        frag.pills()
+                            .map(|(r, id)| (r, id.to_owned()))
+                            .collect::<Vec<_>>(),
                     )
                 })
                 .filter(|(_, pills)| !pills.is_empty());
             self.copy_request = Some(copy);
         }
-        if std::mem::take(&mut tx.paste) { self.paste_request = Some(self.paste_target()); }
+        if std::mem::take(&mut tx.paste) {
+            self.paste_request = Some(self.paste_target());
+        }
         for read in tx.clipboard_reads.drain(..).filter_map(|read| read.take()) {
             self.next_clipboard_read += 1;
             self.clipboard_reads.push((self.next_clipboard_read, read));
             self.read_requests.push(self.next_clipboard_read);
         }
-        self.popups.extend(tx.popups.drain(..).filter_map(|call| call.take()));
+        self.popups
+            .extend(tx.popups.drain(..).filter_map(|call| call.take()));
         for request in tx.file_dialogs.drain(..).filter_map(|call| call.take()) {
             self.request_file_dialog(request);
         }
-        if let Some(mode) = tx.font_smoothing.take() { self.set_font_smoothing(mode); }
-        if let Some((sans, mono)) = tx.font_families.take() { self.set_font_families(&sans, &mono); }
-        if let Some(srgb) = tx.srgb_blend.take() { self.set_srgb_blend(srgb); }
-        if let Some(rewind) = tx.rewind.take() { self.rewind = rewind; }
+        if let Some(mode) = tx.font_smoothing.take() {
+            self.set_font_smoothing(mode);
+        }
+        if let Some((sans, mono)) = tx.font_families.take() {
+            self.set_font_families(&sans, &mono);
+        }
+        if let Some(srgb) = tx.srgb_blend.take() {
+            self.set_srgb_blend(srgb);
+        }
+        if let Some(rewind) = tx.rewind.take() {
+            self.rewind = rewind;
+        }
         if std::mem::take(&mut tx.blur) {
             if self.focus.path().is_some() {
                 self.set_focus(None, self.focus.keyboard());
@@ -221,9 +304,12 @@ impl<S: 'static> Runtime<S> {
             self.focus_request = Some(request);
             self.dirty = true;
         }
-        if let Some(title) = tx.title.take() { self.window_title.set(title); }
+        if let Some(title) = tx.title.take() {
+            self.window_title.set(title);
+        }
         if let Some(mut request) = tx.window_frame.take() {
-            request.spring = (request.animate && !tx.instant && !self.reduced_motion).then(|| tx.motion.unwrap_or(motion::DEFAULT));
+            request.spring = (request.animate && !tx.instant && !self.reduced_motion)
+                .then(|| tx.motion.unwrap_or(motion::DEFAULT));
             self.window_frame = Some(self.window_frame.unwrap_or_default().merge(request));
         }
         crate::clipboard::flush_memory(self);
@@ -247,33 +333,57 @@ impl<S: 'static> Runtime<S> {
         self.schedule_wakes_from(self.clock, wakes);
     }
 
-    pub(super) fn schedule_wakes_from(&mut self, now: f64, wakes: impl IntoIterator<Item = std::time::Duration>) {
+    pub(super) fn schedule_wakes_from(
+        &mut self,
+        now: f64,
+        wakes: impl IntoIterator<Item = std::time::Duration>,
+    ) {
         for delay in wakes {
             let deadline = now + delay.as_secs_f64();
-            if let Err(index) = self.wake_deadlines.binary_search_by(|t| t.total_cmp(&deadline)) {
+            if let Err(index) = self
+                .wake_deadlines
+                .binary_search_by(|t| t.total_cmp(&deadline))
+            {
                 self.wake_deadlines.insert(index, deadline);
             }
         }
     }
 
-    pub fn tracing(&self) -> bool { self.trace_channels.is_some() || self.scene.tracing() }
+    pub fn tracing(&self) -> bool {
+        self.trace_channels.is_some() || self.scene.tracing()
+    }
 
     pub(super) fn transaction(&self) -> Tx {
-        Tx { trace: self.tracing().then(crate::el::TraceCalls::default), mods: self.held_mods, selection: self.selection_snapshot(),
-            input_time: crate::input::time::current(), clock: self.clock, focus_visible: self.focus.keyboard(), ..Tx::default() }
+        Tx {
+            trace: self.tracing().then(crate::el::TraceCalls::default),
+            mods: self.held_mods,
+            selection: self.selection_snapshot(),
+            input_time: crate::input::time::current(),
+            clock: self.clock,
+            focus_visible: self.focus.keyboard(),
+            ..Tx::default()
+        }
     }
 
     /// A scalar from the actual draw path (e.g. `shell.width`). Values hold until resampled.
     /// Call before the tooling writer records the frame; scene traces sample in `frame`.
     pub fn trace_channel(&mut self, name: &'static str, kind: &'static str, value: f32) {
-        if let Some(channels) = &mut self.trace_channels { channels.insert(name, (kind, value)); }
-        if let Some(trace) = self.scene.trace_mut() { trace.channel(name, kind, value); }
+        if let Some(channels) = &mut self.trace_channels {
+            channels.insert(name, (kind, value));
+        }
+        if let Some(trace) = self.scene.trace_mut() {
+            trace.channel(name, kind, value);
+        }
     }
 
     /// Queues an app marker once for each attached writer. Formatting is skipped when off.
     pub fn trace_event(&mut self, event: impl std::fmt::Display) {
-        if self.trace_channels.is_some() { event_log::push(&mut self.events, event.to_string()); }
-        if let Some(trace) = self.scene.trace_mut() { trace.event(event); }
+        if self.trace_channels.is_some() {
+            event_log::push(&mut self.events, event.to_string());
+        }
+        if let Some(trace) = self.scene.trace_mut() {
+            trace.event(event);
+        }
     }
 
     /// Next requested wake on the unscaled app clock. None lets the shell sleep indefinitely.
@@ -283,7 +393,9 @@ impl<S: 'static> Runtime<S> {
 
     /// The native window or overlay's frame counts; `None` headless.
     pub fn surface_stats(&self) -> Option<crate::SurfaceStats> {
-        self.surface_stats.as_deref().map(crate::frame::surface_stats::read)
+        self.surface_stats
+            .as_deref()
+            .map(crate::frame::surface_stats::read)
     }
 
     /// When `poll` last ran, on `wake_deadline`'s clock.
@@ -292,7 +404,12 @@ impl<S: 'static> Runtime<S> {
     }
 
     pub(super) fn logical_wake_deadline(&self) -> Option<f64> {
-        self.wake_deadlines.first().copied().into_iter().chain(self.loop_wake.map(|w| w.0)).min_by(f64::total_cmp)
+        self.wake_deadlines
+            .first()
+            .copied()
+            .into_iter()
+            .chain(self.loop_wake.map(|w| w.0))
+            .min_by(f64::total_cmp)
     }
 
     /// Lands every track before the next frame: growth, reveals and follow-the-end (guarantee 8,
@@ -319,7 +436,9 @@ impl<S: 'static> Runtime<S> {
     /// is ordered in and its first drawable taken. Lands every track, as showing does.
     /// Returns whether it built; the first frame then has nothing left to build.
     pub(crate) fn build_for_show(&mut self) -> bool {
-        if !self.fit_height || self.commits == 0 || !self.stale() { return false; }
+        if !self.fit_height || self.commits == 0 || !self.stale() {
+            return false;
+        }
         self.settle_all();
         self.hidden_timer_frame();
         true
@@ -334,7 +453,9 @@ impl<S: 'static> Runtime<S> {
             let commits = self.stats.commits;
             self.hidden_timer_frame();
             // File steps held for that frame's build land in another.
-            if self.files_held() { self.hidden_timer_frame(); }
+            if self.files_held() {
+                self.hidden_timer_frame();
+            }
             return self.stats.commits != commits;
         }
         self.poll_hidden()
@@ -391,7 +512,9 @@ impl<S: 'static> Runtime<S> {
         let mut live_woke = self.take_live_wake();
         // Another window may have switched the font families since this one's last frame.
         self.follow_font_families();
-        for v in self.virtuals.values_mut() { v.frame_begins(); }
+        for v in self.virtuals.values_mut() {
+            v.frame_begins();
+        }
         #[cfg(feature = "hot")]
         if self.hot.as_mut().is_some_and(crate::hot::Session::changed) {
             // Replace handler trait objects before queued input can call an old vtable.
@@ -419,29 +542,49 @@ impl<S: 'static> Runtime<S> {
         {
             // Native shells cap dt after idle. Advance the sleeping part of the
             // delay before new handlers retarget, without double-stepping manual time.
-            let elapsed = animation_time - (deadline - self.clock).max(0.0) * self.time_scale as f64;
+            let elapsed =
+                animation_time - (deadline - self.clock).max(0.0) * self.time_scale as f64;
             self.t += (elapsed - self.t - (catch_up + dt) * self.time_scale as f64).max(0.0);
             self.scene.set_time(self.t);
-            if self.clock >= deadline { self.loop_wake = None; }
+            if self.clock >= deadline {
+                self.loop_wake = None;
+            }
         }
         // Bring old tracks, growth and scroll to this frame's time before a poll or update
         // retargets them. Presenting waits for `step_motion`, so the frame is sampled and
         // built once.
-        if catch_up > 0.0 { self.catch_up_motion(catch_up); }
+        if catch_up > 0.0 {
+            self.catch_up_motion(catch_up);
+        }
         self.keep_loops_on_clock(dt);
-        let polled = self.timer_wake.frame_polled(self.wake_deadlines.first().is_some_and(|t| *t <= self.clock));
+        let polled = self.timer_wake.frame_polled(
+            self.wake_deadlines
+                .first()
+                .is_some_and(|t| *t <= self.clock),
+        );
         let due = self.wake_deadlines.partition_point(|t| *t <= self.clock);
         self.idle_frame_begins(polled || due > 0, live_woke);
         self.wake_deadlines.drain(..due);
         self.fire_hover_delays();
         self.fire_press_repeat();
         let (wake, redraw) = crate::spell::pause::tick(&mut self.spell_watch, self.clock);
-        if let Some(at) = wake { self.schedule_wakes([std::time::Duration::from_secs_f64((at - self.clock).max(0.0))]); }
-        if redraw { self.dirty = true; }
+        if let Some(at) = wake {
+            self.schedule_wakes([std::time::Duration::from_secs_f64(
+                (at - self.clock).max(0.0),
+            )]);
+        }
+        if redraw {
+            self.dirty = true;
+        }
         if let Some(poll) = self.poll.filter(|_| !polled) {
             let mut one = self.transaction();
             // Scheduling does not imply a model change.
-            if self.idle_meter.polled(crate::tooling::perf_warn::timed("poll", || app_call!(poll, &mut self.state, self.clock, &mut one))) {
+            if self
+                .idle_meter
+                .polled(crate::tooling::perf_warn::timed("poll", || {
+                    app_call!(poll, &mut self.state, self.clock, &mut one)
+                }))
+            {
                 ran = true;
                 why |= CommitWhy::POLL;
                 self.watch.meter.poll();
@@ -457,7 +600,12 @@ impl<S: 'static> Runtime<S> {
             }
             merge(&mut tx, one);
         }
-        if self.commits == 0 && self.queue.iter().any(|a| matches!(a, Action::WindowFocus(_))) {
+        if self.commits == 0
+            && self
+                .queue
+                .iter()
+                .any(|a| matches!(a, Action::WindowFocus(_)))
+        {
             self.commit(&Tx::default());
         }
         let mut ran_layout = false;
@@ -480,20 +628,43 @@ impl<S: 'static> Runtime<S> {
             // the previous field. The same boundary covers an earlier handler, and lets a
             // file drag find only what is mounted and reachable now (a covered window builds
             // nothing until this).
-            let routed = matches!(&action, Action::Key { .. } | Action::KeyUp(_) | Action::Physical(..) | Action::Ime(_) | Action::Paste(..) | Action::Files(_));
+            let routed = matches!(
+                &action,
+                Action::Key { .. }
+                    | Action::KeyUp(_)
+                    | Action::Physical(..)
+                    | Action::Ime(_)
+                    | Action::Paste(..)
+                    | Action::Files(_)
+            );
             // So is a playground an earlier handler opened or moved.
-            if routed { self.latch_playground(&mut tx); }
+            if routed {
+                self.latch_playground(&mut tx);
+            }
             if (ran || self.dirty || !tx.scroll_to.is_empty()) && routed {
                 if ran || self.dirty {
                     self.capture_flights(&mut tx);
-                    if self.settle { tx.settle(); }
+                    if self.settle {
+                        tx.settle();
+                    }
                     self.settled |= tx.settle;
                     #[cfg(debug_assertions)]
-                    if ran_other || self.dirty || ran_layout { self.live_check = None; }
+                    if ran_other || self.dirty || ran_layout {
+                        self.live_check = None;
+                    }
                     self.capture_keeps(&mut tx);
-                    self.commit_for(&tx, std::mem::take(&mut why) | CommitWhy::ROUTE | if self.dirty { CommitWhy::DIRTY } else { 0 });
+                    self.commit_for(
+                        &tx,
+                        std::mem::take(&mut why)
+                            | CommitWhy::ROUTE
+                            | if self.dirty { CommitWhy::DIRTY } else { 0 },
+                    );
                     #[cfg(debug_assertions)]
-                    { let check = self.live_check.take(); self.compare_live_check(check); ran_other = false; }
+                    {
+                        let check = self.live_check.take();
+                        self.compare_live_check(check);
+                        ran_other = false;
+                    }
                     self.apply_keeps();
                     ran = false;
                 }
@@ -505,20 +676,32 @@ impl<S: 'static> Runtime<S> {
                 }
             }
             // A selection an earlier handler asked for is what this key copies.
-            if matches!(action, Action::Key { .. } | Action::Physical(..)) && let Some(request) = tx.select.take() {
+            if matches!(action, Action::Key { .. } | Action::Physical(..))
+                && let Some(request) = tx.select.take()
+            {
                 let from_change = std::mem::take(&mut tx.select_from_change);
                 self.apply_select_request(request, from_change);
             }
-            if matches!(action, Action::Layout(..) | Action::ScreenLayout(..) | Action::DrawnLayout(_, _, false) | Action::VisibleRows(..)) {
+            if matches!(
+                action,
+                Action::Layout(..)
+                    | Action::ScreenLayout(..)
+                    | Action::DrawnLayout(_, _, false)
+                    | Action::VisibleRows(..)
+            ) {
                 ran_layout |= self.run_action(action, &mut tx);
             } else {
                 #[cfg(debug_assertions)]
                 let checks = self.live_checks;
                 let r = self.run_action(action, &mut tx);
                 #[cfg(debug_assertions)]
-                { ran_other |= r && checks == self.live_checks; }
+                {
+                    ran_other |= r && checks == self.live_checks;
+                }
                 ran |= r;
-                if r { why |= CommitWhy::INPUT; }
+                if r {
+                    why |= CommitWhy::INPUT;
+                }
             }
             self.run_pick_reads(&mut tx);
         }
@@ -528,21 +711,34 @@ impl<S: 'static> Runtime<S> {
             let checks = self.live_checks;
             let r = self.run_action(action, &mut tx);
             #[cfg(debug_assertions)]
-            { ran_other |= r && checks == self.live_checks; }
-            if r { ran = true; why |= CommitWhy::INPUT; }
+            {
+                ran_other |= r && checks == self.live_checks;
+            }
+            if r {
+                ran = true;
+                why |= CommitWhy::INPUT;
+            }
         }
         let mut open_urls = std::mem::take(&mut tx.open_urls);
         self.latch_requests(&mut tx);
         // A handler asked for a menu: the hover it takes ends in this commit, not a frame later.
         if self.release_pointer_for_popup() {
             for queued in std::mem::take(&mut self.queue) {
-                if !matches!(queued.action, Action::HoverChange(..)) { self.queue.push_queued(queued); continue; }
+                if !matches!(queued.action, Action::HoverChange(..)) {
+                    self.queue.push_queued(queued);
+                    continue;
+                }
                 #[cfg(debug_assertions)]
                 let checks = self.live_checks;
                 let r = self.run_action(queued.action, &mut tx);
                 #[cfg(debug_assertions)]
-                { ran_other |= r && checks == self.live_checks; }
-                if r { ran = true; why |= CommitWhy::INPUT; }
+                {
+                    ran_other |= r && checks == self.live_checks;
+                }
+                if r {
+                    ran = true;
+                    why |= CommitWhy::INPUT;
+                }
             }
             open_urls.extend(std::mem::take(&mut tx.open_urls));
             self.latch_requests(&mut tx);
@@ -550,36 +746,60 @@ impl<S: 'static> Runtime<S> {
         self.release_files();
         self.schedule_wakes(tx.wakes.drain(..));
         self.capture_flights(&mut tx);
-        if self.caret_watch && self.caret_moved(None) { self.dirty = true; }
+        if self.caret_watch && self.caret_moved(None) {
+            self.dirty = true;
+        }
         let read_moved = self.layout_reads_moved();
         self.reuse.read_moved = read_moved;
-        if self.has_pixel_aspect && self.pixel_aspect_changed() { self.relayout = true; }
-        let shifted = !(self.dirty || self.relayout || self.settle) && self.virtual_window_changed();
+        if self.has_pixel_aspect && self.pixel_aspect_changed() {
+            self.relayout = true;
+        }
+        let shifted =
+            !(self.dirty || self.relayout || self.settle) && self.virtual_window_changed();
         let besides = self.dirty || self.relayout || self.settle || shifted;
         let other = ran || besides;
         self.count_layout_echo(ran_layout || read_moved, other);
         if other || ran_layout || read_moved {
             if self.relayout && !ran && !self.dirty {
-                if self.viewport_stepped { tx.window_step = true } else { tx.relayout = true }
+                if self.viewport_stepped {
+                    tx.window_step = true
+                } else {
+                    tx.relayout = true
+                }
             }
             if self.settle {
                 tx.instant = true;
                 tx.settle = true;
             }
             self.settled = tx.settle;
-            self.state_unchanged = !ran && !self.dirty && !ran_layout && !self.settle && self.commits > 0;
+            self.state_unchanged =
+                !ran && !self.dirty && !ran_layout && !self.settle && self.commits > 0;
             #[cfg(debug_assertions)]
-            if ran_other || besides || ran_layout || read_moved { self.live_check = None; }
+            if ran_other || besides || ran_layout || read_moved {
+                self.live_check = None;
+            }
             self.capture_keeps(&mut tx);
             let flag = |on: bool, bit: u16| if on { bit } else { 0 };
-            self.commit_for(&tx, why | flag(self.dirty, CommitWhy::DIRTY) | flag(self.relayout, CommitWhy::RELAYOUT) | flag(self.settle, CommitWhy::SETTLE)
-                | flag(shifted, CommitWhy::VIRTUAL) | flag(ran_layout, CommitWhy::LAYOUT) | flag(read_moved, CommitWhy::READ));
+            self.commit_for(
+                &tx,
+                why | flag(self.dirty, CommitWhy::DIRTY)
+                    | flag(self.relayout, CommitWhy::RELAYOUT)
+                    | flag(self.settle, CommitWhy::SETTLE)
+                    | flag(shifted, CommitWhy::VIRTUAL)
+                    | flag(ran_layout, CommitWhy::LAYOUT)
+                    | flag(read_moved, CommitWhy::READ),
+            );
             #[cfg(debug_assertions)]
-            { let check = self.live_check.take(); self.compare_live_check(check); }
+            {
+                let check = self.live_check.take();
+                self.compare_live_check(check);
+            }
             self.apply_keeps();
         }
         #[cfg(debug_assertions)]
-        { self.live_check = None; }
+        {
+            self.live_check = None;
+        }
         tx.keep_on_screen.clear();
         let mut scroll_to = std::mem::take(&mut tx.scroll_to);
         for key in std::mem::take(&mut tx.focus_keys) {
@@ -588,11 +808,21 @@ impl<S: 'static> Runtime<S> {
             }
         }
         for (path, v) in &mut self.virtuals {
-            if let Some(key) = v.reveal_selected.take() && !pointer_hover {
+            if let Some(key) = v.reveal_selected.take()
+                && !pointer_hover
+            {
                 // Use the keyed ancestor path so identical row keys in other lists do not
                 // intercept the reveal, including when this row is still virtual.
-                let scope = path.split('/').filter(|seg| !seg.starts_with('#')).collect::<Vec<_>>().join("/");
-                let key = if scope.is_empty() { key } else { format!("{scope}/{key}") };
+                let scope = path
+                    .split('/')
+                    .filter(|seg| !seg.starts_with('#'))
+                    .collect::<Vec<_>>()
+                    .join("/");
+                let key = if scope.is_empty() {
+                    key
+                } else {
+                    format!("{scope}/{key}")
+                };
                 scroll_to.push(ScrollReveal::into_view(None, key));
             }
         }
@@ -600,28 +830,56 @@ impl<S: 'static> Runtime<S> {
         let scroll_pages = std::mem::take(&mut tx.scroll_pages);
         let mut scroll_offsets = std::mem::take(&mut tx.scroll_offsets);
         if tx.instant {
-            for (_, animated) in &mut scroll_bottom { *animated = false; }
-            for r in &mut scroll_offsets { r.glide = None; }
+            for (_, animated) in &mut scroll_bottom {
+                *animated = false;
+            }
+            for r in &mut scroll_offsets {
+                r.glide = None;
+            }
         }
         #[cfg(debug_assertions)]
-        self.watch_frame(commits0, scroll_offsets.iter().find(|r| r.glide.is_none()).map(|r| r.key.as_str()));
+        self.watch_frame(
+            commits0,
+            scroll_offsets
+                .iter()
+                .find(|r| r.glide.is_none())
+                .map(|r| r.key.as_str()),
+        );
         let follow = std::mem::take(&mut self.caret_follow);
-        let destination = !scroll_bottom.is_empty() || !scroll_pages.is_empty() || !scroll_offsets.is_empty();
+        let destination =
+            !scroll_bottom.is_empty() || !scroll_pages.is_empty() || !scroll_offsets.is_empty();
         if !scroll_to.is_empty() || destination || follow {
             self.drop_scroll_holds();
         }
-        for r in &scroll_to { self.reveal_row(r, tx.instant); }
+        for r in &scroll_to {
+            self.reveal_row(r, tx.instant);
+        }
         if destination || follow {
             self.step_scroll(0.0);
         }
-        if follow { self.follow_caret(); }
-        if !scroll_bottom.is_empty() { self.scroll_to_bottom(scroll_bottom); }
-        if !scroll_pages.is_empty() { self.scroll_pages(scroll_pages); }
-        if !scroll_offsets.is_empty() { self.scroll_to_offsets(scroll_offsets); }
+        if follow {
+            self.follow_caret();
+        }
+        if !scroll_bottom.is_empty() {
+            self.scroll_to_bottom(scroll_bottom);
+        }
+        if !scroll_pages.is_empty() {
+            self.scroll_pages(scroll_pages);
+        }
+        if !scroll_offsets.is_empty() {
+            self.scroll_to_offsets(scroll_offsets);
+        }
         // Explicit destinations processed after a reveal win for its entire lifetime.
-        if destination { self.scroll_reveals.clear(); }
+        if destination {
+            self.scroll_reveals.clear();
+        }
         // Those scrolls moved the caret after the commit a view placed from it saw.
-        if self.caret_watch && self.caret_moved(None) { self.commit(&Tx { instant: true, ..Tx::default() }); }
+        if self.caret_watch && self.caret_moved(None) {
+            self.commit(&Tx {
+                instant: true,
+                ..Tx::default()
+            });
+        }
         if let Some(request) = tx.select.take() {
             let from_change = std::mem::take(&mut tx.select_from_change);
             self.apply_select_request(request, from_change);
@@ -631,13 +889,19 @@ impl<S: 'static> Runtime<S> {
         self.queue.extend(changes);
         self.update_interaction(None);
         #[cfg(test)]
-        if let Some(publish) = tests::MID_FRAME.with(|hook| hook.borrow_mut().take()) { publish(); }
+        if let Some(publish) = tests::MID_FRAME.with(|hook| hook.borrow_mut().take()) {
+            publish();
+        }
         // Poll and input can publish after the initial wake read without committing. Sample
         // those values now, but retain the wake: a picture may still need next frame's layout.
         let live_animating = self.latch_live(live_woke || self.live_pending());
         if let Some(trace) = tx.trace.take() {
-            for event in trace.events { self.trace_event(event); }
-            for (name, kind, value) in trace.channels { self.trace_channel(name, kind, value); }
+            for event in trace.events {
+                self.trace_event(event);
+            }
+            for (name, kind, value) in trace.channels {
+                self.trace_channel(name, kind, value);
+            }
         }
         self.fit_held = std::mem::take(&mut self.fit_hold);
         let dt = if self.fit_held { 0.0 } else { dt };
@@ -645,13 +909,21 @@ impl<S: 'static> Runtime<S> {
         let animating = self.step_motion(dt, instant_scroll) || live_animating;
         self.stats.shaped = self.text.shaped - shaped0;
         let filling = self.virtual_filling();
-        if live_animating { self.anim_sources |= AnimSource::LIVE; }
-        if self.time_scale <= 0.0 { self.anim_sources = 0; }
-        if filling { self.anim_sources |= AnimSource::VIRTUAL_FILL; }
+        if live_animating {
+            self.anim_sources |= AnimSource::LIVE;
+        }
+        if self.time_scale <= 0.0 {
+            self.anim_sources = 0;
+        }
+        if filling {
+            self.anim_sources |= AnimSource::VIRTUAL_FILL;
+        }
         self.animating = (animating && self.time_scale > 0.0) || filling;
         self.idle_frame_ends();
         self.interaction_built();
-        if !open_urls.is_empty() { self.open_urls(open_urls); }
+        if !open_urls.is_empty() {
+            self.open_urls(open_urls);
+        }
         self.animating
     }
 
@@ -659,9 +931,13 @@ impl<S: 'static> Runtime<S> {
     /// frame then runs at exactly that time, however long the host slept. A hidden window
     /// sleeps through it; showing it settles.
     fn wake_for_motion(&mut self, at: f64) {
-        if !self.surface_visible || self.time_scale <= 0.0 { return; }
+        if !self.surface_visible || self.time_scale <= 0.0 {
+            return;
+        }
         let wake = self.clock + (at - self.t).max(0.0) / self.time_scale as f64;
-        if self.loop_wake.is_none_or(|w| wake < w.0) { self.loop_wake = Some((wake, at)); }
+        if self.loop_wake.is_none_or(|w| wake < w.0) {
+            self.loop_wake = Some((wake, at));
+        }
     }
 
     pub(super) fn catch_up_motion(&mut self, dt: f64) {
@@ -687,7 +963,8 @@ impl<S: 'static> Runtime<S> {
             }
         }
         for (id, track) in &self.loops {
-            if let Some([x, y]) = track.offset(self.scene.store().node_time(*id), self.reduced_motion)
+            if let Some([x, y]) =
+                track.offset(self.scene.store().node_time(*id), self.reduced_motion)
                 && let Some(n) = self.node_index.get(id).map(|&i| &self.nodes[i])
             {
                 let offset = rune_motion::Vec2::new(x * n.local.w, y * n.local.h);
@@ -701,8 +978,14 @@ impl<S: 'static> Runtime<S> {
         let (mut animating, exited) = (out.animating, !out.exited.is_empty());
         // Tracks that only wait for a delayed start (`El::enter_delay`, a delayed `Anim`)
         // draw nothing new until it: sleep, and wake for it after the build.
-        let mut waits = if animating { self.scene.store().waiting_until() } else { None };
-        if waits.is_some() { animating = false; }
+        let mut waits = if animating {
+            self.scene.store().waiting_until()
+        } else {
+            None
+        };
+        if waits.is_some() {
+            animating = false;
+        }
         let mut sources = if animating { AnimSource::TRACKS } else { 0 };
         if exited {
             self.prune_exited();
@@ -713,35 +996,59 @@ impl<S: 'static> Runtime<S> {
             let before = self.flying.len();
             // Screen travel ends once it lands and no ancestor still moves. An exiting flight
             // stays lifted until it's gone.
-            self.flying.retain(|(id, _)| scene.store().has(*id, prop::TRAVEL)
-                || matches!(scene.phase(*id), Some(PresencePhase::Exiting { .. })));
+            self.flying.retain(|(id, _)| {
+                scene.store().has(*id, prop::TRAVEL)
+                    || matches!(scene.phase(*id), Some(PresencePhase::Exiting { .. }))
+            });
             if self.flying.len() != before {
                 self.launches.keep(&self.flying);
                 self.update_layer_paint_order();
             }
         }
-        let mut source = |on: bool, bit: u16| { if on { sources |= bit; } on };
+        let mut source = |on: bool, bit: u16| {
+            if on {
+                sources |= bit;
+            }
+            on
+        };
         animating |= source(self.step_growth(step as f32), AnimSource::GROWTH);
         animating |= source(self.step_scroll(step as f32), AnimSource::SCROLL);
         animating |= source(self.step_nudges(), AnimSource::SCROLL);
-        for stack in self.stacks.values_mut() { stack.grown = 0.0; }
+        for stack in self.stacks.values_mut() {
+            stack.grown = 0.0;
+        }
         animating |= source(self.reveals_active(), AnimSource::REVEAL);
         // Values set from `on_scroll_offset` show in the frame that scrolled.
         if self.tell_scroll_offsets(instant_scroll) {
             let live = self.latch_live(self.take_live_wake());
-            if live { sources |= AnimSource::LIVE; }
+            if live {
+                sources |= AnimSource::LIVE;
+            }
             let running = self.scene.store().running();
-            waits = running.then(|| self.scene.store().waiting_until()).flatten();
-            if running && waits.is_none() { sources |= AnimSource::TRACKS; } else { sources &= !AnimSource::TRACKS; }
+            waits = running
+                .then(|| self.scene.store().waiting_until())
+                .flatten();
+            if running && waits.is_none() {
+                sources |= AnimSource::TRACKS;
+            } else {
+                sources &= !AnimSource::TRACKS;
+            }
             animating = sources != 0;
             self.scene.present();
         }
-        let mut source = |on: bool, bit: u16| { if on { sources |= bit; } on };
+        let mut source = |on: bool, bit: u16| {
+            if on {
+                sources |= bit;
+            }
+            on
+        };
         self.begin_exit_mask();
         animating |= self.build();
         // Compensate drawn motion, leaving unrelated layout and growth springs alone.
         for _ in 0..3 {
-            if !self.follow_keeps() { break; }
+            if !self.follow_keeps() {
+                break;
+            }
             animating |= self.build();
         }
         self.finish_keeps();
@@ -754,10 +1061,15 @@ impl<S: 'static> Runtime<S> {
         self.end_exit_mask();
         self.record_rewind();
         animating |= source(self.loops_active, AnimSource::LOOP);
-        animating |= source(self.static_scale_settling || self.pixel_snap.easing(), AnimSource::SCALE_SETTLE);
+        animating |= source(
+            self.static_scale_settling || self.pixel_snap.easing(),
+            AnimSource::SCALE_SETTLE,
+        );
         animating |= source(self.videos_active, AnimSource::VIDEO);
         animating |= source(self.draw_text_flights(), AnimSource::TEXT_FLIGHT);
-        if let Some(at) = waits { self.wake_for_motion(at); }
+        if let Some(at) = waits {
+            self.wake_for_motion(at);
+        }
         self.images.end_frame();
         if self.track_marks {
             self.marks.resize(self.instances.len(), 0);
@@ -774,7 +1086,9 @@ impl<S: 'static> Runtime<S> {
                 && let (Some(ratio), Some(pixels)) = (&mut cold.pixel_aspect, &n.vis.pixels)
             {
                 let now = pixel_ratio(pixels);
-                if now != *ratio { self.aspect_snap.push(n.id); }
+                if now != *ratio {
+                    self.aspect_snap.push(n.id);
+                }
                 *ratio = now;
             }
         }
@@ -792,10 +1106,15 @@ impl<S: 'static> Runtime<S> {
         // the rows they're stuck over and anchored overlays and modals over both.
         let rank = |i: usize| {
             let nd = &self.nodes[i];
-            let place = if !self.has_sticky { 0 }
-                else if nd.above.is_some() || nd.handlers.modal.is_some() { 2 }
-                else if self.sticky_of(i).is_some() { 1 }
-                else { 0 };
+            let place = if !self.has_sticky {
+                0
+            } else if nd.above.is_some() || nd.handlers.modal.is_some() {
+                2
+            } else if self.sticky_of(i).is_some() {
+                1
+            } else {
+                0
+            };
             (nd.vis.paint_order, place)
         };
         if self.has_sticky || self.has_paint_order {
@@ -803,16 +1122,24 @@ impl<S: 'static> Runtime<S> {
             ranks.sort_unstable();
             for &(_, i) in ranks.iter().rev() {
                 let parent = self.nodes[i].parent.map_or(0, |p| p + 1);
-                next[i] = first[parent]; first[parent] = i;
+                next[i] = first[parent];
+                first[parent] = i;
             }
         } else {
             for i in (0..n).rev() {
                 let parent = self.nodes[i].parent.map_or(0, |p| p + 1);
-                next[i] = first[parent]; first[parent] = i;
+                next[i] = first[parent];
+                first[parent] = i;
             }
         }
-        let mut lifted: Vec<usize> = self.flying.iter().filter_map(|(id, _)| self.node_index.get(id).copied()).collect();
-        if self.has_raise { lifted.extend((0..n).filter(|&i| self.nodes[i].vis_flags.raise())); }
+        let mut lifted: Vec<usize> = self
+            .flying
+            .iter()
+            .filter_map(|(id, _)| self.node_index.get(id).copied())
+            .collect();
+        if self.has_raise {
+            lifted.extend((0..n).filter(|&i| self.nodes[i].vis_flags.raise()));
+        }
         lifted.sort_unstable();
         lifted.dedup();
         self.layer_paint_order.clear();
@@ -822,15 +1149,32 @@ impl<S: 'static> Runtime<S> {
                 // A flying subtree paints in its own pass, not where the tree reaches it.
                 if top == Some(i) || lifted.binary_search(&i).is_err() {
                     self.layer_paint_order.push(i);
-                    if first[i + 1] < n { i = first[i + 1]; continue; }
+                    if first[i + 1] < n {
+                        i = first[i + 1];
+                        continue;
+                    }
                 }
                 loop {
-                    if top == Some(i) { i = n; break; }
-                    if next[i] < n { i = next[i]; break; }
-                    match self.nodes[i].parent { Some(parent) => i = parent, None => { i = n; break; } }
+                    if top == Some(i) {
+                        i = n;
+                        break;
+                    }
+                    if next[i] < n {
+                        i = next[i];
+                        break;
+                    }
+                    match self.nodes[i].parent {
+                        Some(parent) => i = parent,
+                        None => {
+                            i = n;
+                            break;
+                        }
+                    }
                 }
             }
         }
-        if self.layer_paint_order.iter().copied().eq(0..n) { self.layer_paint_order.clear(); }
+        if self.layer_paint_order.iter().copied().eq(0..n) {
+            self.layer_paint_order.clear();
+        }
     }
 }

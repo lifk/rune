@@ -129,7 +129,15 @@ impl<T: Send + 'static> Latest<T> {
 
     fn with(waker: Option<Waker>) -> Self {
         let inner = Arc::new(Inner {
-            slot: Mutex::new(Slot { generation: 0, settled: 0, next: None, driven: false, answer: None, key: None, waker }),
+            slot: Mutex::new(Slot {
+                generation: 0,
+                settled: 0,
+                next: None,
+                driven: false,
+                answer: None,
+                key: None,
+                waker,
+            }),
             changed: Condvar::new(),
         });
         Latest {
@@ -177,7 +185,11 @@ impl<T: Send + 'static> Latest<T> {
     /// `None`, nothing lands and the waker doesn't fire, so `poll` doesn't run for it. The
     /// request still supersedes the older ones, so their answers stay dropped, and it stops
     /// being [pending](Latest::is_pending).
-    pub fn request_opt<K: Send + 'static>(&self, input: K, work: impl FnOnce(K) -> Option<T> + Send + 'static) {
+    pub fn request_opt<K: Send + 'static>(
+        &self,
+        input: K,
+        work: impl FnOnce(K) -> Option<T> + Send + 'static,
+    ) {
         let slot = self.inner.slot.lock().unwrap();
         self.enqueue(slot, None, Box::new(move || work(input)));
     }
@@ -203,11 +215,20 @@ impl<T: Send + 'static> Latest<T> {
         work: impl FnOnce(K) -> T + Send + 'static,
     ) {
         let slot = self.inner.slot.lock().unwrap();
-        if slot.key.as_ref().and_then(|k| k.downcast_ref::<K>()).is_some_and(|last| last == key) {
+        if slot
+            .key
+            .as_ref()
+            .and_then(|k| k.downcast_ref::<K>())
+            .is_some_and(|last| last == key)
+        {
             return;
         }
         let input = key.clone();
-        self.enqueue(slot, Some(Box::new(key.clone())), Box::new(move || Some(work(input))));
+        self.enqueue(
+            slot,
+            Some(Box::new(key.clone())),
+            Box::new(move || Some(work(input))),
+        );
     }
 
     fn enqueue(
@@ -223,7 +244,11 @@ impl<T: Send + 'static> Latest<T> {
         #[cfg(not(target_arch = "wasm32"))]
         {
             let due = crate::time::Instant::now() + self.debounce;
-            slot.next = Some(Job { generation, due, work });
+            slot.next = Some(Job {
+                generation,
+                due,
+                work,
+            });
             self.inner.changed.notify_all();
             if !slot.driven {
                 slot.driven = true;
@@ -303,7 +328,8 @@ impl<T> Inner<T> {
 async fn sleep(wait: Duration) {
     let ms = wait.as_millis().min(i32::MAX as u128) as i32;
     let promise = js_sys::Promise::new(&mut |resolve, _| {
-        let set = web_sys::window().map(|w| w.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, ms));
+        let set = web_sys::window()
+            .map(|w| w.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, ms));
         if !matches!(set, Some(Ok(_))) {
             let _ = resolve.call0(&wasm_bindgen::JsValue::NULL);
         }

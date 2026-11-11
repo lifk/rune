@@ -3,10 +3,14 @@
 use std::cell::RefCell;
 
 use windows::Win32::Globalization::{
-    CORRECTIVE_ACTION_GET_SUGGESTIONS, CORRECTIVE_ACTION_REPLACE, GetLocaleInfoEx, GetUserPreferredUILanguages, ISpellChecker,
-    ISpellCheckerFactory, ISpellingError, LOCALE_SENGLISHDISPLAYNAME, MUI_LANGUAGE_NAME, SpellCheckerFactory,
+    CORRECTIVE_ACTION_GET_SUGGESTIONS, CORRECTIVE_ACTION_REPLACE, GetLocaleInfoEx,
+    GetUserPreferredUILanguages, ISpellChecker, ISpellCheckerFactory, ISpellingError,
+    LOCALE_SENGLISHDISPLAYNAME, MUI_LANGUAGE_NAME, SpellCheckerFactory,
 };
-use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx, CoTaskMemFree, IEnumString};
+use windows::Win32::System::Com::{
+    CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
+    CoTaskMemFree, IEnumString,
+};
 use windows::core::{HSTRING, PCWSTR, PWSTR};
 
 /// A thread's checkers, for the generation they were made in.
@@ -40,9 +44,16 @@ fn with_checkers<T>(f: impl FnOnce(&[ISpellChecker]) -> T) -> T {
         let generation = super::generation();
         if checkers.generation != generation {
             let list = FACTORY.with(|factory| {
-                let Some(factory) = &**factory else { return Vec::new() };
+                let Some(factory) = &**factory else {
+                    return Vec::new();
+                };
                 // SAFETY: the factory is this thread's, and each tag outlives its call.
-                super::languages().into_iter().filter_map(|tag| unsafe { factory.CreateSpellChecker(&HSTRING::from(tag)).ok() }).collect()
+                super::languages()
+                    .into_iter()
+                    .filter_map(|tag| unsafe {
+                        factory.CreateSpellChecker(&HSTRING::from(tag)).ok()
+                    })
+                    .collect()
             });
             *checkers = Checkers { generation, list };
         }
@@ -53,9 +64,16 @@ fn with_checkers<T>(f: impl FnOnce(&[ISpellChecker]) -> T) -> T {
 /// The dictionaries Windows has: those of the languages added in Settings › Time & language.
 pub(super) fn available() -> Vec<String> {
     FACTORY.with(|factory| {
-        let Some(factory) = &**factory else { return Vec::new() };
+        let Some(factory) = &**factory else {
+            return Vec::new();
+        };
         // SAFETY: the factory is this thread's; each string `Next` hands over is freed once read.
-        unsafe { factory.SupportedLanguages().map(|list| strings(&list)).unwrap_or_default() }
+        unsafe {
+            factory
+                .SupportedLanguages()
+                .map(|list| strings(&list))
+                .unwrap_or_default()
+        }
     })
 }
 
@@ -64,14 +82,27 @@ pub(super) fn preferred() -> Vec<String> {
     let (mut count, mut len) = (0u32, 0u32);
     // SAFETY: the first call sizes the buffer the second fills; the buffer outlives both.
     unsafe {
-        if GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &mut count, None, &mut len).is_err() || len == 0 {
+        if GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &mut count, None, &mut len).is_err()
+            || len == 0
+        {
             return Vec::new();
         }
         let mut buffer = vec![0u16; len as usize];
-        if GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &mut count, Some(PWSTR(buffer.as_mut_ptr())), &mut len).is_err() {
+        if GetUserPreferredUILanguages(
+            MUI_LANGUAGE_NAME,
+            &mut count,
+            Some(PWSTR(buffer.as_mut_ptr())),
+            &mut len,
+        )
+        .is_err()
+        {
             return Vec::new();
         }
-        buffer.split(|&c| c == 0).filter(|s| !s.is_empty()).map(String::from_utf16_lossy).collect()
+        buffer
+            .split(|&c| c == 0)
+            .filter(|s| !s.is_empty())
+            .map(String::from_utf16_lossy)
+            .collect()
     }
 }
 
@@ -80,7 +111,13 @@ pub(super) fn english_name(tag: &str) -> String {
     let name = HSTRING::from(tag);
     let mut buffer = [0u16; 128];
     // SAFETY: `name` and `buffer` outlive the call, which writes at most the buffer's length.
-    let len = unsafe { GetLocaleInfoEx(PCWSTR(name.as_ptr()), LOCALE_SENGLISHDISPLAYNAME, Some(&mut buffer)) };
+    let len = unsafe {
+        GetLocaleInfoEx(
+            PCWSTR(name.as_ptr()),
+            LOCALE_SENGLISHDISPLAYNAME,
+            Some(&mut buffer),
+        )
+    };
     if len <= 1 {
         return tag.to_owned();
     }
@@ -92,27 +129,45 @@ pub(super) fn english_name(tag: &str) -> String {
 pub(super) fn name_in(tag: &str, locale: &str) -> Option<String> {
     let icu = icu()?;
     let (locale, tag) = (icu_id(locale)?, icu_id(tag)?);
-    let mut contexts = [UDISPCTX_LENGTH_FULL, UDISPCTX_DIALECT_NAMES, UDISPCTX_NO_SUBSTITUTE];
+    let mut contexts = [
+        UDISPCTX_LENGTH_FULL,
+        UDISPCTX_DIALECT_NAMES,
+        UDISPCTX_NO_SUBSTITUTE,
+    ];
     let mut buffer = [0u16; 256];
     let mut error = 0;
     // SAFETY: icu.dll's C API with NUL-terminated ids, a context array and a buffer that outlive
     // the calls; the display names object is closed before returning.
     let len = unsafe {
-        let names = (icu.open)(locale.as_ptr(), contexts.as_mut_ptr(), contexts.len() as i32, &mut error);
+        let names = (icu.open)(
+            locale.as_ptr(),
+            contexts.as_mut_ptr(),
+            contexts.len() as i32,
+            &mut error,
+        );
         if names.is_null() || error > 0 {
             return None;
         }
-        let len = (icu.name)(names, tag.as_ptr(), buffer.as_mut_ptr(), buffer.len() as i32, &mut error);
+        let len = (icu.name)(
+            names,
+            tag.as_ptr(),
+            buffer.as_mut_ptr(),
+            buffer.len() as i32,
+            &mut error,
+        );
         (icu.close)(names);
         len
     };
-    (error <= 0 && len > 0 && len as usize <= buffer.len()).then(|| String::from_utf16_lossy(&buffer[..len as usize]))
+    (error <= 0 && len > 0 && len as usize <= buffer.len())
+        .then(|| String::from_utf16_lossy(&buffer[..len as usize]))
 }
 
 /// Sorts `items` by their names as `locale` sorts text, with ICU's collator, as
 /// `String.localeCompare` does. False, leaving them as they were, where there's no collator.
 pub(super) fn sort_in<T>(items: &mut [(String, T)], locale: &str) -> bool {
-    let (Some(icu), Some(locale)) = (icu(), icu_id(locale)) else { return false };
+    let (Some(icu), Some(locale)) = (icu(), icu_id(locale)) else {
+        return false;
+    };
     let mut error = 0;
     // SAFETY: icu.dll's C API; the collator is closed once the sort is done.
     let collator = unsafe { (icu.collator)(locale.as_ptr(), &mut error) };
@@ -122,7 +177,16 @@ pub(super) fn sort_in<T>(items: &mut [(String, T)], locale: &str) -> bool {
     items.sort_by(|(a, _), (b, _)| {
         let (a, b): (Vec<u16>, Vec<u16>) = (a.encode_utf16().collect(), b.encode_utf16().collect());
         // SAFETY: the collator is live, and the strings outlive the call.
-        unsafe { (icu.collate)(collator, a.as_ptr(), a.len() as i32, b.as_ptr(), b.len() as i32) }.cmp(&0)
+        unsafe {
+            (icu.collate)(
+                collator,
+                a.as_ptr(),
+                a.len() as i32,
+                b.as_ptr(),
+                b.len() as i32,
+            )
+        }
+        .cmp(&0)
     });
     // SAFETY: closes the collator opened above, used no more.
     unsafe { (icu.close_collator)(collator) };
@@ -159,7 +223,11 @@ fn icu() -> Option<&'static Icu> {
         // C signatures are ICU's stable API (uldn_openForContext, uldn_localeDisplayName,
         // uldn_close, ucol_open, ucol_strcoll, ucol_close).
         unsafe {
-            let module = LoadLibraryExW(dll.as_ptr(), std::ptr::null_mut(), LOAD_LIBRARY_SEARCH_SYSTEM32);
+            let module = LoadLibraryExW(
+                dll.as_ptr(),
+                std::ptr::null_mut(),
+                LOAD_LIBRARY_SEARCH_SYSTEM32,
+            );
             if module.is_null() {
                 return None;
             }
@@ -180,16 +248,28 @@ fn icu() -> Option<&'static Icu> {
 ///
 /// # Safety
 /// `F` must be a function pointer type with the export's exact signature.
-unsafe fn export<F: Copy>(module: windows_sys::Win32::Foundation::HMODULE, name: &std::ffi::CStr) -> Option<F> {
+unsafe fn export<F: Copy>(
+    module: windows_sys::Win32::Foundation::HMODULE,
+    name: &std::ffi::CStr,
+) -> Option<F> {
     // SAFETY: the module is loaded; the name is NUL-terminated.
-    let found = unsafe { windows_sys::Win32::System::LibraryLoader::GetProcAddress(module, name.as_ptr().cast()) }?;
+    let found = unsafe {
+        windows_sys::Win32::System::LibraryLoader::GetProcAddress(module, name.as_ptr().cast())
+    }?;
     // SAFETY: per this function's contract, both are function pointers of the same size.
     Some(unsafe { std::mem::transmute_copy::<unsafe extern "system" fn() -> isize, F>(&found) })
 }
 
 /// A BCP 47 tag as an ICU locale id (`en-029` as `en_029`), NUL-terminated.
 fn icu_id(tag: &str) -> Option<Vec<u8>> {
-    tag.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_').then(|| tag.bytes().map(|b| if b == b'-' { b'_' } else { b }).chain([0]).collect())
+    tag.bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        .then(|| {
+            tag.bytes()
+                .map(|b| if b == b'-' { b'_' } else { b })
+                .chain([0])
+                .collect()
+        })
 }
 
 /// Reads a COM string list to its end.
@@ -203,7 +283,8 @@ unsafe fn strings(list: &IEnumString) -> Vec<String> {
         let mut fetched = 0u32;
         // SAFETY: per this function's contract; each string handed over is freed once read.
         unsafe {
-            if list.Next(&mut one, Some(&mut fetched)).is_err() || fetched == 0 || one[0].is_null() {
+            if list.Next(&mut one, Some(&mut fetched)).is_err() || fetched == 0 || one[0].is_null()
+            {
                 break;
             }
             found.extend(one[0].to_string().ok());
@@ -217,8 +298,15 @@ pub(super) fn misspelled(text: &str) -> Vec<(usize, usize)> {
     with_checkers(|checkers| {
         // A word is misspelled when every dictionary says so, as Chromium's multilingual checking.
         let mut lists = checkers.iter().map(|checker| check(checker, text));
-        let Some(first) = lists.next() else { return Vec::new() };
-        lists.fold(first, |found, other| found.into_iter().filter(|range| other.contains(range)).collect())
+        let Some(first) = lists.next() else {
+            return Vec::new();
+        };
+        lists.fold(first, |found, other| {
+            found
+                .into_iter()
+                .filter(|range| other.contains(range))
+                .collect()
+        })
     })
 }
 
@@ -233,7 +321,9 @@ fn check(checker: &ISpellChecker, text: &str) -> Vec<(usize, usize)> {
     let mut found = Vec::new();
     // SAFETY: the checker is this thread's, and the text outlives the call.
     unsafe {
-        let Ok(errors) = checker.Check(&HSTRING::from(text)) else { return found };
+        let Ok(errors) = checker.Check(&HSTRING::from(text)) else {
+            return found;
+        };
         loop {
             let mut error: Option<ISpellingError> = None;
             if errors.Next(&mut error).is_err() {
@@ -245,7 +335,9 @@ fn check(checker: &ISpellChecker, text: &str) -> Vec<(usize, usize)> {
             if action != CORRECTIVE_ACTION_GET_SUGGESTIONS && action != CORRECTIVE_ACTION_REPLACE {
                 continue;
             }
-            let (Ok(start), Ok(len)) = (error.StartIndex(), error.Length()) else { continue };
+            let (Ok(start), Ok(len)) = (error.StartIndex(), error.Length()) else {
+                continue;
+            };
             let (a, b) = (start as usize, start as usize + len as usize);
             if let (Some(&a), Some(&b)) = (bytes.get(a), bytes.get(b))
                 && a < b
@@ -262,7 +354,12 @@ pub(super) fn suggest(word: &str) -> Vec<String> {
         let mut found: Vec<String> = Vec::new();
         for checker in checkers {
             // SAFETY: as in `check`; the list is read to its end on this thread.
-            let more = unsafe { checker.Suggest(&HSTRING::from(word)).map(|list| strings(&list)).unwrap_or_default() };
+            let more = unsafe {
+                checker
+                    .Suggest(&HSTRING::from(word))
+                    .map(|list| strings(&list))
+                    .unwrap_or_default()
+            };
             for s in more {
                 if !found.contains(&s) {
                     found.push(s);

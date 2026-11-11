@@ -25,7 +25,10 @@ impl TextEdit {
         if e <= a {
             vec![(s as u32, e as u32)]
         } else if s >= b {
-            vec![((s - del_len + ins_len) as u32, (e - del_len + ins_len) as u32)]
+            vec![(
+                (s - del_len + ins_len) as u32,
+                (e - del_len + ins_len) as u32,
+            )]
         } else {
             let mut out = Vec::new();
             if s < a {
@@ -44,7 +47,12 @@ impl TextEdit {
         &self,
         base_style: crate::tok::TextStyle,
         style: RichStyle,
-    ) -> (Vec<Span>, Vec<(u32, u32, Option<Color>)>, Vec<Link>, Vec<Block>) {
+    ) -> (
+        Vec<Span>,
+        Vec<(u32, u32, Option<Color>)>,
+        Vec<Link>,
+        Vec<Block>,
+    ) {
         if self.secure {
             return (Vec::new(), Vec::new(), Vec::new(), Vec::new());
         }
@@ -215,7 +223,10 @@ impl TextEdit {
         if line_b > line_a && line_b < out.len() {
             out.drain(line_a + 1..=line_b);
         }
-        out.resize(line_count, out.get(line_a).copied().unwrap_or(Block::Paragraph));
+        out.resize(
+            line_count,
+            out.get(line_a).copied().unwrap_or(Block::Paragraph),
+        );
         out
     }
 

@@ -37,7 +37,12 @@ fn elevate_paints_the_layers_as_shadows() {
     assert!(!k.elevation.floating.is_empty());
     let mut rt = Runtime::new(0u32, view, (200.0, 200.0), Env::new(true, 1.0));
     rt.frame(0.0);
-    let mut plain = Runtime::new(0u32, |_: &u32, _: &mut Cx<u32>| col().child(el().size(100.0, 28.0)).child(el().size(100.0, 28.0)), (200.0, 200.0), Env::new(true, 1.0));
+    let mut plain = Runtime::new(
+        0u32,
+        |_: &u32, _: &mut Cx<u32>| col().child(el().size(100.0, 28.0)).child(el().size(100.0, 28.0)),
+        (200.0, 200.0),
+        Env::new(true, 1.0),
+    );
     plain.frame(0.0);
     assert!(rt.instances.len() >= plain.instances.len() + k.elevation.floating.len(), "shadow layers draw");
 }

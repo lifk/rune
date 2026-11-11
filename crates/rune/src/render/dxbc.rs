@@ -33,19 +33,33 @@ pub(crate) struct Shaders {
 
 impl Shaders {
     pub(crate) fn one(module: wgpu::ShaderModule) -> Self {
-        Self { vertex: module.clone(), fragment: module }
+        Self {
+            vertex: module.clone(),
+            fragment: module,
+        }
     }
 }
 
 /// The precompiled uber shader and its pipeline on a DX12 device, when the bytecode matches
 /// `wgsl` and the pipeline ABI `abi` and the driver takes it.
 #[cfg(target_os = "windows")]
-pub(super) fn uber<T>(device: &wgpu::Device, wgsl: &str, abi: u64, make_pipeline: impl FnOnce(&Shaders) -> T) -> Option<(Shaders, T)> {
-    if device.adapter_info().backend != wgpu::Backend::Dx12 || !device.features().contains(wgpu::Features::PASSTHROUGH_SHADERS) {
+pub(super) fn uber<T>(
+    device: &wgpu::Device,
+    wgsl: &str,
+    abi: u64,
+    make_pipeline: impl FnOnce(&Shaders) -> T,
+) -> Option<(Shaders, T)> {
+    if device.adapter_info().backend != wgpu::Backend::Dx12
+        || !device
+            .features()
+            .contains(wgpu::Features::PASSTHROUGH_SHADERS)
+    {
         return None;
     }
-    if !enabled() || blake3::hash(wgsl.as_bytes()).to_hex().as_str() != UBER_DXBC_WGSL_BLAKE3
-        || abi != UBER_DXBC_ABI_FNV64 {
+    if !enabled()
+        || blake3::hash(wgsl.as_bytes()).to_hex().as_str() != UBER_DXBC_WGSL_BLAKE3
+        || abi != UBER_DXBC_ABI_FNV64
+    {
         return None;
     }
     let module = |blob: &'static [u8], entry: &'static str| {
@@ -54,7 +68,10 @@ pub(super) fn uber<T>(device: &wgpu::Device, wgsl: &str, abi: u64, make_pipeline
         unsafe {
             device.create_shader_module_passthrough(wgpu::ShaderModuleDescriptorPassthrough {
                 label: Some("uber"),
-                entry_points: std::borrow::Cow::Owned(vec![wgpu::PassthroughShaderEntryPoint { name: entry.into(), workgroup_size: (0, 0, 0) }]),
+                entry_points: std::borrow::Cow::Owned(vec![wgpu::PassthroughShaderEntryPoint {
+                    name: entry.into(),
+                    workgroup_size: (0, 0, 0),
+                }]),
                 dxil: Some(std::borrow::Cow::Borrowed(blob)),
                 ..Default::default()
             })
@@ -62,7 +79,10 @@ pub(super) fn uber<T>(device: &wgpu::Device, wgsl: &str, abi: u64, make_pipeline
     };
     let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
-    let shaders = Shaders { vertex: module(VERTEX, "vs"), fragment: module(FRAGMENT, "fs") };
+    let shaders = Shaders {
+        vertex: module(VERTEX, "vs"),
+        fragment: module(FRAGMENT, "fs"),
+    };
     let pipeline = make_pipeline(&shaders);
     let refused = pollster::block_on(internal.pop()).or(pollster::block_on(validation.pop()));
     match refused {
@@ -82,14 +102,21 @@ std::thread_local! {
 /// `RUNE_DISABLE_DXBC=1` compiles the WGSL instead, as before.
 #[cfg(target_os = "windows")]
 fn enabled() -> bool {
-    FORCE.with(std::cell::Cell::get).unwrap_or_else(|| !matches!(std::env::var("RUNE_DISABLE_DXBC").as_deref(), Ok("1" | "true" | "TRUE" | "yes")))
+    FORCE.with(std::cell::Cell::get).unwrap_or_else(|| {
+        !matches!(
+            std::env::var("RUNE_DISABLE_DXBC").as_deref(),
+            Ok("1" | "true" | "TRUE" | "yes")
+        )
+    })
 }
 
 #[cfg(all(test, target_os = "windows"))]
 pub(super) fn with_dxbc_enabled<R>(enabled: bool, f: impl FnOnce() -> R) -> R {
     struct Restore(Option<bool>);
     impl Drop for Restore {
-        fn drop(&mut self) { FORCE.with(|c| c.set(self.0)); }
+        fn drop(&mut self) {
+            FORCE.with(|c| c.set(self.0));
+        }
     }
     let _restore = Restore(FORCE.with(|c| c.replace(Some(enabled))));
     f()

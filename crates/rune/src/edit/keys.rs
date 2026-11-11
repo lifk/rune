@@ -20,7 +20,9 @@ pub struct Mods {
 
 impl Mods {
     /// Whether the platform's primary shortcut modifier is held: `cmd`.
-    pub fn primary(self) -> bool { self.cmd }
+    pub fn primary(self) -> bool {
+        self.cmd
+    }
 }
 
 /// A logical key. More keys may come, so a `match` needs a `_` arm.
@@ -73,7 +75,10 @@ pub enum Key {
     /// after the change, as AppKit's flagsChanged does: Shift's press has `shift` set and its
     /// release doesn't, unless the other Shift is still down. A held modifier never repeats.
     /// Text fields, selection, focus traversal and shortcuts ignore it.
-    Modifier { modifier: Modifier, pressed: bool },
+    Modifier {
+        modifier: Modifier,
+        pressed: bool,
+    },
 }
 
 /// A modifier key, by side. Alt is Option on macOS; Super is Command on macOS and the Windows
@@ -136,7 +141,9 @@ impl KeyEvent {
     /// on Windows and Linux, so text typed with both still inserts there; Option alone types.
     pub(crate) fn is_command_chord(&self) -> bool {
         let m = self.mods;
-        matches!(self.key, Key::Text(_)) && (m.cmd || m.ctrl) && (cfg!(target_os = "macos") || !m.alt)
+        matches!(self.key, Key::Text(_))
+            && (m.cmd || m.ctrl)
+            && (cfg!(target_os = "macos") || !m.alt)
     }
 
     /// The standard edit command this is (paste, copy, cut, select all, undo, redo, format):
@@ -144,33 +151,51 @@ impl KeyEvent {
     /// Shift too for ⇧⌘Z. Another modifier (Ctrl+Alt+V, ⌃⌘C, Ctrl+Shift+V) makes it an
     /// app's chord, which reaches `on_key` instead.
     pub(crate) fn edit_command(&self) -> Option<char> {
-        let Key::Command(c) = self.key else { return None };
-        (crate::input::chord::primary_alone(self.mods) && (c == 'z' || !self.mods.shift)).then_some(c)
+        let Key::Command(c) = self.key else {
+            return None;
+        };
+        (crate::input::chord::primary_alone(self.mods) && (c == 'z' || !self.mods.shift))
+            .then_some(c)
     }
     /// Alt+Space off macOS: the window menu's key. It never types a space, and on Windows opens
     /// the window menu when no handler takes it. (Option+Space types on macOS.)
     pub(crate) fn is_window_menu_chord(&self) -> bool {
         let m = self.mods;
-        !cfg!(target_os = "macos") && matches!(&self.key, Key::Text(t) if t == " ") && m.alt && !m.ctrl && !m.cmd && !m.logo
+        !cfg!(target_os = "macos")
+            && matches!(&self.key, Key::Text(t) if t == " ")
+            && m.alt
+            && !m.ctrl
+            && !m.cmd
+            && !m.logo
     }
     /// A macOS Control-letter text binding (Ctrl-A, Ctrl-E, Ctrl-K, …), as in every AppKit field.
     pub(crate) fn control_binding(&self) -> Option<char> {
         let m = self.mods;
         let Key::Text(s) = &self.key else { return None };
-        let c = s.chars().next().filter(|_| s.chars().count() == 1)?.to_ascii_lowercase();
-        (cfg!(target_os = "macos") && m.ctrl && !m.cmd && !m.alt && "abefpndhk".contains(c)).then_some(c)
+        let c = s
+            .chars()
+            .next()
+            .filter(|_| s.chars().count() == 1)?
+            .to_ascii_lowercase();
+        (cfg!(target_os = "macos") && m.ctrl && !m.cmd && !m.alt && "abefpndhk".contains(c))
+            .then_some(c)
     }
 }
 
 /// The key pressed with no modifiers.
 impl From<Key> for KeyEvent {
     fn from(key: Key) -> Self {
-        KeyEvent { key, mods: Mods::default() }
+        KeyEvent {
+            key,
+            mods: Mods::default(),
+        }
     }
 }
 
 impl Drop for KeyEvent {
     fn drop(&mut self) {
-        if let Key::Text(text) = &mut self.key { text.zeroize(); }
+        if let Key::Text(text) = &mut self.key {
+            text.zeroize();
+        }
     }
 }

@@ -66,7 +66,10 @@ pub(crate) trait Member {
     fn popup_open(&self) -> bool;
     fn resolve_popup(&mut self, picked: Option<&str>) -> Result<(), crate::PopupMenuError>;
     fn file_dialog_open(&self) -> bool;
-    fn resolve_file_dialog(&mut self, path: Option<std::path::PathBuf>) -> Result<(), crate::FileDialogError>;
+    fn resolve_file_dialog(
+        &mut self,
+        path: Option<std::path::PathBuf>,
+    ) -> Result<(), crate::FileDialogError>;
     /// Draws its frame into `slot`, `px` device pixels.
     fn render(&mut self, gpu: &Gpu, slot: &Slot, px: (u32, u32), dt: f64, update_ms: f64);
     fn backdrop_dark(&self) -> Option<bool>;
@@ -109,19 +112,42 @@ pub(crate) struct Window<S: 'static> {
 }
 
 impl<S: 'static> Window<S> {
-    pub(crate) fn new(spec: WindowSpec<S>, handle: Option<WindowHandle>, args: &Args, selected: bool, main: bool, scale: f32) -> Self {
-        let WindowSpec { key, mut app, options, .. } = spec;
+    pub(crate) fn new(
+        spec: WindowSpec<S>,
+        handle: Option<WindowHandle>,
+        args: &Args,
+        selected: bool,
+        main: bool,
+        scale: f32,
+    ) -> Self {
+        let WindowSpec {
+            key,
+            mut app,
+            options,
+            ..
+        } = spec;
         // --size is the whole output here; each window keeps its own size.
         let mut inherited = args.clone();
         inherited.size = None;
-        if !selected { inherited.scene = None; inherited.playground = None; inherited.variant = None; }
+        if !selected {
+            inherited.scene = None;
+            inherited.playground = None;
+            inherited.variant = None;
+        }
         let own = app.resolve_args(inherited);
         let comp = app.compositor.take();
-        let (open, keep_running, on_close, on_focus, on_reopen) = (app.open, app.keep_running, app.on_close, app.on_focus, app.on_reopen);
+        let (open, keep_running, on_close, on_focus, on_reopen) = (
+            app.open,
+            app.keep_running,
+            app.on_close,
+            app.on_focus,
+            app.on_reopen,
+        );
         let on_mods = app.on_mods;
         let on_ime = app.on_ime;
         let native = std::mem::take(&mut app.macos_window);
-        let (modifier_keys, tab_visits_controls, srgb_blend) = (app.modifier_keys, app.tab_visits_controls, app.srgb_blend);
+        let (modifier_keys, tab_visits_controls, srgb_blend) =
+            (app.modifier_keys, app.tab_visits_controls, app.srgb_blend);
         let font_smoothing = app.font_smoothing;
         let (chrome, titlebar) = (app.chrome, app.titlebar);
         let playground = app.playground.take();
@@ -130,26 +156,48 @@ impl<S: 'static> Window<S> {
         let menus = crate::native_menu::Guard::attach(&shared, true);
         let size = own.size.unwrap_or(spec.size);
         let dark = own.theme.as_deref() != Some("light");
-        let mut rt = crate::tooling::runtime_for(&spec, state, size, Env::new(dark, scale), Arc::new(|| {}));
-        crate::playground::attach(&mut rt, playground, &spec, own.playground.clone(), own.variant.clone(), false);
+        let mut rt =
+            crate::tooling::runtime_for(&spec, state, size, Env::new(dark, scale), Arc::new(|| {}));
+        crate::playground::attach(
+            &mut rt,
+            playground,
+            &spec,
+            own.playground.clone(),
+            own.variant.clone(),
+            false,
+        );
         rt.on_focus = on_focus;
         rt.on_mods = on_mods;
         rt.app_ime.hook = on_ime;
         rt.set_modifier_keys(modifier_keys);
         rt.set_tab_visits_controls(tab_visits_controls);
-        if let Some(bars) = own.scroll_bars.or(args.scroll_bars) { rt.set_system_scroll_bars(bars); }
+        if let Some(bars) = own.scroll_bars.or(args.scroll_bars) {
+            rt.set_system_scroll_bars(bars);
+        }
         rt.set_srgb_blend(srgb_blend);
         rt.set_font_smoothing(font_smoothing);
         rt.headless_chrome(chrome, titlebar, options.borderless);
         rt.transparent = options.transparent;
         rt.track_marks = comp.is_some();
-        if selected && args.tree.is_some() { rt.key_warnings = Some(Vec::new()); }
+        if selected && args.tree.is_some() {
+            rt.key_warnings = Some(Vec::new());
+        }
         let visible = options.visible && open;
         rt.set_live_visible(visible);
         shared.visible.store(visible, Ordering::Release);
         let decorated = !options.borderless && !options.transparent;
         Window {
-            key, rt, shared, shortcuts, menus, handle, comp, renderer: None, on_close, on_reopen, keep_running,
+            key,
+            rt,
+            shared,
+            shortcuts,
+            menus,
+            handle,
+            comp,
+            renderer: None,
+            on_close,
+            on_reopen,
+            keep_running,
             launcher: native.launcher,
             panel: native.nonactivating_panel,
             main,
@@ -193,14 +241,20 @@ impl<S: 'static> Window<S> {
     }
 
     fn show(&mut self) {
-        if self.visible { return; }
+        if self.visible {
+            return;
+        }
         // A launcher reveals the frame it kept up to date while hidden; others land their motion.
-        if !self.launcher { self.rt.settle_all(); }
+        if !self.launcher {
+            self.rt.settle_all();
+        }
         self.set_visible(true);
     }
 
     fn hide(&mut self) {
-        if !self.visible { return; }
+        if !self.visible {
+            return;
+        }
         self.hidden_at = Some(crate::platform::reopen::stamp());
         self.rt.cancel_popups();
         self.rt.cancel_file_dialogs();
@@ -209,8 +263,12 @@ impl<S: 'static> Window<S> {
     }
 
     fn close(&mut self) {
-        if !(self.visible || !self.keep_running) { return; }
-        if let Some(f) = self.on_close { self.rt.update(f); }
+        if !(self.visible || !self.keep_running) {
+            return;
+        }
+        if let Some(f) = self.on_close {
+            self.rt.update(f);
+        }
         self.hide();
         if !self.keep_running {
             self.rt.cancel_popups();
@@ -244,19 +302,40 @@ impl<S: 'static> Window<S> {
 }
 
 impl<S: 'static> Member for Window<S> {
-    fn key(&self) -> &str { &self.key }
-    fn frame(&self) -> [f32; 4] { self.frame }
-    fn visible(&self) -> bool { self.visible }
-    fn click_through(&self) -> bool { self.click_through }
-    fn on_top(&self) -> bool { self.on_top }
-    fn radius(&self) -> f32 { self.radius }
-    fn shadow(&self) -> bool { self.shadow }
-    fn features(&self) -> wgpu::Features { self.comp.as_ref().map_or(wgpu::Features::empty(), |c| c.features()) }
+    fn key(&self) -> &str {
+        &self.key
+    }
+    fn frame(&self) -> [f32; 4] {
+        self.frame
+    }
+    fn visible(&self) -> bool {
+        self.visible
+    }
+    fn click_through(&self) -> bool {
+        self.click_through
+    }
+    fn on_top(&self) -> bool {
+        self.on_top
+    }
+    fn radius(&self) -> f32 {
+        self.radius
+    }
+    fn shadow(&self) -> bool {
+        self.shadow
+    }
+    fn features(&self) -> wgpu::Features {
+        self.comp
+            .as_ref()
+            .map_or(wgpu::Features::empty(), |c| c.features())
+    }
 
     fn start(&mut self, desktop: &VirtualDesktop) {
         let display = desktop.display_at(self.position);
         let (w, h) = match self.physical {
-            Some((w, h)) => ((f64::from(w) / display.scale) as f32, (f64::from(h) / display.scale) as f32),
+            Some((w, h)) => (
+                (f64::from(w) / display.scale) as f32,
+                (f64::from(h) / display.scale) as f32,
+            ),
             None => (self.frame[2], self.frame[3]),
         };
         self.resize(desktop.open_at(self.position, (w, h)));
@@ -275,18 +354,34 @@ impl<S: 'static> Member for Window<S> {
             self.rt.update_if(f);
             self.menus.drain();
         });
-        if let Some(p) = requests.position { self.move_to(desktop.to_points(p)); }
-        if let Some(place) = &requests.place { self.place(desktop, place, t); }
-        if let Some(request) = requests.window { self.request(request, &mut changes); }
-        if requests.focus && self.visible { changes.front = true; changes.keys = true; }
+        if let Some(p) = requests.position {
+            self.move_to(desktop.to_points(p));
+        }
+        if let Some(place) = &requests.place {
+            self.place(desktop, place, t);
+        }
+        if let Some(request) = requests.window {
+            self.request(request, &mut changes);
+        }
+        if requests.focus && self.visible {
+            changes.front = true;
+            changes.keys = true;
+        }
         // `quit` ends a native app; a recording runs to the end of its timeline.
-        let queued = self.handle.as_ref().map(WindowHandle::take_headless).unwrap_or_default();
+        let queued = self
+            .handle
+            .as_ref()
+            .map(WindowHandle::take_headless)
+            .unwrap_or_default();
         for event in queued {
             match event {
                 WakeEvent::Window(_, request) => self.request(request, &mut changes),
                 WakeEvent::Place(_, place) => self.place(desktop, &place, t),
                 WakeEvent::Position(_, p) => self.move_to(desktop.to_points(p)),
-                WakeEvent::Focus(_) if self.visible => { changes.front = true; changes.keys = true; }
+                WakeEvent::Focus(_) if self.visible => {
+                    changes.front = true;
+                    changes.keys = true;
+                }
                 _ => {}
             }
         }
@@ -303,20 +398,34 @@ impl<S: 'static> Member for Window<S> {
                 self.rt.open_popup_headless();
             } else {
                 self.rt.cancel_popups();
-                self.rt.refuse_file_dialog("cannot open a file dialog while the window is hidden");
+                self.rt
+                    .refuse_file_dialog("cannot open a file dialog while the window is hidden");
             }
-            if self.rt.shell_request.is_none() { break; }
+            if self.rt.shell_request.is_none() {
+                break;
+            }
         }
         changes
     }
 
     fn pending(&self) -> bool {
-        self.shared.window_pending() || self.rt.shell_request.is_some() || self.handle.as_ref().is_some_and(WindowHandle::headless_pending)
+        self.shared.window_pending()
+            || self.rt.shell_request.is_some()
+            || self
+                .handle
+                .as_ref()
+                .is_some_and(WindowHandle::headless_pending)
     }
 
-    fn stale(&self) -> bool { self.rt.stale() || self.rt.text.families_behind() }
-    fn advance(&mut self, dt: f64) { self.rt.frame(dt); }
-    fn focus(&mut self, focused: bool) { self.rt.window_focus(focused); }
+    fn stale(&self) -> bool {
+        self.rt.stale() || self.rt.text.families_behind()
+    }
+    fn advance(&mut self, dt: f64) {
+        self.rt.frame(dt);
+    }
+    fn focus(&mut self, focused: bool) {
+        self.rt.window_focus(focused);
+    }
 
     fn input(&mut self, kind: &Kind, (x, y): (f32, f32)) {
         let rt = &mut self.rt;
@@ -334,15 +443,31 @@ impl<S: 'static> Member for Window<S> {
             Kind::Wheel(dx, dy) => crate::tooling::wheel(rt, (x, y), *dx, *dy),
             Kind::Fling(vx, vy) => crate::tooling::fling(rt, (x, y), *vx, *vy),
             Kind::Files(step) => crate::tooling::file_input(rt, step, (x, y)),
-            Kind::Mark(_) | Kind::Reopen | Kind::OpenUrl(_) | Kind::Menu(_) | Kind::PopupMenu(_) | Kind::FileDialog(_) | Kind::Shortcut(_) => {}
-            kind => { crate::tooling::canvas_input(rt, kind, (x, y)); }
+            Kind::Mark(_)
+            | Kind::Reopen
+            | Kind::OpenUrl(_)
+            | Kind::Menu(_)
+            | Kind::PopupMenu(_)
+            | Kind::FileDialog(_)
+            | Kind::Shortcut(_) => {}
+            kind => {
+                crate::tooling::canvas_input(rt, kind, (x, y));
+            }
         }
     }
 
-    fn leave(&mut self) { self.rt.pointer_leave(); }
-    fn find(&self, key: &str) -> Option<(f32, f32)> { self.rt.find(key) }
-    fn pointer(&self) -> Option<(f32, f32)> { self.rt.pointer() }
-    fn shortcut(&self, shortcut: &crate::Shortcut) -> Result<(), crate::ShortcutError> { self.shared.shortcuts.fire(shortcut) }
+    fn leave(&mut self) {
+        self.rt.pointer_leave();
+    }
+    fn find(&self, key: &str) -> Option<(f32, f32)> {
+        self.rt.find(key)
+    }
+    fn pointer(&self) -> Option<(f32, f32)> {
+        self.rt.pointer()
+    }
+    fn shortcut(&self, shortcut: &crate::Shortcut) -> Result<(), crate::ShortcutError> {
+        self.shared.shortcuts.fire(shortcut)
+    }
 
     fn reopen_candidate(&self) -> crate::platform::reopen::Candidate {
         crate::platform::reopen::Candidate {
@@ -356,9 +481,12 @@ impl<S: 'static> Member for Window<S> {
     }
 
     fn reopen_hook(&mut self, has_visible_windows: bool) -> bool {
-        let Some(f) = self.on_reopen.filter(|_| !self.finished) else { return false };
+        let Some(f) = self.on_reopen.filter(|_| !self.finished) else {
+            return false;
+        };
         let mut handled = false;
-        self.rt.update(|s, tx| handled = f(s, has_visible_windows, tx));
+        self.rt
+            .update(|s, tx| handled = f(s, has_visible_windows, tx));
         handled
     }
 
@@ -367,15 +495,36 @@ impl<S: 'static> Member for Window<S> {
         self.request(WindowRequest::Open(None), &mut changes);
         changes
     }
-    fn menu(&self, item: &str) -> Result<(), crate::MenuError> { crate::native_menu::fire(&self.shared, item) }
-    fn popup_open(&self) -> bool { self.rt.popup_menu().is_some() }
-    fn resolve_popup(&mut self, picked: Option<&str>) -> Result<(), crate::PopupMenuError> { self.rt.resolve_popup(picked) }
-    fn file_dialog_open(&self) -> bool { self.rt.file_dialog().is_some() }
-    fn resolve_file_dialog(&mut self, path: Option<std::path::PathBuf>) -> Result<(), crate::FileDialogError> { self.rt.resolve_file_dialog(path) }
+    fn menu(&self, item: &str) -> Result<(), crate::MenuError> {
+        crate::native_menu::fire(&self.shared, item)
+    }
+    fn popup_open(&self) -> bool {
+        self.rt.popup_menu().is_some()
+    }
+    fn resolve_popup(&mut self, picked: Option<&str>) -> Result<(), crate::PopupMenuError> {
+        self.rt.resolve_popup(picked)
+    }
+    fn file_dialog_open(&self) -> bool {
+        self.rt.file_dialog().is_some()
+    }
+    fn resolve_file_dialog(
+        &mut self,
+        path: Option<std::path::PathBuf>,
+    ) -> Result<(), crate::FileDialogError> {
+        self.rt.resolve_file_dialog(path)
+    }
 
     fn render(&mut self, gpu: &Gpu, slot: &Slot, px: (u32, u32), dt: f64, update_ms: f64) {
-        let format = if self.rt.srgb_blend() { OFFSCREEN_FORMAT.remove_srgb_suffix() } else { OFFSCREEN_FORMAT };
-        let view = if self.rt.srgb_blend() { &slot.srgb_blend_view } else { &slot.view };
+        let format = if self.rt.srgb_blend() {
+            OFFSCREEN_FORMAT.remove_srgb_suffix()
+        } else {
+            OFFSCREEN_FORMAT
+        };
+        let view = if self.rt.srgb_blend() {
+            &slot.srgb_blend_view
+        } else {
+            &slot.view
+        };
         let renderer = match &mut self.renderer {
             Some(renderer) => {
                 crate::window::rebuild_renderer(&gpu.device, renderer, format, &mut self.rt);
@@ -392,26 +541,47 @@ impl<S: 'static> Member for Window<S> {
         let mut enc = gpu.device.create_command_encoder(&Default::default());
         if let Some(c) = self.comp.as_mut() {
             let mut f = crate::compose::Frame {
-                device: &gpu.device, queue: &gpu.queue, encoder: &mut enc, target: view, format,
-                size: px, dt, update_ms, rt: &mut self.rt, ui: renderer,
+                device: &gpu.device,
+                queue: &gpu.queue,
+                encoder: &mut enc,
+                target: view,
+                format,
+                size: px,
+                dt,
+                update_ms,
+                rt: &mut self.rt,
+                ui: renderer,
             };
             c.render(&mut f);
         } else {
-            renderer.prepare(&gpu.device, &gpu.queue, &mut self.rt.text.atlas, &self.rt.instances, px);
+            renderer.prepare(
+                &gpu.device,
+                &gpu.queue,
+                &mut self.rt.text.atlas,
+                &self.rt.instances,
+                px,
+            );
             renderer.draw(&mut enc, view, self.rt.clear_color());
         }
         renderer.submit(&gpu.queue, enc);
     }
 
-    fn backdrop_dark(&self) -> Option<bool> { self.rt.backdrop_dark() }
+    fn backdrop_dark(&self) -> Option<bool> {
+        self.rt.backdrop_dark()
+    }
 
     fn tree(&self, t: f64) -> Value {
         let mut tree = crate::tooling::tree_json(&self.rt, t);
-        if let Some(placed) = &self.placed { tree["placed"] = placed.clone(); }
+        if let Some(placed) = &self.placed {
+            tree["placed"] = placed.clone();
+        }
         tree
     }
 
-    fn trace(&mut self, trace: &mut Trace, t_ms: f64, cpu_ms: f64) { trace.frame(&mut self.rt, t_ms, cpu_ms); }
-    fn summary(&mut self, device: &wgpu::Device) -> Option<String> { self.comp.as_mut().and_then(|c| c.summary(device)) }
+    fn trace(&mut self, trace: &mut Trace, t_ms: f64, cpu_ms: f64) {
+        trace.frame(&mut self.rt, t_ms, cpu_ms);
+    }
+    fn summary(&mut self, device: &wgpu::Device) -> Option<String> {
+        self.comp.as_mut().and_then(|c| c.summary(device))
+    }
 }
-

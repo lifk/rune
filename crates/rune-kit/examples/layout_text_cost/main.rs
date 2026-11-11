@@ -51,19 +51,52 @@ use rune_kit::{Badge, Button, ButtonVariant, Card, Kit, Markdown, MarkdownStyle,
 #[global_allocator]
 static ALLOC: probe::Probe = probe::Probe;
 
-const CASES: &[&str] = &["stack", "stack-same", "list", "edit", "md-resize", "md-resize-live", "md-same", "md-open", "md-virtual", "md-beside", "tree", "vlist-resize", "vlist-resize-live", "memo-chat"];
-const METRICS: &[&str] = &["cpu_ms", "view_ms", "commit_ms", "layout_ms", "text_ms", "paint_ms", "apply_ms", "allocs", "alloc_bytes", "shaped", "rebroken", "nodes", "view_runs"];
+const CASES: &[&str] = &[
+    "stack",
+    "stack-same",
+    "list",
+    "edit",
+    "md-resize",
+    "md-resize-live",
+    "md-same",
+    "md-open",
+    "md-virtual",
+    "md-beside",
+    "tree",
+    "vlist-resize",
+    "vlist-resize-live",
+    "memo-chat",
+];
+const METRICS: &[&str] = &[
+    "cpu_ms",
+    "view_ms",
+    "commit_ms",
+    "layout_ms",
+    "text_ms",
+    "paint_ms",
+    "apply_ms",
+    "allocs",
+    "alloc_bytes",
+    "shaped",
+    "rebroken",
+    "nodes",
+    "view_runs",
+];
 thread_local! {
     static VIEWS: Cell<usize> = const { Cell::new(0) };
     static LIVE_OVERLAY: rune::Live<[f32; 2]> = rune::Live::new([4.0, 8.0]);
 }
-fn view_ran() { VIEWS.set(VIEWS.get() + 1); }
+fn view_ran() {
+    VIEWS.set(VIEWS.get() + 1);
+}
 const BG: Color = Color { r: 0.008, g: 0.008, b: 0.009, a: 1.0 };
-const WORDS: &[&str] = &["amber", "lantern", "orchard", "quiet", "harbor", "copper", "meadow", "signal", "drift",
-    "pebble", "willow", "ember", "tide", "cinder", "fable", "glacier", "hollow", "juniper", "kestrel", "lumen",
-    "marrow", "nimbus", "opal", "prism", "quill", "ripple", "sable", "thistle", "umber", "vellum", "wander",
-    "yarrow", "zephyr", "bramble", "cobalt", "dune", "fern", "grove", "heron", "isle", "the", "a", "of", "and",
-    "to", "in", "with", "under", "over", "before"];
+const WORDS: &[&str] = &[
+    "amber", "lantern", "orchard", "quiet", "harbor", "copper", "meadow", "signal", "drift", "pebble", "willow",
+    "ember", "tide", "cinder", "fable", "glacier", "hollow", "juniper", "kestrel", "lumen", "marrow", "nimbus", "opal",
+    "prism", "quill", "ripple", "sable", "thistle", "umber", "vellum", "wander", "yarrow", "zephyr", "bramble",
+    "cobalt", "dune", "fern", "grove", "heron", "isle", "the", "a", "of", "and", "to", "in", "with", "under", "over",
+    "before",
+];
 
 struct Rng(u64);
 impl Rng {
@@ -73,7 +106,9 @@ impl Rng {
         self.0 ^= self.0 << 17;
         (self.0 % n as u64) as usize
     }
-    fn words(&mut self, n: usize) -> String { (0..n).map(|_| WORDS[self.next(WORDS.len())]).collect::<Vec<_>>().join(" ") }
+    fn words(&mut self, n: usize) -> String {
+        (0..n).map(|_| WORDS[self.next(WORDS.len())]).collect::<Vec<_>>().join(" ")
+    }
 }
 
 /// A deterministic fictional Markdown note of at least `bytes` bytes: headings, wrapping
@@ -81,16 +116,19 @@ impl Rng {
 fn note(bytes: usize) -> String {
     let mut r = Rng(0x9e37_79b9_7f4a_7c15);
     let rich = |r: &mut Rng, n: usize| {
-        (0..n).map(|_| {
-            let w = WORDS[r.next(WORDS.len())];
-            match r.next(24) {
-                0 => format!("**{w} {}**", WORDS[r.next(WORDS.len())]),
-                1 => format!("*{w}*"),
-                2 => format!("`{w}_{}`", r.next(100)),
-                3 => format!("[{w}](https://example.com/{w})"),
-                _ => w.to_string(),
-            }
-        }).collect::<Vec<_>>().join(" ")
+        (0..n)
+            .map(|_| {
+                let w = WORDS[r.next(WORDS.len())];
+                match r.next(24) {
+                    0 => format!("**{w} {}**", WORDS[r.next(WORDS.len())]),
+                    1 => format!("*{w}*"),
+                    2 => format!("`{w}_{}`", r.next(100)),
+                    3 => format!("[{w}](https://example.com/{w})"),
+                    _ => w.to_string(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
     };
     let mut out = String::new();
     let mut section = 0;
@@ -107,7 +145,11 @@ fn note(bytes: usize) -> String {
             for i in 0..4 + r.next(5) {
                 let n = 4 + r.next(10);
                 let item = rich(&mut r, n);
-                if sub % 2 == 0 { out += &format!("- {item}\n"); } else { out += &format!("{}. {item}\n", i + 1); }
+                if sub % 2 == 0 {
+                    out += &format!("- {item}\n");
+                } else {
+                    out += &format!("{}. {item}\n", i + 1);
+                }
             }
             out += "\n";
             match r.next(3) {
@@ -119,9 +161,15 @@ fn note(bytes: usize) -> String {
                     }
                     out += "```\n\n";
                 }
-                1 => { let n = 12 + r.next(20); out += &format!("> {}\n\n", rich(&mut r, n)); }
+                1 => {
+                    let n = 12 + r.next(20);
+                    out += &format!("> {}\n\n", rich(&mut r, n));
+                }
                 _ => {
-                    for _ in 0..3 { let n = 3 + r.next(6); out += &format!("- [ ] {}\n", rich(&mut r, n)); }
+                    for _ in 0..3 {
+                        let n = 3 + r.next(6);
+                        out += &format!("- [ ] {}\n", rich(&mut r, n));
+                    }
                     out += "\n";
                 }
             }
@@ -141,7 +189,11 @@ fn scroller(content: El) -> El {
 const CARDS: usize = 60;
 const ROWS: usize = 8;
 
-struct Stack { kit: Kit, on: Vec<bool>, labels: Vec<(String, String)> }
+struct Stack {
+    kit: Kit,
+    on: Vec<bool>,
+    labels: Vec<(String, String)>,
+}
 
 fn stack_view(s: &Stack, _: &mut Cx<Stack>) -> El {
     view_ran();
@@ -151,11 +203,24 @@ fn stack_view(s: &Stack, _: &mut Cx<Stack>) -> El {
         for r in 0..ROWS {
             let i = c * ROWS + r;
             let (label, about) = &s.labels[i];
-            card = card.child(row().key(format!("r{r}")).w_full().gap(12.0).center_y()
-                .child(Switch::new(s.on[i]).label(label.clone()).description(about.clone())
-                    .on_toggle(move |s: &mut Stack| s.on[i] = !s.on[i]).build(k).grow(1.0).shrink())
-                .child(Badge::new(format!("{i}")).build(k))
-                .child(Button::new("Edit").variant(ButtonVariant::Outline).build(k)));
+            card = card.child(
+                row()
+                    .key(format!("r{r}"))
+                    .w_full()
+                    .gap(12.0)
+                    .center_y()
+                    .child(
+                        Switch::new(s.on[i])
+                            .label(label.clone())
+                            .description(about.clone())
+                            .on_toggle(move |s: &mut Stack| s.on[i] = !s.on[i])
+                            .build(k)
+                            .grow(1.0)
+                            .shrink(),
+                    )
+                    .child(Badge::new(format!("{i}")).build(k))
+                    .child(Button::new("Edit").variant(ButtonVariant::Outline).build(k)),
+            );
         }
         card.build(k).key(format!("c{c}"))
     });
@@ -164,7 +229,12 @@ fn stack_view(s: &Stack, _: &mut Cx<Stack>) -> El {
 
 fn stack_state() -> Stack {
     let mut r = Rng(7);
-    let labels = (0..CARDS * ROWS).map(|_| { let (a, b) = (1 + r.next(3), 6 + r.next(10)); (r.words(a), r.words(b)) }).collect();
+    let labels = (0..CARDS * ROWS)
+        .map(|_| {
+            let (a, b) = (1 + r.next(3), 6 + r.next(10));
+            (r.words(a), r.words(b))
+        })
+        .collect();
     Stack { kit: Kit::neutral(true), on: vec![false; CARDS * ROWS], labels }
 }
 
@@ -173,45 +243,96 @@ fn stack_state() -> Stack {
 const LIST_ROWS: usize = 10_000;
 const ROW_H: f32 = 44.0;
 
-struct List { titles: Vec<String>, subtitles: Vec<String>, keys: Vec<String> }
+struct List {
+    titles: Vec<String>,
+    subtitles: Vec<String>,
+    keys: Vec<String>,
+}
 
 fn list_row(s: &List, i: usize) -> El {
-    row().w_full().h(ROW_H).px(12.0).gap(10.0).center_y()
-        .child(col().key("copy").grow(1.0).shrink().gap(2.0)
-            .child(text(s.titles[i].clone()).font(TextStyle::new(14.0, 500.0)).color(Color::WHITE).truncate())
-            .child(text(s.subtitles[i].clone()).font(TextStyle::new(12.0, 400.0)).color(Color::WHITE.alpha(0.6)).truncate()))
-        .child(text(format!("{}:{:02}", 1 + i % 12, i % 60)).font(TextStyle::new(12.0, 400.0)).color(Color::WHITE.alpha(0.6)))
+    row()
+        .w_full()
+        .h(ROW_H)
+        .px(12.0)
+        .gap(10.0)
+        .center_y()
+        .child(
+            col()
+                .key("copy")
+                .grow(1.0)
+                .shrink()
+                .gap(2.0)
+                .child(text(s.titles[i].clone()).font(TextStyle::new(14.0, 500.0)).color(Color::WHITE).truncate())
+                .child(
+                    text(s.subtitles[i].clone())
+                        .font(TextStyle::new(12.0, 400.0))
+                        .color(Color::WHITE.alpha(0.6))
+                        .truncate(),
+                ),
+        )
+        .child(
+            text(format!("{}:{:02}", 1 + i % 12, i % 60))
+                .font(TextStyle::new(12.0, 400.0))
+                .color(Color::WHITE.alpha(0.6)),
+        )
 }
 
 fn list_view(s: &List, _: &mut Cx<List>) -> El {
     view_ran();
-    scroller(col().key("rows").w_full().px(8.0).growth(GrowthSpec::default())
-        .virtual_rows(s.titles.len(), ROW_H, |s: &List, i| Cow::Borrowed(s.keys[i].as_str()), list_row))
+    scroller(col().key("rows").w_full().px(8.0).growth(GrowthSpec::default()).virtual_rows(
+        s.titles.len(),
+        ROW_H,
+        |s: &List, i| Cow::Borrowed(s.keys[i].as_str()),
+        list_row,
+    ))
 }
 
 fn list_state() -> List {
     let mut r = Rng(11);
-    let titles = (0..LIST_ROWS).map(|i| { let n = 2 + r.next(4); format!("{} {i}", r.words(n)) }).collect();
-    let subtitles = (0..LIST_ROWS).map(|_| { let n = 6 + r.next(10); r.words(n) }).collect();
+    let titles = (0..LIST_ROWS)
+        .map(|i| {
+            let n = 2 + r.next(4);
+            format!("{} {i}", r.words(n))
+        })
+        .collect();
+    let subtitles = (0..LIST_ROWS)
+        .map(|_| {
+            let n = 6 + r.next(10);
+            r.words(n)
+        })
+        .collect();
     List { titles, subtitles, keys: (0..LIST_ROWS).map(|i| format!("m{i}")).collect() }
 }
 
 // edit
 
-struct Edit { note: TextEdit }
+struct Edit {
+    note: TextEdit,
+}
 
-fn edit_style() -> TextStyle { TextStyle::new(15.0, 400.0).lh(22.0) }
+fn edit_style() -> TextStyle {
+    TextStyle::new(15.0, 400.0).lh(22.0)
+}
 
 fn edit_view(s: &Edit, _: &mut Cx<Edit>) -> El {
     view_ran();
-    scroller(col().w_full().px(32.0).py(24.0)
-        .child(text_input(&s.note, edit_style()).key("editor").w_full().on_edit(|s: &mut Edit| &mut s.note)
-            .on_submit(|s: &mut Edit, _| s.note.insert("\n"))))
+    scroller(
+        col().w_full().px(32.0).py(24.0).child(
+            text_input(&s.note, edit_style())
+                .key("editor")
+                .w_full()
+                .on_edit(|s: &mut Edit| &mut s.note)
+                .on_submit(|s: &mut Edit, _| s.note.insert("\n")),
+        ),
+    )
 }
 
 // md-*
 
-struct Md { src: String, style: MarkdownStyle }
+struct Md {
+    src: String,
+    style: MarkdownStyle,
+}
 
 fn md_view(s: &Md, _: &mut Cx<Md>) -> El {
     view_ran();
@@ -220,18 +341,29 @@ fn md_view(s: &Md, _: &mut Cx<Md>) -> El {
 
 // md-virtual, md-beside
 
-struct MdRows { blocks: Vec<String>, keys: Vec<String>, side: Option<String>, style: MarkdownStyle }
+struct MdRows {
+    blocks: Vec<String>,
+    keys: Vec<String>,
+    side: Option<String>,
+    style: MarkdownStyle,
+}
 
 fn md_rows_view(s: &MdRows, _: &mut Cx<MdRows>) -> El {
     view_ran();
     let list = col().key("blocks").w_full().px(32.0).growth(GrowthSpec::default()).virtual_rows(
-        s.blocks.len(), 60.0,
+        s.blocks.len(),
+        60.0,
         |s: &MdRows, i| Cow::Borrowed(s.keys[i].as_str()),
         |s: &MdRows, i| col().w_full().pb(12.0).child(Markdown::new(s.blocks[i].as_str()).render(&s.style)),
     );
     let Some(side) = &s.side else { return scroller(list) };
-    row().w_full().h_full().fill(BG)
-        .child(col().key("side").w(320.0).h_full().px(16.0).py(16.0).child(Markdown::new(side.as_str()).render(&s.style)))
+    row()
+        .w_full()
+        .h_full()
+        .fill(BG)
+        .child(
+            col().key("side").w(320.0).h_full().px(16.0).py(16.0).child(Markdown::new(side.as_str()).render(&s.style)),
+        )
         .child(col().key("main").grow(1.0).h_full().child(scroller(list)))
 }
 
@@ -247,7 +379,10 @@ fn md_rows_state(src: &str, side: bool) -> MdRows {
 const GROUPS: usize = 80;
 const CELLS: usize = 20;
 
-struct Tree { counts: Vec<u32>, labels: Vec<String> }
+struct Tree {
+    counts: Vec<u32>,
+    labels: Vec<String>,
+}
 
 fn tree_view(s: &Tree, cx: &mut Cx<Tree>) -> El {
     view_ran();
@@ -255,44 +390,89 @@ fn tree_view(s: &Tree, cx: &mut Cx<Tree>) -> El {
     let groups = (0..GROUPS).map(|g| {
         let cells = (0..CELLS).map(|c| {
             let i = g * CELLS + c;
-            row().key(format!("c{i}")).w_full().h(24.0).gap(8.0).center_y()
-                .child(text(s.labels[i].clone()).font(TextStyle::new(13.0, 400.0)).color(Color::WHITE).grow(1.0).shrink().truncate())
-                .child(text(format!("{}", s.counts[i])).font(TextStyle::new(13.0, 500.0)).color(Color::WHITE.alpha(0.7)))
+            row()
+                .key(format!("c{i}"))
+                .w_full()
+                .h(24.0)
+                .gap(8.0)
+                .center_y()
+                .child(
+                    text(s.labels[i].clone())
+                        .font(TextStyle::new(13.0, 400.0))
+                        .color(Color::WHITE)
+                        .grow(1.0)
+                        .shrink()
+                        .truncate(),
+                )
+                .child(
+                    text(format!("{}", s.counts[i])).font(TextStyle::new(13.0, 500.0)).color(Color::WHITE.alpha(0.7)),
+                )
         });
-        col().key(format!("g{g}")).w_full().gap(2.0)
+        col()
+            .key(format!("g{g}"))
+            .w_full()
+            .gap(2.0)
             .child(text(format!("Group {g}")).font(TextStyle::new(15.0, 600.0)).color(Color::WHITE))
             .children(cells)
     });
-    scroller(col().w_full().px(24.0).py(16.0).gap(12.0)
-        .child(text(format!("width {w:.0}")).font(TextStyle::new(12.0, 400.0)).color(Color::WHITE.alpha(0.5)))
-        .children(groups))
+    scroller(
+        col()
+            .w_full()
+            .px(24.0)
+            .py(16.0)
+            .gap(12.0)
+            .child(text(format!("width {w:.0}")).font(TextStyle::new(12.0, 400.0)).color(Color::WHITE.alpha(0.5)))
+            .children(groups),
+    )
 }
 
 fn tree_state() -> Tree {
     let mut r = Rng(5);
-    Tree { counts: vec![0; GROUPS * CELLS], labels: (0..GROUPS * CELLS).map(|_| { let n = 2 + r.next(4); r.words(n) }).collect() }
+    Tree {
+        counts: vec![0; GROUPS * CELLS],
+        labels: (0..GROUPS * CELLS)
+            .map(|_| {
+                let n = 2 + r.next(4);
+                r.words(n)
+            })
+            .collect(),
+    }
 }
 
 // vlist-resize
 
-struct Blocks { blocks: Vec<String>, keys: Vec<String>, style: MarkdownStyle }
+struct Blocks {
+    blocks: Vec<String>,
+    keys: Vec<String>,
+    style: MarkdownStyle,
+}
 
 fn blocks_view(s: &Blocks, _: &mut Cx<Blocks>) -> El {
     view_ran();
-    scroller(col().key("rows").w_full().px(32.0).py(24.0).gap(12.0).growth(GrowthSpec::default())
-        .virtual_rows(s.blocks.len(), 60.0, |s: &Blocks, i| Cow::Borrowed(s.keys[i].as_str()),
-            |s: &Blocks, i| Markdown::new(s.blocks[i].as_str()).render(&s.style)))
+    scroller(col().key("rows").w_full().px(32.0).py(24.0).gap(12.0).growth(GrowthSpec::default()).virtual_rows(
+        s.blocks.len(),
+        60.0,
+        |s: &Blocks, i| Cow::Borrowed(s.keys[i].as_str()),
+        |s: &Blocks, i| Markdown::new(s.blocks[i].as_str()).render(&s.style),
+    ))
 }
 
 // memo-chat
 
 fn live_overlay(root: El) -> El {
-    LIVE_OVERLAY.with(|live| root.child(rune::el().key("live-overlay").absolute(0.0, 0.0).size(6.0, 40.0)
-        .fill(Color::WHITE).live_offset(live)))
+    LIVE_OVERLAY.with(|live| {
+        root.child(
+            rune::el().key("live-overlay").absolute(0.0, 0.0).size(6.0, 40.0).fill(Color::WHITE).live_offset(live),
+        )
+    })
 }
 
-fn md_live_view(s: &Md, cx: &mut Cx<Md>) -> El { live_overlay(md_view(s, cx)) }
-fn blocks_live_view(s: &Blocks, cx: &mut Cx<Blocks>) -> El { live_overlay(blocks_view(s, cx)) }
+fn md_live_view(s: &Md, cx: &mut Cx<Md>) -> El {
+    live_overlay(md_view(s, cx))
+}
+fn blocks_live_view(s: &Blocks, cx: &mut Cx<Blocks>) -> El {
+    live_overlay(blocks_view(s, cx))
+}
 
 const SIDE_ROWS: usize = 300;
 const CHAT_ROWS: usize = 200;
@@ -317,16 +497,39 @@ struct MemoChat {
 
 fn memo_side_row(r: &SideRow, i: usize, picked: bool, k: &Kit) -> El {
     rune::memo(format!("side-{i}"), (r.ver, picked), || {
-        row().w_full().h(36.0).px(10.0).gap(8.0).center_y().radius(6.0)
+        row()
+            .w_full()
+            .h(36.0)
+            .px(10.0)
+            .gap(8.0)
+            .center_y()
+            .radius(6.0)
             .fill(if picked { Color::WHITE.alpha(0.08) } else { Color::TRANSPARENT })
             .hover(Color::WHITE.alpha(0.05))
             .on_press(move |s: &mut MemoChat| s.picked = i)
             .child(rune::el().key("dot").size(8.0, 8.0).radius(4.0).fill(Color { r: 0.35, g: 0.65, b: 0.95, a: 1.0 }))
-            .child(col().key("copy").grow(1.0).shrink().gap(2.0)
-                .child(text(r.title.clone()).key("title").font(TextStyle::new(13.0, 500.0)).color(Color::WHITE).truncate())
-                .child(row().key("meta").gap(6.0).center_y()
-                    .child(Badge::new(r.group.clone()).build(k))
-                    .child(text(r.age.clone()).key("age").font(TextStyle::new(11.0, 400.0)).color(Color::WHITE.alpha(0.55)))))
+            .child(
+                col()
+                    .key("copy")
+                    .grow(1.0)
+                    .shrink()
+                    .gap(2.0)
+                    .child(
+                        text(r.title.clone())
+                            .key("title")
+                            .font(TextStyle::new(13.0, 500.0))
+                            .color(Color::WHITE)
+                            .truncate(),
+                    )
+                    .child(
+                        row().key("meta").gap(6.0).center_y().child(Badge::new(r.group.clone()).build(k)).child(
+                            text(r.age.clone())
+                                .key("age")
+                                .font(TextStyle::new(11.0, 400.0))
+                                .color(Color::WHITE.alpha(0.55)),
+                        ),
+                    ),
+            )
     })
 }
 
@@ -334,13 +537,25 @@ fn memo_chat_view(s: &MemoChat, _: &mut Cx<MemoChat>) -> El {
     view_ran();
     let sidebar = col().key("sidebar").w(260.0).h_full().child(
         col().key("side-scroll").w_full().grow(1.0).min_h(0.0).scroll(ScrollSpec { stick_bottom: false }).child(
-            col().key("side-rows").w_full().px(8.0).py(8.0).gap(2.0).growth(GrowthSpec::default()).virtualize(36.0)
+            col()
+                .key("side-rows")
+                .w_full()
+                .px(8.0)
+                .py(8.0)
+                .gap(2.0)
+                .growth(GrowthSpec::default())
+                .virtualize(36.0)
                 .children(s.side.iter().enumerate().map(|(i, r)| memo_side_row(r, i, i == s.picked, &s.kit))),
         ),
     );
     let item_page = col().key("item-page").grow(1.0).shrink().h_full().child(
         col().key("item-scroll").w_full().grow(1.0).min_h(0.0).scroll(ScrollSpec { stick_bottom: false }).child(
-            col().key("item-body").w_full().px(28.0).py(20.0).gap(16.0)
+            col()
+                .key("item-body")
+                .w_full()
+                .px(28.0)
+                .py(20.0)
+                .gap(16.0)
                 .child(text("Overview and notes").key("heading").font(TextStyle::new(20.0, 600.0)).color(Color::WHITE))
                 .children(s.notes.iter().enumerate().map(|(i, (md, ver))| {
                     rune::memo(format!("note-{i}"), *ver, || {
@@ -349,22 +564,34 @@ fn memo_chat_view(s: &MemoChat, _: &mut Cx<MemoChat>) -> El {
                 })),
         ),
     );
-    let chat_list = col().key("chat-scroll").w_full().grow(1.0).min_h(0.0).scroll(ScrollSpec { stick_bottom: true }).child(
-        col().key("chat-rows").w_full().px(12.0).py(12.0).gap(10.0).growth(GrowthSpec::default())
-            .virtual_rows(
-                s.chat.len(),
-                56.0,
-                |s: &MemoChat, i| Cow::Borrowed(s.chat_keys[i].as_str()),
-                |s: &MemoChat, i| rune::memo(s.chat_keys[i].as_str(), 0u64, || {
-                    col().w_full().padding(8.0).radius(8.0).fill(Color::WHITE.alpha(0.04))
-                        .child(Markdown::new(s.chat[i].as_str()).render(&s.md_style))
-                }),
-            )
-            .virtual_rows_version(0u64),
-    );
+    let chat_list =
+        col().key("chat-scroll").w_full().grow(1.0).min_h(0.0).scroll(ScrollSpec { stick_bottom: true }).child(
+            col()
+                .key("chat-rows")
+                .w_full()
+                .px(12.0)
+                .py(12.0)
+                .gap(10.0)
+                .growth(GrowthSpec::default())
+                .virtual_rows(
+                    s.chat.len(),
+                    56.0,
+                    |s: &MemoChat, i| Cow::Borrowed(s.chat_keys[i].as_str()),
+                    |s: &MemoChat, i| {
+                        rune::memo(s.chat_keys[i].as_str(), 0u64, || {
+                            col()
+                                .w_full()
+                                .padding(8.0)
+                                .radius(8.0)
+                                .fill(Color::WHITE.alpha(0.04))
+                                .child(Markdown::new(s.chat[i].as_str()).render(&s.md_style))
+                        })
+                    },
+                )
+                .virtual_rows_version(0u64),
+        );
     let composer = col().key("composer-box").w_full().px(12.0).py(10.0).child(
-        text_input(&s.composer, edit_style()).key("composer").w_full()
-            .on_edit(|s: &mut MemoChat| &mut s.composer),
+        text_input(&s.composer, edit_style()).key("composer").w_full().on_edit(|s: &mut MemoChat| &mut s.composer),
     );
     let right = col().key("right-panel").w(360.0).h_full().child(chat_list).child(composer);
     row().w_full().h_full().fill(BG).child(sidebar).child(item_page).child(right)
@@ -372,44 +599,63 @@ fn memo_chat_view(s: &MemoChat, _: &mut Cx<MemoChat>) -> El {
 
 fn memo_chat_state(src: &str) -> MemoChat {
     let mut r = Rng(19);
-    let side = (0..SIDE_ROWS).map(|i| {
-        let n = 3 + r.next(4);
-        SideRow {
-            title: format!("{} {}", r.words(n), i),
-            group: WORDS[r.next(12)].to_string(),
-            age: format!("{}m", 1 + (i % 59)),
-            ver: 1,
-        }
-    }).collect();
+    let side = (0..SIDE_ROWS)
+        .map(|i| {
+            let n = 3 + r.next(4);
+            SideRow {
+                title: format!("{} {}", r.words(n), i),
+                group: WORDS[r.next(12)].to_string(),
+                age: format!("{}m", 1 + (i % 59)),
+                ver: 1,
+            }
+        })
+        .collect();
     let sections: Vec<&str> = src.split("\n## ").filter(|b| !b.trim().is_empty()).collect();
-    let notes = (0..20).map(|i| {
-        let piece = sections[i % sections.len()];
-        (format!("## {piece}"), 1u64)
-    }).collect();
+    let notes = (0..20)
+        .map(|i| {
+            let piece = sections[i % sections.len()];
+            (format!("## {piece}"), 1u64)
+        })
+        .collect();
     let blocks: Vec<&str> = src.split("\n\n").filter(|b| !b.trim().is_empty()).collect();
-    let chat = (0..CHAT_ROWS).map(|i| {
-        let a = blocks[(i * 2) % blocks.len()];
-        let b = blocks[(i * 2 + 1) % blocks.len()];
-        format!("{a}\n\n{b}")
-    }).collect();
+    let chat = (0..CHAT_ROWS)
+        .map(|i| {
+            let a = blocks[(i * 2) % blocks.len()];
+            let b = blocks[(i * 2 + 1) % blocks.len()];
+            format!("{a}\n\n{b}")
+        })
+        .collect();
     let chat_keys = (0..CHAT_ROWS).map(|i| format!("msg-{i}")).collect();
     let mut composer = TextEdit::new("Draft reply: ");
     composer.focused = true;
     composer.set_caret(composer.text.len());
-    MemoChat { kit: Kit::neutral(true), md_style: MarkdownStyle::neutral(true), side, notes, chat, chat_keys, picked: 0, composer }
+    MemoChat {
+        kit: Kit::neutral(true),
+        md_style: MarkdownStyle::neutral(true),
+        side,
+        notes,
+        chat,
+        chat_keys,
+        picked: 0,
+        composer,
+    }
 }
 
 fn fonts() -> TextSystem {
     let mut fonts = TextSystem::default();
     fonts.layout_rich("Warm fonts", &[], TextStyle::new(15.0, 400.0), 2.0, None);
-    for _ in 0..3 { fonts.end_commit(); }
+    for _ in 0..3 {
+        fonts.end_commit();
+    }
     fonts
 }
 
 fn settle<S: 'static>(rt: &mut Runtime<S>) {
     rt.frame(0.0);
     let mut n = 0;
-    while n < 240 && rt.frame(1.0 / 120.0) { n += 1; }
+    while n < 240 && rt.frame(1.0 / 120.0) {
+        n += 1;
+    }
 }
 
 fn runtime<S: 'static>(state: S, view: fn(&S, &mut Cx<S>) -> El, size: (f32, f32)) -> Runtime<S> {
@@ -422,7 +668,8 @@ fn runtime<S: 'static>(state: S, view: fn(&S, &mut Cx<S>) -> El, size: (f32, f32
 fn timed<S: 'static>(rt: &mut Runtime<S>, tag: u32, input: impl FnOnce(&mut Runtime<S>)) -> Vec<f64> {
     rune::take_frame_phases();
     let views0 = VIEWS.get();
-    let (shaped0, rebroken0, allocs0, bytes0) = (rt.text.shaped, rt.text.rebroken, probe::allocations(), probe::allocated_bytes());
+    let (shaped0, rebroken0, allocs0, bytes0) =
+        (rt.text.shaped, rt.text.rebroken, probe::allocations(), probe::allocated_bytes());
     probe::TAG.store(tag, std::sync::atomic::Ordering::Relaxed);
     let cpu0 = rune::thread_cpu_ms();
     input(rt);
@@ -433,15 +680,30 @@ fn timed<S: 'static>(rt: &mut Runtime<S>, tag: u32, input: impl FnOnce(&mut Runt
     let bytes = probe::allocated_bytes() - bytes0;
     let p = rune::take_frame_phases();
     let q = rune::PHASES;
-    vec![cpu, p[q], p[q + 1], p[q + 2], p[q + 3], p[q + 4], p[q + 5], allocs as f64, bytes as f64,
-        (rt.text.shaped - shaped0) as f64, (rt.text.rebroken - rebroken0) as f64, rt.stats.layout_nodes as f64, (VIEWS.get() - views0) as f64]
+    vec![
+        cpu,
+        p[q],
+        p[q + 1],
+        p[q + 2],
+        p[q + 3],
+        p[q + 4],
+        p[q + 5],
+        allocs as f64,
+        bytes as f64,
+        (rt.text.shaped - shaped0) as f64,
+        (rt.text.rebroken - rebroken0) as f64,
+        rt.stats.layout_nodes as f64,
+        (VIEWS.get() - views0) as f64,
+    ]
 }
 
 fn report(case: &str, rows: &[Vec<f64>]) {
     summarize(case, rows);
     // Scrolling cases commit on only some frames; those frames, apart.
     let commits: Vec<Vec<f64>> = rows.iter().filter(|r| r[2] > 0.0).cloned().collect();
-    if !commits.is_empty() && commits.len() < rows.len() { summarize(&format!("{case}:commit"), &commits); }
+    if !commits.is_empty() && commits.len() < rows.len() {
+        summarize(&format!("{case}:commit"), &commits);
+    }
 }
 
 fn summarize(case: &str, rows: &[Vec<f64>]) {
@@ -450,7 +712,11 @@ fn summarize(case: &str, rows: &[Vec<f64>]) {
         v.sort_by(f64::total_cmp);
         let p95 = v[((v.len() - 1) as f64 * 0.95).round() as usize];
         let mean = v.iter().sum::<f64>() / v.len() as f64;
-        println!("METRIC case={case} metric={name} median={:.4} p95={p95:.4} mean={mean:.4} n={}", v[v.len() / 2], v.len());
+        println!(
+            "METRIC case={case} metric={name} median={:.4} p95={p95:.4} mean={mean:.4} n={}",
+            v[v.len() / 2],
+            v.len()
+        );
     }
 }
 
@@ -469,10 +735,17 @@ fn run(case: &str, tag: u32, kb: usize, meta: &mut Vec<String>) -> Vec<Vec<f64>>
             probe::snapshot(tag);
             meta.push(census(&rt, case, heap0));
             let same = case == "stack-same";
-            (0..240).map(|i| timed(&mut rt, tag, |rt| {
-                if !same { let n = rt.state.on.len(); rt.state.on[(i * 37) % n] ^= true; }
-                rt.invalidate();
-            })).collect()
+            (0..240)
+                .map(|i| {
+                    timed(&mut rt, tag, |rt| {
+                        if !same {
+                            let n = rt.state.on.len();
+                            rt.state.on[(i * 37) % n] ^= true;
+                        }
+                        rt.invalidate();
+                    })
+                })
+                .collect()
         }
         "list" => {
             let mut rt = runtime(list_state(), list_view, (760.0, 800.0));
@@ -488,7 +761,10 @@ fn run(case: &str, tag: u32, kb: usize, meta: &mut Vec<String>) -> Vec<Vec<f64>>
             note.focused = true;
             note.set_caret(mid);
             let mut rt = runtime(Edit { note }, edit_view, (760.0, 900.0));
-            for _ in 0..3 { rt.ime(Ime::Commit("w".into())); rt.frame(1.0 / 120.0); }
+            for _ in 0..3 {
+                rt.ime(Ime::Commit("w".into()));
+                rt.frame(1.0 / 120.0);
+            }
             settle(&mut rt);
             probe::snapshot(tag);
             meta.push(census(&rt, case, heap0));
@@ -512,7 +788,10 @@ fn run(case: &str, tag: u32, kb: usize, meta: &mut Vec<String>) -> Vec<Vec<f64>>
             let view = if case == "vlist-resize-live" { blocks_live_view } else { blocks_view };
             let mut rt = runtime(Blocks { blocks, keys, style: MarkdownStyle::neutral(true) }, view, (900.0, 900.0));
             rt.pointer_move(450.0, 450.0);
-            for _ in 0..40 { rt.wheel(450.0, 450.0, -400.0); rt.frame(1.0 / 120.0); }
+            for _ in 0..40 {
+                rt.wheel(450.0, 450.0, -400.0);
+                rt.frame(1.0 / 120.0);
+            }
             settle(&mut rt);
             probe::snapshot(tag);
             meta.push(census(&rt, case, heap0));
@@ -520,12 +799,14 @@ fn run(case: &str, tag: u32, kb: usize, meta: &mut Vec<String>) -> Vec<Vec<f64>>
             widths.map(|w| timed(&mut rt, tag, |rt| rt.set_viewport((w, 900.0), 2.0))).collect()
         }
         "md-open" => {
-            let rows = (0..10).map(|_| {
-                let fonts = fonts();
-                let state = Md { src: src.clone(), style: MarkdownStyle::neutral(true) };
-                let mut rt = Runtime::with_text(state, md_view, (900.0, 900.0), Env::new(true, 2.0), fonts);
-                timed(&mut rt, tag, |_| {})
-            }).collect();
+            let rows = (0..10)
+                .map(|_| {
+                    let fonts = fonts();
+                    let state = Md { src: src.clone(), style: MarkdownStyle::neutral(true) };
+                    let mut rt = Runtime::with_text(state, md_view, (900.0, 900.0), Env::new(true, 2.0), fonts);
+                    timed(&mut rt, tag, |_| {})
+                })
+                .collect();
             rows
         }
         "md-virtual" | "md-beside" => {
@@ -540,30 +821,44 @@ fn run(case: &str, tag: u32, kb: usize, meta: &mut Vec<String>) -> Vec<Vec<f64>>
             let mut rt = runtime(tree_state(), tree_view, (900.0, 900.0));
             probe::snapshot(tag);
             meta.push(census(&rt, case, heap0));
-            (0..240).map(|i| timed(&mut rt, tag, |rt| {
-                let k = (i * 37) % (GROUPS * CELLS) % (CELLS * 3);
-                rt.update(|s, tx| { s.counts[k] += 1; tx.keep_on_screen(format!("c{k}")); });
-            })).collect()
+            (0..240)
+                .map(|i| {
+                    timed(&mut rt, tag, |rt| {
+                        let k = (i * 37) % (GROUPS * CELLS) % (CELLS * 3);
+                        rt.update(|s, tx| {
+                            s.counts[k] += 1;
+                            tx.keep_on_screen(format!("c{k}"));
+                        });
+                    })
+                })
+                .collect()
         }
         "memo-chat" => {
             let mut rt = runtime(memo_chat_state(&src), memo_chat_view, (1440.0, 860.0));
-            for _ in 0..3 { rt.ime(Ime::Commit("a".into())); rt.frame(1.0 / 120.0); }
+            for _ in 0..3 {
+                rt.ime(Ime::Commit("a".into()));
+                rt.frame(1.0 / 120.0);
+            }
             settle(&mut rt);
             probe::snapshot(tag);
             meta.push(census(&rt, case, heap0));
             let chars = ["a", "b", "c", "d", "e", " "];
-            (0..240).map(|i| timed(&mut rt, tag, |rt| {
-                if i > 0 && i % 48 == 0 {
-                    rt.update(|s, _| {
-                        let mut next = TextEdit::new("Draft reply: ");
-                        next.focused = true;
-                        next.set_caret(next.text.len());
-                        s.composer = next;
-                    });
-                } else {
-                    rt.ime(Ime::Commit(chars[i % chars.len()].into()));
-                }
-            })).collect()
+            (0..240)
+                .map(|i| {
+                    timed(&mut rt, tag, |rt| {
+                        if i > 0 && i % 48 == 0 {
+                            rt.update(|s, _| {
+                                let mut next = TextEdit::new("Draft reply: ");
+                                next.focused = true;
+                                next.set_caret(next.text.len());
+                                s.composer = next;
+                            });
+                        } else {
+                            rt.ime(Ime::Commit(chars[i % chars.len()].into()));
+                        }
+                    })
+                })
+                .collect()
         }
         other => panic!("unknown case {other}; one of {CASES:?}"),
     }
@@ -576,8 +871,11 @@ fn main() {
     probe::init(mode == "heap");
     let repeat: usize = value("--repeat").map_or(1, |s| s.parse().expect("--repeat N"));
     let kb: usize = value("--kb").map_or(50, |s| s.parse().expect("--kb 50"));
-    let cases: Vec<String> = value("--case").map_or(CASES.iter().map(|c| c.to_string()).collect(), |c| c.split(',').map(String::from).collect());
-    if cfg!(debug_assertions) { eprintln!("layout_text_cost: debug build; time a --profile perf build"); }
+    let cases: Vec<String> = value("--case")
+        .map_or(CASES.iter().map(|c| c.to_string()).collect(), |c| c.split(',').map(String::from).collect());
+    if cfg!(debug_assertions) {
+        eprintln!("layout_text_cost: debug build; time a --profile perf build");
+    }
     let sampler = (mode == "sample").then(|| probe::Sampler::start(200));
     let mut meta = Vec::new();
     let mut tags = Vec::new();
@@ -587,7 +885,9 @@ fn main() {
         let rows: Vec<_> = (0..repeat).flat_map(|_| run(case, tag, kb, &mut meta)).collect();
         report(case, &rows);
     }
-    for m in &meta { println!("CENSUS {m}"); }
+    for m in &meta {
+        println!("CENSUS {m}");
+    }
     // How often a word repeats: the ceiling on what a per-word shaping cache could reuse.
     let tokens = |texts: &mut dyn Iterator<Item = String>| {
         let all: Vec<String> = texts.flat_map(|t| t.split_whitespace().map(String::from).collect::<Vec<_>>()).collect();
@@ -596,8 +896,12 @@ fn main() {
     let (note_all, note_distinct) = tokens(&mut std::iter::once(note(kb * 1024)));
     let list = list_state();
     let (list_all, list_distinct) = tokens(&mut list.titles.into_iter().chain(list.subtitles));
-    println!("WORDS note_tokens={note_all} note_distinct={note_distinct} list_tokens={list_all} list_distinct={list_distinct}");
-    if let Some(s) = sampler { s.stop(); }
+    println!(
+        "WORDS note_tokens={note_all} note_distinct={note_distinct} list_tokens={list_all} list_distinct={list_distinct}"
+    );
+    if let Some(s) = sampler {
+        s.stop();
+    }
     if mode != "time" {
         probe::dump(&value("--out").expect("--out FILE"), &tags, &meta);
     }

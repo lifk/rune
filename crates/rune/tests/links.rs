@@ -4,71 +4,157 @@
 mod support;
 
 use rune::runtime::ElementInfo;
-use rune::{Color, Cursor, Cx, El, Env, Key, KeyEvent, Link, LinkPaint, Mods, Runtime, Span, TextEdit, TextStyle, col, rich, text_input};
+use rune::{
+    Color, Cursor, Cx, El, Env, Key, KeyEvent, Link, LinkPaint, Mods, Runtime, Span, TextEdit,
+    TextStyle, col, rich, text_input,
+};
 use support::{centre, click, find};
 
 const TEXT: &str = "Hi @kit see docs and notes.md ok";
 const WRAPS: &str = "go to a very long link that wraps";
 
-struct S { draft: TextEdit, opened: Vec<String> }
+struct S {
+    draft: TextEdit,
+    opened: Vec<String>,
+}
 
 fn at(s: &str, part: &str) -> std::ops::Range<usize> {
     let i = s.find(part).unwrap();
     i..i + part.len()
 }
 
-fn hover_bg() -> Color { rune::color::hex("#ff0055").unwrap() }
-fn pressed_bg() -> Color { rune::color::hex("#00ff55").unwrap() }
+fn hover_bg() -> Color {
+    rune::color::hex("#ff0055").unwrap()
+}
+fn pressed_bg() -> Color {
+    rune::color::hex("#00ff55").unwrap()
+}
 
 fn view(s: &S, _: &mut Cx<S>) -> El {
     let style = TextStyle::new(14.0, 400.0).lh(20.0);
     let accent = rune::color::hex("#3080ff").unwrap();
-    let spans = ["@kit", "docs", "notes.md"].map(|p| { let r = at(TEXT, p); Span { color: Some(accent), ..Span::new(r.start, r.end) } }).to_vec();
+    let spans = ["@kit", "docs", "notes.md"]
+        .map(|p| {
+            let r = at(TEXT, p);
+            Span {
+                color: Some(accent),
+                ..Span::new(r.start, r.end)
+            }
+        })
+        .to_vec();
     let paint = LinkPaint::new().bg(hover_bg()).underline(accent);
-    col().w_full().h_full().padding(10.0).gap(10.0)
-        .child(text_input(&s.draft, style).key("composer").w_full().on_edit(|s: &mut S| &mut s.draft))
-        .child(rich(TEXT, spans).key("message").font(style).w(400.0)
-            .link(Link::new(at(TEXT, "@kit"), "user:kit").label("Kit").hover(paint).pressed(LinkPaint::new().bg(pressed_bg())))
-            .link(Link::new(at(TEXT, "docs"), "https://docs").hover(paint))
-            .link(Link::new(at(TEXT, "notes.md"), "file:notes.md").role("button").hover(paint))
-            .on_link(|s: &mut S, id, _| s.opened.push(id.to_owned())))
-        .child(rich(WRAPS, Vec::new()).key("wrapped").font(style).w(90.0)
-            .link(Link::new(at(WRAPS, "a very long link"), "long"))
-            .on_link(|s: &mut S, id, _| s.opened.push(id.to_owned())))
+    col()
+        .w_full()
+        .h_full()
+        .padding(10.0)
+        .gap(10.0)
+        .child(
+            text_input(&s.draft, style)
+                .key("composer")
+                .w_full()
+                .on_edit(|s: &mut S| &mut s.draft),
+        )
+        .child(
+            rich(TEXT, spans)
+                .key("message")
+                .font(style)
+                .w(400.0)
+                .link(
+                    Link::new(at(TEXT, "@kit"), "user:kit")
+                        .label("Kit")
+                        .hover(paint)
+                        .pressed(LinkPaint::new().bg(pressed_bg())),
+                )
+                .link(Link::new(at(TEXT, "docs"), "https://docs").hover(paint))
+                .link(
+                    Link::new(at(TEXT, "notes.md"), "file:notes.md")
+                        .role("button")
+                        .hover(paint),
+                )
+                .on_link(|s: &mut S, id, _| s.opened.push(id.to_owned())),
+        )
+        .child(
+            rich(WRAPS, Vec::new())
+                .key("wrapped")
+                .font(style)
+                .w(90.0)
+                .link(Link::new(at(WRAPS, "a very long link"), "long"))
+                .on_link(|s: &mut S, id, _| s.opened.push(id.to_owned())),
+        )
 }
 
 fn key(rt: &mut Runtime<S>, key: Key, shift: bool) {
-    rt.key(KeyEvent { key, mods: Mods { shift, ..Mods::default() } });
+    rt.key(KeyEvent {
+        key,
+        mods: Mods {
+            shift,
+            ..Mods::default()
+        },
+    });
     rt.frame(1.0 / 60.0);
 }
 
 fn painted(rt: &Runtime<S>, c: Color) -> bool {
     let want = c.premul(1.0);
-    rt.instances.iter().any(|i| i.fill.iter().zip(want).all(|(a, b)| (a - b).abs() < 1e-3))
+    rt.instances
+        .iter()
+        .any(|i| i.fill.iter().zip(want).all(|(a, b)| (a - b).abs() < 1e-3))
 }
 
 fn focused_link(rt: &Runtime<S>) -> Option<String> {
-    rt.elements().into_iter().find(|e| e.focused && e.path.contains("#link-")).and_then(|e| e.key)
+    rt.elements()
+        .into_iter()
+        .find(|e| e.focused && e.path.contains("#link-"))
+        .and_then(|e| e.key)
 }
 
 #[test]
 fn links_hit_by_their_glyphs_press_and_take_keyboard_focus() {
     let mut draft = TextEdit::new("");
     draft.focused = true;
-    let mut rt = Runtime::new(S { draft, opened: Vec::new() }, view, (500.0, 300.0), Env::new(true, 2.0));
+    let mut rt = Runtime::new(
+        S {
+            draft,
+            opened: Vec::new(),
+        },
+        view,
+        (500.0, 300.0),
+        Env::new(true, 2.0),
+    );
     rt.frame(0.0);
 
     // Tools see each link with its role and name, inside its text.
     let message = find(&rt, "message");
-    let (kit, docs, notes) = (find(&rt, "user:kit"), find(&rt, "https://docs"), find(&rt, "file:notes.md"));
-    assert_eq!((kit.role, kit.label.as_deref(), kit.text.as_deref()), ("link", Some("Kit"), Some("@kit")));
-    assert_eq!((notes.role, notes.label.as_deref()), ("button", Some("notes.md")));
+    let (kit, docs, notes) = (
+        find(&rt, "user:kit"),
+        find(&rt, "https://docs"),
+        find(&rt, "file:notes.md"),
+    );
+    assert_eq!(
+        (kit.role, kit.label.as_deref(), kit.text.as_deref()),
+        ("link", Some("Kit"), Some("@kit"))
+    );
+    assert_eq!(
+        (notes.role, notes.label.as_deref()),
+        ("button", Some("notes.md"))
+    );
     for l in [&kit, &docs, &notes] {
         assert!(l.focusable && l.rect[2] > 10.0 && l.rect[3] > 10.0, "{l:?}");
-        assert!(l.rect[0] >= message.rect[0] && l.rect[0] + l.rect[2] <= message.rect[0] + message.rect[2], "{l:?} in {:?}", message.rect);
+        assert!(
+            l.rect[0] >= message.rect[0]
+                && l.rect[0] + l.rect[2] <= message.rect[0] + message.rect[2],
+            "{l:?} in {:?}",
+            message.rect
+        );
     }
-    assert!(kit.rect[0] + kit.rect[2] < docs.rect[0] && docs.rect[0] + docs.rect[2] < notes.rect[0], "in text order");
-    assert!(!message.focusable, "the links are the stops, not the paragraph");
+    assert!(
+        kit.rect[0] + kit.rect[2] < docs.rect[0] && docs.rect[0] + docs.rect[2] < notes.rect[0],
+        "in text order"
+    );
+    assert!(
+        !message.focusable,
+        "the links are the stops, not the paragraph"
+    );
 
     // Hover: a hand and the hover paint over the link only.
     assert!(!painted(&rt, hover_bg()));
@@ -90,11 +176,17 @@ fn links_hit_by_their_glyphs_press_and_take_keyboard_focus() {
     rt.pointer_move(x, y);
     rt.pointer_down(x, y);
     rt.frame(1.0 / 60.0);
-    assert!(painted(&rt, pressed_bg()) && find(&rt, "user:kit").press == 1.0, "pressed look");
+    assert!(
+        painted(&rt, pressed_bg()) && find(&rt, "user:kit").press == 1.0,
+        "pressed look"
+    );
     rt.pointer_up(x, y);
     rt.frame(1.0 / 60.0);
     assert_eq!(rt.state.opened, ["user:kit"]);
-    assert!(rt.state.draft.focused, "clicking a link keeps the composer's focus");
+    assert!(
+        rt.state.draft.focused,
+        "clicking a link keeps the composer's focus"
+    );
 
     // Plain text takes no press; a press dragged to another link opens nothing.
     click(&mut rt, (between, y));
@@ -110,8 +202,15 @@ fn links_hit_by_their_glyphs_press_and_take_keyboard_focus() {
     let long = find(&rt, "long");
     assert!(long.rect[3] > 30.0, "two lines: {long:?}");
     click(&mut rt, (long.rect[0] + 3.0, long.rect[1] + 3.0));
-    assert_eq!(rt.state.opened, ["user:kit"], "\"go to\" sits inside the link's bounding box but is not the link");
-    click(&mut rt, (long.rect[0] + 3.0, long.rect[1] + long.rect[3] - 3.0));
+    assert_eq!(
+        rt.state.opened,
+        ["user:kit"],
+        "\"go to\" sits inside the link's bounding box but is not the link"
+    );
+    click(
+        &mut rt,
+        (long.rect[0] + 3.0, long.rect[1] + long.rect[3] - 3.0),
+    );
     assert_eq!(rt.state.opened, ["user:kit", "long"]);
 
     // Keyboard: each link is a Tab stop after the composer; Enter and Space press it;
@@ -129,11 +228,21 @@ fn links_hit_by_their_glyphs_press_and_take_keyboard_focus() {
     key(&mut rt, Key::Tab, true);
     assert_eq!(focused_link(&rt).as_deref(), Some("https://docs"));
     key(&mut rt, Key::Text(" ".into()), false);
-    assert_eq!(rt.state.opened, ["user:kit", "long", "file:notes.md", "https://docs"]);
-    assert!(painted(&rt, hover_bg()), "the focused link shows its hover look");
+    assert_eq!(
+        rt.state.opened,
+        ["user:kit", "long", "file:notes.md", "https://docs"]
+    );
+    assert!(
+        painted(&rt, hover_bg()),
+        "the focused link shows its hover look"
+    );
     key(&mut rt, Key::Tab, false);
     key(&mut rt, Key::Tab, false);
-    assert_eq!(focused_link(&rt).as_deref(), Some("long"), "on to the next text's link");
+    assert_eq!(
+        focused_link(&rt).as_deref(),
+        Some("long"),
+        "on to the next text's link"
+    );
     key(&mut rt, Key::Tab, false);
     assert_eq!(focused_link(&rt), None);
     assert!(rt.state.draft.focused, "and round to the composer");
@@ -142,31 +251,62 @@ fn links_hit_by_their_glyphs_press_and_take_keyboard_focus() {
 const EMOJI: &str = "😀😀 @kit 🎉 docs";
 const CENTRED: &str = "go to a very long link that wraps";
 
-fn link_ink() -> Color { rune::color::hex("#ff8800").unwrap() }
+fn link_ink() -> Color {
+    rune::color::hex("#ff8800").unwrap()
+}
 
 fn emoji_view(_: &S, _: &mut Cx<S>) -> El {
     let style = TextStyle::new(14.0, 400.0).lh(20.0);
     let paint = LinkPaint::new().color(link_ink());
-    col().w_full().h_full().padding(10.0).gap(10.0)
-        .child(rich(EMOJI, Vec::new()).key("emoji").font(style).w(300.0)
-            .link(Link::new(at(EMOJI, "@kit"), "user:kit").hover(paint))
-            .link(Link::new(at(EMOJI, "🎉 docs"), "party").hover(paint))
-            .on_link(|s: &mut S, id, _| s.opened.push(id.to_owned())))
-        .child(rich(CENTRED, Vec::new()).key("centred").font(style).w(120.0).align(rune::Align::Center)
-            .link(Link::new(at(CENTRED, "a very long link"), "long").hover(paint))
-            .on_link(|s: &mut S, id, _| s.opened.push(id.to_owned())))
+    col()
+        .w_full()
+        .h_full()
+        .padding(10.0)
+        .gap(10.0)
+        .child(
+            rich(EMOJI, Vec::new())
+                .key("emoji")
+                .font(style)
+                .w(300.0)
+                .link(Link::new(at(EMOJI, "@kit"), "user:kit").hover(paint))
+                .link(Link::new(at(EMOJI, "🎉 docs"), "party").hover(paint))
+                .on_link(|s: &mut S, id, _| s.opened.push(id.to_owned())),
+        )
+        .child(
+            rich(CENTRED, Vec::new())
+                .key("centred")
+                .font(style)
+                .w(120.0)
+                .align(rune::Align::Center)
+                .link(Link::new(at(CENTRED, "a very long link"), "long").hover(paint))
+                .on_link(|s: &mut S, id, _| s.opened.push(id.to_owned())),
+        )
 }
 
 /// Device-px rects `[x, y, w, h]` of glyphs drawn in `c`, and of colour emoji images.
 fn drawn(rt: &Runtime<S>, c: Color) -> (Vec<[f32; 4]>, Vec<[f32; 4]>) {
     let want = c.premul(1.0);
-    let glyphs = rt.instances.iter().filter(|i| i.params[1] == rune::render::KIND_GLYPH
-        && i.fill.iter().zip(want).all(|(a, b)| (a - b).abs() < 1e-3)).map(|i| i.rect).collect();
-    let images = rt.instances.iter().filter(|i| i.params[1] == rune::render::KIND_IMAGE).map(|i| i.rect).collect();
+    let glyphs = rt
+        .instances
+        .iter()
+        .filter(|i| {
+            i.params[1] == rune::render::KIND_GLYPH
+                && i.fill.iter().zip(want).all(|(a, b)| (a - b).abs() < 1e-3)
+        })
+        .map(|i| i.rect)
+        .collect();
+    let images = rt
+        .instances
+        .iter()
+        .filter(|i| i.params[1] == rune::render::KIND_IMAGE)
+        .map(|i| i.rect)
+        .collect();
     (glyphs, images)
 }
 
-fn mid(r: [f32; 4], s: f32) -> (f32, f32) { ((r[0] + r[2] / 2.0) / s, (r[1] + r[3] / 2.0) / s) }
+fn mid(r: [f32; 4], s: f32) -> (f32, f32) {
+    ((r[0] + r[2] / 2.0) / s, (r[1] + r[3] / 2.0) / s)
+}
 
 fn inside((x, y): (f32, f32), e: &ElementInfo) -> bool {
     x >= e.rect[0] && x <= e.rect[0] + e.rect[2] && y >= e.rect[1] && y <= e.rect[1] + e.rect[3]
@@ -180,7 +320,15 @@ fn hovers(rt: &mut Runtime<S>, (x, y): (f32, f32)) -> bool {
 
 #[test]
 fn link_boxes_match_drawn_glyphs_beside_emoji_and_in_centred_lines() {
-    let mut rt = Runtime::new(S { draft: TextEdit::new(""), opened: Vec::new() }, emoji_view, (500.0, 300.0), Env::new(true, 2.0));
+    let mut rt = Runtime::new(
+        S {
+            draft: TextEdit::new(""),
+            opened: Vec::new(),
+        },
+        emoji_view,
+        (500.0, 300.0),
+        Env::new(true, 2.0),
+    );
     rt.frame(0.0);
     let s = 2.0;
 
@@ -195,7 +343,11 @@ fn link_boxes_match_drawn_glyphs_beside_emoji_and_in_centred_lines() {
         let (glyphs, _) = drawn(&rt, link_ink());
         assert_eq!(glyphs.len(), glyph_count, "{key}: {glyphs:?}");
         for g in glyphs {
-            assert!(inside(mid(g, s), &link), "{key} glyph {g:?} outside {:?}", link.rect);
+            assert!(
+                inside(mid(g, s), &link),
+                "{key} glyph {g:?} outside {:?}",
+                link.rect
+            );
             assert!(hovers(&mut rt, mid(g, s)), "{key} glyph {g:?} misses");
         }
     }
@@ -211,10 +363,19 @@ fn link_boxes_match_drawn_glyphs_beside_emoji_and_in_centred_lines() {
     let mut images = images;
     images.sort_by(|a, b| a[0].total_cmp(&b[0]));
     for e in &images[..2] {
-        assert!(!inside(mid(*e, s), &kit) && !hovers(&mut rt, mid(*e, s)), "leading emoji {e:?}");
+        assert!(
+            !inside(mid(*e, s), &kit) && !hovers(&mut rt, mid(*e, s)),
+            "leading emoji {e:?}"
+        );
     }
-    assert!(kit.rect[0] * s > images[1][0] + images[1][2] - 1.0, "@kit starts after the emoji");
-    assert!(inside(mid(images[2], s), &party) && hovers(&mut rt, mid(images[2], s)), "🎉 is part of its link");
+    assert!(
+        kit.rect[0] * s > images[1][0] + images[1][2] - 1.0,
+        "@kit starts after the emoji"
+    );
+    assert!(
+        inside(mid(images[2], s), &party) && hovers(&mut rt, mid(images[2], s)),
+        "🎉 is part of its link"
+    );
     rt.pointer_down(mid(images[2], s).0, mid(images[2], s).1);
     rt.pointer_up(mid(images[2], s).0, mid(images[2], s).1);
     rt.frame(1.0 / 60.0);

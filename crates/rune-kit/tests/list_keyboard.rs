@@ -16,7 +16,15 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
     }
     col()
         .w_full()
-        .child(rune::row().key("before").role("button").label("Before").size(40.0, 20.0).focusable(true).on_press(|_: &mut State| {}))
+        .child(
+            rune::row()
+                .key("before")
+                .role("button")
+                .label("Before")
+                .size(40.0, 20.0)
+                .focusable(true)
+                .on_press(|_: &mut State| {}),
+        )
         .child(list.build(&k))
 }
 

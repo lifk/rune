@@ -58,21 +58,42 @@ impl<S: 'static> Runtime<S> {
             return false;
         }
         if !self.nodes.iter().all(|n| {
-            relayout::reusable(n) && n.text.as_ref().is_none_or(|t| !t.redacted && t.live.is_none())
+            relayout::reusable(n)
+                && n.text
+                    .as_ref()
+                    .is_none_or(|t| !t.redacted && t.live.is_none())
         }) {
             return false;
         }
         for (path, v) in &self.virtuals {
-            if !v.indexed || !v.selection.source.as_ref().is_some_and(|s| s.count == v.keys.len()) {
+            if !v.indexed
+                || !v
+                    .selection
+                    .source
+                    .as_ref()
+                    .is_some_and(|s| s.count == v.keys.len())
+            {
                 return false;
             }
-            let Some(&list_id) = self.path_ids.get(path) else { return false };
-            let Some(&list_idx) = self.node_index.get(&list_id) else { return false };
-            if !self.nodes.get(list_idx).is_some_and(|n| n.id == list_id && n.path == *path && n.growth.is_some()) {
+            let Some(&list_id) = self.path_ids.get(path) else {
+                return false;
+            };
+            let Some(&list_idx) = self.node_index.get(&list_id) else {
+                return false;
+            };
+            if !self
+                .nodes
+                .get(list_idx)
+                .is_some_and(|n| n.id == list_id && n.path == *path && n.growth.is_some())
+            {
                 return false;
             }
-            let Some(&scroll_id) = self.path_ids.get(&v.scroll_path) else { return false };
-            let Some(&scroll_idx) = self.node_index.get(&scroll_id) else { return false };
+            let Some(&scroll_id) = self.path_ids.get(&v.scroll_path) else {
+                return false;
+            };
+            let Some(&scroll_idx) = self.node_index.get(&scroll_id) else {
+                return false;
+            };
             if !self.nodes.get(scroll_idx).is_some_and(|n| {
                 n.id == scroll_id
                     && n.path == v.scroll_path
@@ -83,7 +104,10 @@ impl<S: 'static> Runtime<S> {
                 return false;
             }
             if self.virtuals.keys().any(|other| {
-                other != path && other.strip_prefix(path.as_str()).is_some_and(|r| r.starts_with('/'))
+                other != path
+                    && other
+                        .strip_prefix(path.as_str())
+                        .is_some_and(|r| r.starts_with('/'))
             }) {
                 return false;
             }
@@ -120,7 +144,11 @@ fn move_slice(
         n.clear_run_layout();
         n.scale_track = false;
         n.group_fade = false;
-        n.virtual_mount = if k == 0 { root_virtual_mount.unwrap_or(false) } else { false };
+        n.virtual_mount = if k == 0 {
+            root_virtual_mount.unwrap_or(false)
+        } else {
+            false
+        };
         n.parent = old_parent.map(|p| old_to_new[p] as usize);
         n.target = [0.0; 4];
         n.local = MRect::ZERO;
@@ -171,7 +199,9 @@ impl<S: 'static> Measurement<'_, S> {
 
             let mut list_subtree_end = old_list_idx + 1;
             while list_subtree_end < self.nodes.len()
-                && self.nodes[list_subtree_end].parent.is_some_and(|p| p >= old_list_idx)
+                && self.nodes[list_subtree_end]
+                    .parent
+                    .is_some_and(|p| p >= old_list_idx)
             {
                 list_subtree_end += 1;
             }
@@ -197,15 +227,24 @@ impl<S: 'static> Measurement<'_, S> {
             let mut offset = old_scroll.map_or(0.0, |s| s.offset as f32);
             v.viewport = self.nodes[scroll_idx].local.h;
             offset = (offset - v.top).max(0.0);
-            v.anchor = if pinned { None } else { v.first_visible(offset, |_| true) };
+            v.anchor = if pinned {
+                None
+            } else {
+                v.first_visible(offset, |_| true)
+            };
             let delta = v.anchor_delta();
             offset = (offset + delta).max(0.0);
-            if let Some(st) = self.scrolls.get_mut(&scroll_id) && !pinned {
+            if let Some(st) = self.scrolls.get_mut(&scroll_id)
+                && !pinned
+            {
                 st.offset = (st.offset + f64::from(delta)).max(0.0);
             }
             let shown = std::mem::take(&mut v.shown);
             v.select(offset, pinned, Some(&shown));
-            for key in shown.iter().filter(|k| v.index_of(k).is_some_and(|i| !v.range.contains(&i))) {
+            for key in shown
+                .iter()
+                .filter(|k| v.index_of(k).is_some_and(|i| !v.range.contains(&i)))
+            {
                 self.virtual_culled.insert(format!("{path}/{key}"));
             }
             v.shown = shown;
@@ -217,7 +256,10 @@ impl<S: 'static> Measurement<'_, S> {
             v.selection.unmounted.clear();
             let rows = v.selection.source.as_ref().unwrap().clone();
 
-            let under = |f: &str| f.strip_prefix(path.as_str()).is_some_and(|rest| rest.starts_with('/'));
+            let under = |f: &str| {
+                f.strip_prefix(path.as_str())
+                    .is_some_and(|rest| rest.starts_with('/'))
+            };
             let focused = v
                 .focused_row
                 .as_deref()
@@ -278,8 +320,21 @@ impl<S: 'static> Measurement<'_, S> {
         for plan in &mut plans {
             let v = self.virtuals.get_mut(&plan.path).unwrap();
             if let Some(i) = plan.focused {
-                let row = build_indexed_row(&plan.rows, state, &plan.path, &v.keys[i], i, self.key_warnings);
-                measure::collect_virtual_inputs(&row, &plan.path, i, plan.inert, self.virtual_inputs);
+                let row = build_indexed_row(
+                    &plan.rows,
+                    state,
+                    &plan.path,
+                    &v.keys[i],
+                    i,
+                    self.key_warnings,
+                );
+                measure::collect_virtual_inputs(
+                    &row,
+                    &plan.path,
+                    i,
+                    plan.inert,
+                    self.virtual_inputs,
+                );
                 if plan.pinned.contains(&i) {
                     selectable::virtual_selection::collect_virtual_row_selection(
                         &row,
@@ -297,7 +352,14 @@ impl<S: 'static> Measurement<'_, S> {
                 if Some(i) == plan.focused {
                     continue;
                 }
-                let row = build_indexed_row(&plan.rows, state, &plan.path, &v.keys[i], i, self.key_warnings);
+                let row = build_indexed_row(
+                    &plan.rows,
+                    state,
+                    &plan.path,
+                    &v.keys[i],
+                    i,
+                    self.key_warnings,
+                );
                 selectable::virtual_selection::collect_virtual_row_selection(
                     &row,
                     &plan.path,
@@ -312,7 +374,14 @@ impl<S: 'static> Measurement<'_, S> {
             for (pos, row_i) in plan.range.clone().enumerate() {
                 let key = &v.keys[row_i];
                 if !plan.mounted_rows.contains_key(key) {
-                    let row = build_indexed_row(&plan.rows, state, &plan.path, key, row_i, self.key_warnings);
+                    let row = build_indexed_row(
+                        &plan.rows,
+                        state,
+                        &plan.path,
+                        key,
+                        row_i,
+                        self.key_warnings,
+                    );
                     if row.flags.has(crate::el::ElFlags::HAS_VIRTUAL) {
                         nested_virtual = true;
                         break;
@@ -337,9 +406,14 @@ impl<S: 'static> Measurement<'_, S> {
 
         for plan in &mut plans {
             let v = self.virtuals.get_mut(&plan.path).unwrap();
-            plan.quiet = plan.range.clone().map(|i| v.mounts_quietly(i, self.commits)).collect();
+            plan.quiet = plan
+                .range
+                .clone()
+                .map(|i| v.mounts_quietly(i, self.commits))
+                .collect();
             for (pos, row) in &mut plan.built_rows {
-                row.flags.set(crate::el::ElFlags::VIRTUAL_MOUNT, plan.quiet[*pos]);
+                row.flags
+                    .set(crate::el::ElFlags::VIRTUAL_MOUNT, plan.quiet[*pos]);
             }
         }
 

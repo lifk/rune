@@ -19,9 +19,13 @@ impl Tx {
     ///     }
     /// })
     /// ```
-    pub fn drag_repeat_after(&mut self, delay: Duration) { self.drag_repeat_after = Some(delay); }
+    pub fn drag_repeat_after(&mut self, delay: Duration) {
+        self.drag_repeat_after = Some(delay);
+    }
 
     /// Whether the drag handler is hearing the repeat it asked for with
     /// [`Tx::drag_repeat_after`]; false for the hand's moves and outside drag handlers.
-    pub fn drag_repeat(&self) -> bool { self.drag_repeat }
+    pub fn drag_repeat(&self) -> bool {
+        self.drag_repeat
+    }
 }

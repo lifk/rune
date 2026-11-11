@@ -32,7 +32,11 @@ pub struct Notification {
 impl Notification {
     /// Posting another notification with the same `id` replaces this one.
     pub fn new(id: impl Into<String>, title: impl Into<String>) -> Self {
-        Notification { id: id.into(), title: title.into(), ..Default::default() }
+        Notification {
+            id: id.into(),
+            title: title.into(),
+            ..Default::default()
+        }
     }
 
     pub fn body(mut self, body: impl Into<String>) -> Self {
@@ -57,7 +61,10 @@ pub struct Click {
 impl Click {
     /// The user-info value posted under `key`.
     pub fn get(&self, key: &str) -> Option<&str> {
-        self.info.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+        self.info
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
     }
 }
 
@@ -76,7 +83,12 @@ impl Identity {
     /// `id` is the app's reverse-DNS identifier (on Windows its `AppUserModelID`, which also
     /// groups its windows on the taskbar); `name` is what people see.
     pub fn new(id: impl Into<String>, name: impl Into<String>) -> Self {
-        Identity { id: id.into(), name: name.into(), icon: None, scheme: None }
+        Identity {
+            id: id.into(),
+            name: name.into(),
+            icon: None,
+            scheme: None,
+        }
     }
 
     /// An image file (PNG or ICO) for the app's toasts on Windows.
@@ -150,7 +162,10 @@ pub fn available() -> bool {
 
 /// Posts `n` now (on macOS, asking for permission first if the person hasn't been asked).
 /// Returns false when the app can't post at all (not `available`), or Windows refused the toast.
-#[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(unused_variables))]
+#[cfg_attr(
+    not(any(target_os = "macos", target_os = "windows")),
+    allow(unused_variables)
+)]
 pub fn post(n: &Notification) -> bool {
     if !available() {
         return false;

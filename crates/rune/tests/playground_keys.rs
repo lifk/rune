@@ -25,11 +25,20 @@ fn on_key(s: &mut Real, ev: &KeyEvent, _: &mut rune::Tx) -> bool {
     true
 }
 
-const SCENES: &[(&str, fn(&mut Real))] = &[("Launch", |s| s.scene = "launch"), ("Palette/Search", |s| s.scene = "search")];
+const SCENES: &[(&str, fn(&mut Real))] = &[
+    ("Launch", |s| s.scene = "launch"),
+    ("Palette/Search", |s| s.scene = "search"),
+];
 
 fn runtime() -> Runtime<Real> {
-    let spec = AppSpec { scenes: SCENES, on_key: Some(on_key), ..AppSpec::new("keys", (900.0, 600.0), Real::default, real) };
-    let mut rt = App::new(spec).playground(Playground::<Real>::new()).headless_runtime((900.0, 600.0), Env::new(false, 1.0));
+    let spec = AppSpec {
+        scenes: SCENES,
+        on_key: Some(on_key),
+        ..AppSpec::new("keys", (900.0, 600.0), Real::default, real)
+    };
+    let mut rt = App::new(spec)
+        .playground(Playground::<Real>::new())
+        .headless_runtime((900.0, 600.0), Env::new(false, 1.0));
     rt.open_playground("Launch", None);
     rt
 }
@@ -48,7 +57,14 @@ fn typed(rt: &mut Runtime<Real>, s: &str) {
 }
 
 fn command_k(rt: &mut Runtime<Real>) {
-    press_with(rt, Key::Command('k'), Mods { cmd: true, ..Mods::default() });
+    press_with(
+        rt,
+        Key::Command('k'),
+        Mods {
+            cmd: true,
+            ..Mods::default()
+        },
+    );
 }
 
 fn stage(rt: &Runtime<Real>) -> (&'static str, bool, String) {
@@ -57,11 +73,18 @@ fn stage(rt: &Runtime<Real>) -> (&'static str, bool, String) {
 }
 
 fn shown(rt: &Runtime<Real>, key: &str) -> bool {
-    rt.elements().into_iter().any(|e| e.key.as_deref() == Some(key) && !e.exiting)
+    rt.elements()
+        .into_iter()
+        .any(|e| e.key.as_deref() == Some(key) && !e.exiting)
 }
 
 fn hint(rt: &Runtime<Real>) -> String {
-    rt.elements().into_iter().find(|e| e.key.as_deref() == Some("playground-hint")).and_then(|e| e.text).unwrap_or_default().replace('\u{a0}', " ")
+    rt.elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some("playground-hint"))
+        .and_then(|e| e.text)
+        .unwrap_or_default()
+        .replace('\u{a0}', " ")
 }
 
 #[test]
@@ -69,27 +92,45 @@ fn a_story_opened_from_the_list_hears_the_keys_the_list_leaves() {
     let mut rt = runtime();
     press(&mut rt, Key::Down);
     press(&mut rt, Key::Down);
-    assert_eq!(stage(&rt).0, "search", "↓ opens the next story, the keyboard still on the list");
+    assert_eq!(
+        stage(&rt).0,
+        "search",
+        "↓ opens the next story, the keyboard still on the list"
+    );
     assert!(hint(&rt).starts_with("↑↓ stories"));
     command_k(&mut rt);
     assert!(stage(&rt).1, "⌘K reaches the story's on_key");
     typed(&mut rt, "3");
     assert_eq!(stage(&rt).2, "3", "and so does a digit");
-    assert!(!rt.state.palette && rt.state.typed.is_empty(), "the stage's state, not the app's");
+    assert!(
+        !rt.state.palette && rt.state.typed.is_empty(),
+        "the stage's state, not the app's"
+    );
     press(&mut rt, Key::Escape);
     assert_eq!(stage(&rt).1, false, "Esc goes to the story first");
     typed(&mut rt, "k");
-    assert_eq!(stage(&rt), ("launch", false, String::new()), "K is the list's: it moves to the story above");
+    assert_eq!(
+        stage(&rt),
+        ("launch", false, String::new()),
+        "K is the list's: it moves to the story above"
+    );
     press(&mut rt, Key::Down);
     press(&mut rt, Key::Down);
     press(&mut rt, Key::Up);
     press(&mut rt, Key::Up);
-    assert_eq!(stage(&rt), ("launch", false, String::new()), "so are the arrows, and none reach the story");
+    assert_eq!(
+        stage(&rt),
+        ("launch", false, String::new()),
+        "so are the arrows, and none reach the story"
+    );
     press(&mut rt, Key::Tab);
     command_k(&mut rt);
     assert!(stage(&rt).1, "from the side column too");
     press(&mut rt, Key::Escape);
-    assert!(stage(&rt).1 && hint(&rt).starts_with("↑↓ stories"), "Esc there goes back to the list");
+    assert!(
+        stage(&rt).1 && hint(&rt).starts_with("↑↓ stories"),
+        "Esc there goes back to the list"
+    );
     press(&mut rt, Key::Escape);
     assert!(!stage(&rt).1, "where Esc closes the story's palette");
     press(&mut rt, Key::Escape);
@@ -102,12 +143,22 @@ fn typing_in_the_filter_filters() {
     typed(&mut rt, "/");
     typed(&mut rt, "sea");
     typed(&mut rt, "2");
-    assert!(!shown(&rt, "playground-item-0") && !shown(&rt, "playground-item-1"), "nothing matches \"sea2\"");
-    assert_eq!(stage(&rt), ("launch", false, String::new()), "the field keeps what's typed");
+    assert!(
+        !shown(&rt, "playground-item-0") && !shown(&rt, "playground-item-1"),
+        "nothing matches \"sea2\""
+    );
+    assert_eq!(
+        stage(&rt),
+        ("launch", false, String::new()),
+        "the field keeps what's typed"
+    );
     press(&mut rt, Key::Backspace);
     assert!(shown(&rt, "playground-item-1") && !shown(&rt, "playground-item-0"));
     command_k(&mut rt);
-    assert!(stage(&rt).1, "a chord the field doesn't use reaches the story");
+    assert!(
+        stage(&rt).1,
+        "a chord the field doesn't use reaches the story"
+    );
     press(&mut rt, Key::Enter);
     assert_eq!(stage(&rt).0, "search", "Return opens the first match");
 }

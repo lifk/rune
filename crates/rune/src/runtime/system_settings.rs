@@ -73,11 +73,16 @@ impl<S: 'static> Runtime<S> {
         self.system_reduced_motion
     }
 
-    pub(crate) fn system_scroll_bars_state(&self) -> crate::platform::scroll_bars::SystemScrollBars {
+    pub(crate) fn system_scroll_bars_state(
+        &self,
+    ) -> crate::platform::scroll_bars::SystemScrollBars {
         self.scroll_bars.state
     }
 
-    pub(crate) fn set_system_scroll_bars_state(&mut self, next: crate::platform::scroll_bars::SystemScrollBars) {
+    pub(crate) fn set_system_scroll_bars_state(
+        &mut self,
+        next: crate::platform::scroll_bars::SystemScrollBars,
+    ) {
         if next != self.scroll_bars.state {
             self.scroll_bars.state = next;
             self.dirty = true;

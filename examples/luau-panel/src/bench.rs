@@ -35,11 +35,20 @@ impl Stat {
         samples.sort_by(f64::total_cmp);
         let n = samples.len();
         let at = |q: f64| samples[((n - 1) as f64 * q).round() as usize];
-        Stat { n, mean: samples.iter().sum::<f64>() / n as f64, p50: at(0.5), p99: at(0.99), max: samples[n - 1] }
+        Stat {
+            n,
+            mean: samples.iter().sum::<f64>() / n as f64,
+            p50: at(0.5),
+            p99: at(0.99),
+            max: samples[n - 1],
+        }
     }
 
     fn json(&self) -> String {
-        format!(r#"{{"n":{},"mean_us":{:.3},"p50_us":{:.3},"p99_us":{:.3},"max_us":{:.3}}}"#, self.n, self.mean, self.p50, self.p99, self.max)
+        format!(
+            r#"{{"n":{},"mean_us":{:.3},"p50_us":{:.3},"p99_us":{:.3},"max_us":{:.3}}}"#,
+            self.n, self.mean, self.p50, self.p99, self.max
+        )
     }
 }
 
@@ -80,7 +89,12 @@ pub fn run(scale: Scale) -> Report {
 
 /// A runtime showing the panel, polled and framed until nothing is left to do.
 fn runtime() -> (Runtime<State>, f64) {
-    let mut rt = Runtime::new(State::new(Script::new("panel", sources())), view, SIZE, Env::new(true, 1.0));
+    let mut rt = Runtime::new(
+        State::new(Script::new("panel", sources())),
+        view,
+        SIZE,
+        Env::new(true, 1.0),
+    );
     let mut now = 0.0;
     rt.frame(0.0);
     for _ in 0..600 {
@@ -187,7 +201,11 @@ fn scroll() -> (Stat, Stat, u64) {
         frame.push(us(start.elapsed()));
         script.push(us(rt.state.script.metrics().vm_time - m.vm_time));
     }
-    (Stat::of(script), Stat::of(frame), rt.state.script.metrics().rows - rows_before)
+    (
+        Stat::of(script),
+        Stat::of(frame),
+        rt.state.script.metrics().rows - rows_before,
+    )
 }
 
 fn reload(n: usize) -> (Stat, Stat, Stat, bool) {
@@ -198,7 +216,9 @@ fn reload(n: usize) -> (Stat, Stat, Stat, bool) {
     let (mut total, mut compile, mut swap) = (Vec::new(), Vec::new(), Vec::new());
     let mut kept = true;
     for i in 0..n {
-        let edited: Sources = base.clone().with("init.luau", format!("{init}\n-- edit {i}\n"));
+        let edited: Sources = base
+            .clone()
+            .with("init.luau", format!("{init}\n-- edit {i}\n"));
         match script.reload(edited) {
             Ok(r) => {
                 total.push(us(r.compile + r.swap));
@@ -241,7 +261,10 @@ impl Report {
             self.reload.3,
             self.checks
                 .iter()
-                .map(|c| format!(r#"{{"name":{:?},"ok":{},"detail":{:?}}}"#, c.name, c.ok, c.detail))
+                .map(|c| format!(
+                    r#"{{"name":{:?},"ok":{},"detail":{:?}}}"#,
+                    c.name, c.ok, c.detail
+                ))
                 .collect::<Vec<_>>()
                 .join(","),
         )
@@ -250,21 +273,75 @@ impl Report {
 
 impl fmt::Display for Report {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let row = |name: &str, s: &Stat, gate: &str| format!("{name:<34} n={:<5} mean {:>9.2} µs  p50 {:>9.2}  p99 {:>9.2}  max {:>9.2}   gate {gate}", s.n, s.mean, s.p50, s.p99, s.max);
-        writeln!(f, "Luau {}", if self.native_code { "native code (luau-jit)" } else { "interpreter" })?;
-        writeln!(f, "idle: {} frames polled, {} asked for a frame, {} VM calls (gate: 0)", self.idle.0, self.idle.1, self.idle.2)?;
-        writeln!(f, "{}  VM calls {}", row("memo hit (Script::view)", &self.memo_hit.0, "≤ 5 µs"), self.memo_hit.1)?;
-        writeln!(f, "{}", row("20-row panel rebuild", &self.rebuild20.0, "≤ 120 µs"))?;
+        let row = |name: &str, s: &Stat, gate: &str| {
+            format!(
+                "{name:<34} n={:<5} mean {:>9.2} µs  p50 {:>9.2}  p99 {:>9.2}  max {:>9.2}   gate {gate}",
+                s.n, s.mean, s.p50, s.p99, s.max
+            )
+        };
+        writeln!(
+            f,
+            "Luau {}",
+            if self.native_code {
+                "native code (luau-jit)"
+            } else {
+                "interpreter"
+            }
+        )?;
+        writeln!(
+            f,
+            "idle: {} frames polled, {} asked for a frame, {} VM calls (gate: 0)",
+            self.idle.0, self.idle.1, self.idle.2
+        )?;
+        writeln!(
+            f,
+            "{}  VM calls {}",
+            row("memo hit (Script::view)", &self.memo_hit.0, "≤ 5 µs"),
+            self.memo_hit.1
+        )?;
+        writeln!(
+            f,
+            "{}",
+            row("20-row panel rebuild", &self.rebuild20.0, "≤ 120 µs")
+        )?;
         if let Some(s) = &self.rebuild20.1 {
-            writeln!(f, "{}", row("20-row panel rebuild, thread time", s, "≤ 120 µs"))?;
+            writeln!(
+                f,
+                "{}",
+                row("20-row panel rebuild, thread time", s, "≤ 120 µs")
+            )?;
         }
-        writeln!(f, "{}", row("scroll frame, script time", &self.scroll.0, "≤ 300 µs"))?;
-        writeln!(f, "{}  rows built {}", row("scroll frame, whole frame", &self.scroll.1, "—"), self.scroll.2)?;
-        writeln!(f, "{}", row("hot reload, compile + swap", &self.reload.0, "≤ 5,000 µs"))?;
+        writeln!(
+            f,
+            "{}",
+            row("scroll frame, script time", &self.scroll.0, "≤ 300 µs")
+        )?;
+        writeln!(
+            f,
+            "{}  rows built {}",
+            row("scroll frame, whole frame", &self.scroll.1, "—"),
+            self.scroll.2
+        )?;
+        writeln!(
+            f,
+            "{}",
+            row("hot reload, compile + swap", &self.reload.0, "≤ 5,000 µs")
+        )?;
         writeln!(f, "{}", row("hot reload, compile", &self.reload.1, "—"))?;
-        writeln!(f, "{}  state kept {}", row("hot reload, swap", &self.reload.2, "—"), self.reload.3)?;
+        writeln!(
+            f,
+            "{}  state kept {}",
+            row("hot reload, swap", &self.reload.2, "—"),
+            self.reload.3
+        )?;
         for c in &self.checks {
-            writeln!(f, "check {:<24} {}  {}", c.name, if c.ok { "ok  " } else { "FAIL" }, c.detail)?;
+            writeln!(
+                f,
+                "check {:<24} {}  {}",
+                c.name,
+                if c.ok { "ok  " } else { "FAIL" },
+                c.detail
+            )?;
         }
         Ok(())
     }

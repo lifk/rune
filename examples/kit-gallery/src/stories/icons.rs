@@ -54,19 +54,44 @@ pub(super) fn file_icon_folder(_: &G, k: &Kit, _: &mut Vec<El>) -> El {
 
 pub(super) fn icon_gallery(_: &G, k: &Kit, _: &mut Vec<El>) -> El {
     let names = [
-        "archive", "arrow-left", "arrow-right", "arrow-up-right", "branch", "check", "chevron-down", "close", "code-slash", "edit",
-        "folder", "graduation-cap", "help", "magnifying-glass", "menu", "monitor", "outline-arrow-to-corner-top-right",
-        "outline-copy", "outline-dots", "outline-eye", "outline-eye-slash", "outline-hexagonal-warning", "plus", "review",
-        "settings-gear", "trash", "workspace",
+        "archive",
+        "arrow-left",
+        "arrow-right",
+        "arrow-up-right",
+        "branch",
+        "check",
+        "chevron-down",
+        "close",
+        "code-slash",
+        "edit",
+        "folder",
+        "graduation-cap",
+        "help",
+        "magnifying-glass",
+        "menu",
+        "monitor",
+        "outline-arrow-to-corner-top-right",
+        "outline-copy",
+        "outline-dots",
+        "outline-eye",
+        "outline-eye-slash",
+        "outline-hexagonal-warning",
+        "plus",
+        "review",
+        "settings-gear",
+        "trash",
+        "workspace",
     ];
     // A name the catalog lacks draws `plus`, as `Icon` does.
     let find = |n: &str| ic::ALL.iter().copied().find(|i| i.name == n).unwrap_or(&ic::PLUS);
     let cells = names
         .iter()
         .map(|n| {
-            col().gap(6.0).items_center().child(icon(find(n), 16.0).color(k.c.icon_base)).child(
-                text(*n).font(TextStyle::new(10.0, 440.0).lh(15.0)).color(k.c.text_weak).truncate(),
-            )
+            col()
+                .gap(6.0)
+                .items_center()
+                .child(icon(find(n), 16.0).color(k.c.icon_base))
+                .child(text(*n).font(TextStyle::new(10.0, 440.0).lh(15.0)).color(k.c.text_weak).truncate())
         })
         .collect();
     grid((672.0 - 48.0) / 5.0, 12.0, cells)
@@ -83,7 +108,10 @@ pub(super) fn icon_catalog(_: &G, k: &Kit, _: &mut Vec<El>) -> El {
 
 /// Every FileIcon badge and folder icon.
 pub(super) fn file_icon_catalog(_: &G, k: &Kit, _: &mut Vec<El>) -> El {
-    let cells = file_icons::all().iter().map(|i| row().gap(8.0).center_y().child(icon(i, 16.0).color(k.c.text_base)).child(name(k, i.name))).collect();
+    let cells = file_icons::all()
+        .iter()
+        .map(|i| row().gap(8.0).center_y().child(icon(i, 16.0).color(k.c.text_base)).child(name(k, i.name)))
+        .collect();
     grid(128.0, 8.0, cells)
 }
 

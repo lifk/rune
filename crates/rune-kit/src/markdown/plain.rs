@@ -30,7 +30,15 @@ impl Renderer {
 }
 
 /// `lead`: the marker before the first block's text, with the newlines before it.
-fn plain(blocks: &[Block], tasks: &[Option<(bool, usize)>], task: &mut usize, cols: u8, lists: u32, lead: Option<(String, u8)>, out: &mut Vec<Piece>) {
+fn plain(
+    blocks: &[Block],
+    tasks: &[Option<(bool, usize)>],
+    task: &mut usize,
+    cols: u8,
+    lists: u32,
+    lead: Option<(String, u8)>,
+    out: &mut Vec<Piece>,
+) {
     let mut lead = lead;
     for b in blocks {
         let here = lead.take();
@@ -42,7 +50,9 @@ fn plain(blocks: &[Block], tasks: &[Option<(bool, usize)>], task: &mut usize, co
                     None => Piece { breaks: [2, 2], text },
                 });
             }
-            Block::Code(s) | Block::Diff(s) | Block::Mermaid(s) => out.push(Piece { breaks: [2, 2], text: s.trim_end_matches('\n').to_owned() }),
+            Block::Code(s) | Block::Diff(s) | Block::Mermaid(s) => {
+                out.push(Piece { breaks: [2, 2], text: s.trim_end_matches('\n').to_owned() })
+            }
             Block::Quote(inner) => plain(inner, tasks, task, cols, lists, here, out),
             Block::List { start, items } => {
                 for (k, item) in items.iter().enumerate() {
@@ -59,7 +69,8 @@ fn plain(blocks: &[Block], tasks: &[Option<(bool, usize)>], task: &mut usize, co
                 }
             }
             Block::Table(t) => {
-                let row = |cells: &[Inline]| cells.iter().map(|c| c.text.replace(PAD, "")).collect::<Vec<_>>().join("\t");
+                let row =
+                    |cells: &[Inline]| cells.iter().map(|c| c.text.replace(PAD, "")).collect::<Vec<_>>().join("\t");
                 let rows: Vec<String> = std::iter::once(row(&t.head)).chain(t.rows.iter().map(|r| row(r))).collect();
                 out.push(Piece { breaks: [1, 1], text: rows.join("\n") });
             }

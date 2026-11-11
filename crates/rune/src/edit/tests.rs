@@ -1,13 +1,19 @@
-use super::*;
 use super::history::{HISTORY_BYTES, HISTORY_STEPS};
+use super::*;
 
 fn k(key: Key) -> KeyEvent {
-    KeyEvent { key, mods: Mods::default() }
+    KeyEvent {
+        key,
+        mods: Mods::default(),
+    }
 }
 
 #[test]
 fn is_command_matches_any_character_and_both_forms_of_cmd_space() {
-    let cmd = Mods { cmd: true, ..Mods::default() };
+    let cmd = Mods {
+        cmd: true,
+        ..Mods::default()
+    };
     let ev = |key, mods| KeyEvent { key, mods };
     assert!(ev(Key::Command(','), cmd).is_command(','));
     assert!(ev(Key::Command('1'), cmd).is_command('1'));
@@ -21,7 +27,17 @@ fn is_command_matches_any_character_and_both_forms_of_cmd_space() {
 }
 
 fn undo(e: &mut TextEdit, redo: bool) {
-    e.key(&KeyEvent { key: Key::Command('z'), mods: Mods { cmd: true, shift: redo, ..Mods::default() } }, None);
+    e.key(
+        &KeyEvent {
+            key: Key::Command('z'),
+            mods: Mods {
+                cmd: true,
+                shift: redo,
+                ..Mods::default()
+            },
+        },
+        None,
+    );
 }
 
 #[test]
@@ -47,7 +63,8 @@ fn secure_unicode_editing_has_no_history_or_export() {
     e.ime(&Ime::Commit("commit".into()));
     assert!(e.preedit().is_none());
     assert_eq!(e.text, "h界x");
-    e.undo(); e.redo();
+    e.undo();
+    e.redo();
     assert_eq!(e.text, "h界x");
     assert!(e.history.undo.is_empty() && e.history.redo.is_empty());
     assert!(!format!("{e:?}").contains("h界x"));
@@ -68,8 +85,20 @@ fn secure_revealed_uses_plain_display_and_words_while_keeping_protections() {
     assert!(!e.is_revealed());
     assert_eq!(e.display().0, "•••••••••");
     // Hidden secure fields treat the masked string as a single word.
-    let alt_left = KeyEvent { key: Key::Left, mods: Mods { alt: true, ..Mods::default() } };
-    let alt_right = KeyEvent { key: Key::Right, mods: Mods { alt: true, ..Mods::default() } };
+    let alt_left = KeyEvent {
+        key: Key::Left,
+        mods: Mods {
+            alt: true,
+            ..Mods::default()
+        },
+    };
+    let alt_right = KeyEvent {
+        key: Key::Right,
+        mods: Mods {
+            alt: true,
+            ..Mods::default()
+        },
+    };
     e.set_caret(e.text.len());
     e.key(&alt_left, None);
     assert_eq!(e.focus, 0);
@@ -79,8 +108,16 @@ fn secure_revealed_uses_plain_display_and_words_while_keeping_protections() {
     e.set_selection(1, 7);
     e.set_revealed(true);
     assert!(e.is_secure() && e.is_revealed());
-    assert_ne!(hash(&e), hidden_hash, "Hash for TextEdit must include revealed");
-    assert_eq!((e.anchor, e.focus), (1, 7), "toggling revealed preserves selection");
+    assert_ne!(
+        hash(&e),
+        hidden_hash,
+        "Hash for TextEdit must include revealed"
+    );
+    assert_eq!(
+        (e.anchor, e.focus),
+        (1, 7),
+        "toggling revealed preserves selection"
+    );
     assert_eq!(e.display(), ("hé🙂 world".into(), None));
     for idx in [0, 1, 3, 7, 8, 13] {
         assert_eq!(e.display_index(idx), idx);
@@ -133,11 +170,27 @@ fn secure_revealed_uses_plain_display_and_words_while_keeping_protections() {
 fn hidden_multiline_navigation_and_edits_have_no_invisible_interior() {
     let mut e = TextEdit::new("first\nlast").secure();
     e.set_single_line(false);
-    for key in [Key::Left, Key::Right, Key::Up, Key::Down, Key::Home, Key::End] {
+    for key in [
+        Key::Left,
+        Key::Right,
+        Key::Up,
+        Key::Down,
+        Key::Home,
+        Key::End,
+    ] {
         e.set_caret(2);
         e.key(&k(key.clone()), None);
         assert_eq!(e.range(), (e.text.len(), e.text.len()));
-        e.key(&KeyEvent { key, mods: Mods { shift: true, ..Mods::default() } }, None);
+        e.key(
+            &KeyEvent {
+                key,
+                mods: Mods {
+                    shift: true,
+                    ..Mods::default()
+                },
+            },
+            None,
+        );
         assert_eq!(e.range(), (0, e.text.len()));
     }
     assert!(e.is_pristine(), "navigation keys do not clear pristine");
@@ -160,7 +213,11 @@ fn hidden_multiline_navigation_and_edits_have_no_invisible_interior() {
     e.set_selection(1, 3);
     e.set_revealed(false);
     e.set_revealed(true);
-    assert_eq!(e.range(), (1, 3), "toggle without editing preserves revealed selection");
+    assert_eq!(
+        e.range(),
+        (1, 3),
+        "toggle without editing preserves revealed selection"
+    );
 }
 
 #[test]
@@ -176,7 +233,10 @@ fn pristine_secure_backspace_at_start_and_ime_do_not_bypass_protection() {
     assert!(e.preedit().is_none());
     assert!(e.is_pristine());
     e.ime(&Ime::Commit("commit".into()));
-    assert_eq!(e.text, "fictional-secret", "secure inputs reject IME commits too");
+    assert_eq!(
+        e.text, "fictional-secret",
+        "secure inputs reject IME commits too"
+    );
     assert!(e.is_pristine());
     e.paste("replacement");
     assert_eq!(e.text, "replacement");
@@ -193,7 +253,14 @@ fn hidden_multiline_pristine_replace_and_delete() {
     e.set_single_line(false);
     assert!(e.is_pristine());
     e.set_caret(0);
-    for nav in [Key::Left, Key::Right, Key::Up, Key::Down, Key::Home, Key::End] {
+    for nav in [
+        Key::Left,
+        Key::Right,
+        Key::Up,
+        Key::Down,
+        Key::Home,
+        Key::End,
+    ] {
         e.key(&k(nav), None);
     }
     assert!(e.is_pristine());
@@ -222,15 +289,36 @@ fn hidden_multiline_pristine_replace_and_delete() {
     for del in [
         k(Key::Backspace),
         k(Key::Delete),
-        KeyEvent { key: Key::Backspace, mods: Mods { cmd: true, ..Mods::default() } },
-        KeyEvent { key: Key::Backspace, mods: Mods { alt: true, ..Mods::default() } },
-        KeyEvent { key: Key::Text("k".into()), mods: Mods { ctrl: true, ..Mods::default() } },
+        KeyEvent {
+            key: Key::Backspace,
+            mods: Mods {
+                cmd: true,
+                ..Mods::default()
+            },
+        },
+        KeyEvent {
+            key: Key::Backspace,
+            mods: Mods {
+                alt: true,
+                ..Mods::default()
+            },
+        },
+        KeyEvent {
+            key: Key::Text("k".into()),
+            mods: Mods {
+                ctrl: true,
+                ..Mods::default()
+            },
+        },
     ] {
         let mut e = TextEdit::new("existing-fictional-key\nline-two").secure();
         e.set_single_line(false);
         e.set_caret(4);
         e.key(&del, None);
-        assert_eq!(e.text, "", "deletion {del:?} must empty pristine hidden multiline");
+        assert_eq!(
+            e.text, "",
+            "deletion {del:?} must empty pristine hidden multiline"
+        );
         assert_eq!(e.range(), (0, 0));
         assert!(!e.is_pristine());
         e.key(&k(Key::Text("x".into())), None);
@@ -244,20 +332,31 @@ fn hidden_multiline_pristine_replace_and_delete() {
     e.set_revealed(true);
     e.set_selection(2, 5);
     e.set_revealed(false);
-    assert!(e.is_pristine(), "Show then Hide without editing keeps pristine");
+    assert!(
+        e.is_pristine(),
+        "Show then Hide without editing keeps pristine"
+    );
     e.set_caret(e.text.len());
     e.paste("pasted-after-peek");
     assert_eq!(e.text, "pasted-after-peek");
 
-    let mut rev = TextEdit::new("existing-fictional-key").secure().revealed(true);
+    let mut rev = TextEdit::new("existing-fictional-key")
+        .secure()
+        .revealed(true);
     rev.set_single_line(false);
     rev.set_caret(rev.text.len());
     rev.key(&k(Key::Text("!".into())), None);
-    assert_eq!(rev.text, "existing-fictional-key!", "revealed field edits normally at caret");
+    assert_eq!(
+        rev.text, "existing-fictional-key!",
+        "revealed field edits normally at caret"
+    );
     assert!(!rev.is_pristine());
     rev.set_revealed(false);
     rev.key(&k(Key::Text("?".into())), None);
-    assert_eq!(rev.text, "existing-fictional-key!?", "edited while revealed stays non-pristine when hidden");
+    assert_eq!(
+        rev.text, "existing-fictional-key!?",
+        "edited while revealed stays non-pristine when hidden"
+    );
 
     // 5. App resetting via replace_text re-arms pristine, even for identical text.
     rev.replace_text("reloaded-from-vault");
@@ -266,7 +365,10 @@ fn hidden_multiline_pristine_replace_and_delete() {
     assert_eq!(rev.text, "z");
     assert!(!rev.is_pristine());
     rev.replace_text("z");
-    assert!(rev.is_pristine(), "same-value app replacement re-arms pristine");
+    assert!(
+        rev.is_pristine(),
+        "same-value app replacement re-arms pristine"
+    );
     rev.paste("fresh");
     assert_eq!(rev.text, "fresh");
     assert!(!rev.is_pristine());
@@ -283,7 +385,10 @@ fn hidden_multiline_pristine_replace_and_delete() {
     single.set_single_line(true);
     single.set_caret(7);
     single.key(&k(Key::Text("!".into())), None);
-    assert_eq!(single.text, "hunter2!", "single-line secure field edits at caret");
+    assert_eq!(
+        single.text, "hunter2!",
+        "single-line secure field edits at caret"
+    );
 }
 
 #[test]
@@ -303,14 +408,27 @@ fn multiline_secure_edit_inserts_newlines_keeps_pasted_lines_and_masks_to_fixed_
 
     e.paste("-----BEGIN FAKE KEY-----\r\nAAAAB3NzaC1yc2E\tline2");
     assert_eq!(e.text, "-----BEGIN FAKE KEY-----\nAAAAB3NzaC1yc2E\tline2");
-    assert!(!e.key(&k(Key::Enter), None).submit, "plain Enter in multi-line secure field inserts a newline");
+    assert!(
+        !e.key(&k(Key::Enter), None).submit,
+        "plain Enter in multi-line secure field inserts a newline"
+    );
     e.key(&k(Key::Text("-----END FAKE KEY-----".into())), None);
     assert_eq!(
         e.text,
         "-----BEGIN FAKE KEY-----\nAAAAB3NzaC1yc2E\tline2\n-----END FAKE KEY-----"
     );
     assert!(
-        e.key(&KeyEvent { key: Key::Enter, mods: Mods { cmd: true, ..Mods::default() } }, None).submit,
+        e.key(
+            &KeyEvent {
+                key: Key::Enter,
+                mods: Mods {
+                    cmd: true,
+                    ..Mods::default()
+                }
+            },
+            None
+        )
+        .submit,
         "Cmd+Enter still submits a multi-line secure field"
     );
 
@@ -326,13 +444,20 @@ fn multiline_secure_edit_inserts_newlines_keeps_pasted_lines_and_masks_to_fixed_
 
     assert_eq!(short.display().0, MULTILINE_SECURE_MASK);
     assert_eq!(long.display().0, MULTILINE_SECURE_MASK);
-    assert_eq!(hash(&short), hash(&long), "hidden multi-line hash must not leak length or line count");
+    assert_eq!(
+        hash(&short),
+        hash(&long),
+        "hidden multi-line hash must not leak length or line count"
+    );
     for offset in [0, 3, 10, 500, long.text.len()] {
         assert_eq!(long.display_index(offset), MULTILINE_SECURE_MASK.len());
         assert_eq!(long.model_index(offset), long.text.len());
     }
     assert_eq!(long.display_selection_range(5, 5), (0, 0));
-    assert_eq!(long.display_selection_range(2, 100), (0, MULTILINE_SECURE_MASK.len()));
+    assert_eq!(
+        long.display_selection_range(2, 100),
+        (0, MULTILINE_SECURE_MASK.len())
+    );
 
     // Concealing a multi-line secure field (hidden or revealed) leaves only the fixed mask.
     let mut exiting_revealed = long.clone().revealed(true);
@@ -350,8 +475,18 @@ fn caret_and_backspace_step_over_whole_emoji() {
     let mut e = TextEdit::new(&text);
     e.key(&k(Key::Home), None);
     let mut stops = vec![e.focus];
-    for _ in 0..5 { e.key(&k(Key::Right), None); stops.push(e.focus); }
-    let ends = [0, 1, 1 + family.len(), 1 + family.len() + flag.len(), text.len(), text.len()];
+    for _ in 0..5 {
+        e.key(&k(Key::Right), None);
+        stops.push(e.focus);
+    }
+    let ends = [
+        0,
+        1,
+        1 + family.len(),
+        1 + family.len() + flag.len(),
+        text.len(),
+        text.len(),
+    ];
     assert_eq!(stops, ends);
     for want in [format!("a{family}{flag}"), format!("a{family}"), "a".into()] {
         e.key(&k(Key::Backspace), None);
@@ -362,13 +497,24 @@ fn caret_and_backspace_step_over_whole_emoji() {
 #[test]
 fn history_groups_typing_and_restores_unicode_selection() {
     let mut e = TextEdit::new("");
-    for s in ["h", "é", "🙂"] { e.key(&k(Key::Text(s.into())), None); }
+    for s in ["h", "é", "🙂"] {
+        e.key(&k(Key::Text(s.into())), None);
+    }
     undo(&mut e, false);
     assert_eq!((&*e.text, e.anchor, e.focus), ("", 0, 0));
     undo(&mut e, true);
     assert_eq!((&*e.text, e.anchor, e.focus), ("hé🙂", 7, 7));
     e.key(&k(Key::Left), None);
-    e.key(&KeyEvent { key: Key::Left, mods: Mods { shift: true, ..Mods::default() } }, None);
+    e.key(
+        &KeyEvent {
+            key: Key::Left,
+            mods: Mods {
+                shift: true,
+                ..Mods::default()
+            },
+        },
+        None,
+    );
     assert_eq!((e.anchor, e.focus), (3, 1));
     e.paste("界\r\n日");
     assert_eq!(e.text, "h界\n日🙂");
@@ -396,7 +542,13 @@ fn history_deletion_cut_and_ime_are_atomic() {
     assert_eq!((&*e.text, e.anchor, e.focus), ("hé🙂", 0, 0));
     e.anchor = 3;
     e.focus = 1;
-    let out = e.key(&KeyEvent { key: Key::Command('x'), mods: Mods::default() }, None);
+    let out = e.key(
+        &KeyEvent {
+            key: Key::Command('x'),
+            mods: Mods::default(),
+        },
+        None,
+    );
     assert_eq!(out.copy.as_deref(), Some("é"));
     undo(&mut e, false);
     assert_eq!((e.anchor, e.focus), (3, 1));
@@ -411,23 +563,33 @@ fn history_deletion_cut_and_ime_are_atomic() {
     assert_eq!(e.text, "h日本🙂");
     e.ime(&Ime::Preedit("x".into(), None));
     undo(&mut e, false);
-    assert_eq!(e.text, "h日本🙂", "undo cancels preedit without undoing committed text");
+    assert_eq!(
+        e.text, "h日本🙂",
+        "undo cancels preedit without undoing committed text"
+    );
     assert!(e.preedit().is_none());
 }
 
 #[test]
 fn history_is_bounded_shared_and_cleared_after_send() {
     let mut e = TextEdit::new("");
-    for _ in 0..HISTORY_STEPS + 12 { e.paste("é"); }
+    for _ in 0..HISTORY_STEPS + 12 {
+        e.paste("é");
+    }
     let rendered = e.clone();
     assert!(Arc::ptr_eq(&e.history, &rendered.history));
     assert_eq!(e.history.undo.len(), HISTORY_STEPS);
-    for _ in 0..HISTORY_STEPS + 1 { e.undo(); }
+    for _ in 0..HISTORY_STEPS + 1 {
+        e.undo();
+    }
     assert_eq!(e.text, "é".repeat(12));
     assert_eq!(rendered.text, "é".repeat(HISTORY_STEPS + 12));
     e.paste(&"a".repeat(HISTORY_BYTES));
     assert!(e.history.bytes <= HISTORY_BYTES);
-    assert!(e.history.undo.is_empty(), "one oversized edit drops history rather than retaining unbounded text");
+    assert!(
+        e.history.undo.is_empty(),
+        "one oversized edit drops history rather than retaining unbounded text"
+    );
     e.focused = true;
     e.clear();
     e.undo();
@@ -437,20 +599,68 @@ fn history_is_bounded_shared_and_cleared_after_send() {
     e.anchor = e.text.len();
     e.focus = e.anchor;
     e.undo();
-    assert_eq!(e.text, "external", "external model replacement cannot restore stale history");
+    assert_eq!(
+        e.text, "external",
+        "external model replacement cannot restore stale history"
+    );
 }
 
-fn chord(s: &str, mods: Mods) -> KeyEvent { KeyEvent { key: Key::Text(s.into()), mods } }
+fn chord(s: &str, mods: Mods) -> KeyEvent {
+    KeyEvent {
+        key: Key::Text(s.into()),
+        mods,
+    }
+}
 
 #[test]
 fn command_chords_type_nothing() {
     let mut e = TextEdit::new("pw").secure();
-    e.key(&chord(" ", Mods { cmd: true, shift: true, logo: true, ..Mods::default() }), None);
-    e.key(&chord("a", Mods { ctrl: true, ..Mods::default() }), None);
+    e.key(
+        &chord(
+            " ",
+            Mods {
+                cmd: true,
+                shift: true,
+                logo: true,
+                ..Mods::default()
+            },
+        ),
+        None,
+    );
+    e.key(
+        &chord(
+            "a",
+            Mods {
+                ctrl: true,
+                ..Mods::default()
+            },
+        ),
+        None,
+    );
     assert_eq!(e.text, "pw");
     let mut plain = TextEdit::new("");
-    plain.key(&chord(" ", Mods { cmd: true, logo: true, ..Mods::default() }), None);
-    plain.key(&chord("a", Mods { ctrl: true, cmd: !cfg!(target_os = "macos"), ..Mods::default() }), None);
+    plain.key(
+        &chord(
+            " ",
+            Mods {
+                cmd: true,
+                logo: true,
+                ..Mods::default()
+            },
+        ),
+        None,
+    );
+    plain.key(
+        &chord(
+            "a",
+            Mods {
+                ctrl: true,
+                cmd: !cfg!(target_os = "macos"),
+                ..Mods::default()
+            },
+        ),
+        None,
+    );
     assert_eq!(plain.text, "");
 }
 
@@ -458,15 +668,45 @@ fn command_chords_type_nothing() {
 #[test]
 fn altgr_text_still_types() {
     let mut e = TextEdit::new("");
-    e.key(&chord("€", Mods { ctrl: true, cmd: true, alt: true, ..Mods::default() }), None);
+    e.key(
+        &chord(
+            "€",
+            Mods {
+                ctrl: true,
+                cmd: true,
+                alt: true,
+                ..Mods::default()
+            },
+        ),
+        None,
+    );
     assert_eq!(e.text, "€");
 }
 
 #[test]
 fn option_text_still_types() {
     let mut e = TextEdit::new("").secure();
-    e.key(&chord("é", Mods { alt: true, ..Mods::default() }), None);
-    e.key(&chord("ø", Mods { alt: true, shift: true, ..Mods::default() }), None);
+    e.key(
+        &chord(
+            "é",
+            Mods {
+                alt: true,
+                ..Mods::default()
+            },
+        ),
+        None,
+    );
+    e.key(
+        &chord(
+            "ø",
+            Mods {
+                alt: true,
+                shift: true,
+                ..Mods::default()
+            },
+        ),
+        None,
+    );
     assert_eq!(e.text, "éø");
 }
 
@@ -476,7 +716,9 @@ fn paste_keeps_single_line_fields_on_one_line() {
     let mut single = TextEdit::new("");
     single.set_single_line(true);
     let mut multi = TextEdit::new("");
-    for e in [&mut secure, &mut single, &mut multi] { e.paste("a\tb\r\nc\u{2028}d"); }
+    for e in [&mut secure, &mut single, &mut multi] {
+        e.paste("a\tb\r\nc\u{2028}d");
+    }
     assert_eq!(secure.text, "abcd");
     assert_eq!(single.text, "abcd");
     assert_eq!(multi.text, "a\tb\nc\u{2028}d");
@@ -486,7 +728,13 @@ fn paste_keeps_single_line_fields_on_one_line() {
 
 #[test]
 fn shift_enter_in_a_single_line_field_submits_without_a_line_break() {
-    let shift_enter = KeyEvent { key: Key::Enter, mods: Mods { shift: true, ..Mods::default() } };
+    let shift_enter = KeyEvent {
+        key: Key::Enter,
+        mods: Mods {
+            shift: true,
+            ..Mods::default()
+        },
+    };
     let mut single = TextEdit::new("ab");
     single.set_single_line(true);
     let mut secure = TextEdit::new("ab").secure();
@@ -500,19 +748,43 @@ fn shift_enter_in_a_single_line_field_submits_without_a_line_break() {
 
 #[test]
 fn command_chord_reaches_on_key() {
-    use crate::{text_input, Cx, El, Env, Runtime, TextStyle};
-    struct Form { pw: TextEdit, keys: Vec<Key> }
+    use crate::{Cx, El, Env, Runtime, TextStyle, text_input};
+    struct Form {
+        pw: TextEdit,
+        keys: Vec<Key>,
+    }
     fn view(s: &Form, _: &mut Cx<Form>) -> El {
-        text_input(&s.pw, TextStyle::new(14.0, 400.0)).single_line().key("pw").size(200.0, 40.0)
+        text_input(&s.pw, TextStyle::new(14.0, 400.0))
+            .single_line()
+            .key("pw")
+            .size(200.0, 40.0)
             .on_edit(|s: &mut Form| &mut s.pw)
     }
     let mut pw = TextEdit::new("").secure();
     pw.focused = true;
-    let mut rt = Runtime::new(Form { pw, keys: vec![] }, view, (200.0, 40.0), Env::new(true, 1.0));
-    rt.on_key = Some(|s, ev, _| { s.keys.push(ev.key.clone()); true });
+    let mut rt = Runtime::new(
+        Form { pw, keys: vec![] },
+        view,
+        (200.0, 40.0),
+        Env::new(true, 1.0),
+    );
+    rt.on_key = Some(|s, ev, _| {
+        s.keys.push(ev.key.clone());
+        true
+    });
     rt.frame(0.0);
-    rt.key(chord(" ", Mods { cmd: true, shift: true, logo: true, ..Mods::default() })); rt.frame(0.0);
-    rt.key(chord("x", Mods::default())); rt.frame(0.0);
+    rt.key(chord(
+        " ",
+        Mods {
+            cmd: true,
+            shift: true,
+            logo: true,
+            ..Mods::default()
+        },
+    ));
+    rt.frame(0.0);
+    rt.key(chord("x", Mods::default()));
+    rt.frame(0.0);
     assert_eq!(rt.state.pw.text, "x");
     assert_eq!(rt.state.keys, [Key::Text(" ".into())]);
 }
@@ -520,20 +792,40 @@ fn command_chord_reaches_on_key() {
 #[cfg(target_os = "macos")]
 #[test]
 fn control_letters_edit_like_appkit_fields() {
-    let ctrl = |c: &str| KeyEvent { key: Key::Text(c.into()), mods: Mods { ctrl: true, ..Mods::default() } };
+    let ctrl = |c: &str| KeyEvent {
+        key: Key::Text(c.into()),
+        mods: Mods {
+            ctrl: true,
+            ..Mods::default()
+        },
+    };
     let mut e = TextEdit::new("one two\nthree");
     e.set(4, false);
-    e.key(&ctrl("a"), None); assert_eq!(e.focus, 0);
-    e.key(&ctrl("e"), None); assert_eq!(e.focus, 7);
-    e.key(&ctrl("b"), None); e.key(&ctrl("b"), None); assert_eq!(e.focus, 5);
-    e.key(&ctrl("f"), None); assert_eq!(e.focus, 6);
-    e.key(&ctrl("h"), None); assert_eq!(e.text, "one to\nthree");
-    e.key(&ctrl("d"), None); assert_eq!(e.text, "one t\nthree");
+    e.key(&ctrl("a"), None);
+    assert_eq!(e.focus, 0);
+    e.key(&ctrl("e"), None);
+    assert_eq!(e.focus, 7);
+    e.key(&ctrl("b"), None);
+    e.key(&ctrl("b"), None);
+    assert_eq!(e.focus, 5);
+    e.key(&ctrl("f"), None);
+    assert_eq!(e.focus, 6);
+    e.key(&ctrl("h"), None);
+    assert_eq!(e.text, "one to\nthree");
+    e.key(&ctrl("d"), None);
+    assert_eq!(e.text, "one t\nthree");
     e.set(0, false);
-    e.key(&ctrl("k"), None); assert_eq!(e.text, "\nthree");
-    e.key(&ctrl("k"), None); assert_eq!(e.text, "three", "at a line's end Ctrl-K joins the next line");
-    e.key(&ctrl("n"), None); assert_eq!(e.focus, 5);
-    e.key(&ctrl("x"), None); assert_eq!(e.text, "three", "other Control letters never type");
+    e.key(&ctrl("k"), None);
+    assert_eq!(e.text, "\nthree");
+    e.key(&ctrl("k"), None);
+    assert_eq!(
+        e.text, "three",
+        "at a line's end Ctrl-K joins the next line"
+    );
+    e.key(&ctrl("n"), None);
+    assert_eq!(e.focus, 5);
+    e.key(&ctrl("x"), None);
+    assert_eq!(e.text, "three", "other Control letters never type");
 }
 
 #[test]
@@ -541,10 +833,28 @@ fn typing_selection_and_submit() {
     let mut e = TextEdit::default();
     e.key(&k(Key::Text("héllo world".into())), None);
     assert_eq!(e.text, "héllo world");
-    e.key(&KeyEvent { key: Key::Backspace, mods: Mods { alt: true, ..Mods::default() } }, None);
+    e.key(
+        &KeyEvent {
+            key: Key::Backspace,
+            mods: Mods {
+                alt: true,
+                ..Mods::default()
+            },
+        },
+        None,
+    );
     assert_eq!(e.text, "héllo ");
     e.key(&k(Key::Left), None);
-    e.key(&KeyEvent { key: Key::Left, mods: Mods { shift: true, ..Mods::default() } }, None);
+    e.key(
+        &KeyEvent {
+            key: Key::Left,
+            mods: Mods {
+                shift: true,
+                ..Mods::default()
+            },
+        },
+        None,
+    );
     assert_eq!(e.selected(), "o");
     e.key(&k(Key::Text("0".into())), None);
     assert_eq!(e.text, "héll0 ");
@@ -553,7 +863,16 @@ fn typing_selection_and_submit() {
     e.ime(&Ime::Commit("日".into()));
     assert_eq!(e.text, "héll0日 ");
     assert!(e.key(&k(Key::Enter), None).submit);
-    e.key(&KeyEvent { key: Key::Enter, mods: Mods { shift: true, ..Mods::default() } }, None);
+    e.key(
+        &KeyEvent {
+            key: Key::Enter,
+            mods: Mods {
+                shift: true,
+                ..Mods::default()
+            },
+        },
+        None,
+    );
     assert!(e.text.contains('\n'));
 }
 
@@ -589,7 +908,10 @@ fn inline_marks_shift_split_inherit_and_respect_boundaries() {
     assert!(!e.has_mark(&Mark::Bold));
     assert_eq!(
         e.marks(),
-        &[MarkRange::new(1..3, Mark::Bold), MarkRange::new(5..7, Mark::Bold)]
+        &[
+            MarkRange::new(1..3, Mark::Bold),
+            MarkRange::new(5..7, Mark::Bold)
+        ]
     );
 
     // Selecting across the gap (1..7) reports Bold is not active on the whole range,
@@ -630,8 +952,26 @@ fn inline_marks_shift_split_inherit_and_respect_boundaries() {
 fn pending_typing_style_and_command_shortcuts() {
     let mut e = TextEdit::new("").rich();
     // Empty selection: Cmd+B sets pending Bold, Cmd+I sets pending Italic.
-    e.key(&KeyEvent { key: Key::Command('b'), mods: Mods { cmd: true, ..Mods::default() } }, None);
-    e.key(&KeyEvent { key: Key::Command('i'), mods: Mods { cmd: true, ..Mods::default() } }, None);
+    e.key(
+        &KeyEvent {
+            key: Key::Command('b'),
+            mods: Mods {
+                cmd: true,
+                ..Mods::default()
+            },
+        },
+        None,
+    );
+    e.key(
+        &KeyEvent {
+            key: Key::Command('i'),
+            mods: Mods {
+                cmd: true,
+                ..Mods::default()
+            },
+        },
+        None,
+    );
     assert!(e.has_mark(&Mark::Bold));
     assert!(e.has_mark(&Mark::Italic));
 
@@ -639,18 +979,33 @@ fn pending_typing_style_and_command_shortcuts() {
     assert_eq!(e.text, "hi");
     assert_eq!(
         e.marks(),
-        &[MarkRange::new(0..2, Mark::Bold), MarkRange::new(0..2, Mark::Italic)]
+        &[
+            MarkRange::new(0..2, Mark::Bold),
+            MarkRange::new(0..2, Mark::Italic)
+        ]
     );
 
     // Toggle Bold off on empty selection at index 2, then type " there".
-    e.key(&KeyEvent { key: Key::Command('b'), mods: Mods { cmd: true, ..Mods::default() } }, None);
+    e.key(
+        &KeyEvent {
+            key: Key::Command('b'),
+            mods: Mods {
+                cmd: true,
+                ..Mods::default()
+            },
+        },
+        None,
+    );
     assert!(!e.has_mark(&Mark::Bold));
     assert!(e.has_mark(&Mark::Italic));
     e.key(&k(Key::Text(" there".into())), None);
     assert_eq!(e.text, "hi there");
     assert_eq!(
         e.marks(),
-        &[MarkRange::new(0..2, Mark::Bold), MarkRange::new(0..8, Mark::Italic)]
+        &[
+            MarkRange::new(0..2, Mark::Bold),
+            MarkRange::new(0..8, Mark::Italic)
+        ]
     );
 
     // Moving the caret clears pending typing style.
@@ -731,11 +1086,20 @@ fn block_attributes_lists_quotes_code_and_keys() {
     e.key(&k(Key::Text("nested".into())), None);
 
     // Shift+Return inserts a soft break inside the same list item.
-    let shift_enter = KeyEvent { key: Key::Enter, mods: Mods { shift: true, ..Mods::default() } };
+    let shift_enter = KeyEvent {
+        key: Key::Enter,
+        mods: Mods {
+            shift: true,
+            ..Mods::default()
+        },
+    };
     e.key(&shift_enter, None);
     e.key(&k(Key::Text("cont".into())), None);
     assert_eq!(e.soft_breaks(), &[2]);
-    assert_eq!(e.blocks(), &[Block::Bullet(0), Block::Bullet(1), Block::Bullet(1)]);
+    assert_eq!(
+        e.blocks(),
+        &[Block::Bullet(0), Block::Bullet(1), Block::Bullet(1)]
+    );
 
     // Return at end of "cont" creates a new empty Bullet(1) item on line 3.
     e.key(&k(Key::Enter), None);
@@ -797,7 +1161,8 @@ fn undo_redo_and_ime_preserve_marks_blocks_and_spans() {
     assert_eq!(e.display().0, "fn 日main() {}");
     assert_eq!(e.map_range_to_display(3, 7), vec![(6, 10)]);
     // And the preedit itself has the pending Italic mark in rich_display_specs.
-    let (spans, _, _, _) = e.rich_display_specs(crate::TextStyle::new(14.0, 400.0), RichStyle::default());
+    let (spans, _, _, _) =
+        e.rich_display_specs(crate::TextStyle::new(14.0, 400.0), RichStyle::default());
     assert!(spans.iter().any(|s| s.start == 3 && s.end == 6 && s.italic));
 
     // Commit IME preedit: Italic mark is committed on "日" (3..6).
@@ -833,8 +1198,16 @@ fn html_import_export_and_paste_safe_subset() {
     assert!(e.marks().iter().any(|m| m.mark == Mark::Underline));
     assert!(e.marks().iter().any(|m| m.mark == Mark::Strike));
     assert!(e.marks().iter().any(|m| m.mark == Mark::Code));
-    assert!(e.marks().iter().any(|m| m.mark == Mark::Link("https://opencode.ai".into())));
-    assert!(!e.marks().iter().any(|m| matches!(&m.mark, Mark::Link(u) if u.starts_with("javascript:"))));
+    assert!(
+        e.marks()
+            .iter()
+            .any(|m| m.mark == Mark::Link("https://opencode.ai".into()))
+    );
+    assert!(
+        !e.marks()
+            .iter()
+            .any(|m| matches!(&m.mark, Mark::Link(u) if u.starts_with("javascript:")))
+    );
     assert_eq!(
         e.blocks(),
         &[
@@ -904,17 +1277,39 @@ fn spans_on_text_input_hold_through_ime_and_undo() {
     // span on `edit.text` shifts automatically to 3..6 in the rendered TextSpec!
     rt.ime(Ime::Preedit("あ".into(), Some((0, 3))));
     rt.frame(0.0);
-    let spec_spans = &rt.nodes.iter().find(|n| n.key.as_deref() == Some("ed")).unwrap().text.as_ref().unwrap().spans;
+    let spec_spans = &rt
+        .nodes
+        .iter()
+        .find(|n| n.key.as_deref() == Some("ed"))
+        .unwrap()
+        .text
+        .as_ref()
+        .unwrap()
+        .spans;
     assert_eq!(spec_spans.len(), 1);
     assert_eq!((spec_spans[0].start, spec_spans[0].end), (3, 6));
 
     // Commit IME preedit, then undo back to "let x = 1;": span returns to 0..3.
     rt.ime(Ime::Commit("あ".into()));
     rt.frame(0.0);
-    rt.key(KeyEvent { key: Key::Command('z'), mods: Mods { cmd: true, ..Mods::default() } });
+    rt.key(KeyEvent {
+        key: Key::Command('z'),
+        mods: Mods {
+            cmd: true,
+            ..Mods::default()
+        },
+    });
     rt.frame(0.0);
     assert_eq!(rt.state.edit.text, "let x = 1;");
-    let spec_spans = &rt.nodes.iter().find(|n| n.key.as_deref() == Some("ed")).unwrap().text.as_ref().unwrap().spans;
+    let spec_spans = &rt
+        .nodes
+        .iter()
+        .find(|n| n.key.as_deref() == Some("ed"))
+        .unwrap()
+        .text
+        .as_ref()
+        .unwrap()
+        .spans;
     assert_eq!(spec_spans.len(), 1);
     assert_eq!((spec_spans[0].start, spec_spans[0].end), (0, 3));
 }
@@ -949,7 +1344,10 @@ fn runtime_routes_mark_shortcuts_list_tabs_and_renders_decorations() {
     edit.anchor = 0;
     edit.focus = 4; // "item"
     let mut rt = Runtime::new(
-        App { edit, other: TextEdit::new("next") },
+        App {
+            edit,
+            other: TextEdit::new("next"),
+        },
         view,
         (320.0, 200.0),
         Env::new(true, 1.0),
@@ -959,34 +1357,71 @@ fn runtime_routes_mark_shortcuts_list_tabs_and_renders_decorations() {
     assert!(base_instances > 10);
 
     // Cmd+B, Cmd+I, Cmd+U toggle marks on the selection through Runtime::key.
-    rt.key(KeyEvent { key: Key::Command('b'), mods: Mods { cmd: true, ..Mods::default() } });
-    rt.key(KeyEvent { key: Key::Command('i'), mods: Mods { cmd: true, ..Mods::default() } });
-    rt.key(KeyEvent { key: Key::Command('u'), mods: Mods { cmd: true, ..Mods::default() } });
+    rt.key(KeyEvent {
+        key: Key::Command('b'),
+        mods: Mods {
+            cmd: true,
+            ..Mods::default()
+        },
+    });
+    rt.key(KeyEvent {
+        key: Key::Command('i'),
+        mods: Mods {
+            cmd: true,
+            ..Mods::default()
+        },
+    });
+    rt.key(KeyEvent {
+        key: Key::Command('u'),
+        mods: Mods {
+            cmd: true,
+            ..Mods::default()
+        },
+    });
     rt.frame(0.0);
     assert!(rt.state.edit.has_mark(&Mark::Bold));
     assert!(rt.state.edit.has_mark(&Mark::Italic));
     assert!(rt.state.edit.has_mark(&Mark::Underline));
 
     // Tab inside a list item indents the list item instead of moving focus to "other"!
-    rt.key(KeyEvent { key: Key::Tab, mods: Mods::default() });
+    rt.key(KeyEvent {
+        key: Key::Tab,
+        mods: Mods::default(),
+    });
     rt.frame(0.0);
     assert!(rt.state.edit.focused);
     assert!(!rt.state.other.focused);
     assert_eq!(rt.state.edit.blocks()[0], Block::Bullet(1));
 
     // Shift+Tab outdents the list item back to Bullet(0).
-    rt.key(KeyEvent { key: Key::Tab, mods: Mods { shift: true, ..Mods::default() } });
+    rt.key(KeyEvent {
+        key: Key::Tab,
+        mods: Mods {
+            shift: true,
+            ..Mods::default()
+        },
+    });
     rt.frame(0.0);
     assert_eq!(rt.state.edit.blocks()[0], Block::Bullet(0));
 }
 
 fn cmd(c: char) -> KeyEvent {
-    KeyEvent { key: Key::Command(c), mods: Mods { cmd: true, ..Mods::default() } }
+    KeyEvent {
+        key: Key::Command(c),
+        mods: Mods {
+            cmd: true,
+            ..Mods::default()
+        },
+    }
 }
 
 /// The text under each range of `mark`.
 fn marked<'a>(e: &'a TextEdit, mark: &Mark) -> Vec<&'a str> {
-    e.marks().iter().filter(|m| m.mark == *mark).map(|m| &e.text[m.start..m.end]).collect()
+    e.marks()
+        .iter()
+        .filter(|m| m.mark == *mark)
+        .map(|m| &e.text[m.start..m.end])
+        .collect()
 }
 
 /// What every edit path must leave behind.
@@ -994,28 +1429,62 @@ fn assert_invariants(e: &TextEdit, ctx: &str) {
     let t = &e.text;
     let lines = 1 + t.bytes().filter(|&b| b == b'\n').count();
     assert_eq!(e.blocks().len(), lines, "{ctx}: one block per line");
-    assert!(e.blocks().iter().all(|b| b.list_level().is_none_or(|l| l <= MAX_LIST_LEVEL)), "{ctx}: list levels");
-    assert!(e.soft_breaks().windows(2).all(|w| w[0] < w[1]), "{ctx}: soft breaks sorted");
-    assert!(e.soft_breaks().iter().all(|&i| i > 0 && (i as usize) < lines), "{ctx}: soft breaks in range");
-    assert!(t.is_char_boundary(e.anchor) && t.is_char_boundary(e.focus), "{ctx}: caret on a char boundary");
+    assert!(
+        e.blocks()
+            .iter()
+            .all(|b| b.list_level().is_none_or(|l| l <= MAX_LIST_LEVEL)),
+        "{ctx}: list levels"
+    );
+    assert!(
+        e.soft_breaks().windows(2).all(|w| w[0] < w[1]),
+        "{ctx}: soft breaks sorted"
+    );
+    assert!(
+        e.soft_breaks()
+            .iter()
+            .all(|&i| i > 0 && (i as usize) < lines),
+        "{ctx}: soft breaks in range"
+    );
+    assert!(
+        t.is_char_boundary(e.anchor) && t.is_char_boundary(e.focus),
+        "{ctx}: caret on a char boundary"
+    );
     let ms = e.marks();
-    assert!(ms.windows(2).all(|w| w[0].start <= w[1].start), "{ctx}: marks sorted");
+    assert!(
+        ms.windows(2).all(|w| w[0].start <= w[1].start),
+        "{ctx}: marks sorted"
+    );
     for m in ms {
-        assert!(m.start < m.end && m.end <= t.len(), "{ctx}: mark {m:?} in range");
-        assert!(t.is_char_boundary(m.start) && t.is_char_boundary(m.end), "{ctx}: mark {m:?} on char boundaries");
+        assert!(
+            m.start < m.end && m.end <= t.len(),
+            "{ctx}: mark {m:?} in range"
+        );
+        assert!(
+            t.is_char_boundary(m.start) && t.is_char_boundary(m.end),
+            "{ctx}: mark {m:?} on char boundaries"
+        );
         for line in e.line_of_byte(m.start)..=e.line_of_byte(m.end - 1) {
-            assert_ne!(e.blocks()[line], Block::Code, "{ctx}: mark {m:?} reaches code line {line}");
+            assert_ne!(
+                e.blocks()[line],
+                Block::Code,
+                "{ctx}: mark {m:?} reaches code line {line}"
+            );
         }
     }
     for (i, a) in ms.iter().enumerate() {
         for b in &ms[i + 1..] {
             if a.mark.same_kind(&b.mark) {
-                assert!(b.start >= a.end, "{ctx}: same-kind marks {a:?} {b:?} overlap");
-                assert!(!(b.start == a.end && a.mark == b.mark), "{ctx}: equal marks {a:?} {b:?} not merged");
+                assert!(
+                    b.start >= a.end,
+                    "{ctx}: same-kind marks {a:?} {b:?} overlap"
+                );
+                assert!(
+                    !(b.start == a.end && a.mark == b.mark),
+                    "{ctx}: equal marks {a:?} {b:?} not merged"
+                );
             }
         }
     }
 }
-
 
 include!("rich_tests.rs");

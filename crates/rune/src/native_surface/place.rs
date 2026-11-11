@@ -11,11 +11,16 @@ pub(crate) struct SurfacePlace {
 }
 
 impl SurfacePlace {
-    pub const CENTRED: SurfacePlace = SurfacePlace { anchor: [Align::Center; 2], unscaled: false };
+    pub const CENTRED: SurfacePlace = SurfacePlace {
+        anchor: [Align::Center; 2],
+        unscaled: false,
+    };
 }
 
 impl Default for SurfacePlace {
-    fn default() -> Self { Self::CENTRED }
+    fn default() -> Self {
+        Self::CENTRED
+    }
 }
 
 impl SurfacePlace {
@@ -31,7 +36,12 @@ impl SurfacePlace {
 
 /// The image's rect in device pixels inside `node` ([x, y, w, h]); it may overflow the node, which
 /// then crops it. `unscaled` draws one texel per device pixel and ignores `fit`.
-pub(crate) fn image_rect(node: [f32; 4], source: [u32; 2], fit: SurfaceFit, place: SurfacePlace) -> [f32; 4] {
+pub(crate) fn image_rect(
+    node: [f32; 4],
+    source: [u32; 2],
+    fit: SurfaceFit,
+    place: SurfacePlace,
+) -> [f32; 4] {
     let (sw, sh) = (source[0] as f32, source[1] as f32);
     let scale = if place.unscaled {
         1.0
@@ -47,5 +57,9 @@ pub(crate) fn image_rect(node: [f32; 4], source: [u32; 2], fit: SurfaceFit, plac
     let x = node[0] + (node[2] - w) * kx;
     let y = node[1] + (node[3] - h) * ky;
     // At unit scale favour sharp shared text over a subpixel translation of its image.
-    if (scale - 1.0).abs() < 1e-6 { [x.round(), y.round(), w, h] } else { [x, y, w, h] }
+    if (scale - 1.0).abs() < 1e-6 {
+        [x.round(), y.round(), w, h]
+    } else {
+        [x, y, w, h]
+    }
 }

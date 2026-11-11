@@ -4,7 +4,14 @@
 //! once and follows `SettingChanged`; a change asks every window to redraw, which rereads it.
 
 use futures_util::StreamExt;
-use std::{sync::{Arc, Mutex, OnceLock, Weak, atomic::{AtomicU8, Ordering}, mpsc}, time::Duration};
+use std::{
+    sync::{
+        Arc, Mutex, OnceLock, Weak,
+        atomic::{AtomicU8, Ordering},
+        mpsc,
+    },
+    time::Duration,
+};
 use winit::window::Window;
 use zbus::{Connection, OwnedVariant, Proxy, Variant};
 
@@ -58,19 +65,35 @@ fn scheme(value: &Variant<'_>) -> Option<u32> {
 fn store(value: &Variant<'_>) {
     let Some(scheme) = scheme(value) else { return };
     let scheme = if scheme <= 2 { scheme as u8 } else { 0 };
-    if SCHEME.swap(scheme, Ordering::Relaxed) == scheme { return; }
-    for window in WINDOWS.lock().unwrap_or_else(|e| e.into_inner()).iter().filter_map(Weak::upgrade) {
+    if SCHEME.swap(scheme, Ordering::Relaxed) == scheme {
+        return;
+    }
+    for window in WINDOWS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .filter_map(Weak::upgrade)
+    {
         window.request_redraw();
     }
 }
 
 fn start() {
     let (ready, first) = mpsc::sync_channel(1);
-    let worker = std::thread::Builder::new().name("rune-appearance-portal".into()).spawn(move || {
-        let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_all().build() else { return };
-        runtime.block_on(watch(ready));
-    });
-    if worker.is_ok() { let _ = first.recv_timeout(FIRST_ANSWER); }
+    let worker = std::thread::Builder::new()
+        .name("rune-appearance-portal".into())
+        .spawn(move || {
+            let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            else {
+                return;
+            };
+            runtime.block_on(watch(ready));
+        });
+    if worker.is_ok() {
+        let _ = first.recv_timeout(FIRST_ANSWER);
+    }
 }
 
 async fn watch(ready: mpsc::SyncSender<()>) {
@@ -79,18 +102,34 @@ async fn watch(ready: mpsc::SyncSender<()>) {
         let portal = Proxy::new(&conn, DEST, PATH, INTERFACE).await.ok()?;
         // Subscribe first, so a change between the read and the subscription isn't lost.
         let changes = portal.receive_signal("SettingChanged").await.ok()?;
-        let value = match portal.call::<_, _, OwnedVariant>("ReadOne", &(NAMESPACE, KEY)).await {
+        let value = match portal
+            .call::<_, _, OwnedVariant>("ReadOne", &(NAMESPACE, KEY))
+            .await
+        {
             Ok(v) => Some(v),
-            Err(_) => portal.call::<_, _, OwnedVariant>("Read", &(NAMESPACE, KEY)).await.ok(),
+            Err(_) => portal
+                .call::<_, _, OwnedVariant>("Read", &(NAMESPACE, KEY))
+                .await
+                .ok(),
         };
-        if let Some(v) = value { store(&v); }
+        if let Some(v) = value {
+            store(&v);
+        }
         Some((conn, changes))
-    }).await.ok().flatten();
+    })
+    .await
+    .ok()
+    .flatten();
     let _ = ready.send(());
-    let Some((_conn, mut changes)) = setup else { return };
+    let Some((_conn, mut changes)) = setup else {
+        return;
+    };
     while let Some(message) = changes.next().await {
-        if let Ok((namespace, key, value)) = message.body().deserialize::<(String, String, OwnedVariant)>()
-            && namespace == NAMESPACE && key == KEY
+        if let Ok((namespace, key, value)) = message
+            .body()
+            .deserialize::<(String, String, OwnedVariant)>()
+            && namespace == NAMESPACE
+            && key == KEY
         {
             store(&value);
         }

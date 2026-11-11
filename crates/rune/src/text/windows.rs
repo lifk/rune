@@ -40,7 +40,10 @@ impl Rasterizer {
     /// Whether DirectWrite rasterises here: on Windows, once its factory exists.
     pub(crate) fn available(&mut self) -> bool {
         #[cfg(target_os = "windows")]
-        return self.direct_write.get_or_insert_with(direct_write::DirectWrite::new).is_some();
+        return self
+            .direct_write
+            .get_or_insert_with(direct_write::DirectWrite::new)
+            .is_some();
         #[cfg(not(target_os = "windows"))]
         false
     }
@@ -49,14 +52,24 @@ impl Rasterizer {
         let base = skia_gamma::bucket(element);
         self.inks.clear();
         self.inks.push(base);
-        self.inks.extend(spans.iter().map(|s| s.color.map_or(base, skia_gamma::bucket)));
+        self.inks.extend(
+            spans
+                .iter()
+                .map(|s| s.color.map_or(base, skia_gamma::bucket)),
+        );
     }
 
-    pub(crate) fn inks(&self) -> &[u8] { &self.inks }
+    pub(crate) fn inks(&self) -> &[u8] {
+        &self.inks
+    }
 
     /// The luminance bucket glyphs in `ink` rasterise for.
     pub(crate) fn bucket(&self, ink: u16) -> u8 {
-        self.inks.get(ink as usize).or(self.inks.first()).copied().unwrap_or(0)
+        self.inks
+            .get(ink as usize)
+            .or(self.inks.first())
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Rasterises `job` with DirectWrite; None when it can't (the caller falls back).

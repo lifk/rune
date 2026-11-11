@@ -32,11 +32,8 @@ fn a_described_item_grows_to_show_its_second_line() {
         .into_iter()
         .find(|e| e.path.starts_with(&prefix) && e.key.as_deref() == Some("description"))
         .expect("the description shows");
-    let label = rt
-        .elements()
-        .into_iter()
-        .find(|e| e.path.starts_with(&prefix) && e.key.as_deref() == Some("label"))
-        .unwrap();
+    let label =
+        rt.elements().into_iter().find(|e| e.path.starts_with(&prefix) && e.key.as_deref() == Some("label")).unwrap();
     assert!(line.rect[1] >= label.rect[1] + label.rect[3], "the description sits under the label");
     assert!(line.rect[1] + line.rect[3] <= described.rect[1] + described.rect[3]);
 }

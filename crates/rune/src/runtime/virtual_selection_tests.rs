@@ -7,7 +7,10 @@ use std::cell::Cell;
 use std::time::Instant;
 
 use crate::runtime::ElementInfo;
-use crate::{Cx, El, Env, GrowthSpec, Key, KeyEvent, Mods, PhysicalInput, Runtime, ScrollSpec, TextStyle, col, row, text};
+use crate::{
+    Cx, El, Env, GrowthSpec, Key, KeyEvent, Mods, PhysicalInput, Runtime, ScrollSpec, TextStyle,
+    col, row, text,
+};
 
 const ROWS: usize = 55;
 const ROW_H: f32 = 56.0;
@@ -20,7 +23,10 @@ struct Timeline {
 
 impl Timeline {
     fn new(count: usize) -> Self {
-        Self { count, big_bytes: 0 }
+        Self {
+            count,
+            big_bytes: 0,
+        }
     }
 }
 
@@ -53,39 +59,66 @@ fn build_timeline_row(s: &Timeline, i: usize) -> El {
             .selectable(true)
     } else if i % 5 == 2 {
         row().key("cells").w_full().children([
-            text(format!("left-{i:02}")).key("c0").font(style).w(160.0).selectable(true),
-            text(format!("right-{i:02}")).key("c1").font(style).w(160.0).selectable(true),
+            text(format!("left-{i:02}"))
+                .key("c0")
+                .font(style)
+                .w(160.0)
+                .selectable(true),
+            text(format!("right-{i:02}"))
+                .key("c1")
+                .font(style)
+                .w(160.0)
+                .selectable(true),
         ])
     } else {
-        text(format!("Message body for virtual row {i:02} with words to select."))
-            .key("body")
-            .font(style)
-            .w_full()
-            .selectable(true)
+        text(format!(
+            "Message body for virtual row {i:02} with words to select."
+        ))
+        .key("body")
+        .font(style)
+        .w_full()
+        .selectable(true)
     };
-    col().w_full().h(ROW_H).padding(6.0).gap(4.0).children([head, body])
+    col()
+        .w_full()
+        .h(ROW_H)
+        .padding(6.0)
+        .gap(4.0)
+        .children([head, body])
 }
 
 fn timeline_view(s: &Timeline, _: &mut Cx<Timeline>) -> El {
     col().w_full().h_full().child(
-        col().key("scroll").w_full().grow(1.0).scroll(ScrollSpec { stick_bottom: false }).child(
-            col()
-                .key("timeline")
-                .w_full()
-                .growth(GrowthSpec::default())
-                .selection_group(true)
-                .virtual_rows(
-                    s.count,
-                    ROW_H,
-                    |_: &Timeline, i| format!("r{i}").into(),
-                    build_timeline_row,
-                ),
-        ),
+        col()
+            .key("scroll")
+            .w_full()
+            .grow(1.0)
+            .scroll(ScrollSpec {
+                stick_bottom: false,
+            })
+            .child(
+                col()
+                    .key("timeline")
+                    .w_full()
+                    .growth(GrowthSpec::default())
+                    .selection_group(true)
+                    .virtual_rows(
+                        s.count,
+                        ROW_H,
+                        |_: &Timeline, i| format!("r{i}").into(),
+                        build_timeline_row,
+                    ),
+            ),
     )
 }
 
 fn timeline(count: usize) -> Runtime<Timeline> {
-    let mut rt = Runtime::new(Timeline::new(count), timeline_view, (1280.0, 420.0), Env::new(true, 2.0));
+    let mut rt = Runtime::new(
+        Timeline::new(count),
+        timeline_view,
+        (1280.0, 420.0),
+        Env::new(true, 2.0),
+    );
     rt.frame(0.0);
     while rt.frame(1.0 / 120.0) {}
     BUILT_ROWS.set(0);
@@ -105,7 +138,13 @@ fn settle<S: 'static>(rt: &mut Runtime<S>) {
 }
 
 fn command<S: 'static>(rt: &mut Runtime<S>, c: char) {
-    rt.key(KeyEvent { key: Key::Command(c), mods: Mods { cmd: true, ..Mods::default() } });
+    rt.key(KeyEvent {
+        key: Key::Command(c),
+        mods: Mods {
+            cmd: true,
+            ..Mods::default()
+        },
+    });
     tick(rt);
 }
 
@@ -122,8 +161,18 @@ fn glyphs_at<S: 'static>(rt: &Runtime<S>, suffix: &str) -> Vec<(f32, f32)> {
         .instances
         .iter()
         .filter(|i| i.params[1] == crate::render::KIND_GLYPH)
-        .map(|i| ((i.rect[0] + i.rect[2] / 2.0) / 2.0, (i.rect[1] + i.rect[3] / 2.0) / 2.0))
-        .filter(|&(x, y)| x >= e.rect[0] && x <= e.rect[0] + e.rect[2] && y >= e.rect[1] && y <= e.rect[1] + e.rect[3])
+        .map(|i| {
+            (
+                (i.rect[0] + i.rect[2] / 2.0) / 2.0,
+                (i.rect[1] + i.rect[3] / 2.0) / 2.0,
+            )
+        })
+        .filter(|&(x, y)| {
+            x >= e.rect[0]
+                && x <= e.rect[0] + e.rect[2]
+                && y >= e.rect[1]
+                && y <= e.rect[1] + e.rect[3]
+        })
         .collect();
     out.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     out
@@ -152,12 +201,25 @@ fn cmd_a_and_select_all_text_over_55_virtual_rows_copy_every_row() {
         "Cmd+A builds only the mounted window plus offscreen end row(s), built {}",
         BUILT_ROWS.get()
     );
-    assert_eq!(rt.virtuals["#0/scroll/timeline"].range, 0..23, "mounted window unchanged");
-    assert_eq!(find_path(&rt, "r0/head").selected.as_deref(), Some("Row 00 header"));
-    assert_eq!(find_path(&rt, "r22/head").selected.as_deref(), Some("Row 22 header"));
+    assert_eq!(
+        rt.virtuals["#0/scroll/timeline"].range,
+        0..23,
+        "mounted window unchanged"
+    );
+    assert_eq!(
+        find_path(&rt, "r0/head").selected.as_deref(),
+        Some("Row 00 header")
+    );
+    assert_eq!(
+        find_path(&rt, "r22/head").selected.as_deref(),
+        Some("Row 22 header")
+    );
 
     command(&mut rt, 'c');
-    assert_eq!(clipboard.text().as_deref().map(String::as_str), Some(expected.as_str()));
+    assert_eq!(
+        clipboard.text().as_deref().map(String::as_str),
+        Some(expected.as_str())
+    );
     assert_eq!(rt.selected_text().as_deref(), Some(expected.as_str()));
 
     // Clearing the selection releases the pinned rows.
@@ -173,7 +235,10 @@ fn cmd_a_and_select_all_text_over_55_virtual_rows_copy_every_row() {
     }
     settle(&mut rt);
     let mid_range = rt.virtuals["#0/scroll/timeline"].range.clone();
-    assert!(mid_range.start > 0 && mid_range.end < ROWS, "middle window: {mid_range:?}");
+    assert!(
+        mid_range.start > 0 && mid_range.end < ROWS,
+        "middle window: {mid_range:?}"
+    );
 
     rt.update(|_, tx| tx.select_all_text("timeline"));
     tick(&mut rt);
@@ -218,13 +283,22 @@ fn selection_from_row_3_to_row_40_copies_all_rows_in_between_in_order() {
     }
     settle(&mut rt);
     let range = rt.virtuals["#0/scroll/timeline"].range.clone();
-    assert!(!range.contains(&3) && range.contains(&40), "r3 unmounted, r40 mounted: {range:?}");
+    assert!(
+        !range.contains(&3) && range.contains(&40),
+        "r3 unmounted, r40 mounted: {range:?}"
+    );
 
     // Shift-click in row 40 body right after "40" (glyph 25).
     let r40 = glyphs_at(&rt, "r40/body");
     let end_pt = (r40[25].0 + 3.0, r40[25].1);
-    assert!(end_pt.1 > 0.0 && end_pt.1 < 420.0, "r40/body inside viewport: {end_pt:?}");
-    rt.physical_input(PhysicalInput::Modifiers(Mods { shift: true, ..Mods::default() }));
+    assert!(
+        end_pt.1 > 0.0 && end_pt.1 < 420.0,
+        "r40/body inside viewport: {end_pt:?}"
+    );
+    rt.physical_input(PhysicalInput::Modifiers(Mods {
+        shift: true,
+        ..Mods::default()
+    }));
     rt.pointer_move(end_pt.0, end_pt.1);
     rt.pointer_down(end_pt.0, end_pt.1);
     rt.pointer_up(end_pt.0, end_pt.1);
@@ -240,7 +314,10 @@ fn selection_from_row_3_to_row_40_copies_all_rows_in_between_in_order() {
 
     assert_eq!(rt.selected_text().as_deref(), Some(expected.as_str()));
     command(&mut rt, 'c');
-    assert_eq!(clipboard.text().as_deref().map(String::as_str), Some(expected.as_str()));
+    assert_eq!(
+        clipboard.text().as_deref().map(String::as_str),
+        Some(expected.as_str())
+    );
 }
 
 #[test]
@@ -257,7 +334,10 @@ fn selection_scrolled_far_away_and_back_keeps_highlight() {
     tick(&mut rt);
 
     assert_eq!(rt.selected_text().as_deref(), Some("Message body"));
-    assert_eq!(find_path(&rt, "r1/body").selected.as_deref(), Some("Message body"));
+    assert_eq!(
+        find_path(&rt, "r1/body").selected.as_deref(),
+        Some("Message body")
+    );
 
     // Scroll to the very bottom so row 1 is far outside the mounted window.
     for _ in 0..20 {
@@ -265,8 +345,15 @@ fn selection_scrolled_far_away_and_back_keeps_highlight() {
         tick(&mut rt);
     }
     settle(&mut rt);
-    assert!(!rt.elements().iter().any(|e| e.path.ends_with("r1/body")), "r1 is unmounted");
-    assert_eq!(rt.selected_text().as_deref(), Some("Message body"), "selection survives offscreen");
+    assert!(
+        !rt.elements().iter().any(|e| e.path.ends_with("r1/body")),
+        "r1 is unmounted"
+    );
+    assert_eq!(
+        rt.selected_text().as_deref(),
+        Some("Message body"),
+        "selection survives offscreen"
+    );
 
     // Scroll all the way back to the top: the highlight on r1/body is still there.
     for _ in 0..20 {
@@ -274,7 +361,10 @@ fn selection_scrolled_far_away_and_back_keeps_highlight() {
         tick(&mut rt);
     }
     settle(&mut rt);
-    assert_eq!(find_path(&rt, "r1/body").selected.as_deref(), Some("Message body"));
+    assert_eq!(
+        find_path(&rt, "r1/body").selected.as_deref(),
+        Some("Message body")
+    );
     assert_eq!(rt.selected_text().as_deref(), Some("Message body"));
 }
 
@@ -294,7 +384,10 @@ fn dragging_selection_while_scrolling_across_virtual_rows_keeps_working() {
         tick(&mut rt);
     }
     settle(&mut rt);
-    assert!(!rt.virtuals["#0/scroll/timeline"].range.contains(&3), "anchor row 3 scrolled out");
+    assert!(
+        !rt.virtuals["#0/scroll/timeline"].range.contains(&3),
+        "anchor row 3 scrolled out"
+    );
 
     let g40 = glyphs_at(&rt, "r40/head");
     let p1 = (g40.last().unwrap().0 + 4.0, g40.last().unwrap().1);
@@ -313,13 +406,20 @@ fn dragging_selection_while_scrolling_across_virtual_rows_keeps_working() {
 fn tx_select_text_on_unbuilt_row_pins_and_applies_without_scrolling() {
     let mut rt = timeline(ROWS);
     assert_eq!(rt.virtuals["#0/scroll/timeline"].range, 0..23);
-    assert!(!rt.elements().iter().any(|e| e.path.ends_with("r45/body")), "r45 starts unbuilt");
+    assert!(
+        !rt.elements().iter().any(|e| e.path.ends_with("r45/body")),
+        "r45 starts unbuilt"
+    );
 
     rt.update(|_, tx| tx.select_text("r45/body", 0..12));
     tick(&mut rt);
 
     // Must not scroll or mount row 45 into the layout window.
-    assert_eq!(rt.virtuals["#0/scroll/timeline"].range, 0..23, "did not scroll");
+    assert_eq!(
+        rt.virtuals["#0/scroll/timeline"].range,
+        0..23,
+        "did not scroll"
+    );
     assert_eq!(rt.selected_text().as_deref(), Some("Message body"));
     assert_eq!(
         rt.text_selection(),
@@ -332,7 +432,10 @@ fn tx_select_text_on_unbuilt_row_pins_and_applies_without_scrolling() {
         tick(&mut rt);
     }
     settle(&mut rt);
-    assert_eq!(find_path(&rt, "r45/body").selected.as_deref(), Some("Message body"));
+    assert_eq!(
+        find_path(&rt, "r45/body").selected.as_deref(),
+        Some("Message body")
+    );
 }
 
 #[test]
@@ -360,11 +463,17 @@ fn offscreen_collection_is_bounded_in_rows_and_bytes() {
         super::virtual_selection::MAX_VIRTUAL_COPY_ROWS
     );
     assert!(copied.starts_with("Row 00 header\n"));
-    assert!(elapsed.as_secs_f64() < 2.0, "bounded collection took {elapsed:?}");
+    assert!(
+        elapsed.as_secs_f64() < 2.0,
+        "bounded collection took {elapsed:?}"
+    );
 
     // 2. Byte cap: large rows stop building as soon as MAX_VIRTUAL_COPY_BYTES is reached.
     let mut rt = Runtime::new(
-        Timeline { count: 5_000, big_bytes: 4_000 },
+        Timeline {
+            count: 5_000,
+            big_bytes: 4_000,
+        },
         timeline_view,
         (1280.0, 420.0),
         Env::new(true, 2.0),
@@ -395,11 +504,17 @@ fn header_timeline_view(s: &Timeline, _: &mut Cx<Timeline>) -> El {
             .key("scroll")
             .w_full()
             .grow(1.0)
-            .scroll(ScrollSpec { stick_bottom: false })
+            .scroll(ScrollSpec {
+                stick_bottom: false,
+            })
             .selection_group(true)
             .children([
                 col().key("header").w_full().h(84.0).padding(6.0).child(
-                    text("Pinned thread header").key("title").font(style).w_full().selectable(true),
+                    text("Pinned thread header")
+                        .key("title")
+                        .font(style)
+                        .w_full()
+                        .selectable(true),
                 ),
                 col()
                     .key("timeline")
@@ -417,7 +532,12 @@ fn header_timeline_view(s: &Timeline, _: &mut Cx<Timeline>) -> El {
 
 #[test]
 fn header_before_virtual_list_keeps_pinned_selection_and_copies_across_unbuilt_rows() {
-    let mut rt = Runtime::new(Timeline::new(ROWS), header_timeline_view, (1280.0, 420.0), Env::new(true, 2.0));
+    let mut rt = Runtime::new(
+        Timeline::new(ROWS),
+        header_timeline_view,
+        (1280.0, 420.0),
+        Env::new(true, 2.0),
+    );
     rt.frame(0.0);
     while rt.frame(1.0 / 120.0) {}
     let clipboard = crate::clipboard::memory();
@@ -439,12 +559,21 @@ fn header_before_virtual_list_keeps_pinned_selection_and_copies_across_unbuilt_r
     }
     settle(&mut rt);
     let range = rt.virtuals["#0/scroll/timeline"].range.clone();
-    assert!(!range.contains(&3) && range.contains(&40), "r3 unmounted, r40 mounted: {range:?}");
+    assert!(
+        !range.contains(&3) && range.contains(&40),
+        "r3 unmounted, r40 mounted: {range:?}"
+    );
 
     let r40 = glyphs_at(&rt, "r40/body");
     let end_pt = (r40[25].0 + 3.0, r40[25].1);
-    assert!(end_pt.1 > 0.0 && end_pt.1 < 420.0, "r40/body inside viewport: {end_pt:?}");
-    rt.physical_input(PhysicalInput::Modifiers(Mods { shift: true, ..Mods::default() }));
+    assert!(
+        end_pt.1 > 0.0 && end_pt.1 < 420.0,
+        "r40/body inside viewport: {end_pt:?}"
+    );
+    rt.physical_input(PhysicalInput::Modifiers(Mods {
+        shift: true,
+        ..Mods::default()
+    }));
     rt.pointer_move(end_pt.0, end_pt.1);
     rt.pointer_down(end_pt.0, end_pt.1);
     rt.pointer_up(end_pt.0, end_pt.1);
@@ -459,7 +588,10 @@ fn header_before_virtual_list_keeps_pinned_selection_and_copies_across_unbuilt_r
     let expected = expected_parts.join("\n");
     assert_eq!(rt.selected_text().as_deref(), Some(expected.as_str()));
     command(&mut rt, 'c');
-    assert_eq!(clipboard.text().as_deref().map(String::as_str), Some(expected.as_str()));
+    assert_eq!(
+        clipboard.text().as_deref().map(String::as_str),
+        Some(expected.as_str())
+    );
 
     // Selecting all of the group from the middle window includes the header and all 55 rows.
     rt.update(|_, tx| tx.select_all_text("scroll"));

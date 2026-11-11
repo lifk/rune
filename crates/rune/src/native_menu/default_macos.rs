@@ -1,12 +1,12 @@
 //! The winit 0.30 app menu for an accessory app becoming a regular app, and the standard
 //! Edit and Window items. Creating a custom Rune menu uses the same root, so either
 //! installation order composes.
-use std::{cell::RefCell, collections::HashSet};
 use super::standard::Equivalent;
 use crate::Label;
 use objc2::{msg_send, msg_send_id, rc::Retained, runtime::Sel, sel};
 use objc2_app_kit::{NSApplication, NSEventModifierFlags, NSMenu, NSMenuItem};
 use objc2_foundation::{MainThreadMarker, NSProcessInfo, NSString};
+use std::{cell::RefCell, collections::HashSet};
 
 thread_local! {
     /// The empty app menu of a menu bar `App::standard_menus` made, filled when the app
@@ -20,9 +20,13 @@ pub(crate) fn ensure(app: &NSApplication) -> Retained<NSMenu> {
     // SAFETY: NSApplication and its menus are main-thread-only. All objects are
     // retained and the standard selectors use AppKit's responder chain, as in winit.
     unsafe {
-        if let Some(root) = app.mainMenu() { return root; }
+        if let Some(root) = app.mainMenu() {
+            return root;
+        }
         let root = empty_root(app);
-        let menu = PENDING.with(|p| p.borrow_mut().take()).expect("empty_root leaves its app menu");
+        let menu = PENDING
+            .with(|p| p.borrow_mut().take())
+            .expect("empty_root leaves its app menu");
         add_app_items(app, &menu);
         root
     }
@@ -33,7 +37,9 @@ pub(crate) fn promote(app: &NSApplication) {
     ensure(app);
     // SAFETY: main thread; the pending menu is retained and still in the menu bar's first slot.
     unsafe {
-        if let Some(menu) = PENDING.with(|p| p.borrow_mut().take()) { add_app_items(app, &menu); }
+        if let Some(menu) = PENDING.with(|p| p.borrow_mut().take()) {
+            add_app_items(app, &menu);
+        }
     }
 }
 
@@ -59,8 +65,10 @@ unsafe fn add_app_items(app: &NSApplication, menu: &NSMenu) {
         let services_item = item(mtm, "", None, "");
         services_item.setSubmenu(Some(&services));
         let hide_others = item(mtm, "", Some(sel!(hideOtherApplications:)), "h");
-        hide_others.setKeyEquivalentModifierMask(NSEventModifierFlags::NSEventModifierFlagOption
-            | NSEventModifierFlags::NSEventModifierFlagCommand);
+        hide_others.setKeyEquivalentModifierMask(
+            NSEventModifierFlags::NSEventModifierFlagOption
+                | NSEventModifierFlags::NSEventModifierFlagCommand,
+        );
         for entry in [
             item(mtm, "", Some(sel!(orderFrontStandardAboutPanel:)), ""),
             NSMenuItem::separatorItem(mtm),
@@ -84,7 +92,10 @@ unsafe fn relabel_app_items(menu: &NSMenu) {
     // SAFETY: as `ensure`.
     unsafe {
         let name = NSProcessInfo::processInfo().processName().to_string();
-        for entry in (0..menu.numberOfItems()).filter_map(|i| menu.itemAtIndex(i)).filter(|i| i.tag() == APP_ITEM) {
+        for entry in (0..menu.numberOfItems())
+            .filter_map(|i| menu.itemAtIndex(i))
+            .filter(|i| i.tag() == APP_ITEM)
+        {
             let label = match entry.action().map(|a| a.name().to_owned()).as_deref() {
                 Some("orderFrontStandardAboutPanel:") => Label::About(&name),
                 Some("hide:") => Label::Hide(&name),
@@ -104,16 +115,27 @@ pub(crate) fn relabel(app: &NSApplication) {
     // SAFETY: main thread; setting titles of retained menus and items.
     unsafe {
         let Some(root) = app.mainMenu() else { return };
-        for (index, top) in (0..root.numberOfItems()).filter_map(|i| root.itemAtIndex(i)).enumerate() {
+        for (index, top) in (0..root.numberOfItems())
+            .filter_map(|i| root.itemAtIndex(i))
+            .enumerate()
+        {
             let Some(menu) = top.submenu() else { continue };
-            if index == 0 { relabel_app_items(&menu); }
+            if index == 0 {
+                relabel_app_items(&menu);
+            }
             if let Some(name) = identifier(&top) {
                 let title = NSString::from_str(&crate::labels::label(Label::Menu(&name)));
                 top.setTitle(&title);
                 menu.setTitle(&title);
             }
-            for entry in (0..menu.numberOfItems()).filter_map(|i| menu.itemAtIndex(i)).filter(|i| i.tag() == STANDARD) {
-                if let Some(standard) = entry.action().and_then(|a| super::standard::by_action(a.name())) {
+            for entry in (0..menu.numberOfItems())
+                .filter_map(|i| menu.itemAtIndex(i))
+                .filter(|i| i.tag() == STANDARD)
+            {
+                if let Some(standard) = entry
+                    .action()
+                    .and_then(|a| super::standard::by_action(a.name()))
+                {
                     entry.setTitle(&NSString::from_str(&crate::labels::label(standard.label())));
                 }
             }
@@ -140,10 +162,21 @@ fn identifier(top: &NSMenuItem) -> Option<String> {
 pub(crate) fn is_winit_default(app: &NSApplication) -> bool {
     // SAFETY: main thread; reading retained menus.
     unsafe {
-        let Some(root) = app.mainMenu() else { return false };
-        let first = (root.numberOfItems() > 0).then(|| root.itemAtIndex(0)).flatten().and_then(|i| i.submenu());
-        let actions: Vec<Option<String>> = first.map(|m| (0..m.numberOfItems()).filter_map(|i| m.itemAtIndex(i))
-            .map(|i| i.action().map(|a| a.name().to_owned())).collect()).unwrap_or_default();
+        let Some(root) = app.mainMenu() else {
+            return false;
+        };
+        let first = (root.numberOfItems() > 0)
+            .then(|| root.itemAtIndex(0))
+            .flatten()
+            .and_then(|i| i.submenu());
+        let actions: Vec<Option<String>> = first
+            .map(|m| {
+                (0..m.numberOfItems())
+                    .filter_map(|i| m.itemAtIndex(i))
+                    .map(|i| i.action().map(|a| a.name().to_owned()))
+                    .collect()
+            })
+            .unwrap_or_default();
         let actions: Vec<Option<&str>> = actions.iter().map(Option::as_deref).collect();
         super::standard::is_winit_default(root.numberOfItems() as usize, &actions)
     }
@@ -165,11 +198,25 @@ pub(crate) fn add_standard(app: &NSApplication) {
         for standard in &super::standard::ITEMS {
             let menu = top(mtm, &root, standard.menu);
             let action = Sel::register(standard.action);
-            if (0..menu.numberOfItems()).filter_map(|i| menu.itemAtIndex(i)).any(|i| i.action() == Some(action)) { continue; }
-            if standard.separator_before && menu.numberOfItems() > 0 { menu.addItem(&NSMenuItem::separatorItem(mtm)); }
-            let entry = item(mtm, &crate::labels::label(standard.label()), Some(action), &standard.key.to_string());
+            if (0..menu.numberOfItems())
+                .filter_map(|i| menu.itemAtIndex(i))
+                .any(|i| i.action() == Some(action))
+            {
+                continue;
+            }
+            if standard.separator_before && menu.numberOfItems() > 0 {
+                menu.addItem(&NSMenuItem::separatorItem(mtm));
+            }
+            let entry = item(
+                mtm,
+                &crate::labels::label(standard.label()),
+                Some(action),
+                &standard.key.to_string(),
+            );
             let mut flags = NSEventModifierFlags::NSEventModifierFlagCommand;
-            if standard.shift { flags |= NSEventModifierFlags::NSEventModifierFlagShift; }
+            if standard.shift {
+                flags |= NSEventModifierFlags::NSEventModifierFlagShift;
+            }
             entry.setKeyEquivalentModifierMask(flags);
             entry.setTag(STANDARD);
             menu.addItem(&entry);
@@ -194,7 +241,9 @@ pub(crate) fn adding<R>(app: &NSApplication, add: impl FnOnce() -> R) -> R {
 pub(crate) fn sync_standard(app: &NSApplication) {
     let mut claimed = HashSet::new();
     // SAFETY: main thread; reading retained menus.
-    if let Some(root) = unsafe { app.mainMenu() } { unsafe { claims(&root, &mut claimed) }; }
+    if let Some(root) = unsafe { app.mainMenu() } {
+        unsafe { claims(&root, &mut claimed) };
+    }
     set_standard_keys(app, |equivalent| !claimed.contains(equivalent));
 }
 
@@ -203,10 +252,22 @@ fn set_standard_keys(app: &NSApplication, keep: impl Fn(&Equivalent) -> bool) {
     unsafe {
         let Some(root) = app.mainMenu() else { return };
         for menu in (0..root.numberOfItems()).filter_map(|i| root.itemAtIndex(i)?.submenu()) {
-            for entry in (0..menu.numberOfItems()).filter_map(|i| menu.itemAtIndex(i)).filter(|i| i.tag() == STANDARD) {
-                let Some(standard) = entry.action().and_then(|a| super::standard::by_action(a.name())) else { continue };
+            for entry in (0..menu.numberOfItems())
+                .filter_map(|i| menu.itemAtIndex(i))
+                .filter(|i| i.tag() == STANDARD)
+            {
+                let Some(standard) = entry
+                    .action()
+                    .and_then(|a| super::standard::by_action(a.name()))
+                else {
+                    continue;
+                };
                 let equivalent = standard.equivalent();
-                entry.setKeyEquivalent(&NSString::from_str(if keep(&equivalent) { &equivalent.key } else { "" }));
+                entry.setKeyEquivalent(&NSString::from_str(if keep(&equivalent) {
+                    &equivalent.key
+                } else {
+                    ""
+                }));
             }
         }
     }
@@ -220,11 +281,17 @@ unsafe fn claims(menu: &NSMenu, out: &mut HashSet<Equivalent>) {
             if entry.tag() != STANDARD {
                 let flags = entry.keyEquivalentModifierMask();
                 let has = |f| flags.contains(f);
-                out.extend(Equivalent::new(&entry.keyEquivalent().to_string(),
-                    has(NSEventModifierFlags::NSEventModifierFlagCommand), has(NSEventModifierFlags::NSEventModifierFlagShift),
-                    has(NSEventModifierFlags::NSEventModifierFlagOption), has(NSEventModifierFlags::NSEventModifierFlagControl)));
+                out.extend(Equivalent::new(
+                    &entry.keyEquivalent().to_string(),
+                    has(NSEventModifierFlags::NSEventModifierFlagCommand),
+                    has(NSEventModifierFlags::NSEventModifierFlagShift),
+                    has(NSEventModifierFlags::NSEventModifierFlagOption),
+                    has(NSEventModifierFlags::NSEventModifierFlagControl),
+                ));
             }
-            if let Some(sub) = entry.submenu() { claims(&sub, out); }
+            if let Some(sub) = entry.submenu() {
+                claims(&sub, out);
+            }
         }
     }
 }
@@ -232,16 +299,24 @@ unsafe fn claims(menu: &NSMenu, out: &mut HashSet<Equivalent>) {
 /// A new top-level menu named `name` in the Mac order (`standard::top_index`): File before the
 /// standard Edit, the app's other menus before Window, Help last. Its title is the app's label
 /// for the name (`Label::Menu`).
-pub(crate) fn add_top(mtm: MainThreadMarker, root: &NSMenu, name: &str) -> (Retained<NSMenuItem>, Retained<NSMenu>) {
+pub(crate) fn add_top(
+    mtm: MainThreadMarker,
+    root: &NSMenu,
+    name: &str,
+) -> (Retained<NSMenuItem>, Retained<NSMenu>) {
     // SAFETY: main thread; every object is retained.
     unsafe {
-        let tops: Vec<String> = (0..root.numberOfItems()).filter_map(|i| root.itemAtIndex(i)).map(|i| self::name(&i)).collect();
+        let tops: Vec<String> = (0..root.numberOfItems())
+            .filter_map(|i| root.itemAtIndex(i))
+            .map(|i| self::name(&i))
+            .collect();
         let title = NSString::from_str(&crate::labels::label(Label::Menu(name)));
         let menu = NSMenu::new(mtm);
         menu.setTitle(&title);
         let entry = NSMenuItem::new(mtm);
         entry.setTitle(&title);
-        let _: () = msg_send![&entry, setIdentifier: &*NSString::from_str(&format!("{NAMED}{name}"))];
+        let _: () =
+            msg_send![&entry, setIdentifier: &*NSString::from_str(&format!("{NAMED}{name}"))];
         entry.setSubmenu(Some(&menu));
         root.insertItem_atIndex(&entry, super::standard::top_index(name, &tops) as isize);
         (entry, menu)
@@ -253,22 +328,37 @@ pub(crate) fn add_top(mtm: MainThreadMarker, root: &NSMenu, name: &str) -> (Reta
 pub(crate) fn remove_top_if_empty(root: &NSMenu, top: &NSMenuItem) {
     // SAFETY: main thread; both are retained.
     unsafe {
-        if top.submenu().is_none_or(|m| m.numberOfItems() == 0) && root.indexOfItem(top) >= 0 { root.removeItem(top); }
+        if top.submenu().is_none_or(|m| m.numberOfItems() == 0) && root.indexOfItem(top) >= 0 {
+            root.removeItem(top);
+        }
     }
 }
 
 unsafe fn top(mtm: MainThreadMarker, root: &NSMenu, name: &str) -> Retained<NSMenu> {
     // SAFETY: the caller is on the main thread; every object is retained.
     unsafe {
-        let existing = (0..root.numberOfItems()).filter_map(|i| root.itemAtIndex(i))
-            .find(|i| self::name(i) == name).and_then(|i| i.submenu());
+        let existing = (0..root.numberOfItems())
+            .filter_map(|i| root.itemAtIndex(i))
+            .find(|i| self::name(i) == name)
+            .and_then(|i| i.submenu());
         existing.unwrap_or_else(|| add_top(mtm, root, name).1)
     }
 }
 
-fn item(mtm: MainThreadMarker, title: &str, action: Option<Sel>, key: &str) -> Retained<NSMenuItem> {
+fn item(
+    mtm: MainThreadMarker,
+    title: &str,
+    action: Option<Sel>,
+    key: &str,
+) -> Retained<NSMenuItem> {
     // SAFETY: Standard NSMenuItem initializer on the main thread; nil target lets
     // AppKit route the action. NSMenuItem defaults to Command for its key equivalent.
-    unsafe { NSMenuItem::initWithTitle_action_keyEquivalent(mtm.alloc(),
-        &NSString::from_str(title), action, &NSString::from_str(key)) }
+    unsafe {
+        NSMenuItem::initWithTitle_action_keyEquivalent(
+            mtm.alloc(),
+            &NSString::from_str(title),
+            action,
+            &NSString::from_str(key),
+        )
+    }
 }

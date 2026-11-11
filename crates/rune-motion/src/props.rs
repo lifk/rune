@@ -41,7 +41,10 @@ pub enum PropClass {
 
 /// The fade that replaces travel under Reduce Motion (OpenCode `reducedFade` .20, 75 ms in a native app;
 /// Kit: ≈ .15–.2 s).
-pub const REDUCED_FADE: Curve = Curve::Tween { duration: 0.18, easing: Easing::EASE_IN_OUT };
+pub const REDUCED_FADE: Curve = Curve::Tween {
+    duration: 0.18,
+    easing: Easing::EASE_IN_OUT,
+};
 
 impl PropClass {
     /// Settle thresholds, set below the 1/64 px snap quantum so the final snap is invisible
@@ -54,7 +57,10 @@ impl PropClass {
             PropClass::Opacity | PropClass::Color => 1.0 / 1024.0,
             PropClass::Other => 1e-4,
         };
-        Eps { pos, vel: pos * 10.0 }
+        Eps {
+            pos,
+            vel: pos * 10.0,
+        }
     }
 
     /// What Reduce Motion turns `curve` into for this class (research 06 §2.12): travel, scale,
@@ -99,10 +105,18 @@ impl<T: Animatable> Prop<T> {
     /// A custom property. Ids below 64 are reserved for the built-ins.
     pub const fn custom(id: u16, class: PropClass) -> Prop<T> {
         assert!(id >= 64, "custom property ids start at 64");
-        Prop { id: PropId(id), class, _t: PhantomData }
+        Prop {
+            id: PropId(id),
+            class,
+            _t: PhantomData,
+        }
     }
     const fn builtin(id: u16, class: PropClass) -> Prop<T> {
-        Prop { id: PropId(id), class, _t: PhantomData }
+        Prop {
+            id: PropId(id),
+            class,
+            _t: PhantomData,
+        }
     }
 }
 

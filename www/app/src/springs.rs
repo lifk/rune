@@ -5,7 +5,10 @@
 
 use std::collections::VecDeque;
 
-use rune::{AnimExt, Color, Cx, Drag, El, LineCap, Phase, Shape, Spring, TextStyle, Tx, Velocity, canvas, col, el, oklcha, row, text};
+use rune::{
+    AnimExt, Color, Cx, Drag, El, LineCap, Phase, Shape, Spring, TextStyle, Tx, Velocity, canvas,
+    col, el, oklcha, row, text,
+};
 use rune_motion::Animated;
 
 use crate::State;
@@ -102,7 +105,8 @@ impl Demo {
         } else if self.keep {
             self.anim.animate_to(target, self.spring(), now);
         } else {
-            self.anim.animate_to(target, self.spring().velocity(Velocity::Zero), now);
+            self.anim
+                .animate_to(target, self.spring().velocity(Velocity::Zero), now);
         }
         self.kick(now);
     }
@@ -123,7 +127,11 @@ impl Demo {
     pub fn press(&mut self, at: f32, travel: f32, now: f64, reduced: bool) {
         let x = self.anim.sample(now);
         let on_puck = ((at - x) * travel).abs() < GRAB;
-        self.grab = Some(Grab { offset: at - x, pts: VecDeque::from([(now, at)]), live: on_puck });
+        self.grab = Some(Grab {
+            offset: at - x,
+            pts: VecDeque::from([(now, at)]),
+            live: on_puck,
+        });
         if on_puck {
             // Caught: the finger holds it where it is, with no animation while it's held.
             self.anim.set(x);
@@ -167,7 +175,8 @@ impl Demo {
         if reduced {
             self.anim.set(target);
         } else {
-            self.anim.release(if self.keep { v } else { 0.0 }, target, self.spring(), now);
+            self.anim
+                .release(if self.keep { v } else { 0.0 }, target, self.spring(), now);
         }
         self.kick(now);
     }
@@ -187,7 +196,12 @@ impl Demo {
         }
         self.x = self.anim.sample(now);
         self.t = now;
-        self.samples.push_back(Sample { t: now, x: self.x, target: self.anim.target(), kick: self.kicked });
+        self.samples.push_back(Sample {
+            t: now,
+            x: self.x,
+            target: self.anim.target(),
+            kick: self.kicked,
+        });
         self.kicked = false;
         while self.samples.len() > 2 && self.samples[1].t < now - WINDOW {
             self.samples.pop_front();
@@ -209,7 +223,14 @@ fn travel(w: f32) -> f32 {
 }
 
 /// `points` dashed `on` then `off` points along their length.
-fn dashed(mut shape: Shape, points: &[[f32; 2]], on: f32, off: f32, width: f32, color: Color) -> Shape {
+fn dashed(
+    mut shape: Shape,
+    points: &[[f32; 2]],
+    on: f32,
+    off: f32,
+    width: f32,
+    color: Color,
+) -> Shape {
     let mut phase = 0.0f32;
     for w in points.windows(2) {
         let (a, b) = (w[0], w[1]);
@@ -221,7 +242,12 @@ fn dashed(mut shape: Shape, points: &[[f32; 2]], on: f32, off: f32, width: f32, 
             let left = if into < on { on - into } else { period - into };
             let step = left.min(len - d);
             if into < on {
-                let p = |s: f32| [a[0] + (b[0] - a[0]) * s / len, a[1] + (b[1] - a[1]) * s / len];
+                let p = |s: f32| {
+                    [
+                        a[0] + (b[0] - a[0]) * s / len,
+                        a[1] + (b[1] - a[1]) * s / len,
+                    ]
+                };
                 shape = shape.line(p(d), p(d + step), width, LineCap::Butt, color);
             }
             d += step;
@@ -241,7 +267,11 @@ fn trace(d: &Demo, w: f32) -> Shape {
     if d.samples.len() < 2 {
         return shape;
     }
-    let target: Vec<[f32; 2]> = d.samples.iter().map(|s| [x_at(s.t), y_at(s.target)]).collect();
+    let target: Vec<[f32; 2]> = d
+        .samples
+        .iter()
+        .map(|s| [x_at(s.t), y_at(s.target)])
+        .collect();
     shape = dashed(shape, &target, 2.0, 4.0, 1.0, Color::WHITE.alpha(0.12));
     let path: Vec<[f32; 2]> = d.samples.iter().map(|s| [x_at(s.t), y_at(s.x)]).collect();
     shape = shape.stroke(path, 1.5, ink());
@@ -252,15 +282,39 @@ fn trace(d: &Demo, w: f32) -> Shape {
 }
 
 fn segmented(d: &Demo, stacked: bool) -> El {
-    let mut segs = row().key("springs").role("radiogroup").label("Spring").padding(3.0).radius(18.0).fill(surface2());
+    let mut segs = row()
+        .key("springs")
+        .role("radiogroup")
+        .label("Spring")
+        .padding(3.0)
+        .radius(18.0)
+        .fill(surface2());
     for (i, (name, note, _)) in SPRINGS.into_iter().enumerate() {
         let on = i == d.which;
-        let seg = if stacked { col().py(4.0) } else { row().h(30.0).gap(8.0).center_y() };
-        segs = segs.child(seg.key(name).role("radio").label(name).checked(on).focusable(true).px(12.0).radius(15.0)
-            .fill(if on { surface3() } else { Color::TRANSPARENT }).hover_group()
-            .on_press(move |s: &mut State| s.spring.which = i)
-            .child(text(name).font(TextStyle::new(13.0, 500.0).lh(20.0)).color(if on { fg() } else { fg2() }).group_color(fg()))
-            .child(text(note).font(MONO_12).color(fg3()).a11y_hidden()));
+        let seg = if stacked {
+            col().py(4.0)
+        } else {
+            row().h(30.0).gap(8.0).center_y()
+        };
+        segs = segs.child(
+            seg.key(name)
+                .role("radio")
+                .label(name)
+                .checked(on)
+                .focusable(true)
+                .px(12.0)
+                .radius(15.0)
+                .fill(if on { surface3() } else { Color::TRANSPARENT })
+                .hover_group()
+                .on_press(move |s: &mut State| s.spring.which = i)
+                .child(
+                    text(name)
+                        .font(TextStyle::new(13.0, 500.0).lh(20.0))
+                        .color(if on { fg() } else { fg2() })
+                        .group_color(fg()),
+                )
+                .child(text(note).font(MONO_12).color(fg3()).a11y_hidden()),
+        );
     }
     segs
 }
@@ -268,15 +322,34 @@ fn segmented(d: &Demo, stacked: bool) -> El {
 fn checkbox(on: bool) -> El {
     let mut b = el().key("box").size(16.0, 16.0).radius(4.0).center();
     b = if on {
-        b.fill(ink()).child(canvas(Shape::new().view_box(16.0, 16.0)
-            .stroke(vec![[4.0, 8.5], [7.0, 11.5], [12.0, 5.0]], 2.0, Color::BLACK)).key("tick").size(16.0, 16.0))
+        b.fill(ink()).child(
+            canvas(Shape::new().view_box(16.0, 16.0).stroke(
+                vec![[4.0, 8.5], [7.0, 11.5], [12.0, 5.0]],
+                2.0,
+                Color::BLACK,
+            ))
+            .key("tick")
+            .size(16.0, 16.0),
+        )
     } else {
         b.border(1.5, line2())
     };
-    row().key("keep").role("checkbox").label("Keep velocity").checked(on).focusable(true).gap(8.0).center_y()
+    row()
+        .key("keep")
+        .role("checkbox")
+        .label("Keep velocity")
+        .checked(on)
+        .focusable(true)
+        .gap(8.0)
+        .center_y()
         .on_press(|s: &mut State| s.spring.keep = !s.spring.keep)
         .child(b.a11y_hidden())
-        .child(text("Keep velocity").font(TEXT_14).color(fg2()).a11y_hidden())
+        .child(
+            text("Keep velocity")
+                .font(TEXT_14)
+                .color(fg2())
+                .a11y_hidden(),
+        )
 }
 
 pub fn demo(s: &State, cx: &Cx<State>, bp: Bp) -> El {
@@ -284,19 +357,51 @@ pub fn demo(s: &State, cx: &Cx<State>, bp: Bp) -> El {
     let reduced = cx.is_reduced_motion();
     let w = cx.layout_size("spring-stage").map_or(600.0, |[w, _]| w);
     let travel_w = travel(w);
-    let mut rail = el().key("rail").h(2.0).radius(1.0).fill(surface3()).pin(Some(32.0), Some(35.0), Some(32.0), None).a11y_hidden();
+    let mut rail = el()
+        .key("rail")
+        .h(2.0)
+        .radius(1.0)
+        .fill(surface3())
+        .pin(Some(32.0), Some(35.0), Some(32.0), None)
+        .a11y_hidden();
     for i in 0..STOPS {
         let x = travel_w * i as f32 / (STOPS - 1) as f32;
-        rail = rail.child(el().key(format!("stop-{i}")).size(4.0, 4.0).radius(2.0).fill(line2()).absolute(x - 2.0, -1.0));
+        rail = rail.child(
+            el().key(format!("stop-{i}"))
+                .size(4.0, 4.0)
+                .radius(2.0)
+                .fill(line2())
+                .absolute(x - 2.0, -1.0),
+        );
     }
-    let puck = el().key("puck").size(PUCK, PUCK).radius(PUCK / 2.0).fill(fg())
+    let puck = el()
+        .key("puck")
+        .size(PUCK, PUCK)
+        .radius(PUCK / 2.0)
+        .fill(fg())
         .absolute(16.0 + d.x * travel_w, 20.0)
         .shadow(2.0, 8.0, oklcha(0.0, 0.0, 0.0, 0.5))
-        .box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 4.0, color: ink().alpha(0.25), inset: false })
+        .box_shadow(rune::Shadow {
+            x: 0.0,
+            y: 0.0,
+            blur: 0.0,
+            spread: 4.0,
+            color: ink().alpha(0.25),
+            inset: false,
+        })
         .a11y_hidden();
-    let stage = el().key("spring-stage").w_full().h(STAGE_H).radius(R2).fill(surface1()).border(1.0, line())
-        .role("slider").label("Puck position").focusable(true)
-        .range_value(f64::from(d.target()), 0.0, 1.0).range_step(1.0 / (STOPS - 1) as f64)
+    let stage = el()
+        .key("spring-stage")
+        .w_full()
+        .h(STAGE_H)
+        .radius(R2)
+        .fill(surface1())
+        .border(1.0, line())
+        .role("slider")
+        .label("Puck position")
+        .focusable(true)
+        .range_value(f64::from(d.target()), 0.0, 1.0)
+        .range_step(1.0 / (STOPS - 1) as f64)
         .on_step(move |s: &mut State, steps, _| {
             let now = s.clock_now();
             s.spring.step(steps.signum(), now, reduced);
@@ -317,9 +422,21 @@ pub fn demo(s: &State, cx: &Cx<State>, bp: Bp) -> El {
         .child(rail)
         .child(puck);
     let trace_w = cx.layout_size("trace").map_or(w, |[w, _]| w);
-    let trace = canvas(trace(d, trace_w)).key("trace").w_full().h(TRACE_H).mt(8.0)
-        .clip_fade_linear(trace_w * 0.25, 0.0, 0.0, 0.0).a11y_hidden();
-    let controls = row().key("controls").w_full().justify_between().flex_wrap().gaps(12.0, 24.0).center_y().mt(16.0)
+    let trace = canvas(trace(d, trace_w))
+        .key("trace")
+        .w_full()
+        .h(TRACE_H)
+        .mt(8.0)
+        .clip_fade_linear(trace_w * 0.25, 0.0, 0.0, 0.0)
+        .a11y_hidden();
+    let controls = row()
+        .key("controls")
+        .w_full()
+        .justify_between()
+        .flex_wrap()
+        .gaps(12.0, 24.0)
+        .center_y()
+        .mt(16.0)
         .child(segmented(d, bp.narrow()))
         .child(checkbox(d.keep));
     col().key("spring-demo").role("figure").w_full().mt(32.0)

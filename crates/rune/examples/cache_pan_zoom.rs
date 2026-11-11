@@ -40,12 +40,29 @@ impl State {
             .map(|i| CardData {
                 key: format!("card-{i:02}"),
                 title: format!("Subsystem Pipeline #{i:02}"),
-                badge: if i % 2 == 0 { "READY".into() } else { "SYNCED".into() },
+                badge: if i % 2 == 0 {
+                    "READY".into()
+                } else {
+                    "SYNCED".into()
+                },
                 version: format!("v2.{}.{}", i % 9, (i * 3) % 14),
-                line1: format!("Offscreen tile cache node {i:02} rasterizes glyphs and borders once."),
-                line2: format!("Ancestor live_offset and live_scale composite without reshaping ({i} shards)."),
-                line3: format!("Latency p50 {:.2}ms · p99 {:.2}ms · throughput {}k ops/s", 0.42 + (i as f32) * 0.03, 1.15 + (i as f32) * 0.05, 120 + i * 7),
-                footer: format!("region-us-east-{} · replica {} · 120 Hz", (i % 4) + 1, (i % 3) + 1),
+                line1: format!(
+                    "Offscreen tile cache node {i:02} rasterizes glyphs and borders once."
+                ),
+                line2: format!(
+                    "Ancestor live_offset and live_scale composite without reshaping ({i} shards)."
+                ),
+                line3: format!(
+                    "Latency p50 {:.2}ms · p99 {:.2}ms · throughput {}k ops/s",
+                    0.42 + (i as f32) * 0.03,
+                    1.15 + (i as f32) * 0.05,
+                    120 + i * 7
+                ),
+                footer: format!(
+                    "region-us-east-{} · replica {} · 120 Hz",
+                    (i % 4) + 1,
+                    (i % 3) + 1
+                ),
             })
             .collect();
         State {
@@ -57,15 +74,60 @@ impl State {
     }
 }
 
-const BG: Color = Color { r: 0.012, g: 0.014, b: 0.018, a: 1.0 };
-const CARD_BG: Color = Color { r: 0.032, g: 0.036, b: 0.046, a: 1.0 };
-const BORDER: Color = Color { r: 0.12, g: 0.14, b: 0.18, a: 1.0 };
-const BADGE_BG: Color = Color { r: 0.08, g: 0.22, b: 0.16, a: 1.0 };
-const BADGE_FG: Color = Color { r: 0.35, g: 0.88, b: 0.62, a: 1.0 };
-const TEXT: Color = Color { r: 0.88, g: 0.90, b: 0.94, a: 1.0 };
-const BODY: Color = Color { r: 0.58, g: 0.62, b: 0.68, a: 1.0 };
-const MUTED: Color = Color { r: 0.36, g: 0.40, b: 0.46, a: 1.0 };
-const ACCENT: Color = Color { r: 0.24, g: 0.52, b: 0.96, a: 1.0 };
+const BG: Color = Color {
+    r: 0.012,
+    g: 0.014,
+    b: 0.018,
+    a: 1.0,
+};
+const CARD_BG: Color = Color {
+    r: 0.032,
+    g: 0.036,
+    b: 0.046,
+    a: 1.0,
+};
+const BORDER: Color = Color {
+    r: 0.12,
+    g: 0.14,
+    b: 0.18,
+    a: 1.0,
+};
+const BADGE_BG: Color = Color {
+    r: 0.08,
+    g: 0.22,
+    b: 0.16,
+    a: 1.0,
+};
+const BADGE_FG: Color = Color {
+    r: 0.35,
+    g: 0.88,
+    b: 0.62,
+    a: 1.0,
+};
+const TEXT: Color = Color {
+    r: 0.88,
+    g: 0.90,
+    b: 0.94,
+    a: 1.0,
+};
+const BODY: Color = Color {
+    r: 0.58,
+    g: 0.62,
+    b: 0.68,
+    a: 1.0,
+};
+const MUTED: Color = Color {
+    r: 0.36,
+    g: 0.40,
+    b: 0.46,
+    a: 1.0,
+};
+const ACCENT: Color = Color {
+    r: 0.24,
+    g: 0.52,
+    b: 0.96,
+    a: 1.0,
+};
 
 fn card_view(c: &CardData, cached: bool) -> El {
     let mut node = col()
@@ -82,25 +144,51 @@ fn card_view(c: &CardData, cached: bool) -> El {
                 .gap(6.0)
                 .center_y()
                 .child(
-                    el().px(6.0)
-                        .py(2.0)
-                        .radius(4.0)
-                        .fill(BADGE_BG)
-                        .child(text(c.badge.clone()).font(TextStyle::new(10.0, 600.0)).color(BADGE_FG)),
+                    el().px(6.0).py(2.0).radius(4.0).fill(BADGE_BG).child(
+                        text(c.badge.clone())
+                            .font(TextStyle::new(10.0, 600.0))
+                            .color(BADGE_FG),
+                    ),
                 )
-                .child(text(c.title.clone()).font(TextStyle::new(13.0, 600.0)).color(TEXT).grow(1.0))
-                .child(text(c.version.clone()).font(TextStyle::new(11.0, 500.0)).color(MUTED)),
+                .child(
+                    text(c.title.clone())
+                        .font(TextStyle::new(13.0, 600.0))
+                        .color(TEXT)
+                        .grow(1.0),
+                )
+                .child(
+                    text(c.version.clone())
+                        .font(TextStyle::new(11.0, 500.0))
+                        .color(MUTED),
+                ),
         )
-        .child(text(c.line1.clone()).font(TextStyle::new(11.0, 400.0)).color(BODY))
-        .child(text(c.line2.clone()).font(TextStyle::new(11.0, 400.0)).color(BODY))
-        .child(text(c.line3.clone()).font(TextStyle::new(11.0, 400.0)).color(BODY))
+        .child(
+            text(c.line1.clone())
+                .font(TextStyle::new(11.0, 400.0))
+                .color(BODY),
+        )
+        .child(
+            text(c.line2.clone())
+                .font(TextStyle::new(11.0, 400.0))
+                .color(BODY),
+        )
+        .child(
+            text(c.line3.clone())
+                .font(TextStyle::new(11.0, 400.0))
+                .color(BODY),
+        )
         .child(
             row()
                 .w_full()
                 .gap(6.0)
                 .center_y()
                 .child(el().size(8.0, 8.0).radius(4.0).fill(ACCENT))
-                .child(text(c.footer.clone()).font(TextStyle::new(10.0, 500.0)).color(MUTED).grow(1.0))
+                .child(
+                    text(c.footer.clone())
+                        .font(TextStyle::new(10.0, 500.0))
+                        .color(MUTED)
+                        .grow(1.0),
+                )
                 .child(el().size(36.0, 4.0).radius(2.0).fill(ACCENT)),
         );
     if cached {
@@ -118,17 +206,13 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
         }
         grid = grid.child(line);
     }
-    el().w_full()
-        .h_full()
-        .fill(BG)
-        .padding(32.0)
-        .child(
-            el().key("canvas")
-                .size(1200.0, 740.0)
-                .live_offset(&s.pan)
-                .live_scale(&s.zoom)
-                .child(grid),
-        )
+    el().w_full().h_full().fill(BG).padding(32.0).child(
+        el().key("canvas")
+            .size(1200.0, 740.0)
+            .live_offset(&s.pan)
+            .live_scale(&s.zoom)
+            .child(grid),
+    )
 }
 
 const METRICS: &[&str] = &[
@@ -152,7 +236,13 @@ fn run_sample(
 ) -> Vec<f64> {
     let mut text = TextSystem::default();
     for sz in [10.0, 11.0, 13.0] {
-        text.layout_rich("Warm benchmark fonts 0123456789", &[], TextStyle::new(sz, 400.0), 2.0, None);
+        text.layout_rich(
+            "Warm benchmark fonts 0123456789",
+            &[],
+            TextStyle::new(sz, 400.0),
+            2.0,
+            None,
+        );
     }
     let state = State::new(cached, cards);
     let pan = state.pan.clone();
@@ -162,7 +252,13 @@ fn run_sample(
 
     // Frame 0: initial build and rasterize.
     rt.frame(0.0);
-    renderer.prepare(&gpu.device, &gpu.queue, &mut rt.text.atlas, &rt.instances, (out.width, out.height));
+    renderer.prepare(
+        &gpu.device,
+        &gpu.queue,
+        &mut rt.text.atlas,
+        &rt.instances,
+        (out.width, out.height),
+    );
     {
         let mut enc = gpu.device.create_command_encoder(&Default::default());
         renderer.draw(&mut enc, &out.view, rt.clear_color());
@@ -175,7 +271,13 @@ fn run_sample(
             break;
         }
     }
-    renderer.prepare(&gpu.device, &gpu.queue, &mut rt.text.atlas, &rt.instances, (out.width, out.height));
+    renderer.prepare(
+        &gpu.device,
+        &gpu.queue,
+        &mut rt.text.atlas,
+        &rt.instances,
+        (out.width, out.height),
+    );
     {
         let mut enc = gpu.device.create_command_encoder(&Default::default());
         renderer.draw(&mut enc, &out.view, rt.clear_color());
@@ -210,7 +312,13 @@ fn run_sample(
         let paint = phases[rune::PHASES + 4];
 
         let enc0 = Instant::now();
-        renderer.prepare(&gpu.device, &gpu.queue, &mut rt.text.atlas, &rt.instances, (out.width, out.height));
+        renderer.prepare(
+            &gpu.device,
+            &gpu.queue,
+            &mut rt.text.atlas,
+            &rt.instances,
+            (out.width, out.height),
+        );
         let mut enc = gpu.device.create_command_encoder(&Default::default());
         renderer.draw(&mut enc, &out.view, rt.clear_color());
         renderer.submit(&gpu.queue, enc);
@@ -242,7 +350,12 @@ fn run_sample(
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let value = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned();
+    let value = |name: &str| {
+        args.iter()
+            .position(|a| a == name)
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+    };
     let samples: usize = value("--samples").map_or(15, |s| s.parse().expect("--samples N"));
     let cards: usize = value("--cards").map_or(25, |s| s.parse().expect("--cards N"));
     let frames: usize = value("--frames").map_or(60, |s| s.parse().expect("--frames N"));

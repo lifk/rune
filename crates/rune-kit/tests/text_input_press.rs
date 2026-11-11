@@ -17,23 +17,47 @@ struct S {
 
 #[test]
 fn textbox_padding_requires_exactly_one_reachable_editor() {
-    struct Pair { first: TextEdit, second: TextEdit, hide_second: bool }
-    fn view(s: &Pair, _: &mut Cx<Pair>) -> El {
-        row().role("textbox").key("box").size(400.0, 60.0).padding(10.0)
-            .child(rune::text_input(&s.first, rune::TextStyle::new(13.0, 400.0))
-                .key("first").size(120.0, 30.0).on_edit(|s: &mut Pair| &mut s.first))
-            .child(col().opacity(if s.hide_second { 0.0 } else { 1.0 }).child(
-                rune::text_input(&s.second, rune::TextStyle::new(13.0, 400.0))
-                    .key("second").size(120.0, 30.0).on_edit(|s: &mut Pair| &mut s.second)))
+    struct Pair {
+        first: TextEdit,
+        second: TextEdit,
+        hide_second: bool,
     }
-    let mut rt = Runtime::new(Pair { first: TextEdit::new("one"), second: TextEdit::new("two"), hide_second: false },
-        view, (440.0, 100.0), Env::new(true, 1.0));
+    fn view(s: &Pair, _: &mut Cx<Pair>) -> El {
+        row()
+            .role("textbox")
+            .key("box")
+            .size(400.0, 60.0)
+            .padding(10.0)
+            .child(
+                rune::text_input(&s.first, rune::TextStyle::new(13.0, 400.0))
+                    .key("first")
+                    .size(120.0, 30.0)
+                    .on_edit(|s: &mut Pair| &mut s.first),
+            )
+            .child(
+                col().opacity(if s.hide_second { 0.0 } else { 1.0 }).child(
+                    rune::text_input(&s.second, rune::TextStyle::new(13.0, 400.0))
+                        .key("second")
+                        .size(120.0, 30.0)
+                        .on_edit(|s: &mut Pair| &mut s.second),
+                ),
+            )
+    }
+    let mut rt = Runtime::new(
+        Pair { first: TextEdit::new("one"), second: TextEdit::new("two"), hide_second: false },
+        view,
+        (440.0, 100.0),
+        Env::new(true, 1.0),
+    );
     rt.frame(0.0);
     rt.pointer_down(2.0, 2.0);
     rt.pointer_up(2.0, 2.0);
     rt.frame(0.0);
     assert!(!rt.state.first.focused && !rt.state.second.focused, "padding cannot choose between two editors");
-    rt.update(|s, tx| { s.hide_second = true; tx.instant(); });
+    rt.update(|s, tx| {
+        s.hide_second = true;
+        tx.instant();
+    });
     rt.frame(0.0);
     rt.pointer_down(2.0, 2.0);
     rt.pointer_up(2.0, 2.0);
@@ -62,8 +86,7 @@ fn a_copy_button_without_a_handler_still_keeps_its_press() {
 #[test]
 fn padding_focus_reaches_an_editor_inside_an_auto_grow_scroll() {
     fn view(s: &TextEdit, _: &mut Cx<TextEdit>) -> El {
-        TextArea::new(s).auto_grow(2, 2).on_edit(|s: &mut TextEdit| s)
-            .build(&Kit::neutral(true)).key("area")
+        TextArea::new(s).auto_grow(2, 2).on_edit(|s: &mut TextEdit| s).build(&Kit::neutral(true)).key("area")
     }
     let mut rt = Runtime::new(TextEdit::new("one\ntwo\nthree\nfour"), view, (400.0, 200.0), Env::new(true, 1.0));
     rt.frame(0.0);
@@ -87,20 +110,14 @@ fn state() -> S {
 
 fn view(s: &S, _: &mut Cx<S>) -> El {
     let k = Kit::neutral(true);
-    let accessories = row()
-        .key("accessories")
-        .gap(6.0)
-        .px(4.0)
-        .center_y()
-        .child(text("pw").key("hint"))
-        .child(
-            IconButton::new(k.glyph.check)
-                .variant(IconButtonVariant::Ghost)
-                .label("Reveal")
-                .on_press(|s: &mut S| s.revealed = !s.revealed)
-                .build(&k)
-                .key("reveal"),
-        );
+    let accessories = row().key("accessories").gap(6.0).px(4.0).center_y().child(text("pw").key("hint")).child(
+        IconButton::new(k.glyph.check)
+            .variant(IconButtonVariant::Ghost)
+            .label("Reveal")
+            .on_press(|s: &mut S| s.revealed = !s.revealed)
+            .build(&k)
+            .key("reveal"),
+    );
     col()
         .w_full()
         .h_full()
@@ -236,13 +253,7 @@ fn a_launcher_size_style_scales_the_box_and_the_caret() {
                     .build(&k)
                     .key("large-compact"),
             )
-            .child(
-                TextInput::new(&s.tight)
-                    .text_style(style_24)
-                    .height(10.0)
-                    .build(&k)
-                    .key("tight"),
-            )
+            .child(TextInput::new(&s.tight).text_style(style_24).height(10.0).build(&k).key("tight"))
     }
     let state = Launcher {
         plain: TextEdit::new("hi"),
@@ -253,14 +264,19 @@ fn a_launcher_size_style_scales_the_box_and_the_caret() {
     };
     let mut rt = Runtime::new(state, view, (400.0, 300.0), Env::new(true, 1.0));
     rt.frame(0.0);
-    let by_path = |rt: &Runtime<Launcher>, path: &str| rt.elements().into_iter().find(|e| e.path.ends_with(path)).unwrap();
-    let h = |rt: &Runtime<Launcher>, key: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key)).unwrap().rect[3];
+    let by_path =
+        |rt: &Runtime<Launcher>, path: &str| rt.elements().into_iter().find(|e| e.path.ends_with(path)).unwrap();
+    let h = |rt: &Runtime<Launcher>, key: &str| {
+        rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key)).unwrap().rect[3]
+    };
     assert_eq!(
         (h(&rt, "plain"), h(&rt, "big"), h(&rt, "launcher"), h(&rt, "large-compact"), h(&rt, "tight")),
         (28.0, 36.0, 56.0, 32.0, 24.0),
         "box grows with style, keeps large's 32 floor, and clamps height to at least line_px"
     );
-    let line = |rt: &Runtime<Launcher>| rt.elements().into_iter().filter(|e| e.key.as_deref() == Some("input")).map(|e| e.rect[3]).collect::<Vec<_>>();
+    let line = |rt: &Runtime<Launcher>| {
+        rt.elements().into_iter().filter(|e| e.key.as_deref() == Some("input")).map(|e| e.rect[3]).collect::<Vec<_>>()
+    };
     assert_eq!(line(&rt), [16.0, 24.0, 24.0, 16.0, 24.0], "the editor's line follows the style");
 
     // In the 56 pt launcher box, the 24 pt editor, leading icon, and clear button are all vertically centred.
@@ -270,7 +286,10 @@ fn a_launcher_size_style_scales_the_box_and_the_caret() {
     let action_rect = by_path(&rt, "launcher/action").rect;
     let box_cy = box_rect[1] + box_rect[3] * 0.5;
     for (name, r) in [("input", input_rect), ("leading", lead_rect), ("action", action_rect)] {
-        assert!(((r[1] + r[3] * 0.5) - box_cy).abs() < 0.01, "{name} is vertically centred in the 56 pt box: {r:?} vs {box_rect:?}");
+        assert!(
+            ((r[1] + r[3] * 0.5) - box_cy).abs() < 0.01,
+            "{name} is vertically centred in the 56 pt box: {r:?} vs {box_rect:?}"
+        );
     }
 
     // Focus the 56 pt launcher field and check that its caret is 24 pt tall and vertically centred.
@@ -281,17 +300,30 @@ fn a_launcher_size_style_scales_the_box_and_the_caret() {
     assert!(rt.state.launcher.focused);
     let caret = by_path(&rt, "launcher/value/input").caret.expect("focused launcher caret");
     assert_eq!(caret[3], 24.0, "caret height matches the 24 pt line height");
-    assert!(((caret[1] + caret[3] * 0.5) - box_cy).abs() < 0.01, "caret is vertically centred in the 56 pt box: {caret:?}");
+    assert!(
+        ((caret[1] + caret[3] * 0.5) - box_cy).abs() < 0.01,
+        "caret is vertically centred in the 56 pt box: {caret:?}"
+    );
 }
 
 #[test]
 fn any_unfocusable_element_can_keep_an_outside_field_focused_and_still_press() {
-    struct P { field: TextEdit, pressed: usize }
+    struct P {
+        field: TextEdit,
+        pressed: usize,
+    }
     fn view(s: &P, _: &mut Cx<P>) -> El {
-        col().gap(8.0)
+        col()
+            .gap(8.0)
             .child(TextInput::new(&s.field).on_edit(|s: &mut P| &mut s.field).build(&Kit::neutral(true)).key("field"))
             .child(row().key("plain").size(100.0, 30.0).on_press(|s: &mut P| s.pressed += 1))
-            .child(row().key("keeper").size(100.0, 30.0).preserve_focus_on_press(true).on_press(|s: &mut P| s.pressed += 10))
+            .child(
+                row()
+                    .key("keeper")
+                    .size(100.0, 30.0)
+                    .preserve_focus_on_press(true)
+                    .on_press(|s: &mut P| s.pressed += 10),
+            )
     }
     let mut field = TextEdit::new("x");
     field.focused = true;
@@ -322,7 +354,8 @@ fn a_plain_field_draws_no_box_but_still_focuses_on_a_press_anywhere_and_types() 
     fn view(s: &P, _: &mut Cx<P>) -> El {
         let k = Kit::neutral(true);
         let style_24 = rune::TextStyle::new(17.0, 400.0).lh(24.0);
-        col().gap(8.0)
+        col()
+            .gap(8.0)
             .child(
                 TextInput::new(&s.boxed)
                     .leading_icon(k.glyph.search)
@@ -387,14 +420,21 @@ fn a_plain_field_draws_no_box_but_still_focuses_on_a_press_anywhere_and_types() 
     let by_path = |rt: &Runtime<P>, path: &str| rt.elements().into_iter().find(|e| e.path.ends_with(path)).unwrap();
     let ink = |rt: &Runtime<P>, key: &str| {
         let r = info(rt, key).rect;
-        rt.instances.iter().filter(|i| {
-            let (cx, cy) = (i.rect[0] + i.rect[2] * 0.5, i.rect[1] + i.rect[3] * 0.5);
-            cx >= r[0] && cx <= r[0] + r[2] && cy >= r[1] && cy <= r[1] + r[3] && i.rect[2] >= r[2] - 0.5
-        }).count()
+        rt.instances
+            .iter()
+            .filter(|i| {
+                let (cx, cy) = (i.rect[0] + i.rect[2] * 0.5, i.rect[1] + i.rect[3] * 0.5);
+                cx >= r[0] && cx <= r[0] + r[2] && cy >= r[1] && cy <= r[1] + r[3] && i.rect[2] >= r[2] - 0.5
+            })
+            .count()
     };
     let plain = info(&rt, "plain");
     assert_eq!(plain.role, "textbox", "a11y role unchanged");
-    assert_eq!(by_path(&rt, "plain/value/input").label.as_deref(), Some("Type a command"), "the editor carries the name");
+    assert_eq!(
+        by_path(&rt, "plain/value/input").label.as_deref(),
+        Some("Type a command"),
+        "the editor carries the name"
+    );
     assert_eq!(plain.fill.a, 0.0, "no fill");
     assert!(info(&rt, "boxed").fill.a > 0.0);
     assert_eq!(ink(&rt, "plain"), 0, "unfocused plain draws no box, shadow or border");
@@ -402,9 +442,17 @@ fn a_plain_field_draws_no_box_but_still_focuses_on_a_press_anywhere_and_types() 
     assert!(ink(&rt, "boxed") > 0);
     assert_eq!(by_path(&rt, "invalid/value/input").text_color, Some(k.c.danger.fg), "invalid plain shows as red text");
     let dis_inp = by_path(&rt, "disabled/value/input").rect;
-    let dis_glyph = rt.instances.iter().find(|i| {
-        i.params[1] == rune::render::KIND_GLYPH && i.rect[0] >= dis_inp[0] && i.rect[0] < dis_inp[0] + dis_inp[2] && i.rect[1] >= dis_inp[1] && i.rect[1] < dis_inp[1] + dis_inp[3]
-    }).expect("disabled glyph");
+    let dis_glyph = rt
+        .instances
+        .iter()
+        .find(|i| {
+            i.params[1] == rune::render::KIND_GLYPH
+                && i.rect[0] >= dis_inp[0]
+                && i.rect[0] < dis_inp[0] + dis_inp[2]
+                && i.rect[1] >= dis_inp[1]
+                && i.rect[1] < dis_inp[1] + dis_inp[3]
+        })
+        .expect("disabled glyph");
     assert!((dis_glyph.fill[3] - 0.5).abs() < 0.01, "disabled plain dims to 0.5: {:?}", dis_glyph.fill);
 
     // In the 56 pt plain launcher header, leading icon (18 pt), input (24 pt), placeholder glyphs and clear button (28 pt) are all vertically centred.
@@ -416,14 +464,30 @@ fn a_plain_field_draws_no_box_but_still_focuses_on_a_press_anywhere_and_types() 
     assert_eq!((b[3], lead[2], lead[3], inp[3], clear[3]), (56.0, 26.0, 18.0, 24.0, 28.0));
     assert!((clear[0] + clear[2] - (b[0] + b[2])).abs() < 0.01, "clear button reaches the right edge");
     for (name, r) in [("leading", lead), ("input", inp), ("clear", clear)] {
-        assert!(((r[1] + r[3] * 0.5) - b_cy).abs() < 0.01, "{name} vertically centred in 56 pt plain box: {r:?} vs {b:?}");
+        assert!(
+            ((r[1] + r[3] * 0.5) - b_cy).abs() < 0.01,
+            "{name} vertically centred in 56 pt plain box: {r:?} vs {b:?}"
+        );
     }
-    let placeholder_glyphs: Vec<_> = rt.instances.iter().filter(|i| {
-        i.params[1] == rune::render::KIND_GLYPH && i.rect[0] >= inp[0] && i.rect[0] < inp[0] + inp[2] && i.rect[1] >= b[1] && i.rect[1] < b[1] + b[3]
-    }).collect();
+    let placeholder_glyphs: Vec<_> = rt
+        .instances
+        .iter()
+        .filter(|i| {
+            i.params[1] == rune::render::KIND_GLYPH
+                && i.rect[0] >= inp[0]
+                && i.rect[0] < inp[0] + inp[2]
+                && i.rect[1] >= b[1]
+                && i.rect[1] < b[1] + b[3]
+        })
+        .collect();
     assert!(!placeholder_glyphs.is_empty(), "empty plain field paints placeholder glyphs");
-    let (py0, py1) = placeholder_glyphs.iter().fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), g| (lo.min(g.rect[1]), hi.max(g.rect[1] + g.rect[3])));
-    assert!((((py0 + py1) * 0.5) - b_cy).abs() < 4.0, "placeholder glyphs sit centred in the 56 pt box: {py0}..{py1} vs {b_cy}");
+    let (py0, py1) = placeholder_glyphs
+        .iter()
+        .fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), g| (lo.min(g.rect[1]), hi.max(g.rect[1] + g.rect[3])));
+    assert!(
+        (((py0 + py1) * 0.5) - b_cy).abs() < 4.0,
+        "placeholder glyphs sit centred in the 56 pt box: {py0}..{py1} vs {b_cy}"
+    );
 
     // Moving the pointer over the plain field draws no hover box.
     rt.pointer_move(b[0] + 50.0, b_cy);
@@ -441,7 +505,10 @@ fn a_plain_field_draws_no_box_but_still_focuses_on_a_press_anywhere_and_types() 
     let ime = rt.ime_area.expect("focused plain IME area");
     assert_eq!(caret[3], 24.0);
     assert!(((caret[1] + caret[3] * 0.5) - b_cy).abs() < 0.01, "caret vertically centred: {caret:?}");
-    assert!((ime[0] - caret[0]).abs() < 0.01 && (ime[1] - caret[1]).abs() < 0.01 && (ime[3] - 24.0).abs() < 0.01, "IME rect matches caret: {ime:?} vs {caret:?}");
+    assert!(
+        (ime[0] - caret[0]).abs() < 0.01 && (ime[1] - caret[1]).abs() < 0.01 && (ime[3] - 24.0).abs() < 0.01,
+        "IME rect matches caret: {ime:?} vs {caret:?}"
+    );
 
     // Typing and pressing inside the plain field's own padding and clear button work as in the boxed field.
     rt.key(rune::KeyEvent { key: rune::Key::Text("hi".into()), mods: rune::Mods::default() });
@@ -450,7 +517,10 @@ fn a_plain_field_draws_no_box_but_still_focuses_on_a_press_anywhere_and_types() 
     rt.pointer_down(b[0] + 1.0, b[1] + b[3] - 1.0);
     rt.pointer_up(b[0] + 1.0, b[1] + b[3] - 1.0);
     rt.frame(1.0 / 60.0);
-    assert!(rt.state.plain.focused && rt.state.plain.range() == (0, 0), "plain padding keeps focus and moves caret to start");
+    assert!(
+        rt.state.plain.focused && rt.state.plain.range() == (0, 0),
+        "plain padding keeps focus and moves caret to start"
+    );
     rt.key(rune::KeyEvent { key: rune::Key::Text("x".into()), mods: rune::Mods::default() });
     rt.frame(0.0);
     assert_eq!(rt.state.plain.text, "xhi", "typing reaches the field");
@@ -463,14 +533,18 @@ fn a_plain_field_draws_no_box_but_still_focuses_on_a_press_anywhere_and_types() 
 
 #[test]
 fn the_leading_icon_size_scales_the_icon_and_moves_the_text() {
-    struct P { a: TextEdit, b: TextEdit }
+    struct P {
+        a: TextEdit,
+        b: TextEdit,
+    }
     fn view(s: &P, _: &mut Cx<P>) -> El {
         let k = Kit::neutral(true);
-        col()
-            .child(TextInput::new(&s.a).leading_icon(k.glyph.search).height(56.0).build(&k).key("a"))
-            .child(TextInput::new(&s.b).leading_icon(k.glyph.search).leading_icon_size(24.0).height(56.0).build(&k).key("b"))
+        col().child(TextInput::new(&s.a).leading_icon(k.glyph.search).height(56.0).build(&k).key("a")).child(
+            TextInput::new(&s.b).leading_icon(k.glyph.search).leading_icon_size(24.0).height(56.0).build(&k).key("b"),
+        )
     }
-    let mut rt = Runtime::new(P { a: TextEdit::new("x"), b: TextEdit::new("x") }, view, (400.0, 200.0), Env::new(true, 1.0));
+    let mut rt =
+        Runtime::new(P { a: TextEdit::new("x"), b: TextEdit::new("x") }, view, (400.0, 200.0), Env::new(true, 1.0));
     rt.frame(0.0);
     let at = |path: &str| rt.elements().into_iter().find(|e| e.path.ends_with(path)).unwrap().rect;
     let (ia, ib) = (at("a/value/leading"), at("b/value/leading"));
@@ -478,7 +552,10 @@ fn the_leading_icon_size_scales_the_icon_and_moves_the_text() {
     assert_eq!((ia[2] - 8.0, ib[2] - 8.0), (16.0, 24.0), "icon box is pad plus the icon");
     assert_eq!(tb[0] - ta[0], 8.0, "the text starts 8 points later");
     let (a, b) = (at("a"), at("b"));
-    assert!(((ib[1] + ib[3] * 0.5) - (b[1] + b[3] * 0.5)).abs() < 0.01 && ((ia[1] + ia[3] * 0.5) - (a[1] + a[3] * 0.5)).abs() < 0.01);
+    assert!(
+        ((ib[1] + ib[3] * 0.5) - (b[1] + b[3] * 0.5)).abs() < 0.01
+            && ((ia[1] + ia[3] * 0.5) - (a[1] + a[3] * 0.5)).abs() < 0.01
+    );
 }
 
 #[test]
@@ -490,7 +567,8 @@ fn secure_text_input_revealed_draws_plain_glyphs_and_keeps_secure_protections() 
     }
     fn view(s: &Form, _: &mut Cx<Form>) -> El {
         let k = Kit::neutral(true);
-        col().gap(8.0)
+        col()
+            .gap(8.0)
             .child(TextInput::new(&s.plain).on_edit(|s: &mut Form| &mut s.plain).build(&k).key("plain"))
             .child(
                 TextInput::new(&s.secret)
@@ -518,14 +596,21 @@ fn secure_text_input_revealed_draws_plain_glyphs_and_keeps_secure_protections() 
     let secret_caret = secret_inp.caret.expect("focused revealed TextInput caret");
 
     // Caret x offset inside the revealed secure TextInput matches the plain TextInput at the same byte.
-    rt.update(|s, _| { s.secret.focused = false; s.plain.focused = true; });
+    rt.update(|s, _| {
+        s.secret.focused = false;
+        s.plain.focused = true;
+    });
     rt.frame(0.0);
     let plain_inp = rt.elements().into_iter().find(|e| e.path.ends_with("plain/value/input")).unwrap();
     let plain_caret = plain_inp.caret.expect("focused plain TextInput caret");
     assert!(((secret_caret[0] - secret_inp.rect[0]) - (plain_caret[0] - plain_inp.rect[0])).abs() < 0.01);
 
     // Toggling revealed off masks the field and moves the caret to the 2-bullet position for "hé".
-    rt.update(|s, _| { s.plain.focused = false; s.secret.focused = true; s.revealed = false; });
+    rt.update(|s, _| {
+        s.plain.focused = false;
+        s.secret.focused = true;
+        s.revealed = false;
+    });
     rt.frame(0.0);
     assert!(rt.state.secret.is_secure() && !rt.state.secret.is_revealed());
     let masked_inp = rt.elements().into_iter().find(|e| e.path.ends_with("secret/value/input")).unwrap();
@@ -575,9 +660,7 @@ fn secure_text_area_masks_multiline_secrets_wraps_long_tokens_when_revealed_and_
     assert!(rt.state.secret.is_secure() && rt.has_secure_focus());
 
     let line_blob = "AAAAB3NzaC1yc2EAAAADAQABAAABAQDfakebase64keymaterialwithoutspaces0123456789ABCDEF==";
-    let pem = format!(
-        "-----BEGIN FAKE PRIVATE KEY-----\r\n{line_blob}\r\n{line_blob}\r\n{line_blob}"
-    );
+    let pem = format!("-----BEGIN FAKE PRIVATE KEY-----\r\n{line_blob}\r\n{line_blob}\r\n{line_blob}");
     rt.paste(&pem);
     rt.frame(0.0);
     rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
@@ -623,7 +706,8 @@ fn secure_text_area_masks_multiline_secrets_wraps_long_tokens_when_revealed_and_
     let inp_after = rt.elements().into_iter().find(|e| e.path.ends_with("area/scroll/input")).unwrap();
     let caret = inp_after.caret.expect("focused revealed TextArea caret");
     assert!(
-        caret[1] >= scroll_after.rect[1] - 1.0 && caret[1] + caret[3] <= scroll_after.rect[1] + scroll_after.rect[3] + 1.0,
+        caret[1] >= scroll_after.rect[1] - 1.0
+            && caret[1] + caret[3] <= scroll_after.rect[1] + scroll_after.rect[3] + 1.0,
         "caret {caret:?} scrolled into viewport {:?}",
         scroll_after.rect
     );
@@ -663,13 +747,7 @@ fn secure_text_area_replaces_pristine_secret_on_first_edit() {
     use rune::{Key, KeyEvent, Mods};
     fn view(s: &TextEdit, _: &mut Cx<TextEdit>) -> El {
         let k = Kit::neutral(true);
-        col().padding(12.0).child(
-            TextArea::new(s)
-                .secure()
-                .on_edit(|s: &mut TextEdit| s)
-                .build(&k)
-                .key("area"),
-        )
+        col().padding(12.0).child(TextArea::new(s).secure().on_edit(|s: &mut TextEdit| s).build(&k).key("area"))
     }
 
     let mut rt = Runtime::new(

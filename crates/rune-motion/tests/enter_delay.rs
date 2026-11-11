@@ -1,13 +1,14 @@
 //! A delayed entrance (`Scene::insert_delayed`) holds the whole insertion effect, then plays
 //! every part of it on one presence progress.
-use rune_motion::prelude::*;
 use rune_motion::Phase;
+use rune_motion::prelude::*;
 
 const HZ: f64 = 120.0;
 const RISE: f32 = 12.0;
 
 fn spec() -> NodeSpec {
-    NodeSpec::new(Rect::new(0.0, 0.0, 100.0, 40.0)).transition(Transition::offset(0.0, RISE).combined(Transition::opacity()))
+    NodeSpec::new(Rect::new(0.0, 0.0, 100.0, 40.0))
+        .transition(Transition::offset(0.0, RISE).combined(Transition::opacity()))
 }
 
 fn scene() -> Scene {
@@ -36,12 +37,19 @@ fn holds_the_insertion_effect_then_moves_every_part_together() {
     let id = NodeId(1);
     s.insert_delayed(id, spec(), Mount::Animated, 0.3);
     for (t, offset, opacity) in trace(&mut s, 0.0, 0.29, id) {
-        assert_eq!((offset, opacity), (0.0, 0.0), "t={t}: waits at the insertion effect");
+        assert_eq!(
+            (offset, opacity),
+            (0.0, 0.0),
+            "t={t}: waits at the insertion effect"
+        );
     }
     let after = trace(&mut s, 0.3, 1.5, id);
     assert!(after.iter().any(|&(_, o, _)| o > 0.5), "it enters");
     for (t, offset, opacity) in after {
-        assert!((offset - opacity).abs() < 2e-3, "t={t}: offset {offset} and opacity {opacity} share one progress");
+        assert!(
+            (offset - opacity).abs() < 2e-3,
+            "t={t}: offset {offset} and opacity {opacity} share one progress"
+        );
     }
     assert_eq!(s.presented(id).unwrap().phase, Phase::Present);
 }
@@ -63,7 +71,10 @@ fn a_node_clock_stretches_the_delay() {
     s.insert_delayed(id, spec(), Mount::Animated, 0.3);
     s.set_time_scale(id, 0.5);
     s.frame_at(0.1);
-    assert!((s.store().waiting_until().unwrap() - 0.6).abs() < 1e-6, "0.3 s at half speed");
+    assert!(
+        (s.store().waiting_until().unwrap() - 0.6).abs() < 1e-6,
+        "0.3 s at half speed"
+    );
     s.frame_at(0.59);
     assert_eq!(s.presented(id).unwrap().opacity, 0.0);
     s.frame_at(0.7);
@@ -77,7 +88,10 @@ fn removed_while_waiting_unseen_goes_at_once() {
     s.insert_delayed(id, spec(), Mount::Animated, 0.3);
     s.frame_at(0.1);
     s.remove(id);
-    assert!(s.frame_at(0.11).exited.contains(&id), "nothing showed, so there's no exit to play");
+    assert!(
+        s.frame_at(0.11).exited.contains(&id),
+        "nothing showed, so there's no exit to play"
+    );
     assert!(!s.frame_at(0.5).animating, "the cancelled start never runs");
 }
 
@@ -85,10 +99,17 @@ fn removed_while_waiting_unseen_goes_at_once() {
 fn a_visible_insertion_effect_fades_out_from_where_it_waits() {
     let mut s = scene();
     let id = NodeId(1);
-    let slide = NodeSpec::new(Rect::new(0.0, 0.0, 100.0, 40.0)).transition(Transition::offset(0.0, RISE));
+    let slide =
+        NodeSpec::new(Rect::new(0.0, 0.0, 100.0, 40.0)).transition(Transition::offset(0.0, RISE));
     s.insert_delayed(id, slide, Mount::Animated, 0.3);
     s.frame_at(0.1);
-    assert_eq!((s.presented(id).unwrap().rect.y, s.presented(id).unwrap().opacity), (RISE, 1.0));
+    assert_eq!(
+        (
+            s.presented(id).unwrap().rect.y,
+            s.presented(id).unwrap().opacity
+        ),
+        (RISE, 1.0)
+    );
     s.remove(id);
     let mut last = 1.0;
     for (t, offset, opacity) in trace(&mut s, 0.1, 0.25, id) {
@@ -126,7 +147,10 @@ fn reduce_motion_keeps_the_delay_and_only_fades() {
         }
     }
     let shown = steps.iter().find(|s| s.2 >= 1.0).unwrap().0;
-    assert!(shown > 0.3 && shown < 0.6, "the short fade, after the delay: {shown}");
+    assert!(
+        shown > 0.3 && shown < 0.6,
+        "the short fade, after the delay: {shown}"
+    );
 }
 
 #[test]
@@ -134,7 +158,12 @@ fn a_staggered_list_of_five_enters_in_order() {
     let mut s = scene();
     let stagger = Stagger::new(0.05);
     for i in 0..5 {
-        s.insert_delayed(NodeId(i + 1), spec(), Mount::Animated, stagger.delay(i as usize, 5));
+        s.insert_delayed(
+            NodeId(i + 1),
+            spec(),
+            Mount::Animated,
+            stagger.delay(i as usize, 5),
+        );
     }
     let mut starts = [None; 5];
     let mut t = 0.0;
@@ -143,7 +172,10 @@ fn a_staggered_list_of_five_enters_in_order() {
         for i in 0..5 {
             let p = s.presented(NodeId(i as u64 + 1)).unwrap();
             let (offset, opacity) = (1.0 - p.rect.y / RISE, p.opacity);
-            assert!((offset - opacity).abs() < 2e-3, "row {i} t={t}: {offset} vs {opacity}");
+            assert!(
+                (offset - opacity).abs() < 2e-3,
+                "row {i} t={t}: {offset} vs {opacity}"
+            );
             if opacity > 0.0 && starts[i].is_none() {
                 starts[i] = Some(t);
             }
@@ -152,6 +184,10 @@ fn a_staggered_list_of_five_enters_in_order() {
     }
     let starts = starts.map(Option::unwrap);
     for (i, w) in starts.windows(2).enumerate() {
-        assert!((w[1] - w[0] - 0.05).abs() < 1.5 / HZ, "row {} starts 50 ms after row {i}: {starts:?}", i + 1);
+        assert!(
+            (w[1] - w[0] - 0.05).abs() < 1.5 / HZ,
+            "row {} starts 50 ms after row {i}: {starts:?}",
+            i + 1
+        );
     }
 }

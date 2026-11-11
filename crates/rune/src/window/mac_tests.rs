@@ -17,7 +17,10 @@ fn drag_subclass_changes_only_the_selected_instance() {
         let scoped = ffi::object_getClass(selected_ptr);
         assert_ne!(scoped, base);
         assert_eq!(ffi::class_getSuperclass(scoped), base);
-        assert_eq!(ffi::class_getInstanceSize(scoped), ffi::class_getInstanceSize(base));
+        assert_eq!(
+            ffi::class_getInstanceSize(scoped),
+            ffi::class_getInstanceSize(base)
+        );
         assert_eq!(ffi::object_getClass(sibling_ptr), base);
         assert_eq!(ffi::class_getInstanceMethod(base, selector), original);
         let moves: Bool = msg_send![&*selected, mouseDownCanMoveWindow];

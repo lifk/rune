@@ -8,13 +8,24 @@ use support::{command, drag, glyphs, wait};
 
 fn view(_: &(), _: &mut Cx<()>) -> El {
     let style = TextStyle::new(14.0, 400.0).lh(20.0);
-    let t = |content: &str, key: &str| text(content.to_owned()).key(key).font(style).w_full().selectable(true);
-    col().w_full().h_full().padding(10.0)
-        .child(col().key("group").w(400.0).gap(12.0).selection_group(true)
+    let t = |content: &str, key: &str| {
+        text(content.to_owned())
+            .key(key)
+            .font(style)
+            .w_full()
+            .selectable(true)
+    };
+    col().w_full().h_full().padding(10.0).child(
+        col()
+            .key("group")
+            .w(400.0)
+            .gap(12.0)
+            .selection_group(true)
             .child(t("first para", "a").copy_breaks(2, 2))
             .child(t("one", "i0").copy_prefix("- "))
             .child(t("two", "i1").copy_prefix("- "))
-            .child(t("plain", "p")))
+            .child(t("plain", "p")),
+    )
 }
 
 fn runtime() -> (Runtime<()>, rune::clipboard::MemoryClipboard) {
@@ -25,8 +36,12 @@ fn runtime() -> (Runtime<()>, rune::clipboard::MemoryClipboard) {
     (rt, clipboard)
 }
 
-fn before(g: (f32, f32)) -> (f32, f32) { (g.0 - 3.0, g.1) }
-fn after(g: (f32, f32)) -> (f32, f32) { (g.0 + 3.0, g.1) }
+fn before(g: (f32, f32)) -> (f32, f32) {
+    (g.0 - 3.0, g.1)
+}
+fn after(g: (f32, f32)) -> (f32, f32) {
+    (g.0 + 3.0, g.1)
+}
 
 #[test]
 fn copy_leaves_the_breaks_and_prefixes_texts_ask_for() {
@@ -35,9 +50,15 @@ fn copy_leaves_the_breaks_and_prefixes_texts_ask_for() {
     let p = glyphs(&rt, "p");
     // Glyphs skip spaces: a[5] is the "p" of "para".
     drag(&mut rt, before(a[5]), after(p[1]));
-    assert_eq!(rt.selected_text().as_deref(), Some("para\n\n- one\n- two\npl"));
+    assert_eq!(
+        rt.selected_text().as_deref(),
+        Some("para\n\n- one\n- two\npl")
+    );
     command(&mut rt, 'c');
-    assert_eq!(clipboard.text().as_deref().map(String::as_str), Some("para\n\n- one\n- two\npl"));
+    assert_eq!(
+        clipboard.text().as_deref().map(String::as_str),
+        Some("para\n\n- one\n- two\npl")
+    );
 }
 
 #[test]
@@ -52,4 +73,3 @@ fn a_text_taken_from_inside_or_alone_goes_without_its_prefix() {
     drag(&mut rt, before(one[1]), after(two[2]));
     assert_eq!(rt.selected_text().as_deref(), Some("ne\n- two"));
 }
-

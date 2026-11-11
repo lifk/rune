@@ -70,7 +70,15 @@ pub(crate) struct OutlineStore {
 
 impl Default for OutlineStore {
     fn default() -> Self {
-        OutlineStore { texels: vec![[0; 4]; WIDTH as usize], used: 1, glyphs: Default::default(), hints: Default::default(), dirty: None, full: false, support: Support::Untried }
+        OutlineStore {
+            texels: vec![[0; 4]; WIDTH as usize],
+            used: 1,
+            glyphs: Default::default(),
+            hints: Default::default(),
+            dirty: None,
+            full: false,
+            support: Support::Untried,
+        }
     }
 }
 
@@ -84,8 +92,14 @@ impl OutlineStore {
             self.glyphs.insert(key, None);
             return Found::Empty;
         };
-        let Some(record) = self.push(&built.texels, true) else { return Found::Full };
-        let g = Glyph { record, bbox: built.bbox, upem: built.upem };
+        let Some(record) = self.push(&built.texels, true) else {
+            return Found::Full;
+        };
+        let g = Glyph {
+            record,
+            bbox: built.bbox,
+            upem: built.upem,
+        };
         self.glyphs.insert(key, Some(g));
         Found::Outline(g)
     }
@@ -96,8 +110,14 @@ impl OutlineStore {
         if let Some(&at) = self.hints.get(&bits) {
             return at;
         }
-        let texels = [[bits[0], bits[1], bits[2], bits[3]], [bits[4], bits[5], bits[6], bits[7]], [bits[8], bits[9], bits[10], 0]];
-        let Some(at) = self.push(&texels, false) else { return 0 };
+        let texels = [
+            [bits[0], bits[1], bits[2], bits[3]],
+            [bits[4], bits[5], bits[6], bits[7]],
+            [bits[8], bits[9], bits[10], 0],
+        ];
+        let Some(at) = self.push(&texels, false) else {
+            return 0;
+        };
         self.hints.insert(bits, at);
         at
     }
@@ -111,7 +131,8 @@ impl OutlineStore {
             return None;
         }
         if end > self.texels.len() {
-            self.texels.resize(end.next_multiple_of(WIDTH as usize), [0; 4]);
+            self.texels
+                .resize(end.next_multiple_of(WIDTH as usize), [0; 4]);
         }
         self.texels[at..end].copy_from_slice(texels);
         if relative {
@@ -146,14 +167,22 @@ impl OutlineStore {
     }
 
     /// Whether any glyph has been drawn from its outline.
-    pub(crate) fn has_records(&self) -> bool { self.used > 1 }
+    pub(crate) fn has_records(&self) -> bool {
+        self.used > 1
+    }
 
-    pub(crate) fn support(&self) -> Support { self.support }
+    pub(crate) fn support(&self) -> Support {
+        self.support
+    }
 
-    pub(crate) fn set_support(&mut self, support: Support) { self.support = support; }
+    pub(crate) fn set_support(&mut self, support: Support) {
+        self.support = support;
+    }
 
     /// Rows the texture needs.
-    pub(crate) fn rows(&self) -> u32 { (self.texels.len() / WIDTH as usize) as u32 }
+    pub(crate) fn rows(&self) -> u32 {
+        (self.texels.len() / WIDTH as usize) as u32
+    }
 
     /// The changed rows and their texels, as bytes, since the last call.
     pub(crate) fn take_dirty(&mut self) -> Option<(u32, &[u8])> {

@@ -223,7 +223,11 @@ impl Visual {
     /// The corner radii `[tl, tr, br, bl]`.
     #[inline]
     pub(crate) fn radii(&self) -> [f32; 4] {
-        if self.radius.is_nan() { self.box_paint.corners } else { [self.radius; 4] }
+        if self.radius.is_nan() {
+            self.box_paint.corners
+        } else {
+            [self.radius; 4]
+        }
     }
 
     /// Sets the corner radii, inline when they're all the same.
@@ -303,7 +307,13 @@ impl Deref for Visual {
 impl Default for Visual {
     #[inline]
     fn default() -> Self {
-        Visual { fill: Color::TRANSPARENT, radius: 0.0, opacity: 1.0, box_paint: Cold::NONE, cold: Cold::NONE }
+        Visual {
+            fill: Color::TRANSPARENT,
+            radius: 0.0,
+            opacity: 1.0,
+            box_paint: Cold::NONE,
+            cold: Cold::NONE,
+        }
     }
 }
 
@@ -336,21 +346,39 @@ impl VisualFlags {
     }
 
     #[inline(always)]
-    pub(crate) fn hit(self) -> bool { self.0 & Self::HIT != 0 }
-    #[inline(always)]
-    pub(crate) fn continuous_corners(self) -> bool { self.0 & Self::CONTINUOUS_CORNERS != 0 }
-    #[inline(always)]
-    pub(crate) fn blend(self) -> crate::render::Blend {
-        if self.0 & Self::PLUS_LIGHTER != 0 { crate::render::Blend::PlusLighter } else { crate::render::Blend::SourceOver }
+    pub(crate) fn hit(self) -> bool {
+        self.0 & Self::HIT != 0
     }
     #[inline(always)]
-    pub(crate) fn hover_group(self) -> bool { self.0 & Self::HOVER_GROUP != 0 }
+    pub(crate) fn continuous_corners(self) -> bool {
+        self.0 & Self::CONTINUOUS_CORNERS != 0
+    }
     #[inline(always)]
-    pub(crate) fn cache(self) -> bool { self.0 & Self::CACHE != 0 }
+    pub(crate) fn blend(self) -> crate::render::Blend {
+        if self.0 & Self::PLUS_LIGHTER != 0 {
+            crate::render::Blend::PlusLighter
+        } else {
+            crate::render::Blend::SourceOver
+        }
+    }
     #[inline(always)]
-    pub(crate) fn raise(self) -> bool { self.0 & Self::RAISE != 0 }
+    pub(crate) fn hover_group(self) -> bool {
+        self.0 & Self::HOVER_GROUP != 0
+    }
     #[inline(always)]
-    pub(crate) fn no_pixel_snap(self) -> bool { self.0 & Self::NO_PIXEL_SNAP != 0 }
+    pub(crate) fn cache(self) -> bool {
+        self.0 & Self::CACHE != 0
+    }
     #[inline(always)]
-    pub(crate) fn ride_trailing(self) -> bool { self.0 & Self::RIDE_TRAILING != 0 }
+    pub(crate) fn raise(self) -> bool {
+        self.0 & Self::RAISE != 0
+    }
+    #[inline(always)]
+    pub(crate) fn no_pixel_snap(self) -> bool {
+        self.0 & Self::NO_PIXEL_SNAP != 0
+    }
+    #[inline(always)]
+    pub(crate) fn ride_trailing(self) -> bool {
+        self.0 & Self::RIDE_TRAILING != 0
+    }
 }

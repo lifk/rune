@@ -72,7 +72,8 @@ impl RasterPath {
 #[derive(Default)]
 pub(crate) struct Paths {
     now: std::collections::HashMap<u64, RasterPath, std::hash::BuildHasherDefault<rune_motion::Fx>>,
-    last: std::collections::HashMap<u64, RasterPath, std::hash::BuildHasherDefault<rune_motion::Fx>>,
+    last:
+        std::collections::HashMap<u64, RasterPath, std::hash::BuildHasherDefault<rune_motion::Fx>>,
 }
 
 impl Paths {

@@ -33,8 +33,23 @@ pub(super) struct Requests<T> {
 impl<T> Default for Requests<T> {
     fn default() -> Self {
         Requests {
-            input: None, follow_pointer: None, placement: None, display: None, request_keys: false, refollow: false, visible: None, edge: None,
-            margin: None, align: None, size: None, fade: None, macos_level: None, exclude_from_capture: None, xwayland_input: None, woken: false, updates: Vec::new(),
+            input: None,
+            follow_pointer: None,
+            placement: None,
+            display: None,
+            request_keys: false,
+            refollow: false,
+            visible: None,
+            edge: None,
+            margin: None,
+            align: None,
+            size: None,
+            fade: None,
+            macos_level: None,
+            exclude_from_capture: None,
+            xwayland_input: None,
+            woken: false,
+            updates: Vec::new(),
         }
     }
 }
@@ -45,11 +60,19 @@ impl<T: 'static> Overlay<T> {
     pub(super) fn set_capture_exclusion(&mut self, exclude: bool) {
         self.options.exclude_from_capture = exclude;
         #[cfg(target_os = "macos")]
-        let support = self.panel.as_ref().map(|panel| panel.set_capture_exclusion(exclude));
+        let support = self
+            .panel
+            .as_ref()
+            .map(|panel| panel.set_capture_exclusion(exclude));
         #[cfg(target_os = "windows")]
-        let support = self.native.as_mut().map(|native| native.set_capture_exclusion(exclude));
+        let support = self
+            .native
+            .as_mut()
+            .map(|native| native.set_capture_exclusion(exclude));
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         let support: Option<crate::OverlaySupport> = None;
-        if let Some(support) = support { self.shared.native.lock().unwrap().1.capture_exclusion = support; }
+        if let Some(support) = support {
+            self.shared.native.lock().unwrap().1.capture_exclusion = support;
+        }
     }
 }

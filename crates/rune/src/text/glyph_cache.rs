@@ -25,7 +25,15 @@ const UNFLAT: u32 = u32::MAX;
 const UNKNOWN: u8 = 0;
 const PLACED: u8 = 1;
 const EMPTY: u8 = 2;
-const NO_MASK: AtlasGlyph = AtlasGlyph { page: 0, x: 0, y: 0, w: 0, h: 0, left: 0, top: 0 };
+const NO_MASK: AtlasGlyph = AtlasGlyph {
+    page: 0,
+    x: 0,
+    y: 0,
+    w: 0,
+    h: 0,
+    left: 0,
+    top: 0,
+};
 
 #[derive(Default)]
 pub(crate) struct GlyphCache {
@@ -81,7 +89,9 @@ struct Glyph {
 
 impl Entry {
     fn size(&self) -> usize {
-        size_of::<Self>() + size_of::<Layout<Ink>>() + self.inks.capacity()
+        size_of::<Self>()
+            + size_of::<Layout<Ink>>()
+            + self.inks.capacity()
             + self.lines.capacity() * size_of::<(u32, u32)>()
             + self.glyphs.capacity() * size_of::<Glyph>()
             + self.faces.capacity() * size_of::<(Face, u32, u32)>()
@@ -97,7 +107,13 @@ impl Entry {
     }
 
     /// Records line `i`'s glyphs, as [`TextSystem::glyphs_in_band`] walks them.
-    fn flatten(&mut self, layout: &Layout<Ink>, i: usize, table: &mut Vec<(f32, u32)>, coords: &mut Vec<i16>) {
+    fn flatten(
+        &mut self,
+        layout: &Layout<Ink>,
+        i: usize,
+        table: &mut Vec<(f32, u32)>,
+        coords: &mut Vec<i16>,
+    ) {
         let Some(line) = layout.get(i) else { return };
         let start = self.glyphs.len() as u32;
         if self.bytes {
@@ -111,7 +127,9 @@ impl Entry {
             }
         }
         for item in line.items() {
-            let PositionedLayoutItem::GlyphRun(glyph_run) = item else { continue };
+            let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
+                continue;
+            };
             let face = Face::of(&glyph_run, coords);
             let at = self.coords.len() as u32;
             self.coords.extend_from_slice(coords);
@@ -125,7 +143,17 @@ impl Entry {
                 } else {
                     0
                 };
-                self.glyphs.push(Glyph { id: g.id, rel, x: g.x, y: g.y, byte, face, sub: [0; 2], state: UNKNOWN, mask: NO_MASK });
+                self.glyphs.push(Glyph {
+                    id: g.id,
+                    rel,
+                    x: g.x,
+                    y: g.y,
+                    byte,
+                    face,
+                    sub: [0; 2],
+                    state: UNKNOWN,
+                    mask: NO_MASK,
+                });
                 rel += g.advance;
             }
         }
@@ -181,17 +209,23 @@ impl GlyphCache {
     }
 
     #[cfg(test)]
-    pub(crate) fn len(&self) -> usize { self.entries.len() }
+    pub(crate) fn len(&self) -> usize {
+        self.entries.len()
+    }
 
     #[cfg(test)]
-    pub(crate) fn bytes(&self) -> usize { self.bytes }
+    pub(crate) fn bytes(&self) -> usize {
+        self.bytes
+    }
 }
 
 /// Keeps the roomiest of the entries that went this frame, up to one paragraph's share, and
 /// lets go of its layout, so one re-broken in place stays where it is.
 fn retire(spare: &mut Option<Entry>, mut e: Entry) {
     let room = |e: &Entry| e.glyphs.capacity();
-    if room(&e) * size_of::<Glyph>() <= ENTRY_BYTES && spare.as_ref().is_none_or(|s| room(s) < room(&e)) {
+    if room(&e) * size_of::<Glyph>() <= ENTRY_BYTES
+        && spare.as_ref().is_none_or(|s| room(s) < room(&e))
+    {
         e.layout = Weak::new();
         *spare = Some(e);
     }
@@ -212,11 +246,21 @@ impl TextSystem {
     ) {
         let mut cache = std::mem::take(&mut self.glyph_cache);
         let skia = self.direct_write();
-        let tag = if self.smoothing == FontSmoothing::Windfoil { WINDFOIL_KEY } else { self.apple.key() };
-        let (inks, apple) = if skia { (self.windows.inks(), DIRECT_WRITE_KEY) } else { (self.apple.inks(), tag) };
+        let tag = if self.smoothing == FontSmoothing::Windfoil {
+            WINDFOIL_KEY
+        } else {
+            self.apple.key()
+        };
+        let (inks, apple) = if skia {
+            (self.windows.inks(), DIRECT_WRITE_KEY)
+        } else {
+            (self.apple.inks(), tag)
+        };
         let key = Key {
             layout: Rc::as_ptr(layout) as usize,
-            inks: inks.iter().fold(0xcbf2_9ce4_8422_2325, |h, &b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3)),
+            inks: inks.iter().fold(0xcbf2_9ce4_8422_2325, |h, &b| {
+                (h ^ b as u64).wrapping_mul(0x100_0000_01b3)
+            }),
             apple,
         };
         let frame = cache.frame;
@@ -251,13 +295,23 @@ impl TextSystem {
             let mut hi = layout.len();
             while lo < hi {
                 let mid = (lo + hi) / 2;
-                if layout.get(mid).is_some_and(|l| l.metrics().block_max_coord < band.start) { lo = mid + 1 } else { hi = mid }
+                if layout
+                    .get(mid)
+                    .is_some_and(|l| l.metrics().block_max_coord < band.start)
+                {
+                    lo = mid + 1
+                } else {
+                    hi = mid
+                }
             }
         }
         let mut table = std::mem::take(&mut self.cluster_scratch);
         let mut coords = std::mem::take(&mut self.coords_scratch);
         let mut i = lo;
-        while layout.get(i).is_some_and(|l| l.metrics().block_min_coord <= band.end) {
+        while layout
+            .get(i)
+            .is_some_and(|l| l.metrics().block_min_coord <= band.end)
+        {
             if entry.lines[i].0 == UNFLAT {
                 entry.flatten(layout, i, &mut table, &mut coords);
                 cache.flattened += 1;
@@ -272,7 +326,14 @@ impl TextSystem {
     }
 
     /// Line `i`'s quads from `entry`, positioned as [`Self::glyphs_in_band`] positions them.
-    fn replay(&mut self, entry: &mut Entry, i: usize, origin: [f32; 2], k: f32, out: &mut Vec<GlyphQuad>) {
+    fn replay(
+        &mut self,
+        entry: &mut Entry,
+        i: usize,
+        origin: [f32; 2],
+        k: f32,
+        out: &mut Vec<GlyphQuad>,
+    ) {
         let (start, end) = entry.lines[i];
         let (mut face, mut baseline, mut size) = (u16::MAX, 0.0, 0.0);
         let quarters = self.quarter_pens();
@@ -280,15 +341,21 @@ impl TextSystem {
             if entry.clock != self.atlas.clock {
                 // A page went: every mask is looked up again.
                 entry.clock = self.atlas.clock;
-                for g in &mut entry.glyphs { g.state = UNKNOWN; }
+                for g in &mut entry.glyphs {
+                    g.state = UNKNOWN;
+                }
             }
             let g = entry.glyphs[gi];
             let f = &entry.faces[g.face as usize];
             if g.face != face {
-                (face, baseline, size) = (g.face, (origin[1] + f.0.baseline * k).round(), f.0.size * k);
+                (face, baseline, size) =
+                    (g.face, (origin[1] + f.0.baseline * k).round(), f.0.size * k);
             }
-            let at = if k == 1.0 { [origin[0] + g.rel + g.x, baseline + g.y] }
-                else { [origin[0] + (g.rel + g.x) * k, baseline + g.y * k] };
+            let at = if k == 1.0 {
+                [origin[0] + g.rel + g.x, baseline + g.y]
+            } else {
+                [origin[0] + (g.rel + g.x) * k, baseline + g.y * k]
+            };
             let ([fx, fy], sub) = place(at, size, self.glide, quarters);
             if g.sub == sub && g.state == PLACED {
                 self.atlas.touch(g.mask.page, g.mask.w * g.mask.h);
@@ -298,7 +365,15 @@ impl TextSystem {
             if g.sub == sub && g.state == EMPTY {
                 continue;
             }
-            let placed = self.push_glyph(&f.0, &entry.coords[f.1 as usize..f.2 as usize], g.id, at, k, g.byte, out);
+            let placed = self.push_glyph(
+                &f.0,
+                &entry.coords[f.1 as usize..f.2 as usize],
+                g.id,
+                at,
+                k,
+                g.byte,
+                out,
+            );
             let g = &mut entry.glyphs[gi];
             (g.state, g.sub, g.mask) = match placed {
                 Placed::Atlas(mask, sub) => (PLACED, sub, mask),

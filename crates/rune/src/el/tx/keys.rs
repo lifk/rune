@@ -8,7 +8,9 @@ impl Tx {
     /// each repeat, false for the first press and outside key handlers. One-shot actions
     /// (start recording on Enter, say) can return early on a repeat; arrows and Tab usually
     /// want every repeat.
-    pub fn key_repeat(&self) -> bool { self.key_repeat }
+    pub fn key_repeat(&self) -> bool {
+        self.key_repeat
+    }
 
     /// In a key handler, the physical key behind the logical key it's seeing: where the key
     /// sits, whatever the keyboard layout and Shift make it type. `KeyEvent` carries the
@@ -17,7 +19,9 @@ impl Tx {
     /// shortcut matches this instead: `tx.physical_key() == Some(PhysicalKeyCode::Digit7)`.
     /// `None` for a key with no physical origin (`Runtime::key`, a script's `"key"` without a
     /// `"code"`) and outside key handlers.
-    pub fn physical_key(&self) -> Option<crate::PhysicalKeyCode> { self.physical_key }
+    pub fn physical_key(&self) -> Option<crate::PhysicalKeyCode> {
+        self.physical_key
+    }
 
     /// In a key handler, the character the key types under the current keyboard layout with
     /// no modifiers held: `'a'` for ⌥A (which arrives as `Key::Text("å")` on a US Mac layout)
@@ -27,12 +31,16 @@ impl Tx {
     /// macOS, Windows and Linux, for a key that types no single character (arrows, Return),
     /// for a key with no physical origin (`Runtime::key`, a script's `"key"` without a
     /// `"code"`) and outside key handlers.
-    pub fn key_base(&self) -> Option<char> { self.key_base }
+    pub fn key_base(&self) -> Option<char> {
+        self.key_base
+    }
 
     /// The modifier keys held as this handler runs, so a click can tell Shift-click (extend a
     /// list's selection) and Cmd-click (toggle a row) from a plain one. A key handler reads
     /// the key's own [`KeyEvent::mods`](crate::KeyEvent) instead.
-    pub fn mods(&self) -> crate::Mods { self.mods }
+    pub fn mods(&self) -> crate::Mods {
+        self.mods
+    }
 
     /// When the input this handler runs for arrived, to measure input-to-photon latency
     /// against [`FrameEncoded`](crate::FrameEncoded): on macOS the timestamp of the `NSEvent`
@@ -40,7 +48,9 @@ impl Tx {
     /// up between frames keeps each event's own time. `None` in handlers no input caused
     /// (timers, polls, updates, layout callbacks) and for input fed to a `Runtime` directly
     /// (`Runtime::key` and kin, headless scripts).
-    pub fn input_time(&self) -> Option<crate::time::Instant> { self.input_time }
+    pub fn input_time(&self) -> Option<crate::time::Instant> {
+        self.input_time
+    }
 
     /// In a key handler, the key of the element that had focus when the key arrived, `None`
     /// when nothing had (and in every other handler). An unkeyed element reads as `#n`, its

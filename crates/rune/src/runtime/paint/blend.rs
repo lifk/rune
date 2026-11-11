@@ -37,21 +37,28 @@ impl<S: 'static> Runtime<S> {
     }
 
     pub fn clear_color(&self) -> [f32; 4] {
-        if self.transparent { return [0.0; 4]; }
-        self.nodes.get(self.app_root()).map_or([0.0, 0.0, 0.0, 1.0], |n| {
-            let c = self.color(n.id, P_FILL, n.vis.fill);
-            if self.srgb_blend {
-                [srgb_encode(c.r), srgb_encode(c.g), srgb_encode(c.b), 1.0]
-            } else {
-                [c.r, c.g, c.b, 1.0]
-            }
-        })
+        if self.transparent {
+            return [0.0; 4];
+        }
+        self.nodes
+            .get(self.app_root())
+            .map_or([0.0, 0.0, 0.0, 1.0], |n| {
+                let c = self.color(n.id, P_FILL, n.vis.fill);
+                if self.srgb_blend {
+                    [srgb_encode(c.r), srgb_encode(c.g), srgb_encode(c.b), 1.0]
+                } else {
+                    [c.r, c.g, c.b, 1.0]
+                }
+            })
     }
 }
 
 pub(crate) fn glyph_uv_page(uv: [f32; 2]) -> ([f32; 2], f32) {
     let page = (uv[1] as u32) / crate::text::ATLAS_SIZE;
-    ([uv[0], uv[1] - (page * crate::text::ATLAS_SIZE) as f32], page as f32)
+    (
+        [uv[0], uv[1] - (page * crate::text::ATLAS_SIZE) as f32],
+        page as f32,
+    )
 }
 
 pub(crate) fn glyph(q: &GlyphQuad, fill: [f32; 4], clip: [f32; 4], fade: [f32; 4]) -> Instance {
@@ -97,15 +104,19 @@ pub(crate) fn icon_inst(
     let (uv, page) = glyph_uv_page(q.uv);
     let px = q.rect[2].max(1.0);
     let near = |v: f32| (v - v.round()).abs() < 1.0 / 512.0;
-    let (rect, uv) = if turn == 0.0 && near(pos[0]) && near(pos[1]) && (drawn - px).abs() < 1.0 / 512.0 {
-        ([pos[0].round(), pos[1].round(), px, px], [uv[0], uv[1], 0.0, 0.0])
-    } else {
-        let t = drawn / px;
-        (
-            [pos[0] - t, pos[1] - t, drawn + 2.0 * t, drawn + 2.0 * t],
-            [uv[0] - 1.0, uv[1] - 1.0, px + 2.0, px + 2.0],
-        )
-    };
+    let (rect, uv) =
+        if turn == 0.0 && near(pos[0]) && near(pos[1]) && (drawn - px).abs() < 1.0 / 512.0 {
+            (
+                [pos[0].round(), pos[1].round(), px, px],
+                [uv[0], uv[1], 0.0, 0.0],
+            )
+        } else {
+            let t = drawn / px;
+            (
+                [pos[0] - t, pos[1] - t, drawn + 2.0 * t, drawn + 2.0 * t],
+                [uv[0] - 1.0, uv[1] - 1.0, px + 2.0, px + 2.0],
+            )
+        };
     Instance {
         rect,
         radii: [0.0; 4],
@@ -124,5 +135,9 @@ pub(crate) fn apron_key(i: &Instance) -> [u32; 3] {
 }
 
 pub(crate) fn premul(c: Color, opacity: f32, srgb: bool) -> [f32; 4] {
-    if srgb { c.premul_srgb(opacity) } else { c.premul(opacity) }
+    if srgb {
+        c.premul_srgb(opacity)
+    } else {
+        c.premul(opacity)
+    }
 }

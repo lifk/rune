@@ -54,12 +54,22 @@ fn place_in(win: &NSWindow, (x, y): (f64, f64)) {
     if win.styleMask().contains(NSWindowStyleMask::FullScreen) {
         return;
     }
-    let buttons = [NSWindowButton::NSWindowCloseButton, NSWindowButton::NSWindowMiniaturizeButton, NSWindowButton::NSWindowZoomButton]
-        .map(|b| win.standardWindowButton(b));
-    let [Some(close), Some(mini), Some(zoom)] = buttons else { return };
+    let buttons = [
+        NSWindowButton::NSWindowCloseButton,
+        NSWindowButton::NSWindowMiniaturizeButton,
+        NSWindowButton::NSWindowZoomButton,
+    ]
+    .map(|b| win.standardWindowButton(b));
+    let [Some(close), Some(mini), Some(zoom)] = buttons else {
+        return;
+    };
     // SAFETY: AppKit's own view hierarchy, on the main thread.
-    let Some(parent) = (unsafe { close.superview() }) else { return };
-    let Some(container) = (unsafe { parent.superview() }) else { return };
+    let Some(parent) = (unsafe { close.superview() }) else {
+        return;
+    };
+    let Some(container) = (unsafe { parent.superview() }) else {
+        return;
+    };
     // SAFETY: live views on the main thread.
     unsafe {
         hold(&parent);
@@ -85,14 +95,19 @@ fn place_in(win: &NSWindow, (x, y): (f64, f64)) {
 unsafe extern "C" fn layout(view: &NSView, _: Sel) {
     // Not `view.class()`'s superclass: entering full screen, AppKit observes the container and
     // KVO puts its own subclass above Rune's, whose superclass is Rune's again.
-    let base = held_class(view).and_then(AnyClass::superclass).expect("Rune traffic-light view has a superclass");
+    let base = held_class(view)
+        .and_then(AnyClass::superclass)
+        .expect("Rune traffic-light view has a superclass");
     // SAFETY: `base` is the class this instance had before `hold`, which implements -layout.
     let _: () = unsafe { msg_send![super(view, base), layout] };
     if PLACING.with(Cell::get) {
         return;
     }
     let Some(win) = view.window() else { return };
-    let Some(spot) = SPOTS.with(|s| s.borrow().get(&(Retained::as_ptr(&win) as usize)).copied()) else { return };
+    let Some(spot) = SPOTS.with(|s| s.borrow().get(&(Retained::as_ptr(&win) as usize)).copied())
+    else {
+        return;
+    };
     place_in(&win, spot);
 }
 
@@ -118,5 +133,6 @@ unsafe fn hold(view: &NSView) {
 
 /// The subclass `hold` gave this view, wherever it sits in the view's class chain.
 fn held_class(view: &NSView) -> Option<&'static AnyClass> {
-    std::iter::successors(Some(view.class()), |c| c.superclass()).find(|c| c.name().starts_with("RuneTrafficLights_"))
+    std::iter::successors(Some(view.class()), |c| c.superclass())
+        .find(|c| c.name().starts_with("RuneTrafficLights_"))
 }

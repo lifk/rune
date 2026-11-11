@@ -57,9 +57,15 @@ impl<S: 'static> View<S> {
         let mut inner = row().key("inner").h(GAP_H).min_w(0.0);
         if hidden > 0 && file.expandable() {
             let steps: Vec<(Expand, &'static Icon, String)> = match (first, last) {
-                (true, _) => vec![(Expand::Up, &LINE_INFO_DOWN, format!("Show {} more lines above", hidden.min(EXPAND_STEP)))],
-                (_, true) => vec![(Expand::Down, &LINE_INFO_UP, format!("Show {} more lines below", hidden.min(EXPAND_STEP)))],
-                _ if hidden <= EXPAND_STEP => vec![(Expand::All, &LINE_INFO_ALL, format!("Show {hidden} hidden lines"))],
+                (true, _) => {
+                    vec![(Expand::Up, &LINE_INFO_DOWN, format!("Show {} more lines above", hidden.min(EXPAND_STEP)))]
+                }
+                (_, true) => {
+                    vec![(Expand::Down, &LINE_INFO_UP, format!("Show {} more lines below", hidden.min(EXPAND_STEP)))]
+                }
+                _ if hidden <= EXPAND_STEP => {
+                    vec![(Expand::All, &LINE_INFO_ALL, format!("Show {hidden} hidden lines"))]
+                }
                 _ => vec![
                     (Expand::Down, &LINE_INFO_UP, format!("Show {EXPAND_STEP} more lines below")),
                     (Expand::Up, &LINE_INFO_DOWN, format!("Show {EXPAND_STEP} more lines above")),
@@ -79,10 +85,19 @@ impl<S: 'static> View<S> {
                     .cursor(Cursor::Pointer)
                     .role("button")
                     .label(label)
-                    .child(icon(glyph, 16.0).color(l.faint).group_color(l.text).absolute((w - 16.0) / 2.0, (h - 16.0) / 2.0))
-                    .on_press_tx(move |s: &mut S, tx: &mut Tx| get(s).expand(f, gap, if tx.mods().shift { Expand::All } else { how }))
+                    .child(
+                        icon(glyph, 16.0)
+                            .color(l.faint)
+                            .group_color(l.text)
+                            .absolute((w - 16.0) / 2.0, (h - 16.0) / 2.0),
+                    )
+                    .on_press_tx(move |s: &mut S, tx: &mut Tx| {
+                        get(s).expand(f, gap, if tx.mods().shift { Expand::All } else { how })
+                    })
             });
-            inner = inner.child(col().key("expand").w(w + LINE_INFO_GAP).h(GAP_H).gap(LINE_INFO_GAP).fill(l.bg).children(buttons));
+            inner = inner.child(
+                col().key("expand").w(w + LINE_INFO_GAP).h(GAP_H).gap(LINE_INFO_GAP).fill(l.bg).children(buttons),
+            );
             // The words open the range from both ends; the pointer anywhere on the row underlines them.
             let get = self.d.get_mut.clone();
             let words = col()
@@ -110,10 +125,27 @@ impl<S: 'static> View<S> {
                         .group_opacity(0.0, 1.0)
                         .absolute(0.0, 0.0),
                 );
-            inner = inner.child(row().key("content").h(GAP_H).px(l.adv).items_center().hover_group().hover_motion(Anim::INSTANT, Anim::INSTANT).cursor(Cursor::Pointer).child(words));
+            inner = inner.child(
+                row()
+                    .key("content")
+                    .h(GAP_H)
+                    .px(l.adv)
+                    .items_center()
+                    .hover_group()
+                    .hover_motion(Anim::INSTANT, Anim::INSTANT)
+                    .cursor(Cursor::Pointer)
+                    .child(words),
+            );
         } else {
             // With nothing to open, the count starts 1ch into the gutter.
-            inner = inner.child(row().key("content").h(GAP_H).px(l.adv).items_center().child(text(count.clone()).key("count").font(l.separator_text).color(l.faint)));
+            inner = inner.child(
+                row()
+                    .key("content")
+                    .h(GAP_H)
+                    .px(l.adv)
+                    .items_center()
+                    .child(text(count.clone()).key("count").font(l.separator_text).color(l.faint)),
+            );
         }
         if let Some(w) = self.view_w(st, false) {
             inner = inner.max_w(w).sticky_left(0.0);

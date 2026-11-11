@@ -8,7 +8,11 @@ struct T {
 const L: Knob = Knob::new("Left size", 0.0, 10.0, 5.0);
 const I: Knob = Knob::new("Inner gap", 0.0, 1.0, 0.5);
 const R: Knob = Knob::new("Right pad", 0.0, 40.0, 20.0);
-const GROUPS: &[Group] = &[Group::new("Left", "left", &[L]), Group::new("Inner", "inner", &[I]), Group::new("Right", "right", &[R])];
+const GROUPS: &[Group] = &[
+    Group::new("Left", "left", &[L]),
+    Group::new("Inner", "inner", &[I]),
+    Group::new("Right", "right", &[R]),
+];
 
 fn view(s: &T, _: &mut Cx<T>) -> El {
     el().key("root")
@@ -19,10 +23,18 @@ fn view(s: &T, _: &mut Cx<T>) -> El {
                 .key("cols")
                 .w_full()
                 .h_full()
-                .child(col().key("left").w(400.0).h_full().child(el().key("inner").w(200.0).h(200.0).mt(100.0).ml(100.0)))
+                .child(
+                    col()
+                        .key("left")
+                        .w(400.0)
+                        .h_full()
+                        .child(el().key("inner").w(200.0).h(200.0).mt(100.0).ml(100.0)),
+                )
                 .child(col().key("right").grow(1.0).h_full()),
         )
-        .child(layer(&s.knobs, GROUPS, Style::dark(), |s: &mut T| &mut s.knobs))
+        .child(layer(&s.knobs, GROUPS, Style::dark(), |s: &mut T| {
+            &mut s.knobs
+        }))
 }
 
 fn settle(rt: &mut Runtime<T>) {
@@ -33,12 +45,18 @@ fn settle(rt: &mut Runtime<T>) {
 
 #[test]
 fn hover_outlines_the_smallest_region_and_a_click_opens_its_knobs() {
-    let mut s = T { knobs: Knobs::default() };
+    let mut s = T {
+        knobs: Knobs::default(),
+    };
     s.knobs.show();
     s.knobs.pick_region();
     let mut rt = Runtime::new(s, view, (1000.0, 700.0), Env::new(true, 1.0));
     settle(&mut rt);
-    for (x, y, want) in [(150.0, 150.0, "Inner"), (50.0, 600.0, "Left"), (600.0, 500.0, "Right")] {
+    for (x, y, want) in [
+        (150.0, 150.0, "Inner"),
+        (50.0, 600.0, "Left"),
+        (600.0, 500.0, "Right"),
+    ] {
         rt.pointer_move(x, y);
         settle(&mut rt);
         assert_eq!(rt.state.knobs.hover.as_deref(), Some(want), "at {x},{y}");
@@ -79,7 +97,10 @@ fn click(rt: &mut Runtime<T>, key: &str) {
     settle(rt);
 }
 fn press(rt: &mut Runtime<T>, key: rune::Key, shift: bool) {
-    let mut ev = rune::KeyEvent { key, mods: Default::default() };
+    let mut ev = rune::KeyEvent {
+        key,
+        mods: Default::default(),
+    };
     ev.mods.shift = shift;
     rt.key(ev);
     settle(rt);
@@ -87,7 +108,9 @@ fn press(rt: &mut Runtime<T>, key: rune::Key, shift: bool) {
 
 #[test]
 fn opens_on_a_group_and_outlines_only_on_tab_hover() {
-    let mut s = T { knobs: Knobs::default() };
+    let mut s = T {
+        knobs: Knobs::default(),
+    };
     s.knobs.show();
     let mut rt = Runtime::new(s, view, (1000.0, 700.0), Env::new(true, 1.0));
     settle(&mut rt);
@@ -105,7 +128,9 @@ fn opens_on_a_group_and_outlines_only_on_tab_hover() {
 
 #[test]
 fn keyboard_steps_knobs_and_switches_groups() {
-    let mut s = T { knobs: Knobs::default() };
+    let mut s = T {
+        knobs: Knobs::default(),
+    };
     s.knobs.show();
     let mut rt = Runtime::new(s, view, (1000.0, 700.0), Env::new(true, 1.0));
     settle(&mut rt);
@@ -125,7 +150,9 @@ fn keyboard_steps_knobs_and_switches_groups() {
 
 #[test]
 fn undo_and_reset_are_disabled_until_there_is_something_to_undo() {
-    let mut s = T { knobs: Knobs::default() };
+    let mut s = T {
+        knobs: Knobs::default(),
+    };
     s.knobs.show();
     assert!(!s.knobs.can_undo() && !s.knobs.can_reset(&GROUPS[0]));
     let mut rt = Runtime::new(s, view, (1000.0, 700.0), Env::new(true, 1.0));

@@ -21,10 +21,16 @@ pub struct Level {
 
 impl Level {
     /// No input.
-    pub const SILENT: Level = Level { peak_db: FLOOR_DB, rms_db: FLOOR_DB };
+    pub const SILENT: Level = Level {
+        peak_db: FLOOR_DB,
+        rms_db: FLOOR_DB,
+    };
 
     pub(crate) fn new(peak_db: f32, rms_db: f32) -> Self {
-        Self { peak_db: peak_db.clamp(FLOOR_DB, 0.0), rms_db: rms_db.clamp(FLOOR_DB, 0.0) }
+        Self {
+            peak_db: peak_db.clamp(FLOOR_DB, 0.0),
+            rms_db: rms_db.clamp(FLOOR_DB, 0.0),
+        }
     }
     /// The smoothed peak sample in dBFS (-160 to 0).
     pub fn peak_db(&self) -> f32 {
@@ -45,7 +51,11 @@ fn to_meter(db: f32) -> f32 {
 }
 
 fn db(amplitude: f64) -> f64 {
-    if amplitude > 0.0 { (20.0 * amplitude.log10()).max(FLOOR_DB as f64) } else { FLOOR_DB as f64 }
+    if amplitude > 0.0 {
+        (20.0 * amplitude.log10()).max(FLOOR_DB as f64)
+    } else {
+        FLOOR_DB as f64
+    }
 }
 
 /// Smooths raw block measurements into a [`Level`].
@@ -58,7 +68,10 @@ pub(crate) struct Meter {
 
 impl Default for Meter {
     fn default() -> Self {
-        Self { peak_db: FLOOR_DB as f64, ms: 0.0 }
+        Self {
+            peak_db: FLOOR_DB as f64,
+            ms: 0.0,
+        }
     }
 }
 
@@ -68,17 +81,35 @@ impl Meter {
         if !(dt > 0.0) {
             return;
         }
-        let mean_square = if mean_square.is_finite() { mean_square.max(0.0) } else { 0.0 };
-        let tau = if mean_square > self.ms { ATTACK } else { RELEASE };
+        let mean_square = if mean_square.is_finite() {
+            mean_square.max(0.0)
+        } else {
+            0.0
+        };
+        let tau = if mean_square > self.ms {
+            ATTACK
+        } else {
+            RELEASE
+        };
         self.ms += (mean_square - self.ms) * (1.0 - (-dt / tau).exp());
-        let peak = if peak.is_finite() { db(peak.abs()) } else { FLOOR_DB as f64 };
+        let peak = if peak.is_finite() {
+            db(peak.abs())
+        } else {
+            FLOOR_DB as f64
+        };
         self.peak_db = peak.max(self.peak_db - PEAK_FALL * dt).max(FLOOR_DB as f64);
     }
 
     /// Folds in a block measured in dBFS, as AVAudioRecorder reports it.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn push_db(&mut self, peak_db: f32, rms_db: f32, dt: f64) {
-        let amplitude = |db: f32| if db.is_finite() && db > FLOOR_DB { 10f64.powf(db as f64 / 20.0) } else { 0.0 };
+        let amplitude = |db: f32| {
+            if db.is_finite() && db > FLOOR_DB {
+                10f64.powf(db as f64 / 20.0)
+            } else {
+                0.0
+            }
+        };
         let rms = amplitude(rms_db);
         self.push(amplitude(peak_db), rms * rms, dt);
     }
@@ -98,7 +129,11 @@ impl Meter {
     }
 
     pub fn level(&self) -> Level {
-        let rms_db = if self.ms > 0.0 { (10.0 * self.ms.log10()).max(FLOOR_DB as f64) } else { FLOOR_DB as f64 };
+        let rms_db = if self.ms > 0.0 {
+            (10.0 * self.ms.log10()).max(FLOOR_DB as f64)
+        } else {
+            FLOOR_DB as f64
+        };
         Level::new(self.peak_db as f32, rms_db as f32)
     }
 }

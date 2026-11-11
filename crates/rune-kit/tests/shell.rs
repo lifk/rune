@@ -4,7 +4,7 @@
 use std::borrow::Cow;
 
 use rune::runtime::ElementInfo;
-use rune::{TextStyle, Chrome, Cx, El, Env, Key, KeyEvent, Mods, Runtime, TextEdit, TitlebarAction, col, el};
+use rune::{Chrome, Cx, El, Env, Key, KeyEvent, Mods, Runtime, TextEdit, TextStyle, TitlebarAction, col, el};
 use rune_kit::shell::{Page, PaneState, Sidebar, SidebarRow, SidebarSection, SplitView, Toolbar, is_sidebar_toggle};
 use rune_kit::{Button, IconButton, Kit, glyphs};
 
@@ -69,9 +69,11 @@ fn view(s: &S, cx: &mut Cx<S>) -> El {
     let sidebar = match s.rows {
         Some(n) => {
             let kit = k.clone();
-            Sidebar::new()
-                .label("Sessions")
-                .virtual_rows(n, |_: &S, i| Cow::Owned(format!("row{i}")), move |s: &S, i| row(s, i, &kit))
+            Sidebar::new().label("Sessions").virtual_rows(
+                n,
+                |_: &S, i| Cow::Owned(format!("row{i}")),
+                move |s: &S, i| row(s, i, &kit),
+            )
         }
         None => Sidebar::new().label("Sessions").section(
             SidebarSection::new("Today")
@@ -87,16 +89,20 @@ fn view(s: &S, cx: &mut Cx<S>) -> El {
             .build(&k)
             .key("main-field"),
     );
-    let inspector = col()
-        .key("inspector-body")
-        .child(el().key("inspector-btn").size(24.0, 24.0).role("button").focusable(true));
+    let inspector =
+        col().key("inspector-body").child(el().key("inspector-btn").size(24.0, 24.0).role("button").focusable(true));
     SplitView::new(main)
         .sidebar(&s.sidebar, |s: &mut S| &mut s.sidebar, sidebar.build(&k))
         .inspector(&s.inspector, |s: &mut S| &mut s.inspector, inspector)
-        .toolbar(Toolbar::new().leading(el().key("lead").size(20.0, 20.0)).title("Title").trailing(
-            rune_kit::TextInput::new(&s.toolbar_edit).width(Some(160.0))
-                .on_edit(|s: &mut S| &mut s.toolbar_edit).build(&k).key("toolbar-search"),
-        ))
+        .toolbar(
+            Toolbar::new().leading(el().key("lead").size(20.0, 20.0)).title("Title").trailing(
+                rune_kit::TextInput::new(&s.toolbar_edit)
+                    .width(Some(160.0))
+                    .on_edit(|s: &mut S| &mut s.toolbar_edit)
+                    .build(&k)
+                    .key("toolbar-search"),
+            ),
+        )
         .titlebar_inset(cx.titlebar_inset())
         .build(&k)
 }
@@ -121,7 +127,10 @@ fn settle(rt: &mut Runtime<S>) {
 }
 
 fn find(rt: &Runtime<S>, key: &str) -> ElementInfo {
-    rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key) && !e.exiting).unwrap_or_else(|| panic!("no {key}"))
+    rt.elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some(key) && !e.exiting)
+        .unwrap_or_else(|| panic!("no {key}"))
 }
 
 fn press(rt: &mut Runtime<S>, key: Key) {
@@ -258,7 +267,9 @@ fn long_lists_build_only_the_rows_near_the_viewport() {
         press(&mut rt, Key::Text("a".into()));
     }
     let key_us = t_key.elapsed().as_secs_f64() * 1e6 / 20.0;
-    eprintln!("bench-shell virtual_spring_us={spring_us:.1} virtual_scroll_us={scroll_us:.1} rename_key_us={key_us:.1}");
+    eprintln!(
+        "bench-shell virtual_spring_us={spring_us:.1} virtual_scroll_us={scroll_us:.1} rename_key_us={key_us:.1}"
+    );
 }
 
 #[test]
@@ -299,7 +310,11 @@ fn the_title_bar_clears_the_traffic_lights_and_drags_the_window() {
     assert_eq!(find(&rt, "sidebar-toggle").rect[0], inset + 8.0, "the toggle sits past the lights");
     rt.key(toggle_shortcut());
     rt.frame(1.0 / 60.0);
-    assert_eq!(find(&rt, "lead").rect[0], inset + 8.0 + 24.0 + 8.0, "a collapsed sidebar's toolbar clears lights and toggle");
+    assert_eq!(
+        find(&rt, "lead").rect[0],
+        inset + 8.0 + 24.0 + 8.0,
+        "a collapsed sidebar's toolbar clears lights and toggle"
+    );
 
     rt.set_titlebar_inset(0.0);
     rt.frame(1.0 / 60.0);
@@ -532,7 +547,8 @@ fn a_rename_field_keeps_letters_and_arrows_that_would_type_select_a_row() {
 fn an_explicit_two_line_row_height_wins_in_either_builder_order() {
     fn view(_: &(), _: &mut Cx<()>) -> El {
         let k = Kit::neutral(true);
-        col().w(240.0)
+        col()
+            .w(240.0)
             .child(SidebarRow::new("First").height(45.0).subtitle("Detail").build(&k).key("first"))
             .child(SidebarRow::new("Second").subtitle("Detail").height(45.0).build(&k).key("second"))
     }
@@ -614,9 +630,8 @@ fn page_matches_split_views_toolbar_and_frame_pixel_for_pixel() {
     );
     rt.set_titlebar_inset(inset);
     rt.frame(0.0);
-    let rect_in = |rt: &Runtime<P>, key: &str| {
-        rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key)).unwrap().rect
-    };
+    let rect_in =
+        |rt: &Runtime<P>, key: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key)).unwrap().rect;
     let split_toolbar = rect_in(&rt, "toolbar");
     let split_lead = rect_in(&rt, "lead");
     let split_title = rect_in(&rt, "title");
@@ -651,41 +666,24 @@ fn icon_button_and_sidebar_toggle_show_help_and_shortcut_tooltips() {
     }
     fn help_view(s: &H, _: &mut Cx<H>) -> El {
         let k = Kit::neutral(true);
-        let lock = IconButton::new(&glyphs::LOCK)
-            .help("Lock")
-            .shortcut("⌘L")
-            .build(&k)
-            .key("lock");
-        let parsed = IconButton::new(&glyphs::COPY)
-            .label("Copy")
-            .shortcut("cmd+c")
-            .build(&k)
-            .key("copy");
-        let save = Button::new("Save")
-            .shortcut("⌘S")
-            .build(&k)
-            .key("save");
+        let lock = IconButton::new(&glyphs::LOCK).help("Lock").shortcut("⌘L").build(&k).key("lock");
+        let parsed = IconButton::new(&glyphs::COPY).label("Copy").shortcut("cmd+c").build(&k).key("copy");
+        let save = Button::new("Save").shortcut("⌘S").build(&k).key("save");
         SplitView::new(col().w_full().h_full())
             .sidebar(&s.sidebar, |s: &mut H| &mut s.sidebar, col())
             .toolbar(Toolbar::new().trailing(lock).trailing(parsed).trailing(save))
             .build(&k)
     }
-    let mut rt = Runtime::new(
-        H { sidebar: PaneState::new(240.0) },
-        help_view,
-        (800.0, 480.0),
-        Env::new(true, 2.0),
-    );
+    let mut rt = Runtime::new(H { sidebar: PaneState::new(240.0) }, help_view, (800.0, 480.0), Env::new(true, 2.0));
     rt.frame(0.0);
-    let info = |rt: &Runtime<H>, key: &str| {
-        rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key)).unwrap()
-    };
+    let info = |rt: &Runtime<H>, key: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key)).unwrap();
     assert_eq!(info(&rt, "lock").label.as_deref(), Some("Lock"), "help supplies accessible label when label is unset");
     assert_eq!(info(&rt, "lock").help.as_deref(), Some("Lock  ⌘L"));
     let expected_copy = if cfg!(target_os = "macos") { "Copy  ⌘C" } else { "Copy  Super+C" };
     assert_eq!(info(&rt, "copy").help.as_deref(), Some(expected_copy));
     assert_eq!(info(&rt, "save").help.as_deref(), Some("Save  ⌘S"));
-    let expected_toggle = if cfg!(target_os = "macos") { "Hide sidebar  ⇧⌘B" } else { "Hide sidebar  Ctrl+Shift+B" };
+    let expected_toggle =
+        if cfg!(target_os = "macos") { "Hide sidebar  ⇧⌘B" } else { "Hide sidebar  Ctrl+Shift+B" };
     assert_eq!(info(&rt, "sidebar-toggle").help.as_deref(), Some(expected_toggle));
 
     let (x, y) = rt.find("lock").unwrap();
@@ -780,7 +778,12 @@ fn renaming_a_two_line_row_keeps_the_title_and_subtitle_lines_in_place() {
         col().w(240.0).child(r.build(&Kit::neutral(true)).key("r"))
     }
     for custom in [false, true] {
-        let mut rt = Runtime::new(Ren { renaming: false, custom, edit: TextEdit::default() }, view, (240.0, 200.0), Env::new(true, 1.0));
+        let mut rt = Runtime::new(
+            Ren { renaming: false, custom, edit: TextEdit::default() },
+            view,
+            (240.0, 200.0),
+            Env::new(true, 1.0),
+        );
         rt.frame(0.0);
         let label_rect = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("label")).unwrap().rect;
         let sub_rect = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("subtitle")).unwrap().rect;
@@ -793,7 +796,11 @@ fn renaming_a_two_line_row_keeps_the_title_and_subtitle_lines_in_place() {
             rt.frame(1.0 / 60.0);
             let rename_rect = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("rename")).unwrap().rect;
             let sub_now = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("subtitle")).unwrap().rect;
-            assert_eq!((rename_rect[1], rename_rect[3]), (label_rect[1], label_rect[3]), "rename field matches title line y and height");
+            assert_eq!(
+                (rename_rect[1], rename_rect[3]),
+                (label_rect[1], label_rect[3]),
+                "rename field matches title line y and height"
+            );
             assert_eq!(sub_now, sub_rect, "subtitle does not jump when entering rename");
         }
     }
@@ -817,28 +824,44 @@ struct Pick {
 fn select_only_rows_skip_tab_and_keep_an_outside_field_focused() {
     fn view(s: &Pick, _: &mut Cx<Pick>) -> El {
         let k = Kit::neutral(true);
-        col().w(240.0).gap(8.0)
+        col()
+            .w(240.0)
+            .gap(8.0)
             .child(rune_kit::TextInput::new(&s.field).on_edit(|s: &mut Pick| &mut s.field).build(&k).key("field"))
-            .child(Sidebar::new().label("Results").child(
-                col().children((0..3).map(|i| {
-                    SidebarRow::new(format!("Row {i}"))
-                        .select_only()
-                        .selected(s.picked == i)
-                        .on_select(move |s: &mut Pick, _| { s.picked = i; s.presses += 1; })
-                        .build(&k)
-                        .key(format!("row{i}"))
-                })),
-            ).build(&k))
+            .child(
+                Sidebar::new()
+                    .label("Results")
+                    .child(col().children((0..3).map(|i| {
+                        SidebarRow::new(format!("Row {i}"))
+                            .select_only()
+                            .selected(s.picked == i)
+                            .on_select(move |s: &mut Pick, _| {
+                                s.picked = i;
+                                s.presses += 1;
+                            })
+                            .build(&k)
+                            .key(format!("row{i}"))
+                    })))
+                    .build(&k),
+            )
     }
-    let mut rt = Runtime::new(Pick { field: TextEdit::default(), picked: 1, presses: 0 }, view, (240.0, 300.0), Env::new(true, 1.0));
+    let mut rt = Runtime::new(
+        Pick { field: TextEdit::default(), picked: 1, presses: 0 },
+        view,
+        (240.0, 300.0),
+        Env::new(true, 1.0),
+    );
     rt.frame(0.0);
-    let row = |rt: &Runtime<Pick>, i: usize| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(&format!("row{i}"))).unwrap();
+    let row = |rt: &Runtime<Pick>, i: usize| {
+        rt.elements().into_iter().find(|e| e.key.as_deref() == Some(&format!("row{i}"))).unwrap()
+    };
     assert!((0..3).all(|i| !row(&rt, i).focusable), "rows take no focus");
     assert!(row(&rt, 1).item_selected && !row(&rt, 0).item_selected, "the selection is still exposed");
 
     rt.key(KeyEvent { key: Key::Tab, mods: Mods::default() });
     rt.frame(1.0 / 60.0);
-    let focused = |rt: &Runtime<Pick>| rt.elements().into_iter().filter(|e| e.focused).filter_map(|e| e.key).collect::<Vec<_>>();
+    let focused =
+        |rt: &Runtime<Pick>| rt.elements().into_iter().filter(|e| e.focused).filter_map(|e| e.key).collect::<Vec<_>>();
     assert_eq!(focused(&rt), ["input"], "Tab lands on the field and no row");
     rt.key(KeyEvent { key: Key::Tab, mods: Mods::default() });
     rt.frame(1.0 / 60.0);

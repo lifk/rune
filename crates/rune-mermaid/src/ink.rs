@@ -34,7 +34,12 @@ pub(crate) fn flatten(ops: &mut [Op], traces: &mut [Trace], surface: Color) {
         .iter()
         .enumerate()
         .filter_map(|(i, op)| match op {
-            Op::Fill(points, color) if !inks.contains(color) => Some(Area { at: i, bounds: bounds(points), points: points.clone(), color: *color }),
+            Op::Fill(points, color) if !inks.contains(color) => Some(Area {
+                at: i,
+                bounds: bounds(points),
+                points: points.clone(),
+                color: *color,
+            }),
             _ => None,
         })
         .collect();
@@ -63,11 +68,22 @@ struct Backdrop {
 impl Backdrop {
     fn flatten(&self, op: &mut Op, at: usize, inks: &[Color]) {
         match op {
-            Op::Stroke { points, closed, color, .. } if translucent(*color) => {
-                let (p, own) = if *closed { (centroid(points), Some(&points[..])) } else { (midpoint(points), None) };
+            Op::Stroke {
+                points,
+                closed,
+                color,
+                ..
+            } if translucent(*color) => {
+                let (p, own) = if *closed {
+                    (centroid(points), Some(&points[..]))
+                } else {
+                    (midpoint(points), None)
+                };
                 *color = over(*color, self.under(p, at, own));
             }
-            Op::Fill(points, color) if inks.contains(color) => *color = over(*color, self.under(centroid(points), at, None)),
+            Op::Fill(points, color) if inks.contains(color) => {
+                *color = over(*color, self.under(centroid(points), at, None))
+            }
             _ => {}
         }
     }
@@ -95,26 +111,50 @@ pub(crate) fn over(top: Color, bottom: Color) -> Color {
         return Color::TRANSPARENT;
     }
     let m = |t: f32, b: f32| dec((enc(t) * top.a + enc(b) * bottom.a * (1.0 - top.a)) / a);
-    Color { r: m(top.r, bottom.r), g: m(top.g, bottom.g), b: m(top.b, bottom.b), a }
+    Color {
+        r: m(top.r, bottom.r),
+        g: m(top.g, bottom.g),
+        b: m(top.b, bottom.b),
+        a,
+    }
 }
 
 fn enc(c: f32) -> f32 {
     let c = c.clamp(0.0, 1.0);
-    if c <= 0.003_130_8 { c * 12.92 } else { 1.055 * c.powf(1.0 / 2.4) - 0.055 }
+    if c <= 0.003_130_8 {
+        c * 12.92
+    } else {
+        1.055 * c.powf(1.0 / 2.4) - 0.055
+    }
 }
 
 fn dec(c: f32) -> f32 {
     let c = c.clamp(0.0, 1.0);
-    if c <= 0.040_45 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+    if c <= 0.040_45 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
 }
 
 fn bounds(points: &[[f32; 2]]) -> [f32; 4] {
-    points.iter().fold([f32::MAX, f32::MAX, f32::MIN, f32::MIN], |b, p| [b[0].min(p[0]), b[1].min(p[1]), b[2].max(p[0]), b[3].max(p[1])])
+    points
+        .iter()
+        .fold([f32::MAX, f32::MAX, f32::MIN, f32::MIN], |b, p| {
+            [
+                b[0].min(p[0]),
+                b[1].min(p[1]),
+                b[2].max(p[0]),
+                b[3].max(p[1]),
+            ]
+        })
 }
 
 fn centroid(points: &[[f32; 2]]) -> [f32; 2] {
     let n = points.len().max(1) as f32;
-    let s = points.iter().fold([0.0, 0.0], |s, p| [s[0] + p[0], s[1] + p[1]]);
+    let s = points
+        .iter()
+        .fold([0.0, 0.0], |s, p| [s[0] + p[0], s[1] + p[1]]);
     [s[0] / n, s[1] / n]
 }
 
@@ -136,7 +176,9 @@ fn inside(p: [f32; 2], b: [f32; 4], points: &[[f32; 2]]) -> bool {
     let mut j = points.len() - 1;
     for i in 0..points.len() {
         let (a, c) = (points[i], points[j]);
-        if (a[1] > p[1]) != (c[1] > p[1]) && p[0] < (c[0] - a[0]) * (p[1] - a[1]) / (c[1] - a[1]) + a[0] {
+        if (a[1] > p[1]) != (c[1] > p[1])
+            && p[0] < (c[0] - a[0]) * (p[1] - a[1]) / (c[1] - a[1]) + a[0]
+        {
             odd = !odd;
         }
         j = i;

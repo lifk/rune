@@ -6,8 +6,8 @@ use rune::compose::{Compositor, Frame};
 use rune::native_surface::{ByteFrame, ColorInfo, Format};
 use rune::render::{Gpu, KIND_RADIAL, OFFSCREEN_FORMAT, Offscreen, Renderer};
 use rune::{
-    App, AppSpec, Color, Cx, El, Env, Image, ImageCache,
-    NativeSurface, Pixels, Runtime, SurfaceFit, el,
+    App, AppSpec, Color, Cx, El, Env, Image, ImageCache, NativeSurface, Pixels, Runtime,
+    SurfaceFit, el,
 };
 
 fn render_rt<S: 'static>(gpu: &Gpu, rt: &mut Runtime<S>, size: (u32, u32)) -> Vec<u8> {
@@ -21,7 +21,13 @@ fn render_rt<S: 'static>(gpu: &Gpu, rt: &mut Runtime<S>, size: (u32, u32)) -> Ve
     let target = Offscreen::with_format(&gpu.device, size.0, size.1, format);
     renderer.upload_images(&gpu.device, &gpu.queue, &mut rt.images);
     renderer.prepare_surfaces(&gpu.device, &gpu.queue, &rt.surfaces, size);
-    renderer.prepare(&gpu.device, &gpu.queue, &mut rt.text.atlas, &rt.instances, size);
+    renderer.prepare(
+        &gpu.device,
+        &gpu.queue,
+        &mut rt.text.atlas,
+        &rt.instances,
+        size,
+    );
     let mut encoder = gpu.device.create_command_encoder(&Default::default());
     renderer.draw(&mut encoder, &target.view, rt.clear_color());
     target.copy(&mut encoder);
@@ -80,7 +86,10 @@ fn radial_gradient_centre_edge_and_monotonic_falloff() {
 
     let center = pixel(&out, 120, 60, 60);
     let edge = pixel(&out, 120, 115, 60);
-    assert!(center[0] >= 253 && center[1] >= 253 && center[2] >= 253 && center[3] == 255, "centre: {center:?}");
+    assert!(
+        center[0] >= 253 && center[1] >= 253 && center[2] >= 253 && center[3] == 255,
+        "centre: {center:?}"
+    );
     assert_eq!(edge, [0, 0, 0, 255], "outside radius clamps to outer stop");
 
     let mut prev = center[0];
@@ -96,23 +105,53 @@ fn radial_gradient_centre_edge_and_monotonic_falloff() {
 fn radial_gradient_multi_stop_elliptical_quad_shrinking_and_validation() {
     fn multi_view(swap: &bool, _: &mut Cx<bool>) -> El {
         let mid = if *swap {
-            Color { r: 1.0, g: 1.0, b: 0.0, a: 1.0 }
+            Color {
+                r: 1.0,
+                g: 1.0,
+                b: 0.0,
+                a: 1.0,
+            }
         } else {
-            Color { r: 0.0, g: 1.0, b: 0.0, a: 1.0 }
+            Color {
+                r: 0.0,
+                g: 1.0,
+                b: 0.0,
+                a: 1.0,
+            }
         };
         el().size(140.0, 100.0).child(
-            el()
-                .absolute(10.0, 10.0)
+            el().absolute(10.0, 10.0)
                 .size(120.0, 80.0)
                 .radius(20.0)
-                .fill(Color { r: 0.1, g: 0.1, b: 0.1, a: 1.0 })
+                .fill(Color {
+                    r: 0.1,
+                    g: 0.1,
+                    b: 0.1,
+                    a: 1.0,
+                })
                 .radial_gradient(
                     [0.5, 0.5],
                     [50.0, 25.0],
                     [
-                        (0.0, Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 }),
+                        (
+                            0.0,
+                            Color {
+                                r: 1.0,
+                                g: 0.0,
+                                b: 0.0,
+                                a: 1.0,
+                            },
+                        ),
                         (0.5, mid),
-                        (1.0, Color { r: 0.0, g: 0.0, b: 1.0, a: 1.0 }),
+                        (
+                            1.0,
+                            Color {
+                                r: 0.0,
+                                g: 0.0,
+                                b: 1.0,
+                                a: 1.0,
+                            },
+                        ),
                     ],
                 )
                 .border(2.0, Color::WHITE)
@@ -125,7 +164,11 @@ fn radial_gradient_multi_stop_elliptical_quad_shrinking_and_validation() {
     rt.frame(0.0);
 
     // Verify inner radial band's quad is shrunk to the bbox of centre ± t1*r (52×27 vs full 120×80).
-    let radial_insts: Vec<_> = rt.instances.iter().filter(|i| i.params[1] == KIND_RADIAL).collect();
+    let radial_insts: Vec<_> = rt
+        .instances
+        .iter()
+        .filter(|i| i.params[1] == KIND_RADIAL)
+        .collect();
     assert_eq!(radial_insts.len(), 2);
     assert!(
         radial_insts[0].rect[2] <= 54.0 && radial_insts[0].rect[3] <= 28.0,
@@ -141,46 +184,87 @@ fn radial_gradient_multi_stop_elliptical_quad_shrinking_and_validation() {
     assert_eq!(pixel(&out, 140, 11, 11)[3], 0);
     // Centre (70, 50) is dominated by the inner red stop.
     let c_center = pixel(&out, 140, 70, 50);
-    assert!(c_center[0] > 200 && c_center[1] < 70 && c_center[2] < 40, "centre: {c_center:?}");
+    assert!(
+        c_center[0] > 200 && c_center[1] < 70 && c_center[2] < 40,
+        "centre: {c_center:?}"
+    );
     // Halfway horizontally (70 + 25 = 95, 50) and vertically (70, 50 + 12 = 62) hit the mid green stop (t ≈ 0.5).
     let c_mid_x = pixel(&out, 140, 95, 50);
     let c_mid_y = pixel(&out, 140, 70, 62);
-    assert!(c_mid_x[1] > 200 && c_mid_x[0] < 90 && c_mid_x[2] < 90, "mid x: {c_mid_x:?}");
-    assert!(c_mid_y[1] > 200 && c_mid_y[0] < 90 && c_mid_y[2] < 90, "mid y: {c_mid_y:?}");
+    assert!(
+        c_mid_x[1] > 200 && c_mid_x[0] < 90 && c_mid_x[2] < 90,
+        "mid x: {c_mid_x:?}"
+    );
+    assert!(
+        c_mid_y[1] > 200 && c_mid_y[0] < 90 && c_mid_y[2] < 90,
+        "mid y: {c_mid_y:?}"
+    );
     // At dx = 50 (120, 50) we are at t = 1.0 (blue stop).
     let c_outer = pixel(&out, 140, 120, 50);
-    assert!(c_outer[2] > 200 && c_outer[0] < 40 && c_outer[1] < 40, "outer: {c_outer:?}");
+    assert!(
+        c_outer[2] > 200 && c_outer[0] < 40 && c_outer[1] < 40,
+        "outer: {c_outer:?}"
+    );
     // Border at (70, 11) is white.
     let c_border = pixel(&out, 140, 70, 11);
-    assert!(c_border[0] > 210 && c_border[1] > 210 && c_border[2] > 210, "border: {c_border:?}");
+    assert!(
+        c_border[0] > 210 && c_border[1] > 210 && c_border[2] > 210,
+        "border: {c_border:?}"
+    );
 
     // Stop colours animate via Oklab springs when state updates.
     rt.update(|s, _| *s = true);
     rt.frame(0.04);
     let mid_anim = render_rt(&gpu, &mut rt, (140, 100));
     let p_anim = pixel(&mid_anim, 140, 95, 50);
-    assert!(p_anim[0] > c_mid_x[0] + 20 && p_anim[0] < 245, "mid-spring stop colour: {p_anim:?}");
+    assert!(
+        p_anim[0] > c_mid_x[0] + 20 && p_anim[0] < 245,
+        "mid-spring stop colour: {p_anim:?}"
+    );
 
     // Half-valid radii (e.g. [10.0, 0.0]) are dropped and never fall through to linear_gradient;
     // Stops beyond the sixteenth do not add segments.
     fn edge_cases(_: &(), _: &mut Cx<()>) -> El {
-        let stops: Vec<(f32, Color)> = (0..18)
-            .map(|i| (i as f32 / 17.0, Color::WHITE))
-            .collect();
+        let stops: Vec<(f32, Color)> = (0..18).map(|i| (i as f32 / 17.0, Color::WHITE)).collect();
         el().size(100.0, 100.0)
-            .child(el().size(50.0, 50.0).radial_gradient([0.5, 0.5], [10.0, 0.0], [(0.0, Color::WHITE), (1.0, Color::BLACK)]))
-            .child(el().size(50.0, 50.0).radial_gradient([0.5, 0.5], 25.0, stops))
+            .child(el().size(50.0, 50.0).radial_gradient(
+                [0.5, 0.5],
+                [10.0, 0.0],
+                [(0.0, Color::WHITE), (1.0, Color::BLACK)],
+            ))
+            .child(
+                el().size(50.0, 50.0)
+                    .radial_gradient([0.5, 0.5], 25.0, stops),
+            )
     }
     let mut rt_edge = Runtime::new((), edge_cases, (100.0, 100.0), Env::new(true, 1.0));
     rt_edge.frame(0.0);
-    let edge_radials: Vec<_> = rt_edge.instances.iter().filter(|i| i.params[1] == KIND_RADIAL).collect();
-    assert_eq!(edge_radials.len(), 15, "18 stops capped at 16 stops (15 segments), invalid [10, 0] dropped");
+    let edge_radials: Vec<_> = rt_edge
+        .instances
+        .iter()
+        .filter(|i| i.params[1] == KIND_RADIAL)
+        .collect();
+    assert_eq!(
+        edge_radials.len(),
+        15,
+        "18 stops capped at 16 stops (15 segments), invalid [10, 0] dropped"
+    );
     assert!(edge_radials.iter().all(|i| i.uv[2] > 0.0 && i.uv[3] > 0.0));
 
     // Angled linear_gradient(PI, ..) matches vertical El::gradient(..), and 45° runs corner-to-corner.
     fn linear_pair(angled: &bool, _: &mut Cx<bool>) -> El {
-        let a = Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 };
-        let b = Color { r: 0.0, g: 0.0, b: 1.0, a: 1.0 };
+        let a = Color {
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        };
+        let b = Color {
+            r: 0.0,
+            g: 0.0,
+            b: 1.0,
+            a: 1.0,
+        };
         let card = el().size(80.0, 60.0).radius(8.0);
         if *angled {
             card.linear_gradient(PI, [(0.0, a), (1.0, b)])
@@ -201,8 +285,7 @@ fn radial_gradient_multi_stop_elliptical_quad_shrinking_and_validation() {
 
     fn diag_blurred(_: &(), _: &mut Cx<()>) -> El {
         el().size(80.0, 80.0).child(
-            el()
-                .absolute(10.0, 10.0)
+            el().absolute(10.0, 10.0)
                 .size(60.0, 60.0)
                 .linear_gradient(FRAC_PI_4, [(0.0, Color::WHITE), (1.0, Color::BLACK)])
                 .blur(2.0),
@@ -227,8 +310,7 @@ fn srgb_blend_matches_css_and_core_animation_glow_reference() {
         let bg = hex("#100e11").unwrap();
         let glow = hex("#40bf80").unwrap().alpha(0.16);
         el().size(240.0, 240.0).fill(bg).child(
-            el()
-                .absolute(60.0, 60.0)
+            el().absolute(60.0, 60.0)
                 .size(120.0, 120.0)
                 .radius(24.0)
                 .shadow(0.0, 30.0, glow),
@@ -236,12 +318,24 @@ fn srgb_blend_matches_css_and_core_animation_glow_reference() {
     }
 
     let (_, _, px_linear) = snap_app(
-        App::new(AppSpec::new("glow-lin", (240.0, 240.0), || (), shadow_glow_view)).srgb_blend(false),
+        App::new(AppSpec::new(
+            "glow-lin",
+            (240.0, 240.0),
+            || (),
+            shadow_glow_view,
+        ))
+        .srgb_blend(false),
         "glow-lin",
         &[],
     );
     let (_, _, px_srgb) = snap_app(
-        App::new(AppSpec::new("glow-srgb", (240.0, 240.0), || (), shadow_glow_view)).srgb_blend(true),
+        App::new(AppSpec::new(
+            "glow-srgb",
+            (240.0, 240.0),
+            || (),
+            shadow_glow_view,
+        ))
+        .srgb_blend(true),
         "glow-srgb",
         &[],
     );
@@ -257,7 +351,11 @@ fn srgb_blend_matches_css_and_core_animation_glow_reference() {
 
     // Default linear mode stays unchanged (green channel is 83 vs 42 in sRGB reference).
     assert_eq!(linear_center, [29, 83, 56, 255]);
-    assert_eq!(&srgb_center[..3], &expected_center, "0 LSB centre error in srgb_blend");
+    assert_eq!(
+        &srgb_center[..3],
+        &expected_center,
+        "0 LSB centre error in srgb_blend"
+    );
 
     // Check the Gaussian falloff across the left edge (x = 15..120 at y = 120, where sigma = 15 px).
     let erf = |x: f32| -> f32 {
@@ -285,16 +383,21 @@ fn srgb_blend_matches_css_and_core_animation_glow_reference() {
             max_err_srgb = max_err_srgb.max(p_srgb[c].abs_diff(ref_rgb[c]));
         }
     }
-    assert!(max_err_linear >= 40, "linear error should be large (~41 LSB): {max_err_linear}");
-    assert!(max_err_srgb <= 1, "srgb_blend falloff error within 1 LSB: {max_err_srgb}");
+    assert!(
+        max_err_linear >= 40,
+        "linear error should be large (~41 LSB): {max_err_linear}"
+    );
+    assert!(
+        max_err_srgb <= 1,
+        "srgb_blend falloff error within 1 LSB: {max_err_srgb}"
+    );
 
     // Also verify layer blur (`.fill(glow).blur(15.0)`) in srgb_blend mode matches the centre and falloff.
     fn blur_glow_view(_: &(), _: &mut Cx<()>) -> El {
         let bg = hex("#100e11").unwrap();
         let glow = hex("#40bf80").unwrap().alpha(0.16);
         el().size(240.0, 240.0).fill(bg).child(
-            el()
-                .absolute(60.0, 60.0)
+            el().absolute(60.0, 60.0)
                 .size(120.0, 120.0)
                 .radius(24.0)
                 .fill(glow)
@@ -302,7 +405,13 @@ fn srgb_blend_matches_css_and_core_animation_glow_reference() {
         )
     }
     let (_, _, px_blur_srgb) = snap_app(
-        App::new(AppSpec::new("blur-srgb", (240.0, 240.0), || (), blur_glow_view)).srgb_blend(true),
+        App::new(AppSpec::new(
+            "blur-srgb",
+            (240.0, 240.0),
+            || (),
+            blur_glow_view,
+        ))
+        .srgb_blend(true),
         "blur-srgb",
         &[],
     );
@@ -373,10 +482,26 @@ fn srgb_blend_images_surfaces_keycaps_and_compositor() {
     fn media_view(s: &MediaState, _: &mut Cx<MediaState>) -> El {
         el().size(120.0, 40.0)
             .fill(hex("#808080").unwrap())
-            .child(el().absolute(4.0, 4.0).size(16.0, 16.0).pixels(s.premul_img.pixels()))
-            .child(el().absolute(24.0, 4.0).size(16.0, 16.0).pixels(&s.straight_px))
-            .child(el().absolute(44.0, 4.0).size(16.0, 16.0).native_surface(&s.bgra_surface, SurfaceFit::Fill))
-            .child(el().absolute(64.0, 4.0).size(16.0, 16.0).native_surface(&s.nv12_surface, SurfaceFit::Fill))
+            .child(
+                el().absolute(4.0, 4.0)
+                    .size(16.0, 16.0)
+                    .pixels(s.premul_img.pixels()),
+            )
+            .child(
+                el().absolute(24.0, 4.0)
+                    .size(16.0, 16.0)
+                    .pixels(&s.straight_px),
+            )
+            .child(
+                el().absolute(44.0, 4.0)
+                    .size(16.0, 16.0)
+                    .native_surface(&s.bgra_surface, SurfaceFit::Fill),
+            )
+            .child(
+                el().absolute(64.0, 4.0)
+                    .size(16.0, 16.0)
+                    .native_surface(&s.nv12_surface, SurfaceFit::Fill),
+            )
             .child(
                 el().absolute(84.0, 4.0)
                     .size(16.0, 16.0)
@@ -386,7 +511,13 @@ fn srgb_blend_images_surfaces_keycaps_and_compositor() {
     }
 
     let (_, _, px_srgb) = snap_app(
-        App::new(AppSpec::new("media-srgb", (120.0, 40.0), init_media, media_view)).srgb_blend(true),
+        App::new(AppSpec::new(
+            "media-srgb",
+            (120.0, 40.0),
+            init_media,
+            media_view,
+        ))
+        .srgb_blend(true),
         "media-srgb",
         &[],
     );
@@ -394,14 +525,18 @@ fn srgb_blend_images_surfaces_keycaps_and_compositor() {
     // 1. Premultiplied image: white @ alpha 128/255 over mid-grey 128/255 => 128 + 127 * (128/255) ≈ 191.
     let p_premul = pixel(&px_srgb, 120, 12, 12);
     assert!(
-        p_premul[0].abs_diff(191) <= 1 && p_premul[1].abs_diff(191) <= 1 && p_premul[2].abs_diff(191) <= 1,
+        p_premul[0].abs_diff(191) <= 1
+            && p_premul[1].abs_diff(191) <= 1
+            && p_premul[2].abs_diff(191) <= 1,
         "premultiplied image edge texel in srgb_blend should be 191 ± 1, got {p_premul:?}"
     );
 
     // 2. Straight-alpha Pixels: white @ alpha 128/255 over mid-grey 128/255 => 191 ± 1.
     let p_straight = pixel(&px_srgb, 120, 32, 12);
     assert!(
-        p_straight[0].abs_diff(191) <= 1 && p_straight[1].abs_diff(191) <= 1 && p_straight[2].abs_diff(191) <= 1,
+        p_straight[0].abs_diff(191) <= 1
+            && p_straight[1].abs_diff(191) <= 1
+            && p_straight[2].abs_diff(191) <= 1,
         "straight-alpha pixels in srgb_blend should be 191 ± 1, got {p_straight:?}"
     );
 
@@ -410,15 +545,21 @@ fn srgb_blend_images_surfaces_keycaps_and_compositor() {
     let p_nv12 = pixel(&px_srgb, 120, 72, 12);
     let p_layer_surface = pixel(&px_srgb, 120, 92, 12);
     assert!(
-        p_bgra[0].abs_diff(128) <= 1 && p_bgra[1].abs_diff(128) <= 1 && p_bgra[2].abs_diff(128) <= 1,
+        p_bgra[0].abs_diff(128) <= 1
+            && p_bgra[1].abs_diff(128) <= 1
+            && p_bgra[2].abs_diff(128) <= 1,
         "BGRA surface 50% grey in srgb_blend should be 128 ± 1, got {p_bgra:?}"
     );
     assert!(
-        p_nv12[0].abs_diff(128) <= 1 && p_nv12[1].abs_diff(128) <= 1 && p_nv12[2].abs_diff(128) <= 1,
+        p_nv12[0].abs_diff(128) <= 1
+            && p_nv12[1].abs_diff(128) <= 1
+            && p_nv12[2].abs_diff(128) <= 1,
         "NV12 surface 50% grey in srgb_blend should be 128 ± 1, got {p_nv12:?}"
     );
     assert!(
-        p_layer_surface[0].abs_diff(128) <= 1 && p_layer_surface[1].abs_diff(128) <= 1 && p_layer_surface[2].abs_diff(128) <= 1,
+        p_layer_surface[0].abs_diff(128) <= 1
+            && p_layer_surface[1].abs_diff(128) <= 1
+            && p_layer_surface[2].abs_diff(128) <= 1,
         "Blurred Rgba16Float layer surface 50% grey in srgb_blend should be 128 ± 1, got {p_layer_surface:?}"
     );
 
@@ -432,8 +573,13 @@ fn srgb_blend_images_surfaces_keycaps_and_compositor() {
     )
     .unwrap();
     let (_, _, px_keys_srgb) = snap_app(
-        App::new(AppSpec::new("keys-srgb", (160.0, 80.0), || (), |_, _| el().size(160.0, 80.0).fill(hex("#808080").unwrap())))
-            .srgb_blend(true),
+        App::new(AppSpec::new(
+            "keys-srgb",
+            (160.0, 80.0),
+            || (),
+            |_, _| el().size(160.0, 80.0).fill(hex("#808080").unwrap()),
+        ))
+        .srgb_blend(true),
         "keys-srgb",
         &[
             "--script",
@@ -457,7 +603,8 @@ fn srgb_blend_images_surfaces_keycaps_and_compositor() {
     );
 
     // 5. A Compositor sees the blend mode and the matching non-sRGB target format.
-    static COMP_STATE: std::sync::OnceLock<(bool, wgpu::TextureFormat)> = std::sync::OnceLock::new();
+    static COMP_STATE: std::sync::OnceLock<(bool, wgpu::TextureFormat)> =
+        std::sync::OnceLock::new();
     struct CheckComp;
     impl Compositor<()> for CheckComp {
         fn render(&mut self, f: &mut Frame<'_, ()>) {
@@ -466,9 +613,14 @@ fn srgb_blend_images_surfaces_keycaps_and_compositor() {
         }
     }
     let _ = snap_app(
-        App::new(AppSpec::new("comp-srgb", (64.0, 64.0), || (), |_, _| el().size(64.0, 64.0).fill(hex("#808080").unwrap())))
-            .compositor(CheckComp)
-            .srgb_blend(true),
+        App::new(AppSpec::new(
+            "comp-srgb",
+            (64.0, 64.0),
+            || (),
+            |_, _| el().size(64.0, 64.0).fill(hex("#808080").unwrap()),
+        ))
+        .compositor(CheckComp)
+        .srgb_blend(true),
         "comp-srgb",
         &[],
     );

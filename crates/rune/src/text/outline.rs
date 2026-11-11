@@ -8,8 +8,8 @@ mod cover;
 mod path;
 mod store;
 
-pub(crate) use path::{Emit, Frame, PathEffect, Paths};
 pub(crate) use cover::coverage;
+pub(crate) use path::{Emit, Frame, PathEffect, Paths};
 pub(crate) use store::{Found, Glyph, Key, OutlineStore, Support, WIDTH};
 
 use swash::FontRef;
@@ -58,19 +58,44 @@ impl Outline {
         let x1 = bbox[2] * s + r + 1.0;
         let y0 = bbox[1] * s - reach - 1.0;
         let y1 = bbox[3] * s + 2.0 * r + reach + 1.0;
-        [self.pen[0] + x0 * z, self.pen[1] - y1 * z, (x1 - x0) * z, (y1 - y0) * z]
+        [
+            self.pen[0] + x0 * z,
+            self.pen[1] - y1 * z,
+            (x1 - x0) * z,
+            (y1 - y0) * z,
+        ]
     }
 }
 
 /// `glyph`'s outline in font units leaning by `skew` degrees, built into a store record: the
 /// design outline, or the one its TrueType hints fit to the pixel grid at `hinted` ppem.
-pub(crate) fn extract(cx: &mut ScaleContext, font: FontRef<'_>, coords: &[i16], glyph: u16, skew: u8, hinted: Option<f32>) -> Option<build::Built> {
+pub(crate) fn extract(
+    cx: &mut ScaleContext,
+    font: FontRef<'_>,
+    coords: &[i16],
+    glyph: u16,
+    skew: u8,
+    hinted: Option<f32>,
+) -> Option<build::Built> {
     let upem = font.metrics(coords).units_per_em;
     let size = hinted.unwrap_or(upem as f32);
-    let mut scaler = cx.builder(font).size(size).hint(hinted.is_some()).normalized_coords(coords.iter().copied()).build();
+    let mut scaler = cx
+        .builder(font)
+        .size(size)
+        .hint(hinted.is_some())
+        .normalized_coords(coords.iter().copied())
+        .build();
     let outline = scaler.scale_outline(glyph)?;
-    let lean = if skew == 0 { 0.0 } else { (skew as f64).to_radians().tan() };
-    let mut built = build::build(swash::zeno::PathData::commands(&outline.path()), upem as f64 / size as f64, lean)?;
+    let lean = if skew == 0 {
+        0.0
+    } else {
+        (skew as f64).to_radians().tan()
+    };
+    let mut built = build::build(
+        swash::zeno::PathData::commands(&outline.path()),
+        upem as f64 / size as f64,
+        lean,
+    )?;
     built.upem = upem as f32;
     Some(built)
 }

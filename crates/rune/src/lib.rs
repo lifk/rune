@@ -3,8 +3,13 @@
 //! input, scroll viewports, growth stacks, streaming reveals, themes as data, and headless agent
 //! tooling.
 
-#[cfg(all(target_arch = "wasm32", any(feature = "hot", feature = "native-file-dialog")))]
-compile_error!("web does not support Rune's hot or native-file-dialog features; disable them for wasm32");
+#[cfg(all(
+    target_arch = "wasm32",
+    any(feature = "hot", feature = "native-file-dialog")
+))]
+compile_error!(
+    "web does not support Rune's hot or native-file-dialog features; disable them for wasm32"
+);
 
 mod a11y;
 mod app;

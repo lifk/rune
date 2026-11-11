@@ -30,7 +30,10 @@ fn threads_keep_their_own_families() {
             process();
             let _g = scoped.then(|| with_families("Inter", "IBM Plex Mono"));
             let widths: Vec<f32> = (0..100).map(|_| mono_width()).collect();
-            assert!(widths.iter().all(|w| *w == widths[0]), "stable on one thread");
+            assert!(
+                widths.iter().all(|w| *w == widths[0]),
+                "stable on one thread"
+            );
             widths[0]
         })
     };
@@ -49,7 +52,10 @@ fn nests_and_restores_on_drop() {
         let plex = mono_width();
         let outer_epoch = font_epoch();
         assert_ne!(plex, outside);
-        assert_ne!(outer_epoch, epoch, "caches keyed on the epoch keep scoped sizes apart");
+        assert_ne!(
+            outer_epoch, epoch,
+            "caches keyed on the epoch keep scoped sizes apart"
+        );
         {
             let _inner = with_families("Inter", "Inter");
             assert_eq!(mono_width(), outside);
@@ -84,7 +90,11 @@ fn a_window_switch_in_a_guard_stays_on_the_thread() {
         false
     });
     rt.frame(0.0);
-    assert_ne!(mono_width(), outside, "this thread's measure followed the switch");
+    assert_ne!(
+        mono_width(),
+        outside,
+        "this thread's measure followed the switch"
+    );
     assert_eq!(other.join().unwrap(), outside, "no other thread's did");
     drop(_g);
     assert_eq!(mono_width(), outside, "and it ended with the guard");

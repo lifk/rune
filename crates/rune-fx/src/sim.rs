@@ -45,9 +45,18 @@ impl Claim {
 
 /// The grid a fire with `key` at `origin` takes this frame: an unclaimed one with the same key,
 /// the nearest to where it was, so identical fires each keep their own state. None: make one.
-fn pick(claims: impl Iterator<Item = Claim>, key: (u32, u32, u32, u32), origin: [f32; 2], frame: u64) -> Option<usize> {
+fn pick(
+    claims: impl Iterator<Item = Claim>,
+    key: (u32, u32, u32, u32),
+    origin: [f32; 2],
+    frame: u64,
+) -> Option<usize> {
     let dist = |c: &Claim| (c.origin[0] - origin[0]).powi(2) + (c.origin[1] - origin[1]).powi(2);
-    claims.enumerate().filter(|(_, c)| c.key == key && c.used != frame).min_by(|a, b| dist(&a.1).total_cmp(&dist(&b.1))).map(|(i, _)| i)
+    claims
+        .enumerate()
+        .filter(|(_, c)| c.key == key && c.used != frame)
+        .min_by(|a, b| dist(&a.1).total_cmp(&dist(&b.1)))
+        .map(|(i, _)| i)
 }
 
 /// Steps to run for a grid last stepped to `prev` (None: never), to reach `target`:
@@ -108,7 +117,12 @@ const ADVECT: usize = 5;
 impl Sims {
     pub fn new(device: &wgpu::Device) -> Sims {
         let cs = wgpu::ShaderStages::COMPUTE;
-        let e = |binding, ty| wgpu::BindGroupLayoutEntry { binding, visibility: cs, ty, count: None };
+        let e = |binding, ty| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: cs,
+            ty,
+            count: None,
+        };
         let tex = wgpu::BindingType::Texture {
             sample_type: wgpu::TextureSampleType::Float { filterable: false },
             view_dimension: wgpu::TextureViewDimension::D2,
@@ -122,7 +136,14 @@ impl Sims {
         let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("fx firesim"),
             entries: &[
-                e(0, wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: true, min_binding_size: None }),
+                e(
+                    0,
+                    wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: true,
+                        min_binding_size: None,
+                    },
+                ),
                 e(1, tex),
                 e(3, store(wgpu::TextureFormat::Rgba16Float)),
                 e(4, tex),
@@ -150,7 +171,14 @@ impl Sims {
             })
         };
         Sims {
-            pipes: [pipe("curl"), pipe("forces"), pipe("divergence"), pipe("jacobi"), pipe("project"), pipe("advect")],
+            pipes: [
+                pipe("curl"),
+                pipe("forces"),
+                pipe("divergence"),
+                pipe("jacobi"),
+                pipe("project"),
+                pipe("advect"),
+            ],
             bgl,
             grids: Vec::new(),
             frame: 0,
@@ -171,14 +199,28 @@ impl Sims {
     /// Call once per fire per frame, after `begin_frame`.
     /// Returns the grid index (see `final_view`) and the grid's extent in pt (whole cells, so a
     /// little larger than `domain`).
-    pub fn plan(&mut self, device: &wgpu::Device, layer: &FxLayer, p: &FireParams, domain: Rect, frozen: bool) -> (usize, [f32; 2]) {
+    pub fn plan(
+        &mut self,
+        device: &wgpu::Device,
+        layer: &FxLayer,
+        p: &FireParams,
+        domain: Rect,
+        frozen: bool,
+    ) -> (usize, [f32; 2]) {
         let area = (domain.w * domain.h).max(1.0);
         let cell = (area / 16_000.0).sqrt().clamp(1.0, 3.0);
-        let n = [((domain.w / cell).ceil() as u32).max(8), ((domain.h / cell).ceil() as u32).max(8)];
+        let n = [
+            ((domain.w / cell).ceil() as u32).max(8),
+            ((domain.h / cell).ceil() as u32).max(8),
+        ];
         let style = p.style as u32;
         let key = (layer.seed, style, n[0], n[1]);
         let origin = [domain.x, domain.y];
-        let claim = Claim { key, origin, used: self.frame };
+        let claim = Claim {
+            key,
+            origin,
+            used: self.frame,
+        };
         let idx = match pick(self.grids.iter().map(|g| g.claim), key, origin, self.frame) {
             Some(i) => i,
             None => {
@@ -201,11 +243,26 @@ impl Sims {
             dims: [n[0] as f32, n[1] as f32, cell, DT],
             origin: [domain.x, domain.y, 0.0, 0.0],
             shape: [r.x + r.w * 0.5, r.y + r.h * 0.5, r.w * 0.5, r.h * 0.5],
-            shape2: [s.radius, (layer.seed % 65_536) as f32, rise, p.scale.max(2.0)],
-            fire: [rise * 3.0, cooling, p.smoke.max(0.0) * 0.6, 0.25 + 0.6 * p.warp],
+            shape2: [
+                s.radius,
+                (layer.seed % 65_536) as f32,
+                rise,
+                p.scale.max(2.0),
+            ],
+            fire: [
+                rise * 3.0,
+                cooling,
+                p.smoke.max(0.0) * 0.6,
+                0.25 + 0.6 * p.warp,
+            ],
             fire2: [rise * (0.3 + 1.5 * p.swirl), speed, 1.4, 2.0],
         };
-        g.plan = Some(Plan { steps, t0, reset, u });
+        g.plan = Some(Plan {
+            steps,
+            t0,
+            reset,
+            u,
+        });
         (idx, [n[0] as f32 * cell, n[1] as f32 * cell])
     }
 
@@ -217,15 +274,25 @@ impl Sims {
     }
 
     pub fn pending(&self) -> bool {
-        self.grids.iter().any(|g| g.plan.is_some_and(|p| p.steps > 0))
+        self.grids
+            .iter()
+            .any(|g| g.plan.is_some_and(|p| p.steps > 0))
     }
 
-    pub fn record(&mut self, staging: Option<&rune_staging::Staging>, queue: &wgpu::Queue, encoder: &mut wgpu::CommandEncoder, timestamps: Option<wgpu::ComputePassTimestampWrites<'_>>) -> bool {
+    pub fn record(
+        &mut self,
+        staging: Option<&rune_staging::Staging>,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        timestamps: Option<wgpu::ComputePassTimestampWrites<'_>>,
+    ) -> bool {
         if !self.pending() {
             return false;
         }
         for g in &self.grids {
-            let Some(plan) = g.plan.filter(|p| p.steps > 0) else { continue };
+            let Some(plan) = g.plan.filter(|p| p.steps > 0) else {
+                continue;
+            };
             let bytes = &mut self.bytes;
             bytes.clear();
             bytes.resize(plan.steps * SLOT, 0);
@@ -233,17 +300,25 @@ impl Sims {
                 let mut u = plan.u;
                 u.origin[2] = plan.t0 + (k + 1) as f32 * DT;
                 u.origin[3] = if plan.reset && k == 0 { 1.0 } else { 0.0 };
-                bytes[k * SLOT..k * SLOT + std::mem::size_of::<SimUniform>()].copy_from_slice(bytemuck::bytes_of(&u));
+                bytes[k * SLOT..k * SLOT + std::mem::size_of::<SimUniform>()]
+                    .copy_from_slice(bytemuck::bytes_of(&u));
             }
             match staging {
                 Some(s) => s.write_buffer(&g.uniforms, 0, bytes),
                 None => queue.write_buffer(&g.uniforms, 0, bytes),
             }
         }
-        if let Some(s) = staging { s.flush(encoder); }
-        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("fx firesim"), timestamp_writes: timestamps });
+        if let Some(s) = staging {
+            s.flush(encoder);
+        }
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("fx firesim"),
+            timestamp_writes: timestamps,
+        });
         for g in &mut self.grids {
-            let Some(plan) = g.plan.filter(|p| p.steps > 0) else { continue };
+            let Some(plan) = g.plan.filter(|p| p.steps > 0) else {
+                continue;
+            };
             let wg = [g.n[0].div_ceil(8), g.n[1].div_ceil(8)];
             for k in 0..plan.steps {
                 let off = (k * SLOT) as u32;
@@ -273,7 +348,11 @@ impl Sims {
         let tex = |label, format| {
             device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(label),
-                size: wgpu::Extent3d { width: n[0], height: n[1], depth_or_array_layers: 1 },
+                size: wgpu::Extent3d {
+                    width: n[0],
+                    height: n[1],
+                    depth_or_array_layers: 1,
+                },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
@@ -283,8 +362,10 @@ impl Sims {
             })
         };
         let views = [
-            tex("fx sim state a", wgpu::TextureFormat::Rgba16Float).create_view(&Default::default()),
-            tex("fx sim state b", wgpu::TextureFormat::Rgba16Float).create_view(&Default::default()),
+            tex("fx sim state a", wgpu::TextureFormat::Rgba16Float)
+                .create_view(&Default::default()),
+            tex("fx sim state b", wgpu::TextureFormat::Rgba16Float)
+                .create_view(&Default::default()),
         ];
         // Scalars: curl, divergence, pressure ping-pong.
         let r: Vec<wgpu::TextureView> = ["fx sim curl", "fx sim div", "fx sim p0", "fx sim p1"]
@@ -298,20 +379,43 @@ impl Sims {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let bind = |s_in: &wgpu::TextureView, s_out: &wgpu::TextureView, a: &wgpu::TextureView, b: &wgpu::TextureView, out: &wgpu::TextureView| {
+        let bind = |s_in: &wgpu::TextureView,
+                    s_out: &wgpu::TextureView,
+                    a: &wgpu::TextureView,
+                    b: &wgpu::TextureView,
+                    out: &wgpu::TextureView| {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("fx firesim"),
                 layout: &self.bgl,
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer: &uniforms, offset: 0, size: wgpu::BufferSize::new(std::mem::size_of::<SimUniform>() as u64) }),
+                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                            buffer: &uniforms,
+                            offset: 0,
+                            size: wgpu::BufferSize::new(std::mem::size_of::<SimUniform>() as u64),
+                        }),
                     },
-                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(s_in) },
-                    wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(s_out) },
-                    wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(a) },
-                    wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(b) },
-                    wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(out) },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(s_in),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::TextureView(s_out),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::TextureView(a),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: wgpu::BindingResource::TextureView(b),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 6,
+                        resource: wgpu::BindingResource::TextureView(out),
+                    },
                 ],
             })
         };
@@ -329,7 +433,16 @@ impl Sims {
             ]
         };
         let binds = [set(&views[0], &views[1]), set(&views[1], &views[0])];
-        Grid { claim, n, views, binds, uniforms, cur: 0, t: None, plan: None }
+        Grid {
+            claim,
+            n,
+            views,
+            binds,
+            uniforms,
+            cur: 0,
+            t: None,
+            plan: None,
+        }
     }
 }
 
@@ -338,12 +451,25 @@ mod tests {
     use super::*;
 
     /// `Sims::plan`'s bookkeeping without the GPU.
-    fn claim(grids: &mut Vec<Claim>, key: (u32, u32, u32, u32), origin: [f32; 2], frame: u64) -> usize {
+    fn claim(
+        grids: &mut Vec<Claim>,
+        key: (u32, u32, u32, u32),
+        origin: [f32; 2],
+        frame: u64,
+    ) -> usize {
         let i = pick(grids.iter().copied(), key, origin, frame).unwrap_or_else(|| {
-            grids.push(Claim { key, origin, used: frame });
+            grids.push(Claim {
+                key,
+                origin,
+                used: frame,
+            });
             grids.len() - 1
         });
-        grids[i] = Claim { key, origin, used: frame };
+        grids[i] = Claim {
+            key,
+            origin,
+            used: frame,
+        };
         i
     }
 
@@ -351,7 +477,10 @@ mod tests {
     fn identical_fires_get_their_own_grids_and_free_them() {
         let key = (1, 0, 40, 30);
         let mut grids = Vec::new();
-        let (a, b) = (claim(&mut grids, key, [0.0, 0.0], 1), claim(&mut grids, key, [300.0, 0.0], 1));
+        let (a, b) = (
+            claim(&mut grids, key, [0.0, 0.0], 1),
+            claim(&mut grids, key, [300.0, 0.0], 1),
+        );
         assert_ne!(a, b, "same seed and size, two grids");
         // Next frame, listed the other way round and moved a little: each keeps its grid.
         assert_eq!(claim(&mut grids, key, [302.0, 1.0], 2), b);
@@ -372,8 +501,14 @@ mod tests {
         let (n, t0, reset) = schedule(Some(1.0), 1.0 + 2.5 * DT, false);
         assert!(!reset && n == 2 && (t0 - (1.0 + 0.5 * DT)).abs() < 1e-5);
         let (n, t0, reset) = schedule(Some(1.0), 3.0, false);
-        assert!(!reset && n == MAX_STEPS && (t0 + MAX_STEPS as f32 * DT - 3.0).abs() < 1e-5, "a 2 s hitch: {n} steps");
-        assert!(schedule(Some(2.0), 1.0, false).2, "back in time starts over");
+        assert!(
+            !reset && n == MAX_STEPS && (t0 + MAX_STEPS as f32 * DT - 3.0).abs() < 1e-5,
+            "a 2 s hitch: {n} steps"
+        );
+        assert!(
+            schedule(Some(2.0), 1.0, false).2,
+            "back in time starts over"
+        );
         assert_eq!(schedule(Some(1.0), 3.0, true).0, 0, "frozen");
     }
 }

@@ -156,9 +156,13 @@ impl MenuItem {
             Some(d) => {
                 let (font, ink) = if standard { (k.ty.text_xsmall, c.text_weak) } else { (k.ty.small, c.text_faint) };
                 content.child(
-                    col().key("text").grow(1.0).shrink().gap(2.0).child(label).child(
-                        text(d.clone()).key("description").font(font).color(ink).truncate(),
-                    ),
+                    col()
+                        .key("text")
+                        .grow(1.0)
+                        .shrink()
+                        .gap(2.0)
+                        .child(label)
+                        .child(text(d.clone()).key("description").font(font).color(ink).truncate()),
                 )
             }
             None => content.child(label),
@@ -222,11 +226,13 @@ impl MenuItem {
         }
         if let Some((entries, open)) = self.sub {
             // It points where the submenu opens: left, right to left (`menu.css`).
-            e = e.child(icon(k.glyph.caret_right, 16.0).key("chevron").a11y_hidden().mirror_in_rtl().color(if standard {
-                c.std_icon
-            } else {
-                c.text_faint
-            }));
+            e = e.child(
+                icon(k.glyph.caret_right, 16.0).key("chevron").a11y_hidden().mirror_in_rtl().color(if standard {
+                    c.std_icon
+                } else {
+                    c.text_faint
+                }),
+            );
             if open {
                 let sub = Menu { key: format!("{key}-sub"), entries, standard, min_width: 160.0, ..Menu::new("") };
                 let mut deeper = Vec::new();
@@ -346,9 +352,14 @@ impl Menu {
     fn surface(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let c = &k.c;
         let standard = self.standard;
-        let frame = col().key(format!("{}-menu", self.key)).role("menu").focus_group().min_w(self.min_width).items_stretch();
+        let frame =
+            col().key(format!("{}-menu", self.key)).role("menu").focus_group().min_w(self.min_width).items_stretch();
         let frame = if standard {
-            shadows(k, frame.radius(k.radius.md).fill(c.surface_raised).border(1.0, k.alpha(c.std_border, 0.5)), &k.elevation.md)
+            shadows(
+                k,
+                frame.radius(k.radius.md).fill(c.surface_raised).border(1.0, k.alpha(c.std_border, 0.5)),
+                &k.elevation.md,
+            )
         } else {
             shadows(k, frame.radius(6.0).fill(c.layer_01), &k.elevation.floating)
         };
@@ -378,7 +389,9 @@ impl Menu {
         // A dropdown's trigger reads as open or closed; a context menu's is just where it opened.
         let open = self.open;
         let pointer = self.context || self.at.is_some();
-        let trigger = row().key(anchor_key.clone()).children(self.trigger.take().map(|t| if pointer { t } else { t.expanded(open) }));
+        let trigger = row()
+            .key(anchor_key.clone())
+            .children(self.trigger.take().map(|t| if pointer { t } else { t.expanded(open) }));
         if !self.open {
             return trigger;
         }

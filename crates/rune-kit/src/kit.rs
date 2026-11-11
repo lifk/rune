@@ -210,7 +210,15 @@ pub struct Radius {
 /// Hashes the radii's bits, `-0.0` as `0.0` and every NaN alike, as `Color` does.
 impl std::hash::Hash for Radius {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        let bits = |x: f32| if x == 0.0 { 0 } else if x.is_nan() { f32::NAN.to_bits() } else { x.to_bits() };
+        let bits = |x: f32| {
+            if x == 0.0 {
+                0
+            } else if x.is_nan() {
+                f32::NAN.to_bits()
+            } else {
+                x.to_bits()
+            }
+        };
         [self.xs, self.sm, self.md, self.lg, self.xl].map(bits).hash(state);
     }
 }

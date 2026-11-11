@@ -5,7 +5,13 @@ impl Scene {
     /// Animates one of the node's properties (`prop::OPACITY`, `prop::RADIUS`, …, or a custom one).
     /// The first animation starts from the node's base value, so `.opacity(1)` → `animate(0)`
     /// fades.
-    pub fn animate<T: Animatable>(&mut self, id: NodeId, prop: Prop<T>, target: T, anim: impl Into<Anim>) {
+    pub fn animate<T: Animatable>(
+        &mut self,
+        id: NodeId,
+        prop: Prop<T>,
+        target: T,
+        anim: impl Into<Anim>,
+    ) {
         let Some(i) = self.slot(id) else { return };
         let anim = anim.into();
         if !self.at_base(i, prop, target) {
@@ -21,8 +27,13 @@ impl Scene {
     pub fn land_frame(&mut self, id: NodeId, frame: Rect) {
         let Some(i) = self.slot(id) else { return };
         let old = self.nodes[i].frame;
-        if old == frame && self.nodes[i].path.is_none() && !self.store.is_animating(id, prop::FRAME) { return; }
-        if frame.w != old.w { self.rebase_trailing(i, frame.w - old.w); }
+        if old == frame && self.nodes[i].path.is_none() && !self.store.is_animating(id, prop::FRAME)
+        {
+            return;
+        }
+        if frame.w != old.w {
+            self.rebase_trailing(i, frame.w - old.w);
+        }
         self.end_path(i);
         self.nodes[i].frame = frame;
         self.track_set(i, prop::FRAME, frame);
@@ -44,7 +55,9 @@ impl Scene {
     /// The property's presented value (last frame), falling back to the node's base value.
     pub fn get<T: Animatable>(&self, id: NodeId, prop: Prop<T>) -> Option<T> {
         let i = self.slot(id)?;
-        self.store.get(id, prop).or_else(|| self.base::<T>(i, prop.id))
+        self.store
+            .get(id, prop)
+            .or_else(|| self.base::<T>(i, prop.id))
     }
 
     /// True when `id` is [`Phase::Present`] at `frame` with no screen-space path and no active track.
@@ -54,7 +67,10 @@ impl Scene {
         let n = &self.nodes[i];
         n.phase == Phase::Present
             && n.path.is_none()
-            && self.values(i, prop::FRAME.id).map_or(n.frame, Rect::read_lanes) == frame
+            && self
+                .values(i, prop::FRAME.id)
+                .map_or(n.frame, Rect::read_lanes)
+                == frame
             && (self.store.active_len() == 0 || !self.store.is_node_animating(id))
     }
 
@@ -67,13 +83,22 @@ impl Scene {
     }
 
     fn has_track<T: Animatable>(&self, i: usize, p: Prop<T>) -> bool {
-        self.nodes[i].tracks.get(p.id.0 as usize).copied().flatten().is_some() || self.store.has(self.nodes[i].id, p)
+        self.nodes[i]
+            .tracks
+            .get(p.id.0 as usize)
+            .copied()
+            .flatten()
+            .is_some()
+            || self.store.has(self.nodes[i].id, p)
     }
 
     /// The property has no track and `value` is its base value: it shows `value` already, and
     /// a node that never moves keeps no track for it.
     pub(super) fn at_base<T: Animatable>(&self, i: usize, p: Prop<T>, value: T) -> bool {
-        !self.has_track(i, p) && self.base::<T>(i, p.id).is_some_and(|b| lanes(&b)[..T::LANES] == lanes(&value)[..T::LANES])
+        !self.has_track(i, p)
+            && self
+                .base::<T>(i, p.id)
+                .is_some_and(|b| lanes(&b)[..T::LANES] == lanes(&value)[..T::LANES])
     }
 
     pub(super) fn base<T: Animatable>(&self, i: usize, p: PropId) -> Option<T> {
@@ -85,14 +110,21 @@ impl Scene {
             x if x == prop::FRAME.id => l[..4].copy_from_slice(&n.frame.edges()),
             x if x == prop::RADIUS.id => l[..4].copy_from_slice(&n.radius.0),
             x if x == prop::FILL.id => l = lanes(&n.fill),
-            x if x == prop::OFFSET.id || x == prop::ROTATION.id || x == prop::BLUR.id || x == prop::MASK.id => {}
+            x if x == prop::OFFSET.id
+                || x == prop::ROTATION.id
+                || x == prop::BLUR.id
+                || x == prop::MASK.id => {}
             _ => return None,
         }
         Some(T::read_lanes(&l[..T::LANES]))
     }
 
     pub(super) fn current<T: Animatable>(&self, i: usize, p: Prop<T>) -> Option<T> {
-        let t = self.nodes[i].tracks.get(p.id.0 as usize).copied().flatten()?;
+        let t = self.nodes[i]
+            .tracks
+            .get(p.id.0 as usize)
+            .copied()
+            .flatten()?;
         self.sample(t).map(|(x, _)| T::read_lanes(&x[..T::LANES]))
     }
 
@@ -101,8 +133,16 @@ impl Scene {
         self.record_track(i, p.id, id, changed);
     }
 
-    pub(super) fn track_animate<T: Animatable>(&mut self, i: usize, p: Prop<T>, target: T, anim: Anim) {
-        let (id, changed) = self.store.animate_changed(self.nodes[i].id, p, target, anim);
+    pub(super) fn track_animate<T: Animatable>(
+        &mut self,
+        i: usize,
+        p: Prop<T>,
+        target: T,
+        anim: Anim,
+    ) {
+        let (id, changed) = self
+            .store
+            .animate_changed(self.nodes[i].id, p, target, anim);
         self.record_track(i, p.id, id, changed);
     }
 
@@ -145,7 +185,10 @@ mod tests {
         assert!(s.is_resting_at(id, r1));
 
         s.animate(id, prop::OPACITY, 0.5, Spring::SMOOTH);
-        assert!(!s.is_resting_at(id, r1), "active property track blocks resting fast path");
+        assert!(
+            !s.is_resting_at(id, r1),
+            "active property track blocks resting fast path"
+        );
         s.frame_at(10.0);
         assert!(s.is_resting_at(id, r1));
 

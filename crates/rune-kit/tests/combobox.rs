@@ -2,20 +2,39 @@ use rune::{Cx, El, Env, Ime, Key, KeyEvent, Mods, Runtime};
 use rune_kit::{Combobox, ComboboxOption, ComboboxState, Kit};
 
 #[derive(Default)]
-struct State { combo: ComboboxState, chosen: Option<String>, chooses: usize, other: rune::TextEdit, app_keys: usize, animate: bool }
+struct State {
+    combo: ComboboxState,
+    chosen: Option<String>,
+    chooses: usize,
+    other: rune::TextEdit,
+    app_keys: usize,
+    animate: bool,
+}
 fn view(s: &State, _: &mut Cx<State>) -> El {
-    let options: Vec<_> = (0..200).map(|i| {
-        let mut o = ComboboxOption::new(format!("item-{i}"), format!("Model {i:03}"));
-        o.disabled = i == 1;
-        o
-    }).collect();
+    let options: Vec<_> = (0..200)
+        .map(|i| {
+            let mut o = ComboboxOption::new(format!("item-{i}"), format!("Model {i:03}"));
+            o.disabled = i == 1;
+            o
+        })
+        .collect();
     let mut layer = Vec::new();
     let body = Combobox::new("models", &s.combo, &options, |s: &mut State| &mut s.combo)
         .current(s.chosen.as_deref())
         .animate_filtering(s.animate)
-        .on_choose(|s, id, _| { s.chosen = Some(id.into()); s.chooses += 1; }).build(&Kit::neutral(true), &mut layer);
-    let body = rune::col().child(rune_kit::TextInput::new(&s.other)
-        .on_edit(|s: &mut State| &mut s.other).build(&Kit::neutral(true)).key("other")).child(body);
+        .on_choose(|s, id, _| {
+            s.chosen = Some(id.into());
+            s.chooses += 1;
+        })
+        .build(&Kit::neutral(true), &mut layer);
+    let body = rune::col()
+        .child(
+            rune_kit::TextInput::new(&s.other)
+                .on_edit(|s: &mut State| &mut s.other)
+                .build(&Kit::neutral(true))
+                .key("other"),
+        )
+        .child(body);
     rune_kit::root(body, layer)
 }
 fn runtime() -> Runtime<State> {
@@ -31,7 +50,8 @@ fn open(mut s: State) -> Runtime<State> {
     rt
 }
 fn key(rt: &mut Runtime<State>, key: Key, mods: Mods) {
-    rt.key(KeyEvent { key, mods }); rt.frame(0.0);
+    rt.key(KeyEvent { key, mods });
+    rt.frame(0.0);
 }
 
 #[test]
@@ -41,7 +61,8 @@ fn opening_takes_focus_and_reveals_the_offscreen_selection() {
     s.chosen = Some("item-199".into());
     let mut rt = Runtime::new(s, view, (400.0, 400.0), Env::new(true, 1.0));
     rt.frame(0.0);
-    rt.ime(Ime::Preedit("pending".into(), None)); rt.frame(0.0);
+    rt.ime(Ime::Preedit("pending".into(), None));
+    rt.frame(0.0);
     let trigger = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("models-value-trigger")).unwrap();
     let x = trigger.rect[0] + trigger.rect[2] / 2.0;
     let y = trigger.rect[1] + trigger.rect[3] / 2.0;
@@ -62,7 +83,9 @@ fn opening_takes_focus_and_reveals_the_offscreen_selection() {
 fn closing_a_scrolled_virtual_popup_keeps_rows_in_place_while_fading() {
     let mut rt = runtime();
     key(&mut rt, Key::Up, Mods::default());
-    for _ in 0..60 { rt.frame(1.0 / 60.0); }
+    for _ in 0..60 {
+        rt.frame(1.0 / 60.0);
+    }
     let before = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("models-option-item-199")).unwrap();
     key(&mut rt, Key::Escape, Mods::default());
     rt.frame(1.0 / 60.0);
@@ -97,10 +120,12 @@ fn combobox_filters_from_scroll_end_preserves_editor_modifiers_and_ime() {
     assert_eq!(rt.state.combo.search().text, "099");
     key(&mut rt, Key::Down, Mods { alt: true, ..Mods::default() });
     assert!(rt.state.combo.active().is_none());
-    rt.ime(Ime::Preedit("x".into(), None)); rt.frame(0.0);
+    rt.ime(Ime::Preedit("x".into(), None));
+    rt.frame(0.0);
     key(&mut rt, Key::Enter, Mods::default());
     assert!(rt.state.combo.is_open() && rt.state.chosen.is_none());
-    rt.ime(Ime::Preedit(String::new(), None)); rt.frame(0.0);
+    rt.ime(Ime::Preedit(String::new(), None));
+    rt.frame(0.0);
     key(&mut rt, Key::Escape, Mods::default());
     assert!(!rt.state.combo.is_open());
 }
@@ -108,7 +133,10 @@ fn combobox_filters_from_scroll_end_preserves_editor_modifiers_and_ime() {
 #[test]
 fn focused_combobox_handles_keys_before_app_and_returns_focus_on_close() {
     let mut rt = runtime();
-    rt.on_key = Some(|s, _, _| { s.app_keys += 1; true });
+    rt.on_key = Some(|s, _, _| {
+        s.app_keys += 1;
+        true
+    });
     key(&mut rt, Key::Down, Mods::default());
     assert_eq!(rt.state.combo.active(), Some("item-2"));
     key(&mut rt, Key::Function(5), Mods::default());
@@ -125,9 +153,14 @@ fn focused_combobox_handles_keys_before_app_and_returns_focus_on_close() {
     assert_eq!(rt.state.app_keys, 1, "Enter/Space/arrows/Escape belong to the control");
     assert_eq!(rt.elements().into_iter().find(|e| e.focused).unwrap().key.as_deref(), Some("models-value-trigger"));
     key(&mut rt, Key::Text(" ".into()), Mods::default());
-    for _ in 0..60 { rt.frame(1.0 / 60.0); }
-    rt.ime(Ime::Preedit("pending".into(), None)); rt.frame(0.0);
-    rt.pointer_down(390.0, 390.0); rt.pointer_up(390.0, 390.0); rt.frame(0.0);
+    for _ in 0..60 {
+        rt.frame(1.0 / 60.0);
+    }
+    rt.ime(Ime::Preedit("pending".into(), None));
+    rt.frame(0.0);
+    rt.pointer_down(390.0, 390.0);
+    rt.pointer_up(390.0, 390.0);
+    rt.frame(0.0);
     assert!(!rt.state.combo.is_open() && !rt.state.combo.search().focused);
     assert!(rt.state.combo.search().preedit().is_none());
     let trigger = rt.elements().into_iter().find(|e| e.focused).unwrap();
@@ -138,10 +171,17 @@ fn focused_combobox_handles_keys_before_app_and_returns_focus_on_close() {
 #[test]
 fn held_enter_chooses_once_and_does_not_reopen_from_the_trigger() {
     let mut rt = runtime();
-    rt.on_key = Some(|s, _, _| { s.app_keys += 1; false });
+    rt.on_key = Some(|s, _, _| {
+        s.app_keys += 1;
+        false
+    });
     key(&mut rt, Key::Down, Mods::default());
-    rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() }); rt.frame(0.0);
-    for _ in 0..2 { rt.repeat_key(KeyEvent { key: Key::Enter, mods: Mods::default() }); rt.frame(0.0); }
+    rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+    rt.frame(0.0);
+    for _ in 0..2 {
+        rt.repeat_key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+        rt.frame(0.0);
+    }
     assert_eq!((rt.state.chosen.as_deref(), rt.state.chooses), (Some("item-2"), 1));
     assert!(!rt.state.combo.is_open(), "the repeat must not reopen the popup from its trigger");
     assert_eq!(rt.state.app_keys, 0);
@@ -154,11 +194,16 @@ fn repeats_after_an_ime_composition_neither_choose_nor_close() {
     for held in [Key::Enter, Key::Escape] {
         let mut rt = runtime();
         key(&mut rt, Key::Down, Mods::default());
-        rt.ime(Ime::Preedit("ka".into(), None)); rt.frame(0.0);
+        rt.ime(Ime::Preedit("ka".into(), None));
+        rt.frame(0.0);
         key(&mut rt, held.clone(), Mods::default());
         assert!(rt.state.combo.is_open(), "{held:?} during composition belongs to the IME");
-        rt.ime(Ime::Commit("か".into())); rt.frame(0.0);
-        for _ in 0..2 { rt.repeat_key(KeyEvent { key: held.clone(), mods: Mods::default() }); rt.frame(0.0); }
+        rt.ime(Ime::Commit("か".into()));
+        rt.frame(0.0);
+        for _ in 0..2 {
+            rt.repeat_key(KeyEvent { key: held.clone(), mods: Mods::default() });
+            rt.frame(0.0);
+        }
         assert!(rt.state.combo.is_open(), "a repeated {held:?} keeps the popup open");
         assert_eq!(rt.state.chooses, 0);
     }
@@ -167,9 +212,13 @@ fn repeats_after_an_ime_composition_neither_choose_nor_close() {
 #[test]
 fn a_keystroke_lands_its_rows_and_height_in_one_frame() {
     let mut rt = runtime();
-    for _ in 0..60 { rt.frame(1.0 / 60.0); }
+    for _ in 0..60 {
+        rt.frame(1.0 / 60.0);
+    }
     key(&mut rt, Key::Up, Mods::default());
-    for _ in 0..60 { rt.frame(1.0 / 60.0); }
+    for _ in 0..60 {
+        rt.frame(1.0 / 60.0);
+    }
     let find = |rt: &Runtime<State>, key: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key));
     let open = find(&rt, "models-content").unwrap().rect;
     let top = |rt: &Runtime<State>, id: &str| {
@@ -189,7 +238,9 @@ fn a_keystroke_lands_its_rows_and_height_in_one_frame() {
     assert!(empty[3] < open[3] - 100.0, "it takes the empty state's height: {open:?} → {empty:?}");
     assert!(top(&rt, "item-0").is_none());
     assert_eq!(find(&rt, "empty").unwrap().opacity, 1.0);
-    for _ in 0..60 { rt.frame(1.0 / 120.0); }
+    for _ in 0..60 {
+        rt.frame(1.0 / 120.0);
+    }
     assert_eq!(find(&rt, "models-content").unwrap().rect, empty, "and holds it");
 
     key(&mut rt, Key::Backspace, Mods::default());
@@ -202,7 +253,9 @@ fn a_keystroke_lands_its_rows_and_height_in_one_frame() {
 #[test]
 fn filtering_springs_the_popup_height_and_fades_rows() {
     let mut rt = animated_runtime();
-    for _ in 0..60 { rt.frame(1.0 / 60.0); }
+    for _ in 0..60 {
+        rt.frame(1.0 / 60.0);
+    }
     let find = |rt: &Runtime<State>, key: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key));
     let open = find(&rt, "models-content").unwrap().rect[3];
     key(&mut rt, Key::Text("199".into()), Mods::default());
@@ -226,7 +279,9 @@ fn tall_view(s: &State, _: &mut Cx<State>) -> El {
     let mut layer = Vec::new();
     let trigger = rune::row().key("custom").size(120.0, 28.0).child(rune::text("Pick"));
     let body = Combobox::new("models", &s.combo, &options, |s: &mut State| &mut s.combo)
-        .trigger(trigger).max_height(2000.0).build(&Kit::neutral(true), &mut layer);
+        .trigger(trigger)
+        .max_height(2000.0)
+        .build(&Kit::neutral(true), &mut layer);
     rune_kit::root(rune::col().pt(40.0).child(rune::row().child(body)), layer)
 }
 
@@ -234,7 +289,8 @@ fn tall_view(s: &State, _: &mut Cx<State>) -> El {
 fn a_custom_trigger_opens_a_list_that_fits_the_window_under_a_search_header() {
     let mut rt = Runtime::new(State::default(), tall_view, (400.0, 300.0), Env::new(true, 1.0));
     rt.frame(0.0);
-    let find = |rt: &Runtime<State>, key: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key)).unwrap();
+    let find =
+        |rt: &Runtime<State>, key: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key)).unwrap();
     let trigger = find(&rt, "custom").rect;
     rt.pointer_down(trigger[0] + 10.0, trigger[1] + 10.0);
     rt.pointer_up(trigger[0] + 10.0, trigger[1] + 10.0);
@@ -259,9 +315,13 @@ fn a_custom_trigger_opens_a_list_that_fits_the_window_under_a_search_header() {
 #[test]
 fn typing_crossfades_the_rows_in_view() {
     let mut rt = animated_runtime();
-    for _ in 0..60 { rt.frame(1.0 / 60.0); }
+    for _ in 0..60 {
+        rt.frame(1.0 / 60.0);
+    }
     key(&mut rt, Key::Up, Mods::default());
-    for _ in 0..60 { rt.frame(1.0 / 60.0); }
+    for _ in 0..60 {
+        rt.frame(1.0 / 60.0);
+    }
     // (top in the viewport, opacity, leaving)
     let row = |rt: &Runtime<State>, id: &str| {
         let vp = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("viewport")).unwrap().rect;
@@ -272,7 +332,9 @@ fn typing_crossfades_the_rows_in_view() {
     key(&mut rt, Key::Text("0".into()), Mods::default());
     let (top, opacity, _) = row(&rt, "item-0").expect("the first match");
     assert!(top.abs() < 0.5 && opacity < 0.05, "it fades in at the top: {top} at {opacity}");
-    for _ in 0..4 { rt.frame(1.0 / 120.0); }
+    for _ in 0..4 {
+        rt.frame(1.0 / 120.0);
+    }
     let (top, opacity, _) = row(&rt, "item-7").expect("a match under the viewport");
     assert!(top > 190.0 && opacity == 1.0, "nobody sees it, so it skips its fade: {top} at {opacity}");
     let (stood, _, _) = row(&rt, "item-2").unwrap();
@@ -281,9 +343,10 @@ fn typing_crossfades_the_rows_in_view() {
     assert!(leaving && (top - stood).abs() < 0.5, "it fades where it stood: {stood} → {top}");
     let (top, opacity, _) = row(&rt, "item-90").expect("the new first match");
     assert!(top.abs() < 0.5 && opacity < 0.05, "it fades in at the top over the leaving rows: {top} at {opacity}");
-    for _ in 0..4 { rt.frame(1.0 / 120.0); }
+    for _ in 0..4 {
+        rt.frame(1.0 / 120.0);
+    }
     key(&mut rt, Key::Text("9".into()), Mods::default());
     let (top, opacity, _) = row(&rt, "item-99").expect("a match mounted out of view");
     assert!(top.abs() < 0.5 && opacity < 0.05, "it fades in rather than appearing whole: {top} at {opacity}");
 }
-

@@ -19,17 +19,15 @@ fn the_thumb_is_as_long_as_the_share_shown_and_travels_the_track() {
 
 fn view(rows: &usize, _: &mut rune::Cx<usize>) -> El {
     let k = Kit::neutral(true);
-    col()
-        .size(200.0, 100.0)
-        .child(
-            col()
-                .key("scroll")
-                .w_full()
-                .h(100.0)
-                .scroll(rune::ScrollSpec { stick_bottom: false })
-                .child(col().children((0..*rows).map(|i| el().key(format!("row{i}")).w_full().h(20.0))))
-                .scroll_bar(&k),
-        )
+    col().size(200.0, 100.0).child(
+        col()
+            .key("scroll")
+            .w_full()
+            .h(100.0)
+            .scroll(rune::ScrollSpec { stick_bottom: false })
+            .child(col().children((0..*rows).map(|i| el().key(format!("row{i}")).w_full().h(20.0))))
+            .scroll_bar(&k),
+    )
 }
 
 fn info<S>(rt: &rune::Runtime<S>, key: &str) -> rune::ElementInfo {
@@ -59,12 +57,11 @@ fn a_wrapped_viewport_lays_out_as_the_bare_one_in_a_grow_column_without_min_h() 
             .scroll(rune::ScrollSpec { stick_bottom: false })
             .child(col().children((0..2000).map(|i| el().key(format!("row{i}")).w_full().h(20.0))));
         col().size(200.0, 100.0).child(
-            col()
-                .key("pane")
-                .w_full()
-                .grow(1.0)
-                .child(el().key("header").w_full().h(20.0))
-                .child(if *wrapped { viewport.scroll_bar(&k) } else { viewport }),
+            col().key("pane").w_full().grow(1.0).child(el().key("header").w_full().h(20.0)).child(if *wrapped {
+                viewport.scroll_bar(&k)
+            } else {
+                viewport
+            }),
         )
     }
     let rects = |wrapped: bool| {
@@ -206,14 +203,16 @@ fn live_preference_and_pointing_device_changes_update_mounted_scroll_bars() {
     fn memo_view(rows: &usize, _: &mut rune::Cx<usize>) -> El {
         rune::memo("pane", *rows, || {
             let k = Kit::neutral(true);
-            col().size(200.0, 100.0).child(k.scroll_bar(
-                col()
-                    .key("memo-scroll")
-                    .w(200.0)
-                    .h(100.0)
-                    .scroll(rune::ScrollSpec { stick_bottom: false })
-                    .child(col().children((0..*rows).map(|i| el().key(format!("row{i}")).w_full().h(20.0)))),
-            ))
+            col().size(200.0, 100.0).child(
+                k.scroll_bar(
+                    col()
+                        .key("memo-scroll")
+                        .w(200.0)
+                        .h(100.0)
+                        .scroll(rune::ScrollSpec { stick_bottom: false })
+                        .child(col().children((0..*rows).map(|i| el().key(format!("row{i}")).w_full().h(20.0)))),
+                ),
+            )
         })
     }
     let mut rt = rune::Runtime::new(20usize, memo_view, (200.0, 100.0), rune::Env::new(true, 1.0));
@@ -436,14 +435,9 @@ fn hidden_overlay_bar_passes_presses_through_to_right_edge_content() {
             .w(200.0)
             .h(100.0)
             .scroll(rune::ScrollSpec { stick_bottom: false })
-            .child(
-                col().children((0..10).map(|i| {
-                    el().key(format!("row{i}"))
-                        .w_full()
-                        .h(24.0)
-                        .on_press(|c: &mut usize| *c += 1)
-                })),
-            )
+            .child(col().children(
+                (0..10).map(|i| el().key(format!("row{i}")).w_full().h(24.0).on_press(|c: &mut usize| *c += 1)),
+            ))
             .scroll_bar(&k)
     }
     let mut rt = rune::Runtime::new(0usize, pressable, (200.0, 100.0), rune::Env::new(true, 1.0));
@@ -517,13 +511,19 @@ fn the_thumb_glides_to_a_new_length_without_a_view_run() {
     rt.wheel(100.0, 50.0, -40.0);
     rt.frame(1.0 / 60.0);
     let drawn = rect(&rt, "thumb");
-    assert!((drawn[1] - thumb_at(&rt)).abs() < 0.01 && drawn[3] == 48.0, "a hand scroll lands the glide at once: {drawn:?}");
+    assert!(
+        (drawn[1] - thumb_at(&rt)).abs() < 0.01 && drawn[3] == 48.0,
+        "a hand scroll lands the glide at once: {drawn:?}"
+    );
     frames(&mut rt, 60);
     rt.wheel(100.0, 50.0, -10.0);
     for _ in 0..30 {
         rt.frame(1.0 / 60.0);
         let (drawn, shown) = (rect(&rt, "thumb")[1], thumb_at(&rt));
-        assert!((drawn - shown).abs() < 0.01, "with no glide running the thumb keeps up with the scroll: {drawn} vs {shown}");
+        assert!(
+            (drawn - shown).abs() < 0.01,
+            "with no glide running the thumb keeps up with the scroll: {drawn} vs {shown}"
+        );
     }
 }
 
@@ -629,61 +629,66 @@ fn a_thumb_position_maps_back_to_an_offset_clamped_to_the_ends() {
 fn scroll_bar_motion_gate() {
     use rune::motion_gate::{self, Run};
 
-    motion_gate::gate_rows(vec![
-        (
-            "scroll-bar/when-scrolling-pulse-and-preference-switch".into(),
-            Box::new(|| {
-                let mut r = Run::new(rune::Runtime::new(24usize, view, (200.0, 100.0), rune::Env::new(true, 1.0)), 120.0);
-                r.idle(0.3);
-                for _ in 0..12 {
-                    r.act("wheel", |rt| rt.wheel(100.0, 50.0, -12.0));
-                    r.step();
-                }
-                r.play(1.6);
-                r.act("always", |rt| rt.set_system_scroll_bars(ScrollBars::Always));
-                r.play(0.6);
-                r.act("when-scrolling", |rt| rt.set_system_scroll_bars(ScrollBars::WhenScrolling));
-                r.play(1.2);
-                r.rec
-            }),
-        ),
-        (
-            "scroll-bar/hover-widen-and-edge-reveal".into(),
-            Box::new(|| {
-                let mut r = Run::new(rune::Runtime::new(24usize, view, (200.0, 100.0), rune::Env::new(true, 1.0)), 120.0);
-                r.idle(0.3);
-                r.act("near-edge", |rt| rt.pointer_move(184.0, 50.0));
-                r.play(0.5);
-                r.act("over-bar", |rt| rt.pointer_move(195.0, 10.0));
-                r.play(0.4);
-                r.act("off-bar", |rt| rt.pointer_move(170.0, 10.0));
-                r.play(0.4);
-                r.act("away", |rt| rt.pointer_move(100.0, 50.0));
-                r.play(1.6);
-                r.act("always", |rt| rt.set_system_scroll_bars(ScrollBars::Always));
-                r.play(0.4);
-                r.act("over-always", |rt| rt.pointer_move(195.0, 10.0));
-                r.play(0.4);
-                r.act("away-always", |rt| rt.pointer_move(100.0, 50.0));
-                r.play(0.4);
-                r.rec
-            }),
-        ),
-        (
-            "scroll-bar/length-glide".into(),
-            Box::new(|| {
-                let mut rt = rune::Runtime::new(10usize, view, (200.0, 100.0), rune::Env::new(true, 1.0));
-                rt.set_system_scroll_bars(ScrollBars::Always);
-                let mut r = Run::new(rt, 120.0);
-                r.idle(0.3);
-                r.act("grow", |rt| rt.update(|rows, _| *rows = 20));
-                r.play(0.6);
-                r.act("shrink", |rt| rt.update(|rows, _| *rows = 12));
-                r.play(0.6);
-                r.rec
-            }),
-        ),
-    ], &[]);
+    motion_gate::gate_rows(
+        vec![
+            (
+                "scroll-bar/when-scrolling-pulse-and-preference-switch".into(),
+                Box::new(|| {
+                    let mut r =
+                        Run::new(rune::Runtime::new(24usize, view, (200.0, 100.0), rune::Env::new(true, 1.0)), 120.0);
+                    r.idle(0.3);
+                    for _ in 0..12 {
+                        r.act("wheel", |rt| rt.wheel(100.0, 50.0, -12.0));
+                        r.step();
+                    }
+                    r.play(1.6);
+                    r.act("always", |rt| rt.set_system_scroll_bars(ScrollBars::Always));
+                    r.play(0.6);
+                    r.act("when-scrolling", |rt| rt.set_system_scroll_bars(ScrollBars::WhenScrolling));
+                    r.play(1.2);
+                    r.rec
+                }),
+            ),
+            (
+                "scroll-bar/hover-widen-and-edge-reveal".into(),
+                Box::new(|| {
+                    let mut r =
+                        Run::new(rune::Runtime::new(24usize, view, (200.0, 100.0), rune::Env::new(true, 1.0)), 120.0);
+                    r.idle(0.3);
+                    r.act("near-edge", |rt| rt.pointer_move(184.0, 50.0));
+                    r.play(0.5);
+                    r.act("over-bar", |rt| rt.pointer_move(195.0, 10.0));
+                    r.play(0.4);
+                    r.act("off-bar", |rt| rt.pointer_move(170.0, 10.0));
+                    r.play(0.4);
+                    r.act("away", |rt| rt.pointer_move(100.0, 50.0));
+                    r.play(1.6);
+                    r.act("always", |rt| rt.set_system_scroll_bars(ScrollBars::Always));
+                    r.play(0.4);
+                    r.act("over-always", |rt| rt.pointer_move(195.0, 10.0));
+                    r.play(0.4);
+                    r.act("away-always", |rt| rt.pointer_move(100.0, 50.0));
+                    r.play(0.4);
+                    r.rec
+                }),
+            ),
+            (
+                "scroll-bar/length-glide".into(),
+                Box::new(|| {
+                    let mut rt = rune::Runtime::new(10usize, view, (200.0, 100.0), rune::Env::new(true, 1.0));
+                    rt.set_system_scroll_bars(ScrollBars::Always);
+                    let mut r = Run::new(rt, 120.0);
+                    r.idle(0.3);
+                    r.act("grow", |rt| rt.update(|rows, _| *rows = 20));
+                    r.play(0.6);
+                    r.act("shrink", |rt| rt.update(|rows, _| *rows = 12));
+                    r.play(0.6);
+                    r.rec
+                }),
+            ),
+        ],
+        &[],
+    );
 }
 
 thread_local! {
@@ -726,7 +731,10 @@ fn the_bar_follows_the_viewport_while_its_height_animates() {
         }
         let (vp, track, thumb) = (rect(&rt, "scroll"), rect(&rt, "scroll-bar"), rect(&rt, "thumb"));
         let bottom = vp[1] + vp[3];
-        assert!((track[1] + track[3] - (bottom - INSET)).abs() < 0.05, "the track ends {INSET} above the viewport's drawn bottom: {track:?} in {vp:?}");
+        assert!(
+            (track[1] + track[3] - (bottom - INSET)).abs() < 0.05,
+            "the track ends {INSET} above the viewport's drawn bottom: {track:?} in {vp:?}"
+        );
         assert!(thumb[1] + thumb[3] <= bottom - INSET + 0.05, "the thumb stays on it: {thumb:?} in {vp:?}");
         between += usize::from(105.0 < vp[3] && vp[3] < 160.0);
     }

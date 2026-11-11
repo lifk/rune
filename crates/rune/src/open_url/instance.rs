@@ -40,10 +40,14 @@ pub fn single_instance(id: &str) -> bool {
 /// digits, `+`, `-` or `.`, starting with a letter. A Windows path (`C:\…`) and a flag aren't.
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub(crate) fn is_link(arg: &str) -> bool {
-    let Some((scheme, _)) = arg.split_once("://") else { return false };
+    let Some((scheme, _)) = arg.split_once("://") else {
+        return false;
+    };
     scheme.len() >= 2
         && scheme.starts_with(|c: char| c.is_ascii_alphabetic())
-        && scheme.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+        && scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
 }
 
 /// The links among this process's launch arguments (Windows passes a link to the process it
@@ -63,22 +67,26 @@ mod windows {
     use std::time::{Duration, Instant};
 
     use windows_sys::Win32::Foundation::{
-        CloseHandle, ERROR_ACCESS_DENIED, ERROR_BROKEN_PIPE, ERROR_FILE_NOT_FOUND, ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED, GENERIC_WRITE,
-        GetLastError, HANDLE, HWND, INVALID_HANDLE_VALUE, LPARAM,
+        CloseHandle, ERROR_ACCESS_DENIED, ERROR_BROKEN_PIPE, ERROR_FILE_NOT_FOUND, ERROR_PIPE_BUSY,
+        ERROR_PIPE_CONNECTED, GENERIC_WRITE, GetLastError, HANDLE, HWND, INVALID_HANDLE_VALUE,
+        LPARAM,
     };
     use windows_sys::Win32::Storage::FileSystem::{
-        CreateFileW, FILE_FLAG_FIRST_PIPE_INSTANCE, OPEN_EXISTING, PIPE_ACCESS_INBOUND, ReadFile, WriteFile,
+        CreateFileW, FILE_FLAG_FIRST_PIPE_INSTANCE, OPEN_EXISTING, PIPE_ACCESS_INBOUND, ReadFile,
+        WriteFile,
     };
     use windows_sys::Win32::System::Pipes::{
-        ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeServerProcessId, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS,
-        PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, PIPE_WAIT, WaitNamedPipeW,
+        ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeServerProcessId,
+        PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES,
+        PIPE_WAIT, WaitNamedPipeW,
     };
     use windows_sys::Win32::System::RemoteDesktop::ProcessIdToSessionId;
     use windows_sys::Win32::System::Threading::GetCurrentProcessId;
     use windows_sys::Win32::System::WindowsProgramming::GetUserNameW;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        AllowSetForegroundWindow, EnumWindows, GW_OWNER, GWL_EXSTYLE, GetWindow, GetWindowLongW, GetWindowThreadProcessId, IsIconic,
-        IsWindowVisible, SW_RESTORE, SetForegroundWindow, ShowWindow, WS_EX_TOOLWINDOW,
+        AllowSetForegroundWindow, EnumWindows, GW_OWNER, GWL_EXSTYLE, GetWindow, GetWindowLongW,
+        GetWindowThreadProcessId, IsIconic, IsWindowVisible, SW_RESTORE, SetForegroundWindow,
+        ShowWindow, WS_EX_TOOLWINDOW,
     };
 
     /// Opens every message, so a stray client's bytes aren't taken for arguments.
@@ -135,8 +143,16 @@ mod windows {
         } else {
             String::new()
         };
-        let clean = |s: &str| s.chars().map(|c| if c == '\\' || c.is_control() { '-' } else { c }).collect::<String>();
-        let name = format!(r"\\.\pipe\rune-instance-{session}-{}-{}", clean(&user), clean(id));
+        let clean = |s: &str| {
+            s.chars()
+                .map(|c| if c == '\\' || c.is_control() { '-' } else { c })
+                .collect::<String>()
+        };
+        let name = format!(
+            r"\\.\pipe\rune-instance-{session}-{}-{}",
+            clean(&user),
+            clean(id)
+        );
         name.chars().take(256).collect()
     }
 
@@ -162,26 +178,33 @@ mod windows {
             )
         };
         // SAFETY: reads this thread's last error.
-        if pipe == INVALID_HANDLE_VALUE { Err(unsafe { GetLastError() }) } else { Ok(pipe) }
+        if pipe == INVALID_HANDLE_VALUE {
+            Err(unsafe { GetLastError() })
+        } else {
+            Ok(pipe)
+        }
     }
 
     /// Reads one launch at a time from the pipe for the rest of the process. The handle stays
     /// open, so the name stays this process's.
     fn listen(pipe: HANDLE) {
         let pipe = pipe as usize;
-        let spawned = std::thread::Builder::new().name("rune-instance".into()).spawn(move || {
-            let pipe = pipe as HANDLE;
-            loop {
-                // SAFETY: `pipe` is the open server handle; a client that connected before this
-                // call answers ERROR_PIPE_CONNECTED.
-                let connected = unsafe { ConnectNamedPipe(pipe, std::ptr::null_mut()) } != 0 || unsafe { GetLastError() } == ERROR_PIPE_CONNECTED;
-                if connected && let Some(args) = read(pipe) {
-                    relaunched(args);
+        let spawned = std::thread::Builder::new()
+            .name("rune-instance".into())
+            .spawn(move || {
+                let pipe = pipe as HANDLE;
+                loop {
+                    // SAFETY: `pipe` is the open server handle; a client that connected before this
+                    // call answers ERROR_PIPE_CONNECTED.
+                    let connected = unsafe { ConnectNamedPipe(pipe, std::ptr::null_mut()) } != 0
+                        || unsafe { GetLastError() } == ERROR_PIPE_CONNECTED;
+                    if connected && let Some(args) = read(pipe) {
+                        relaunched(args);
+                    }
+                    // SAFETY: ends this client's connection, so the next can connect.
+                    unsafe { DisconnectNamedPipe(pipe) };
                 }
-                // SAFETY: ends this client's connection, so the next can connect.
-                unsafe { DisconnectNamedPipe(pipe) };
-            }
-        });
+            });
         if spawned.is_err() {
             // SAFETY: the handle no thread took.
             unsafe { CloseHandle(pipe as HANDLE) };
@@ -195,7 +218,15 @@ mod windows {
         loop {
             let mut got = 0;
             // SAFETY: reads at most `buf.len()` bytes into `buf`.
-            let ok = unsafe { ReadFile(pipe, buf.as_mut_ptr(), buf.len() as u32, &mut got, std::ptr::null_mut()) } != 0;
+            let ok = unsafe {
+                ReadFile(
+                    pipe,
+                    buf.as_mut_ptr(),
+                    buf.len() as u32,
+                    &mut got,
+                    std::ptr::null_mut(),
+                )
+            } != 0;
             message.extend_from_slice(&buf[..got as usize]);
             if message.len() > MAX_MESSAGE {
                 return None;
@@ -210,7 +241,12 @@ mod windows {
         }
         let body = message.strip_prefix(MAGIC)?;
         let text = std::str::from_utf8(body).ok()?;
-        Some(text.split('\0').filter(|a| !a.is_empty()).map(str::to_owned).collect())
+        Some(
+            text.split('\0')
+                .filter(|a| !a.is_empty())
+                .map(str::to_owned)
+                .collect(),
+        )
     }
 
     /// A later launch's arguments: its links to `App::on_open_url`, or, without links, a reopen.
@@ -240,7 +276,17 @@ mod windows {
         let deadline = Instant::now() + REACH_FOR;
         let pipe = loop {
             // SAFETY: `name` is NUL-terminated; opens the pipe's client end for writing.
-            let pipe = unsafe { CreateFileW(name.as_ptr(), GENERIC_WRITE, 0, std::ptr::null(), OPEN_EXISTING, 0, std::ptr::null_mut()) };
+            let pipe = unsafe {
+                CreateFileW(
+                    name.as_ptr(),
+                    GENERIC_WRITE,
+                    0,
+                    std::ptr::null(),
+                    OPEN_EXISTING,
+                    0,
+                    std::ptr::null_mut(),
+                )
+            };
             if pipe != INVALID_HANDLE_VALUE {
                 break pipe;
             }
@@ -264,15 +310,31 @@ mod windows {
             }
         }
         let mut message = MAGIC.to_vec();
-        message.extend(std::env::args().skip(1).collect::<Vec<_>>().join("\0").into_bytes());
+        message.extend(
+            std::env::args()
+                .skip(1)
+                .collect::<Vec<_>>()
+                .join("\0")
+                .into_bytes(),
+        );
         let mut written = 0;
         // SAFETY: writes `message` to the open pipe, then closes the handle once.
         let ok = unsafe {
-            let ok = WriteFile(pipe, message.as_ptr(), message.len() as u32, &mut written, std::ptr::null_mut()) != 0;
+            let ok = WriteFile(
+                pipe,
+                message.as_ptr(),
+                message.len() as u32,
+                &mut written,
+                std::ptr::null_mut(),
+            ) != 0;
             CloseHandle(pipe);
             ok
         };
-        if ok && written as usize == message.len() { Sent::Delivered } else { Sent::Unreachable }
+        if ok && written as usize == message.len() {
+            Sent::Delivered
+        } else {
+            Sent::Unreachable
+        }
     }
 
     /// Restores and activates this process's front app window: its topmost visible top-level

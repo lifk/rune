@@ -8,10 +8,18 @@ impl<S: 'static> Live<S> {
     pub(crate) fn nav(&self, ev: &KeyEvent, region: Region) -> Nav {
         let m = ev.mods;
         // Control on macOS, the Windows key elsewhere: never the playground's.
-        let other = m.alt || (cfg!(target_os = "macos") && m.ctrl) || (cfg!(not(target_os = "macos")) && m.logo);
-        if !self.open || other || region == Region::Stage { return Nav::Pass; }
+        let other = m.alt
+            || (cfg!(target_os = "macos") && m.ctrl)
+            || (cfg!(not(target_os = "macos")) && m.logo);
+        if !self.open || other || region == Region::Stage {
+            return Nav::Pass;
+        }
         let letter = match &ev.key {
-            Key::Text(t) if !m.cmd => t.chars().next().filter(|_| t.chars().count() == 1).map(|c| c.to_ascii_lowercase()),
+            Key::Text(t) if !m.cmd => t
+                .chars()
+                .next()
+                .filter(|_| t.chars().count() == 1)
+                .map(|c| c.to_ascii_lowercase()),
             _ => None,
         };
         let in_side = region == Region::Side;
@@ -23,18 +31,35 @@ impl<S: 'static> Live<S> {
                 _ => {}
             }
             // Digits pick a variant only here, where the keyboard is on the story's controls.
-            if let Some(request) = letter.and_then(|c| self.variant_key(c)) { return Nav::Request(request); }
+            if let Some(request) = letter.and_then(|c| self.variant_key(c)) {
+                return Nav::Request(request);
+            }
         }
         // In the side column, Space presses the focused control.
-        if let Some(c) = letter && !(in_side && c == ' ') && let Some(request) = self.trigger_request(c) {
+        if let Some(c) = letter
+            && !(in_side && c == ' ')
+            && let Some(request) = self.trigger_request(c)
+        {
             return Nav::Request(request);
         }
-        if in_side { return Nav::Pass; }
-        if letter == Some('/') { return Nav::Filter; }
+        if in_side {
+            return Nav::Pass;
+        }
+        if letter == Some('/') {
+            return Nav::Filter;
+        }
         match self.list_nav(ev, letter) {
             // The list's arrows and Return, even where they do nothing. Every other key it
             // leaves, ⌘-chords and digits included, is the stage's.
-            Nav::Pass if !m.cmd && matches!(ev.key, Key::Up | Key::Down | Key::Left | Key::Right | Key::Enter) => Nav::Stay,
+            Nav::Pass
+                if !m.cmd
+                    && matches!(
+                        ev.key,
+                        Key::Up | Key::Down | Key::Left | Key::Right | Key::Enter
+                    ) =>
+            {
+                Nav::Stay
+            }
             nav => nav,
         }
     }
@@ -49,7 +74,9 @@ impl<S: 'static> Live<S> {
         }
         let rows = self.rows();
         let is_story = |r: &Row| matches!(r, Row::Story(..));
-        let Some(&last) = rows.iter().rev().find(|r| is_story(r)) else { return Nav::Pass };
+        let Some(&last) = rows.iter().rev().find(|r| is_story(r)) else {
+            return Nav::Pass;
+        };
         let at = rows.iter().position(|r| match (*r, self.header) {
             (Row::Header(g, ..), Some(h)) => g == h,
             (Row::Story(i, _), None) => i == self.selected,
@@ -59,7 +86,11 @@ impl<S: 'static> Live<S> {
         let first = rows.iter().position(is_story).unwrap_or(0);
         let to = match (&ev.key, letter, self.header) {
             // Filtering, ↑ from the first match goes back up to the field.
-            (Key::Up, _, _) if !m.cmd && !self.query().is_empty() && at.is_none_or(|a| a <= first) => return Nav::Filter,
+            (Key::Up, _, _)
+                if !m.cmd && !self.query().is_empty() && at.is_none_or(|a| a <= first) =>
+            {
+                return Nav::Filter;
+            }
             (Key::Up, _, _) if m.cmd => rows.iter().copied().find(is_story).unwrap_or(last),
             (Key::Down, _, _) if m.cmd => last,
             (_, _, _) if m.cmd => return Nav::Pass,
@@ -69,17 +100,26 @@ impl<S: 'static> Live<S> {
             (_, Some(c @ ('j' | 'k')), _) => {
                 let step = if c == 'j' { 1 } else { n - 1 };
                 let from = at.unwrap_or(0);
-                (1..=n).map(|k| rows[(from + k * step) % n]).find(is_story).unwrap_or(last)
+                (1..=n)
+                    .map(|k| rows[(from + k * step) % n])
+                    .find(is_story)
+                    .unwrap_or(last)
             }
             // ← folds an open group, else goes up to the group around.
-            (Key::Left, _, Some(g)) if !self.is_folded(g) && self.query().is_empty() => return Nav::Request(Request::Fold(g, Some(true))),
+            (Key::Left, _, Some(g)) if !self.is_folded(g) && self.query().is_empty() => {
+                return Nav::Request(Request::Fold(g, Some(true)));
+            }
             (Key::Left, _, Some(g)) => match Self::parent(g) {
                 Some(up) => return Nav::Request(Request::Header(up)),
                 None => return Nav::Pass,
             },
-            (Key::Left, _, None) if self.selected < self.count() => return Nav::Request(Request::Header(self.group(self.selected))),
+            (Key::Left, _, None) if self.selected < self.count() => {
+                return Nav::Request(Request::Header(self.group(self.selected)));
+            }
             // → opens a folded group, else steps into it.
-            (Key::Right, _, Some(g)) if !m.shift && self.is_folded(g) => return Nav::Request(Request::Fold(g, Some(false))),
+            (Key::Right, _, Some(g)) if !m.shift && self.is_folded(g) => {
+                return Nav::Request(Request::Fold(g, Some(false)));
+            }
             (Key::Right, _, Some(_)) if !m.shift => match at.and_then(|a| rows.get(a + 1)) {
                 Some(&next) if !matches!(next, Row::Header(_, _, d) if d == 0) => next,
                 _ => return Nav::Pass,
@@ -98,7 +138,10 @@ impl<S: 'static> Live<S> {
     /// `Playground::side_keys` for a scene.
     pub(super) fn side_keys(&self) -> bool {
         match (&self.scene, self.own()) {
-            (Some(_), _) => self.sides.iter().any(|(s, side)| *s == self.selected && matches!(side, Side::Keys(..))),
+            (Some(_), _) => self
+                .sides
+                .iter()
+                .any(|(s, side)| *s == self.selected && matches!(side, Side::Keys(..))),
             (None, Some((own, _))) => own.side_keys(),
             (None, None) => false,
         }
@@ -107,7 +150,9 @@ impl<S: 'static> Live<S> {
     /// Keys while the keyboard is on the open story's side controls that take keys: true when
     /// the story's hook took `ev`, or it's ←, which stays rather than leaving.
     pub(crate) fn side_key(&mut self, ev: &KeyEvent, tx: &mut Tx) -> bool {
-        if !self.open { return false; }
+        if !self.open {
+            return false;
+        }
         let took = if let Some(scene) = &mut self.scene {
             let key = self.sides.iter().find_map(|(s, side)| match side {
                 Side::Keys(_, key) if *s == self.selected => Some(key),
@@ -117,7 +162,13 @@ impl<S: 'static> Live<S> {
         } else {
             let at = self.selected.checked_sub(self.scenes.len());
             match at.and_then(|i| Some((self.pages.get(i)?, self.owned.get_mut(i)?.as_mut()?))) {
-                Some((Page { kind: Kind::Own(own), .. }, stage)) => own.side_key(stage.as_mut(), ev, tx),
+                Some((
+                    Page {
+                        kind: Kind::Own(own),
+                        ..
+                    },
+                    stage,
+                )) => own.side_key(stage.as_mut(), ev, tx),
                 _ => false,
             }
         };
@@ -132,6 +183,13 @@ impl<S: 'static> Live<S> {
 
     /// What the open story's trigger on `c` asks for, as its letter does: R replays.
     pub(super) fn trigger_request(&self, c: char) -> Option<Request> {
-        self.triggers().iter().any(|(k, _)| *k == c).then_some(if c == 'r' { Request::Replay } else { Request::Trigger(c) })
+        self.triggers()
+            .iter()
+            .any(|(k, _)| *k == c)
+            .then_some(if c == 'r' {
+                Request::Replay
+            } else {
+                Request::Trigger(c)
+            })
     }
 }

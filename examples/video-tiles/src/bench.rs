@@ -7,12 +7,22 @@ use std::time::{Duration, Instant};
 pub fn run() {
     let gpu = Gpu::new(Gpu::instance(), None);
     eprintln!("adapter={:?}", gpu.adapter.get_info());
-    for (tiles, w, h) in [(1, 1920, 1080), (4, 1920, 1080), (9, 1920, 1080), (1, 3840, 2160), (1, 5120, 2880)] {
+    for (tiles, w, h) in [
+        (1, 1920, 1080),
+        (4, 1920, 1080),
+        (9, 1920, 1080),
+        (1, 3840, 2160),
+        (1, 5120, 2880),
+    ] {
         let columns = (tiles as f32).sqrt() as u32;
         let size = (w * columns, h * columns);
         let target = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("video benchmark"),
-            size: wgpu::Extent3d { width: size.0, height: size.1, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: size.0,
+                height: size.1,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -41,7 +51,12 @@ pub fn run() {
                 surface: s.clone(),
                 fit: SurfaceFit::Fit,
                 before_instance: 0,
-                rect: [(i as u32 % columns * w) as f32, (i as u32 / columns * h) as f32, w as f32, h as f32],
+                rect: [
+                    (i as u32 % columns * w) as f32,
+                    (i as u32 / columns * h) as f32,
+                    w as f32,
+                    h as f32,
+                ],
                 radii: [0.0; 4],
                 clip: rune::render::NO_CLIP,
                 fade: [0; 4],
@@ -54,7 +69,10 @@ pub fn run() {
         let buffers: Vec<Vec<_>> = (0..tiles)
             .map(|_| {
                 (0..3)
-                    .map(|i| rune::native_surface::macos::PixelBuffer::from_bytes(&synthetic(w, h, i)).unwrap())
+                    .map(|i| {
+                        rune::native_surface::macos::PixelBuffer::from_bytes(&synthetic(w, h, i))
+                            .unwrap()
+                    })
                     .collect()
             })
             .collect();
@@ -66,11 +84,13 @@ pub fn run() {
                 let begin = Instant::now();
                 for (i, s) in surfaces.iter().enumerate() {
                     #[cfg(target_os = "macos")]
-                    s.push(buffers[i][frame % 3].clone(), (run * 30 + frame) as u64).unwrap();
+                    s.push(buffers[i][frame % 3].clone(), (run * 30 + frame) as u64)
+                        .unwrap();
                     #[cfg(not(target_os = "macos"))]
                     {
                         let _ = i;
-                        s.push_bytes(synthetic(w, h, frame as u64), (run * 30 + frame) as u64).unwrap();
+                        s.push_bytes(synthetic(w, h, frame as u64), (run * 30 + frame) as u64)
+                            .unwrap();
                     }
                 }
                 renderer.prepare(&gpu.device, &gpu.queue, &draws, size);
@@ -98,15 +118,26 @@ pub fn run() {
                 }
                 renderer.submit(&gpu.queue, encoder);
                 cpu.push(begin.elapsed().as_secs_f64() * 1000.0);
-                completion.recv_timeout(Duration::from_secs(10)).expect("final frame completion without another draw");
+                completion
+                    .recv_timeout(Duration::from_secs(10))
+                    .expect("final frame completion without another draw");
                 // Pace actual submissions at 60 Hz; waiting is excluded from CPU cost.
-                if let Some(wait) = Duration::from_secs_f64(1.0 / 60.0).checked_sub(begin.elapsed()) {
+                if let Some(wait) = Duration::from_secs_f64(1.0 / 60.0).checked_sub(begin.elapsed())
+                {
                     std::thread::sleep(wait);
                 }
             }
             let gpu_ms = timings.lock().unwrap().clone();
-            if gpu.device.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
-                assert_eq!(gpu_ms.len(), 30, "every submitted frame must have a valid GPU timestamp pair");
+            if gpu
+                .device
+                .features()
+                .contains(wgpu::Features::TIMESTAMP_QUERY)
+            {
+                assert_eq!(
+                    gpu_ms.len(),
+                    30,
+                    "every submitted frame must have a valid GPU timestamp pair"
+                );
             }
             for s in &surfaces {
                 assert_eq!(s.last_error(), None);
@@ -115,8 +146,14 @@ pub fn run() {
                 runs.push(serde_json::json!({"cpu_p50_ms":median(&cpu),"cpu_p95_ms":percentile(&cpu,0.95),"gpu_samples":gpu_ms.len(),"gpu_p50_ms":median(&gpu_ms),"gpu_p95_ms":percentile(&gpu_ms,0.95)}));
             }
         }
-        let cpu: Vec<_> = runs.iter().map(|r| r["cpu_p50_ms"].as_f64().unwrap()).collect();
-        let gpu_ms: Vec<_> = runs.iter().filter_map(|r| r["gpu_p50_ms"].as_f64()).collect();
+        let cpu: Vec<_> = runs
+            .iter()
+            .map(|r| r["cpu_p50_ms"].as_f64().unwrap())
+            .collect();
+        let gpu_ms: Vec<_> = runs
+            .iter()
+            .filter_map(|r| r["gpu_p50_ms"].as_f64())
+            .collect();
         println!(
             "{}",
             serde_json::json!({"tiles":tiles,"source":[w,h],"target":[size.0,size.1],"hz":60,"warmup_runs":1,"runs":runs,

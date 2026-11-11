@@ -105,7 +105,9 @@ impl<X: 'static> Trigger<X> {
 /// the startup code after a patched view panicked.
 pub(crate) fn call<X: 'static>(view: fn(&X, &mut Cx<X>) -> El, state: &X, cx: &mut Cx<X>) -> El {
     #[cfg(feature = "hot")]
-    if !crate::hot::originals_only() { return subsecond::HotFn::current(view).call((state, cx)); }
+    if !crate::hot::originals_only() {
+        return subsecond::HotFn::current(view).call((state, cx));
+    }
     view(state, cx)
 }
 
@@ -116,10 +118,16 @@ pub(super) fn view<X: 'static>(view: impl Fn(&X, &mut Cx<X>) -> El + 'static) ->
     Box::new(move |x, cx| hot_view(&view, x, cx))
 }
 
-fn hot_view<X: 'static, F: Fn(&X, &mut Cx<X>) -> El + 'static>(view: &F, state: &X, cx: &mut Cx<X>) -> El {
+fn hot_view<X: 'static, F: Fn(&X, &mut Cx<X>) -> El + 'static>(
+    view: &F,
+    state: &X,
+    cx: &mut Cx<X>,
+) -> El {
     #[cfg(feature = "hot")]
     if !crate::hot::originals_only() {
-        if let Some(f) = (view as &dyn Any).downcast_ref::<fn(&X, &mut Cx<X>) -> El>() { return call(*f, state, cx); }
+        if let Some(f) = (view as &dyn Any).downcast_ref::<fn(&X, &mut Cx<X>) -> El>() {
+            return call(*f, state, cx);
+        }
         if size_of::<F>() == 0 {
             // SAFETY: a zero-sized `F` has no bytes to copy; the copy is forgotten, not dropped.
             let mut hot = subsecond::HotFn::current(unsafe { std::ptr::read(view) });
@@ -131,15 +139,32 @@ fn hot_view<X: 'static, F: Fn(&X, &mut Cx<X>) -> El + 'static>(view: &F, state: 
     view(state, cx)
 }
 
-pub(super) fn trigger<X>(key: char, label: &'static str, run: impl Fn(&mut X, &mut Play<'_, X>) + 'static) -> Trigger<X> {
+pub(super) fn trigger<X>(
+    key: char,
+    label: &'static str,
+    run: impl Fn(&mut X, &mut Play<'_, X>) + 'static,
+) -> Trigger<X> {
     let key = key.to_ascii_lowercase();
-    assert!(!matches!(key, 'j' | 'k'), "J and K move between stories; give the {label:?} trigger another key");
-    Trigger { key, label, run: Rc::new(run) }
+    assert!(
+        !matches!(key, 'j' | 'k'),
+        "J and K move between stories; give the {label:?} trigger another key"
+    );
+    Trigger {
+        key,
+        label,
+        run: Rc::new(run),
+    }
 }
 
 /// A trigger whose step takes just the [`Tx`].
-pub(super) fn trigger_tx<X>(key: char, label: &'static str, run: impl Fn(&mut X, &mut Tx) + 'static) -> Trigger<X> {
-    trigger(key, label, move |x: &mut X, play: &mut Play<'_, X>| run(x, play))
+pub(super) fn trigger_tx<X>(
+    key: char,
+    label: &'static str,
+    run: impl Fn(&mut X, &mut Tx) + 'static,
+) -> Trigger<X> {
+    trigger(key, label, move |x: &mut X, play: &mut Play<'_, X>| {
+        run(x, play)
+    })
 }
 
 /// How far past the clock a step can be due and still run on this frame, in seconds.
@@ -153,7 +178,10 @@ pub(super) struct Staged<X> {
 
 impl<X> Staged<X> {
     pub(super) fn new(state: X) -> Self {
-        Staged { state, script: Vec::new() }
+        Staged {
+            state,
+            script: Vec::new(),
+        }
     }
 
     /// Runs the steps due by `t`, earliest first, each seeing the time it was due, adding the
@@ -165,10 +193,24 @@ impl<X> Staged<X> {
         let mut ran = false;
         // Bounded, in case steps keep queueing more with no delay.
         for _ in 0..64 {
-            let due = self.script.iter().enumerate().filter(|(_, (at, _))| *at <= t).min_by(|a, b| a.1.0.total_cmp(&b.1.0)).map(|(i, _)| i);
+            let due = self
+                .script
+                .iter()
+                .enumerate()
+                .filter(|(_, (at, _))| *at <= t)
+                .min_by(|a, b| a.1.0.total_cmp(&b.1.0))
+                .map(|(i, _)| i);
             let Some(i) = due else { break };
             let (at, step) = self.script.remove(i);
-            step(&mut self.state, &mut Play { tx: &mut *tx, script: &mut self.script, pressed: &mut *pressed, now: at });
+            step(
+                &mut self.state,
+                &mut Play {
+                    tx: &mut *tx,
+                    script: &mut self.script,
+                    pressed: &mut *pressed,
+                    now: at,
+                },
+            );
             ran = true;
         }
         if let Some(next) = self.script.iter().map(|(at, _)| *at).min_by(f64::total_cmp) {
@@ -183,19 +225,35 @@ impl<S: 'static> Live<S> {
     /// live page), and the playground's controls.
     pub(crate) fn states<'a>(&'a mut self, app: &'a mut S) -> States<'a> {
         let app = crate::runtime::handler_state(app);
-        if !self.open { return States::two(app, &mut self.controls); }
-        if let Some(scene) = &mut self.scene { return States::two(&mut scene.state, &mut self.controls); }
-        let Some(i) = self.selected.checked_sub(self.scenes.len()) else { return States::two(app, &mut self.controls) };
+        if !self.open {
+            return States::two(app, &mut self.controls);
+        }
+        if let Some(scene) = &mut self.scene {
+            return States::two(&mut scene.state, &mut self.controls);
+        }
+        let Some(i) = self.selected.checked_sub(self.scenes.len()) else {
+            return States::two(app, &mut self.controls);
+        };
         match (self.pages.get(i), self.owned.get_mut(i)) {
-            (Some(Page { kind: Kind::Own(own), .. }), Some(Some(stage))) => States::two(own.state(stage.as_mut()), &mut self.controls),
+            (
+                Some(Page {
+                    kind: Kind::Own(own),
+                    ..
+                }),
+                Some(Some(stage)),
+            ) => States::two(own.state(stage.as_mut()), &mut self.controls),
             _ => States::two(app, &mut self.controls),
         }
     }
 
     pub(crate) fn states_ref<'a>(&'a self, app: &'a S) -> StatesRef<'a> {
         let app = crate::runtime::handler_state_ref(app);
-        if !self.open { return StatesRef::two(app, &self.controls); }
-        if let Some(scene) = &self.scene { return StatesRef::two(&scene.state, &self.controls); }
+        if !self.open {
+            return StatesRef::two(app, &self.controls);
+        }
+        if let Some(scene) = &self.scene {
+            return StatesRef::two(&scene.state, &self.controls);
+        }
         match self.own() {
             Some((own, stage)) => StatesRef::two(own.state_ref(stage), &self.controls),
             None => StatesRef::two(app, &self.controls),
@@ -212,8 +270,21 @@ impl<S: 'static> Live<S> {
     /// The state `AppSpec::on_key` gets: the stage's when it's an app state, none on a story
     /// with its own.
     pub(crate) fn key_state<'a>(&'a mut self, app: &'a mut S) -> Option<&'a mut S> {
-        if !self.open { return Some(app); }
-        if matches!(self.page(), Some((_, Page { kind: Kind::Own(_), .. }))) { return None; }
+        if !self.open {
+            return Some(app);
+        }
+        if matches!(
+            self.page(),
+            Some((
+                _,
+                Page {
+                    kind: Kind::Own(_),
+                    ..
+                }
+            ))
+        ) {
+            return None;
+        }
         match &mut self.scene {
             Some(scene) => Some(&mut scene.state),
             None => Some(app),
@@ -222,10 +293,20 @@ impl<S: 'static> Live<S> {
 
     /// Whether [`Playground::typing`] gives the stage's `on_key` every key first.
     pub(crate) fn typing(&self, app: &S) -> bool {
-        let Some(typing) = self.typing.filter(|_| self.open) else { return false };
+        let Some(typing) = self.typing.filter(|_| self.open) else {
+            return false;
+        };
         match (&self.scene, self.page()) {
             (Some(scene), _) => typing(&scene.state),
-            (None, Some((_, Page { kind: Kind::Own(_), .. }))) => false,
+            (
+                None,
+                Some((
+                    _,
+                    Page {
+                        kind: Kind::Own(_), ..
+                    },
+                )),
+            ) => false,
             (None, _) => typing(app),
         }
     }
@@ -237,7 +318,9 @@ impl<S: 'static> Live<S> {
     }
 
     pub(crate) fn polls(&self) -> bool {
-        if !self.open { return false; }
+        if !self.open {
+            return false;
+        }
         match (&self.scene, self.own()) {
             (Some(scene), _) => self.poll.is_some() || !scene.script.is_empty(),
             (None, Some((own, stage))) => own.polls(stage),
@@ -249,14 +332,23 @@ impl<S: 'static> Live<S> {
     /// for a scene or the story's own. The keys the steps press wait in [`Live::take_pressed`].
     pub(crate) fn poll_stage(&mut self, t: f64, tx: &mut Tx) -> bool {
         self.now = t;
-        if !self.open { return false; }
+        if !self.open {
+            return false;
+        }
         if let Some(scene) = &mut self.scene {
             let ran = scene.run(t, tx, &mut self.pressed);
             return self.poll.is_some_and(|poll| poll(&mut scene.state, t, tx)) || ran;
         }
-        let Some(i) = self.selected.checked_sub(self.scenes.len()) else { return false };
-        match (self.pages.get(i).map(|p| &p.kind), self.owned.get_mut(i).and_then(Option::as_mut)) {
-            (Some(Kind::Own(own)), Some(stage)) => own.poll(stage.as_mut(), t, tx, &mut self.pressed),
+        let Some(i) = self.selected.checked_sub(self.scenes.len()) else {
+            return false;
+        };
+        match (
+            self.pages.get(i).map(|p| &p.kind),
+            self.owned.get_mut(i).and_then(Option::as_mut),
+        ) {
+            (Some(Kind::Own(own)), Some(stage)) => {
+                own.poll(stage.as_mut(), t, tx, &mut self.pressed)
+            }
             _ => false,
         }
     }

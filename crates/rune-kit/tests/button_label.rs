@@ -37,9 +37,12 @@ fn a_rolling_label_sizes_the_button_as_plain_text_does() {
 fn a_custom_label_gets_the_buttons_font_and_ink() {
     fn custom(_: &(), _: &mut Cx<()>) -> El {
         let k = Kit::neutral(true);
-        rune::row()
-            .child(Button::new("Save").build(&k).key("plain"))
-            .child(Button::new("Save").label_with(|font, ink| rune::text("Save").key("custom").font(font).color(ink)).build(&k).key("rich"))
+        rune::row().child(Button::new("Save").build(&k).key("plain")).child(
+            Button::new("Save")
+                .label_with(|font, ink| rune::text("Save").key("custom").font(font).color(ink))
+                .build(&k)
+                .key("rich"),
+        )
     }
     let mut rt = Runtime::new((), custom, (400.0, 100.0), Env::new(true, 2.0));
     rt.frame(0.0);
@@ -88,7 +91,14 @@ fn a_rolling_button_with_an_icon_and_neighbour_springs_without_jumps() {
             .gap(8.0)
             .child(Button::new(label.clone()).icon(&k.glyph.lock).rolling("import-row-label").build(&k).key("button"))
             .child(Button::new("Cancel").build(&k).key("cancel"))
-            .child(Button::new(label.clone()).icon(&k.glyph.lock).rolling("fixed-row-label").build(&k).key("fixed").w(180.0))
+            .child(
+                Button::new(label.clone())
+                    .icon(&k.glyph.lock)
+                    .rolling("fixed-row-label")
+                    .build(&k)
+                    .key("fixed")
+                    .w(180.0),
+            )
     }
     let mut rt = Runtime::new("Import 3 items".to_owned(), row_view, (500.0, 100.0), Env::new(true, 2.0));
     rt.frame(0.0);
@@ -109,8 +119,15 @@ fn a_rolling_button_with_an_icon_and_neighbour_springs_without_jumps() {
         rt.frame(1.0 / 120.0);
         cancel_xs.push(rect(&rt, "cancel")[0]);
         let g = icon_gap(&rt);
-        assert!((g - rest_icon_gap).abs() < 0.6, "icon and rolling label move on the same curve: {g} vs {rest_icon_gap}");
+        assert!(
+            (g - rest_icon_gap).abs() < 0.6,
+            "icon and rolling label move on the same curve: {g} vs {rest_icon_gap}"
+        );
     }
-    assert!((cancel_xs[0] - cancel_from).abs() < 1.0, "neighbour starts at its old x: {} vs {cancel_from}", cancel_xs[0]);
+    assert!(
+        (cancel_xs[0] - cancel_from).abs() < 1.0,
+        "neighbour starts at its old x: {} vs {cancel_from}",
+        cancel_xs[0]
+    );
     assert!(cancel_xs.windows(2).all(|x| (x[1] - x[0]).abs() < 4.0), "neighbour slides with no jump: {cancel_xs:?}");
 }

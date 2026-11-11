@@ -10,19 +10,39 @@ struct S {
 }
 
 fn view(s: &S, _: &mut Cx<S>) -> El {
-    let grow = el().key("grow").h(40.0).w(if s.wide { 200.0 } else { 100.0 }).motion(Spring::new(0.3, 0.0))
+    let grow = el()
+        .key("grow")
+        .h(40.0)
+        .w(if s.wide { 200.0 } else { 100.0 })
+        .motion(Spring::new(0.3, 0.0))
         .opacity(if s.dim { 0.2 } else { 1.0 });
-    row().w_full().h_full().child(grow).child(text(s.label).key("label"))
+    row()
+        .w_full()
+        .h_full()
+        .child(grow)
+        .child(text(s.label).key("label"))
 }
 
 fn app() -> Runtime<S> {
-    let mut rt = Runtime::new(S { label: "a", ..Default::default() }, view, (400.0, 200.0), Env::new(true, 1.0));
+    let mut rt = Runtime::new(
+        S {
+            label: "a",
+            ..Default::default()
+        },
+        view,
+        (400.0, 200.0),
+        Env::new(true, 1.0),
+    );
     rt.frame(0.0);
     rt
 }
 
 fn width(rt: &Runtime<S>) -> f32 {
-    rt.elements().into_iter().find(|e| e.key.as_deref() == Some("grow")).unwrap().rect[2]
+    rt.elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some("grow"))
+        .unwrap()
+        .rect[2]
 }
 
 fn mid_flight() -> Runtime<S> {
@@ -49,7 +69,10 @@ fn an_instant_commit_leaves_a_width_already_springing() {
     });
     rt.frame(1.0 / 60.0);
     let after = width(&rt);
-    assert!(after > before && after < 195.0, "still springing, not landed: {before} → {after}");
+    assert!(
+        after > before && after < 195.0,
+        "still springing, not landed: {before} → {after}"
+    );
     for _ in 0..90 {
         rt.frame(1.0 / 60.0);
     }

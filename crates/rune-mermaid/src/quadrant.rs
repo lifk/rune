@@ -65,7 +65,10 @@ pub(crate) fn parse(body: &[&str]) -> Option<Quadrant> {
         } else if let Some(rest) = word(l, "y-axis") {
             q.y = axis(rest);
             any = true;
-        } else if let Some((n, rest)) = l.strip_prefix("quadrant-").and_then(|r| r.split_once(char::is_whitespace)) {
+        } else if let Some((n, rest)) = l
+            .strip_prefix("quadrant-")
+            .and_then(|r| r.split_once(char::is_whitespace))
+        {
             if let Ok(n @ 1..=4) = n.parse::<usize>() {
                 q.names[n - 1] = clean(rest);
                 any = true;
@@ -83,8 +86,14 @@ pub(crate) fn parse(body: &[&str]) -> Option<Quadrant> {
     q.points = pending
         .into_iter()
         .map(|(name, at, look, class)| {
-            let base = class.and_then(|c| classes.get(&c).cloned()).unwrap_or_default();
-            Point { name, at, look: look.or(&base) }
+            let base = class
+                .and_then(|c| classes.get(&c).cloned())
+                .unwrap_or_default();
+            Point {
+                name,
+                at,
+                look: look.or(&base),
+            }
         })
         .collect();
     (any || !q.points.is_empty()).then_some(q)
@@ -104,15 +113,28 @@ fn point(l: &str) -> Option<(String, [f32; 2], Look, Option<String>)> {
     if !(x.is_finite() && y.is_finite()) {
         return None;
     }
-    Some((clean(name.trim().trim_matches('"')), [x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)], look(&l[close + 1..]), class))
+    Some((
+        clean(name.trim().trim_matches('"')),
+        [x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)],
+        look(&l[close + 1..]),
+        class,
+    ))
 }
 
 fn look(props: &str) -> Look {
     let mut out = Look::default();
     for part in props.split(',') {
-        let Some((k, v)) = part.split_once(':') else { continue };
+        let Some((k, v)) = part.split_once(':') else {
+            continue;
+        };
         let v = v.trim();
-        let px = || v.trim_end_matches("px").trim().parse::<f32>().ok().filter(|r| r.is_finite());
+        let px = || {
+            v.trim_end_matches("px")
+                .trim()
+                .parse::<f32>()
+                .ok()
+                .filter(|r| r.is_finite())
+        };
         match k.trim() {
             "radius" => out.radius = px().map(|r| r.clamp(1.0, 30.0)),
             "color" => out.color = parse_color_spec(v),
@@ -142,44 +164,102 @@ pub(crate) fn draw(q: &Quadrant, paint: &DiagramStyle) -> Option<Scene> {
     let tints = [0.95, 0.7, 0.45, 0.7];
     for (o, a) in origins.iter().zip(tints) {
         let fill = over_color(soft(paint, HUE).alpha(a), paint.surface);
-        c.fill(vec![*o, [o[0] + half, o[1]], [o[0] + half, o[1] + half], [o[0], o[1] + half]], fill);
+        c.fill(
+            vec![
+                *o,
+                [o[0] + half, o[1]],
+                [o[0] + half, o[1] + half],
+                [o[0], o[1] + half],
+            ],
+            fill,
+        );
     }
-    c.stroke(vec![[x0 + half, 0.0], [x0 + half, y1]], false, 2.0, paint.surface);
+    c.stroke(
+        vec![[x0 + half, 0.0], [x0 + half, y1]],
+        false,
+        2.0,
+        paint.surface,
+    );
     c.stroke(vec![[x0, half], [x1, half]], false, 2.0, paint.surface);
     for (o, name) in origins.iter().zip(&q.names) {
         let m = measure_wrap(name, head, half - 16.0);
-        let y = if q.points.is_empty() { o[1] + half / 2.0 } else { o[1] + 10.0 + m.size[1] / 2.0 };
+        let y = if q.points.is_empty() {
+            o[1] + half / 2.0
+        } else {
+            o[1] + 10.0 + m.size[1] / 2.0
+        };
         c.label(&m, [o[0] + half / 2.0, y], head, paint.text, Align::Center);
     }
-    let xs: Vec<Measured> = q.x.iter().map(|t| measure_wrap(t, note, half - 8.0)).collect();
+    let xs: Vec<Measured> =
+        q.x.iter()
+            .map(|t| measure_wrap(t, note, half - 8.0))
+            .collect();
     let below = y1 + 8.0;
     if xs[1].text.is_empty() {
-        c.label_at(&xs[0], [x0 + half - xs[0].size[0] / 2.0, below], note, paint.muted, Align::Center);
+        c.label_at(
+            &xs[0],
+            [x0 + half - xs[0].size[0] / 2.0, below],
+            note,
+            paint.muted,
+            Align::Center,
+        );
     } else {
         for (i, m) in xs.iter().enumerate() {
-            c.label_at(m, [x0 + half * (i as f32 + 0.5) - m.size[0] / 2.0, below], note, paint.muted, Align::Center);
+            c.label_at(
+                m,
+                [x0 + half * (i as f32 + 0.5) - m.size[0] / 2.0, below],
+                note,
+                paint.muted,
+                Align::Center,
+            );
         }
     }
     if ys[1].text.is_empty() {
-        c.label_at(&ys[0], [x0 - 12.0 - ys[0].size[0], half - ys[0].size[1] / 2.0], note, paint.muted, Align::End);
+        c.label_at(
+            &ys[0],
+            [x0 - 12.0 - ys[0].size[0], half - ys[0].size[1] / 2.0],
+            note,
+            paint.muted,
+            Align::End,
+        );
     } else {
         // Low at the bottom, high at the top.
         for (i, m) in ys.iter().enumerate() {
             let mid = if i == 0 { half * 1.5 } else { half * 0.5 };
-            c.label_at(m, [x0 - 12.0 - m.size[0], mid - m.size[1] / 2.0], note, paint.muted, Align::End);
+            c.label_at(
+                m,
+                [x0 - 12.0 - m.size[0], mid - m.size[1] / 2.0],
+                note,
+                paint.muted,
+                Align::End,
+            );
         }
     }
     for p in &q.points {
         let at = [x0 + p.at[0] * side, y1 - p.at[1] * side];
         let r = p.look.radius.unwrap_or(5.0);
         let fill = p.look.color.unwrap_or_else(|| strong(paint, HUE));
-        let width = p.look.stroke_width.unwrap_or(if p.look.stroke.is_some() { 2.0 } else { 0.0 });
+        let width = p
+            .look
+            .stroke_width
+            .unwrap_or(if p.look.stroke.is_some() { 2.0 } else { 0.0 });
         c.fill(ellipse(at, r, r), fill);
         if width > 0.0 {
-            c.stroke(ellipse(at, r, r), true, width, p.look.stroke.unwrap_or(fill));
+            c.stroke(
+                ellipse(at, r, r),
+                true,
+                width,
+                p.look.stroke.unwrap_or(fill),
+            );
         }
         let m = measure(&p.name, note);
-        c.label_at(&m, [at[0] - m.size[0] / 2.0, at[1] + r + 3.0], note, paint.text, Align::Center);
+        c.label_at(
+            &m,
+            [at[0] - m.size[0] / 2.0, at[1] + r + 3.0],
+            note,
+            paint.text,
+            Align::Center,
+        );
     }
     c.finish_fit(paint)
 }

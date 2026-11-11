@@ -29,7 +29,9 @@ impl Replay {
         let mut samples = Vec::new();
         for line in text.lines().skip(1) {
             let mut f = line.split(',');
-            let (Some(t), Some(_), Some(ms)) = (f.next(), f.next(), f.next()) else { continue };
+            let (Some(t), Some(_), Some(ms)) = (f.next(), f.next(), f.next()) else {
+                continue;
+            };
             if let (Ok(t), Ok(ms)) = (t.parse::<f32>(), ms.parse::<f32>())
                 && t.is_finite()
             {
@@ -83,17 +85,33 @@ impl Readout {
     fn of(samples: impl Iterator<Item = (f32, f32)>) -> Readout {
         let graph: Vec<f32> = samples.map(|s| s.1).collect();
         let graph = graph[graph.len().saturating_sub(GRAPH)..].to_vec();
-        let ms = pct(&mut graph[graph.len().saturating_sub(READOUT)..].to_vec(), 0.5);
+        let ms = pct(
+            &mut graph[graph.len().saturating_sub(READOUT)..].to_vec(),
+            0.5,
+        );
         let p95 = pct(&mut graph.clone(), 0.95);
-        Readout { graph, ms, p95, ..Default::default() }
+        Readout {
+            graph,
+            ms,
+            p95,
+            ..Default::default()
+        }
     }
 
     /// From a measured run: the frame rate this CPU cost allows at 120 Hz.
     pub fn replay(r: &Replay, t: f64) -> Readout {
         let mut out = Readout::of(r.until(t).iter().copied());
-        let refreshes: u32 = out.graph.iter().map(|&ms| (ms / BUDGET_120).ceil().max(1.0) as u32).sum();
+        let refreshes: u32 = out
+            .graph
+            .iter()
+            .map(|&ms| (ms / BUDGET_120).ceil().max(1.0) as u32)
+            .sum();
         out.missed = refreshes.saturating_sub(out.graph.len() as u32);
-        out.fps = if refreshes > 0 { 120.0 * out.graph.len() as f32 / refreshes as f32 } else { 0.0 };
+        out.fps = if refreshes > 0 {
+            120.0 * out.graph.len() as f32 / refreshes as f32
+        } else {
+            0.0
+        };
         out.source = "measured headless · live pending";
         out
     }
@@ -119,7 +137,10 @@ impl Readout {
         if self.source == "live window" {
             format!("{:.0} fps · missed {}", self.fps, self.missed)
         } else {
-            format!("≈ {:.0} fps at 120 Hz · {} missed / s", self.fps, self.missed)
+            format!(
+                "≈ {:.0} fps at 120 Hz · {} missed / s",
+                self.fps, self.missed
+            )
         }
     }
 }
@@ -134,7 +155,11 @@ mod tests {
         let mut csv = String::from("show_s,load,build_ms,work_ms,start_s\n");
         for i in 0..240 {
             // Half the frames take two refreshes.
-            csv.push_str(&format!("{},16,{},0,0\n", i as f32 / 120.0, if i % 2 == 0 { 4.0 } else { 12.0 }));
+            csv.push_str(&format!(
+                "{},16,{},0,0\n",
+                i as f32 / 120.0,
+                if i % 2 == 0 { 4.0 } else { 12.0 }
+            ));
         }
         std::fs::write(&dir, csv).unwrap();
         let r = Replay::load(&dir).unwrap();

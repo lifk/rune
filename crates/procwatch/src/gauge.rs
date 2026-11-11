@@ -22,7 +22,8 @@ pub const GAUGES: usize = 64;
 
 const ON: bool = cfg!(any(debug_assertions, feature = "release-gauges"));
 
-static REGISTRY: [AtomicPtr<Gauge>; GAUGES] = [const { AtomicPtr::new(std::ptr::null_mut()) }; GAUGES];
+static REGISTRY: [AtomicPtr<Gauge>; GAUGES] =
+    [const { AtomicPtr::new(std::ptr::null_mut()) }; GAUGES];
 
 pub struct Gauge {
     name: &'static str,
@@ -32,7 +33,11 @@ pub struct Gauge {
 
 impl Gauge {
     pub const fn new(name: &'static str) -> Gauge {
-        Gauge { name, bytes: AtomicI64::new(0), registered: AtomicBool::new(false) }
+        Gauge {
+            name,
+            bytes: AtomicI64::new(0),
+            registered: AtomicBool::new(false),
+        }
     }
 
     pub fn name(&self) -> &'static str {
@@ -82,7 +87,10 @@ impl Gauge {
         }
         let me = self as *const Gauge as *mut Gauge;
         for slot in &REGISTRY {
-            if slot.compare_exchange(std::ptr::null_mut(), me, Relaxed, Relaxed).is_ok() {
+            if slot
+                .compare_exchange(std::ptr::null_mut(), me, Relaxed, Relaxed)
+                .is_ok()
+            {
                 return;
             }
         }
@@ -139,8 +147,14 @@ mod tests {
         A.add(24);
         B.set(5);
         let listed = gauges();
-        assert_eq!(listed.iter().find(|(n, _)| *n == "test.a").map(|g| g.1), Some(1024));
-        assert_eq!(listed.iter().find(|(n, _)| *n == "test.b").map(|g| g.1), Some(5));
+        assert_eq!(
+            listed.iter().find(|(n, _)| *n == "test.a").map(|g| g.1),
+            Some(1024)
+        );
+        assert_eq!(
+            listed.iter().find(|(n, _)| *n == "test.b").map(|g| g.1),
+            Some(5)
+        );
         drop(lease);
         A.sub(24);
         assert_eq!(A.get(), 0);

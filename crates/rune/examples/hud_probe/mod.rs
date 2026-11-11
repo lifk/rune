@@ -7,7 +7,10 @@
 pub fn thread_cpu_ms() -> f64 {
     #[cfg(unix)]
     {
-        let mut t = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+        let mut t = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
         // SAFETY: a live, writable timespec; the clock needs no handle.
         unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut t) };
         t.tv_sec as f64 * 1e3 + t.tv_nsec as f64 / 1e6
@@ -31,7 +34,11 @@ pub fn process_cpu_ms() -> f64 {
 
 /// Summed CPU ms of the named threads matching `name`.
 pub fn thread_ms(threads: &[(String, f64)], name: &str) -> f64 {
-    threads.iter().filter(|(n, _)| n == name).map(|(_, ms)| ms).sum()
+    threads
+        .iter()
+        .filter(|(n, _)| n == name)
+        .map(|(_, ms)| ms)
+        .sum()
 }
 
 #[cfg(target_os = "macos")]
@@ -40,7 +47,10 @@ mod mac {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     unsafe extern "C" {
-        fn mach_port_deallocate(task: libc::mach_port_t, name: libc::mach_port_t) -> libc::kern_return_t;
+        fn mach_port_deallocate(
+            task: libc::mach_port_t,
+            name: libc::mach_port_t,
+        ) -> libc::kern_return_t;
     }
 
     /// CPU milliseconds of the threads alive now, by pthread name ("" for unnamed ones).
@@ -59,8 +69,16 @@ mod mac {
                 let thread = *list.add(i);
                 let mut info: libc::thread_basic_info = std::mem::zeroed();
                 let mut n = libc::THREAD_BASIC_INFO_COUNT;
-                if libc::thread_info(thread, libc::THREAD_BASIC_INFO as u32, (&raw mut info).cast(), &mut n) == 0 {
-                    let ms = |t: libc::time_value_t| t.seconds as f64 * 1e3 + t.microseconds as f64 / 1e3;
+                if libc::thread_info(
+                    thread,
+                    libc::THREAD_BASIC_INFO as u32,
+                    (&raw mut info).cast(),
+                    &mut n,
+                ) == 0
+                {
+                    let ms = |t: libc::time_value_t| {
+                        t.seconds as f64 * 1e3 + t.microseconds as f64 / 1e3
+                    };
                     let mut name = [0 as c_char; 64];
                     let pthread = libc::pthread_from_mach_thread_np(thread);
                     if pthread != 0 {
@@ -71,7 +89,11 @@ mod mac {
                 }
                 mach_port_deallocate(libc::mach_task_self(), thread);
             }
-            libc::vm_deallocate(libc::mach_task_self(), list as usize, count as usize * size_of::<libc::thread_act_t>());
+            libc::vm_deallocate(
+                libc::mach_task_self(),
+                list as usize,
+                count as usize * size_of::<libc::thread_act_t>(),
+            );
         }
         out
     }
@@ -82,10 +104,16 @@ mod mac {
         // SAFETY: proc_pid_rusage fills the rusage_info_v4 it is handed for RUSAGE_INFO_V4.
         unsafe {
             let mut info: libc::rusage_info_v4 = std::mem::zeroed();
-            if libc::proc_pid_rusage(libc::getpid(), libc::RUSAGE_INFO_V4, (&raw mut info).cast()) != 0 {
+            if libc::proc_pid_rusage(libc::getpid(), libc::RUSAGE_INFO_V4, (&raw mut info).cast())
+                != 0
+            {
                 return [0; 3];
             }
-            [info.ri_instructions, info.ri_cycles, info.ri_interrupt_wkups]
+            [
+                info.ri_instructions,
+                info.ri_cycles,
+                info.ri_interrupt_wkups,
+            ]
         }
     }
 
@@ -108,7 +136,14 @@ mod mac {
     pub static COMPLETED_HANDLERS: AtomicU64 = AtomicU64::new(0);
 
     pub fn metal_counts() -> [u64; 5] {
-        [&COMMITS, &RENDER_ENCODERS, &BLIT_ENCODERS, &PRESENTS, &COMPLETED_HANDLERS].map(|c| c.load(Ordering::Relaxed))
+        [
+            &COMMITS,
+            &RENDER_ENCODERS,
+            &BLIT_ENCODERS,
+            &PRESENTS,
+            &COMPLETED_HANDLERS,
+        ]
+        .map(|c| c.load(Ordering::Relaxed))
     }
 
     type Id = *mut c_void;
@@ -142,19 +177,24 @@ mod mac {
     static mut COMMIT: Option<unsafe extern "C" fn(Id, Sel)> = None;
     /// Commits by command buffer label and committing thread, while `OVERLAY_COUNT_METAL=labels`.
     pub static LABELS: std::sync::Mutex<Vec<(String, u64)>> = std::sync::Mutex::new(Vec::new());
-    pub static TALLY_LABELS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    pub static TALLY_LABELS: std::sync::atomic::AtomicBool =
+        std::sync::atomic::AtomicBool::new(false);
     unsafe extern "C" fn commit(this: Id, sel: Sel) {
         COMMITS.fetch_add(1, Ordering::Relaxed);
         if TALLY_LABELS.load(Ordering::Relaxed) {
             // SAFETY: -[MTLCommandBuffer label] returns an NSString or nil; UTF8String borrows it.
             let label = unsafe {
-                let send: unsafe extern "C" fn(Id, Sel) -> Id = std::mem::transmute(objc_msgSend as *const c_void);
-                let utf8: unsafe extern "C" fn(Id, Sel) -> *const c_char = std::mem::transmute(objc_msgSend as *const c_void);
+                let send: unsafe extern "C" fn(Id, Sel) -> Id =
+                    std::mem::transmute(objc_msgSend as *const c_void);
+                let utf8: unsafe extern "C" fn(Id, Sel) -> *const c_char =
+                    std::mem::transmute(objc_msgSend as *const c_void);
                 let label = send(this, sel_registerName(c"label".as_ptr()));
                 if label.is_null() {
                     "(none)".to_string()
                 } else {
-                    CStr::from_ptr(utf8(label, sel_registerName(c"UTF8String".as_ptr()))).to_string_lossy().into_owned()
+                    CStr::from_ptr(utf8(label, sel_registerName(c"UTF8String".as_ptr())))
+                        .to_string_lossy()
+                        .into_owned()
                 }
             };
             let mut key = format!("{label} @ {}", std::thread::current().name().unwrap_or("?"));
@@ -163,7 +203,9 @@ mod mac {
                 for line in trace
                     .lines()
                     .map(str::trim)
-                    .filter(|l| l.contains("wgpu_core::") || l.contains("rune::") || l.contains("wgpu::"))
+                    .filter(|l| {
+                        l.contains("wgpu_core::") || l.contains("rune::") || l.contains("wgpu::")
+                    })
                     .take(8)
                 {
                     key.push_str("\n      ");
@@ -190,22 +232,30 @@ mod mac {
         // SAFETY: plain Objective-C runtime calls; each replacement has its method's signature, and
         // its original is stored before any command buffer can reach it.
         unsafe {
-            let send0: unsafe extern "C" fn(Id, Sel) -> Id = std::mem::transmute(objc_msgSend as *const c_void);
+            let send0: unsafe extern "C" fn(Id, Sel) -> Id =
+                std::mem::transmute(objc_msgSend as *const c_void);
             let sel = |s: &CStr| sel_registerName(s.as_ptr());
             let device = MTLCreateSystemDefaultDevice();
             assert!(!device.is_null() && !objc_getClass(c"NSObject".as_ptr()).is_null());
             let queue = send0(device, sel(c"newCommandQueue"));
-            let class = object_getClass(send0(queue, sel(c"commandBufferWithUnretainedReferences")));
+            let class =
+                object_getClass(send0(queue, sel(c"commandBufferWithUnretainedReferences")));
             let swap = |name: &CStr, imp: *const c_void| {
                 let method = class_getInstanceMethod(class, sel(name));
                 assert!(!method.is_null(), "no {name:?}");
                 method_setImplementation(method, imp)
             };
             COMMIT = std::mem::transmute(swap(c"commit", commit as *const c_void));
-            RENDER = std::mem::transmute(swap(c"renderCommandEncoderWithDescriptor:", render_encoder as *const c_void));
+            RENDER = std::mem::transmute(swap(
+                c"renderCommandEncoderWithDescriptor:",
+                render_encoder as *const c_void,
+            ));
             BLIT = std::mem::transmute(swap(c"blitCommandEncoder", blit_encoder as *const c_void));
             PRESENT = std::mem::transmute(swap(c"presentDrawable:", present as *const c_void));
-            HANDLER = std::mem::transmute(swap(c"addCompletedHandler:", completed_handler as *const c_void));
+            HANDLER = std::mem::transmute(swap(
+                c"addCompletedHandler:",
+                completed_handler as *const c_void,
+            ));
         }
     }
 
@@ -217,7 +267,10 @@ mod mac {
         }
         // SAFETY: replaces -[NSWindow occlusionState] with one of the same signature.
         unsafe {
-            let method = class_getInstanceMethod(objc_getClass(c"NSWindow".as_ptr()), sel_registerName(c"occlusionState".as_ptr()));
+            let method = class_getInstanceMethod(
+                objc_getClass(c"NSWindow".as_ptr()),
+                sel_registerName(c"occlusionState".as_ptr()),
+            );
             assert!(!method.is_null());
             method_setImplementation(method, visible as *const c_void);
         }

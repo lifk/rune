@@ -27,7 +27,12 @@ pub struct State {
 
 impl State {
     pub fn new(script: Script) -> Self {
-        State { script, host_ticks: 0, view_time: Cell::new(Duration::ZERO), view_calls: Cell::new(0) }
+        State {
+            script,
+            host_ticks: 0,
+            view_time: Cell::new(Duration::ZERO),
+            view_calls: Cell::new(0),
+        }
     }
 }
 
@@ -43,7 +48,8 @@ fn init() -> State {
     {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/panel");
         if let Ok(sources) = Sources::from_dir(dir) {
-            let options = rune_luau::ScriptOptions::new().on_log(|level, line| eprintln!("luau-panel {level:?}: {line}"));
+            let options = rune_luau::ScriptOptions::new()
+                .on_log(|level, line| eprintln!("luau-panel {level:?}: {line}"));
             let script = Script::with_options("panel", sources, options);
             if let Err(e) = script.watch(dir) {
                 eprintln!("luau-panel: not watching {dir}: {e}");
@@ -72,7 +78,11 @@ fn poll(s: &mut State, now: f64, tx: &mut Tx) -> bool {
 }
 
 pub fn spec() -> AppSpec<State> {
-    AppSpec { setup: Some(setup), poll: Some(poll), ..AppSpec::new("Luau panel", (720.0, 640.0), init, view) }
+    AppSpec {
+        setup: Some(setup),
+        poll: Some(poll),
+        ..AppSpec::new("Luau panel", (720.0, 640.0), init, view)
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen::prelude::wasm_bindgen(start))]

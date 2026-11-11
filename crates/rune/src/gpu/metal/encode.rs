@@ -6,7 +6,10 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use objc2_foundation_video::NSRange;
-use objc2_metal::{MTLBlitCommandEncoder, MTLBuffer, MTLCommandBuffer, MTLCommandEncoder, MTLDevice, MTLOrigin, MTLResourceOptions, MTLSize, MTLTexture};
+use objc2_metal::{
+    MTLBlitCommandEncoder, MTLBuffer, MTLCommandBuffer, MTLCommandEncoder, MTLDevice, MTLOrigin,
+    MTLResourceOptions, MTLSize, MTLTexture,
+};
 use objc2_video::rc::autoreleasepool;
 use objc2_video::runtime::ProtocolObject;
 use parking_lot::Mutex;
@@ -66,7 +69,9 @@ impl Rec {
 
     /// Ends an open blit encoder, as a pass must before it starts.
     pub(super) fn end_blit(&mut self) {
-        if let Some(blit) = self.blit.take() { blit.endEncoding(); }
+        if let Some(blit) = self.blit.take() {
+            blit.endEncoding();
+        }
     }
 
     fn blit(&mut self) -> &ProtocolObject<dyn MTLBlitCommandEncoder> {
@@ -78,9 +83,13 @@ impl Rec {
         self.blit.as_deref().unwrap()
     }
 
-    fn keep(&mut self, items: impl IntoIterator<Item = Arc<dyn Any + Send + Sync>>) { self.keep.extend(items); }
+    fn keep(&mut self, items: impl IntoIterator<Item = Arc<dyn Any + Send + Sync>>) {
+        self.keep.extend(items);
+    }
 
-    pub(super) fn shared(&self) -> &Shared { &self.shared }
+    pub(super) fn shared(&self) -> &Shared {
+        &self.shared
+    }
 }
 
 impl Drop for Rec {
@@ -88,7 +97,9 @@ impl Drop for Rec {
     /// buffer, reading their attachments, so the buffer goes before what it used.
     fn drop(&mut self) {
         self.end_blit();
-        if self.cb.take().is_some() { self.shared.recording.fetch_sub(1, Ordering::AcqRel); }
+        if self.cb.take().is_some() {
+            self.shared.recording.fetch_sub(1, Ordering::AcqRel);
+        }
         self.shared.recycle(std::mem::take(&mut self.keep));
     }
 }
@@ -96,12 +107,22 @@ impl Drop for Rec {
 impl MetalEncoder {
     pub(crate) fn new(shared: Arc<Shared>) -> Self {
         let keep = shared.keep_list();
-        MetalEncoder { rec: Arc::new(Mutex::new(Rec { shared, cb: None, blit: None, keep, drawable: false })) }
+        MetalEncoder {
+            rec: Arc::new(Mutex::new(Rec {
+                shared,
+                cb: None,
+                blit: None,
+                keep,
+                drawable: false,
+            })),
+        }
     }
 }
 
 impl MetalCommandBuffer {
-    pub(super) fn take(&self) -> Option<Recorded> { self.0.lock().take() }
+    pub(super) fn take(&self) -> Option<Recorded> {
+        self.0.lock().take()
+    }
 }
 
 impl Recorded {
@@ -123,25 +144,55 @@ impl Drop for MetalCommandBuffer {
     }
 }
 
-fn origin(o: wgpu::Origin3d, z: u32) -> MTLOrigin { MTLOrigin { x: o.x as usize, y: o.y as usize, z: z as usize } }
+fn origin(o: wgpu::Origin3d, z: u32) -> MTLOrigin {
+    MTLOrigin {
+        x: o.x as usize,
+        y: o.y as usize,
+        z: z as usize,
+    }
+}
 
-fn extent(width: u32, height: u32, depth: u32) -> MTLSize { MTLSize { width: width as usize, height: height as usize, depth: depth as usize } }
+fn extent(width: u32, height: u32, depth: u32) -> MTLSize {
+    MTLSize {
+        width: width as usize,
+        height: height as usize,
+        depth: depth as usize,
+    }
+}
 
 /// A buffer layout's row and image strides in bytes, filling in tightly packed defaults.
-fn strides(format: wgpu::TextureFormat, layout: wgpu::TexelCopyBufferLayout, size: wgpu::Extent3d) -> (usize, usize) {
+fn strides(
+    format: wgpu::TextureFormat,
+    layout: wgpu::TexelCopyBufferLayout,
+    size: wgpu::Extent3d,
+) -> (usize, usize) {
     let (bw, bh) = format.block_dimensions();
-    let block = format.block_copy_size(None).expect("a copyable color format");
-    let row = layout.bytes_per_row.unwrap_or(size.width.div_ceil(bw) * block) as usize;
+    let block = format
+        .block_copy_size(None)
+        .expect("a copyable color format");
+    let row = layout
+        .bytes_per_row
+        .unwrap_or(size.width.div_ceil(bw) * block) as usize;
     let rows = layout.rows_per_image.unwrap_or(size.height).div_ceil(bh) as usize;
     (row, row * rows)
 }
 
 /// The copies a texture region splits into: one per array layer, or one for a 3D texture.
 /// Yields (slice, z, depth, image index).
-fn layers(t: &TextureRaw, at: wgpu::Origin3d, size: wgpu::Extent3d) -> impl Iterator<Item = (usize, u32, u32, usize)> {
+fn layers(
+    t: &TextureRaw,
+    at: wgpu::Origin3d,
+    size: wgpu::Extent3d,
+) -> impl Iterator<Item = (usize, u32, u32, usize)> {
     let three = t.dimension == wgpu::TextureDimension::D3;
     let count = if three { 1 } else { size.depth_or_array_layers };
-    (0..count).map(move |i| if three { (0, at.z, size.depth_or_array_layers, 0) } else { ((at.z + i) as usize, 0, 1, i as usize) })
+    (0..count).map(move |i| {
+        if three {
+            (0, at.z, size.depth_or_array_layers, 0)
+        } else {
+            ((at.z + i) as usize, 0, 1, i as usize)
+        }
+    })
 }
 
 /// Bytes of zeros a texture's first clear copies from: the widest row, 16384 texels of 16 bytes.
@@ -154,13 +205,24 @@ send_sync!(Zeros);
 
 impl Zeros {
     pub(super) fn new(shared: &Shared) -> Self {
-        Zeros(shared.device.newBufferWithLength_options(ZEROS, MTLResourceOptions::StorageModeShared).expect("a Metal buffer"))
+        Zeros(
+            shared
+                .device
+                .newBufferWithLength_options(ZEROS, MTLResourceOptions::StorageModeShared)
+                .expect("a Metal buffer"),
+        )
     }
 }
 
 /// Zeroes every mip and layer of a new texture, which wgpu promises reads as zero until written.
-pub(super) fn zero_texture(blit: &ProtocolObject<dyn MTLBlitCommandEncoder>, zeros: &Zeros, texture: &TextureRaw) {
-    let Some(block) = texture.format.block_copy_size(None) else { return };
+pub(super) fn zero_texture(
+    blit: &ProtocolObject<dyn MTLBlitCommandEncoder>,
+    zeros: &Zeros,
+    texture: &TextureRaw,
+) {
+    let Some(block) = texture.format.block_copy_size(None) else {
+        return;
+    };
     let (bw, bh) = texture.format.block_dimensions();
     let three = texture.dimension == wgpu::TextureDimension::D3;
     let raw = &texture.raw;
@@ -168,7 +230,11 @@ pub(super) fn zero_texture(blit: &ProtocolObject<dyn MTLBlitCommandEncoder>, zer
         let (w, h) = ((raw.width() >> mip).max(1), (raw.height() >> mip).max(1));
         let row = w.div_ceil(bw as usize) * block as usize;
         let strip = (ZEROS / row).max(1) * bh as usize;
-        let slices = if three { (raw.depth() >> mip).max(1) } else { texture.layers as usize };
+        let slices = if three {
+            (raw.depth() >> mip).max(1)
+        } else {
+            texture.layers as usize
+        };
         for s in 0..slices {
             let (slice, z) = if three { (0, s) } else { (s, 0) };
             for y in (0..h).step_by(strip) {
@@ -183,8 +249,15 @@ pub(super) fn zero_texture(blit: &ProtocolObject<dyn MTLBlitCommandEncoder>, zer
     }
 }
 
-pub(super) fn buffer_to_texture(blit: &ProtocolObject<dyn MTLBlitCommandEncoder>, buffer: &ProtocolObject<dyn MTLBuffer>,
-    layout: wgpu::TexelCopyBufferLayout, texture: &TextureRaw, mip: u32, at: wgpu::Origin3d, size: wgpu::Extent3d) {
+pub(super) fn buffer_to_texture(
+    blit: &ProtocolObject<dyn MTLBlitCommandEncoder>,
+    buffer: &ProtocolObject<dyn MTLBuffer>,
+    layout: wgpu::TexelCopyBufferLayout,
+    texture: &TextureRaw,
+    mip: u32,
+    at: wgpu::Origin3d,
+    size: wgpu::Extent3d,
+) {
     let (row, image) = strides(texture.format, layout, size);
     for (slice, z, depth, i) in layers(texture, at, size) {
         let per_image = if depth > 1 { image } else { 0 };
@@ -197,8 +270,15 @@ pub(super) fn buffer_to_texture(blit: &ProtocolObject<dyn MTLBlitCommandEncoder>
     }
 }
 
-fn texture_to_buffer(blit: &ProtocolObject<dyn MTLBlitCommandEncoder>, texture: &TextureRaw, mip: u32, at: wgpu::Origin3d,
-    buffer: &ProtocolObject<dyn MTLBuffer>, layout: wgpu::TexelCopyBufferLayout, size: wgpu::Extent3d) {
+fn texture_to_buffer(
+    blit: &ProtocolObject<dyn MTLBlitCommandEncoder>,
+    texture: &TextureRaw,
+    mip: u32,
+    at: wgpu::Origin3d,
+    buffer: &ProtocolObject<dyn MTLBuffer>,
+    layout: wgpu::TexelCopyBufferLayout,
+    size: wgpu::Extent3d,
+) {
     let (row, image) = strides(texture.format, layout, size);
     for (slice, z, depth, i) in layers(texture, at, size) {
         let per_image = if depth > 1 { image } else { 0 };
@@ -212,44 +292,121 @@ fn texture_to_buffer(blit: &ProtocolObject<dyn MTLBlitCommandEncoder>, texture: 
 }
 
 fn texture(info: &wgpu::TexelCopyTextureInfo<'_>) -> Arc<TextureRaw> {
-    info.texture.as_custom::<MetalTexture>().expect("a Metal texture").raw.clone()
+    info.texture
+        .as_custom::<MetalTexture>()
+        .expect("a Metal texture")
+        .raw
+        .clone()
 }
 
-fn buffer(buffer: &DispatchBuffer) -> &MetalBuffer { buffer.as_custom::<MetalBuffer>().expect("a Metal buffer") }
+fn buffer(buffer: &DispatchBuffer) -> &MetalBuffer {
+    buffer.as_custom::<MetalBuffer>().expect("a Metal buffer")
+}
 
 impl CommandEncoderInterface for MetalEncoder {
-    fn copy_buffer_to_buffer(&self, source: &DispatchBuffer, from: wgpu::BufferAddress, destination: &DispatchBuffer,
-        to: wgpu::BufferAddress, size: Option<wgpu::BufferAddress>) {
+    fn copy_buffer_to_buffer(
+        &self,
+        source: &DispatchBuffer,
+        from: wgpu::BufferAddress,
+        destination: &DispatchBuffer,
+        to: wgpu::BufferAddress,
+        size: Option<wgpu::BufferAddress>,
+    ) {
         let size = size.unwrap_or_else(|| buffer(source).raw().size - from);
-        if size == 0 { return }
+        if size == 0 {
+            return;
+        }
         let mut rec = self.rec.lock();
         rec.cb();
         let (src, dst) = (buffer(source).raw(), buffer(destination).store.gpu_write());
         // SAFETY: wgpu validated both ranges.
-        unsafe { rec.blit().copyFromBuffer_sourceOffset_toBuffer_destinationOffset_size(&src.raw, from as usize, &dst.raw, to as usize, size as usize) };
+        unsafe {
+            rec.blit()
+                .copyFromBuffer_sourceOffset_toBuffer_destinationOffset_size(
+                    &src.raw,
+                    from as usize,
+                    &dst.raw,
+                    to as usize,
+                    size as usize,
+                )
+        };
         rec.keep([src as _, dst as _]);
     }
-    fn copy_buffer_to_texture(&self, source: wgpu::TexelCopyBufferInfo<'_>, destination: wgpu::TexelCopyTextureInfo<'_>, size: wgpu::Extent3d) {
-        if size.width == 0 || size.height == 0 || size.depth_or_array_layers == 0 { return }
+    fn copy_buffer_to_texture(
+        &self,
+        source: wgpu::TexelCopyBufferInfo<'_>,
+        destination: wgpu::TexelCopyTextureInfo<'_>,
+        size: wgpu::Extent3d,
+    ) {
+        if size.width == 0 || size.height == 0 || size.depth_or_array_layers == 0 {
+            return;
+        }
         let mut rec = self.rec.lock();
         rec.cb();
-        let (src, dst) = (source.buffer.as_custom::<MetalBuffer>().expect("a Metal buffer").raw(), texture(&destination));
-        buffer_to_texture(rec.blit(), &src.raw, source.layout, &dst, destination.mip_level, destination.origin, size);
+        let (src, dst) = (
+            source
+                .buffer
+                .as_custom::<MetalBuffer>()
+                .expect("a Metal buffer")
+                .raw(),
+            texture(&destination),
+        );
+        buffer_to_texture(
+            rec.blit(),
+            &src.raw,
+            source.layout,
+            &dst,
+            destination.mip_level,
+            destination.origin,
+            size,
+        );
         rec.keep([src as _, dst as _]);
     }
-    fn copy_texture_to_buffer(&self, source: wgpu::TexelCopyTextureInfo<'_>, destination: wgpu::TexelCopyBufferInfo<'_>, size: wgpu::Extent3d) {
-        if size.width == 0 || size.height == 0 || size.depth_or_array_layers == 0 { return }
-        let (src, dst) = (texture(&source), destination.buffer.as_custom::<MetalBuffer>().expect("a Metal buffer").store.gpu_write());
+    fn copy_texture_to_buffer(
+        &self,
+        source: wgpu::TexelCopyTextureInfo<'_>,
+        destination: wgpu::TexelCopyBufferInfo<'_>,
+        size: wgpu::Extent3d,
+    ) {
+        if size.width == 0 || size.height == 0 || size.depth_or_array_layers == 0 {
+            return;
+        }
+        let (src, dst) = (
+            texture(&source),
+            destination
+                .buffer
+                .as_custom::<MetalBuffer>()
+                .expect("a Metal buffer")
+                .store
+                .gpu_write(),
+        );
         let mut rec = self.rec.lock();
-        texture_to_buffer(rec.blit(), &src, source.mip_level, source.origin, &dst.raw, destination.layout, size);
+        texture_to_buffer(
+            rec.blit(),
+            &src,
+            source.mip_level,
+            source.origin,
+            &dst.raw,
+            destination.layout,
+            size,
+        );
         rec.keep([src as _, dst as _]);
     }
-    fn copy_texture_to_texture(&self, source: wgpu::TexelCopyTextureInfo<'_>, destination: wgpu::TexelCopyTextureInfo<'_>, size: wgpu::Extent3d) {
-        if size.width == 0 || size.height == 0 || size.depth_or_array_layers == 0 { return }
+    fn copy_texture_to_texture(
+        &self,
+        source: wgpu::TexelCopyTextureInfo<'_>,
+        destination: wgpu::TexelCopyTextureInfo<'_>,
+        size: wgpu::Extent3d,
+    ) {
+        if size.width == 0 || size.height == 0 || size.depth_or_array_layers == 0 {
+            return;
+        }
         let (src, dst) = (texture(&source), texture(&destination));
         let mut rec = self.rec.lock();
         let blit = rec.blit();
-        for ((from_slice, from_z, depth, _), (to_slice, to_z, _, _)) in layers(&src, source.origin, size).zip(layers(&dst, destination.origin, size)) {
+        for ((from_slice, from_z, depth, _), (to_slice, to_z, _, _)) in
+            layers(&src, source.origin, size).zip(layers(&dst, destination.origin, size))
+        {
             // SAFETY: wgpu validated both regions.
             unsafe {
                 blit.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
@@ -268,45 +425,98 @@ impl CommandEncoderInterface for MetalEncoder {
     fn finish(&mut self) -> DispatchCommandBuffer {
         let mut rec = self.rec.lock();
         rec.end_blit();
-        let recorded = rec.cb.take().map(|cb| Recorded { cb, keep: std::mem::take(&mut rec.keep), drawable: rec.drawable, shared: rec.shared.clone() });
+        let recorded = rec.cb.take().map(|cb| Recorded {
+            cb,
+            keep: std::mem::take(&mut rec.keep),
+            drawable: rec.drawable,
+            shared: rec.shared.clone(),
+        });
         DispatchCommandBuffer::custom(MetalCommandBuffer(Mutex::new(recorded)))
     }
     fn clear_texture(&self, _: &DispatchTexture, _: &wgpu::ImageSubresourceRange) {
         super::unsupported!("CommandEncoder::clear_texture")
     }
-    fn clear_buffer(&self, target: &DispatchBuffer, offset: wgpu::BufferAddress, size: Option<wgpu::BufferAddress>) {
+    fn clear_buffer(
+        &self,
+        target: &DispatchBuffer,
+        offset: wgpu::BufferAddress,
+        size: Option<wgpu::BufferAddress>,
+    ) {
         let raw = buffer(target).store.gpu_write();
         let size = size.unwrap_or(raw.size - offset);
-        if size == 0 { return }
+        if size == 0 {
+            return;
+        }
         let mut rec = self.rec.lock();
-        rec.blit().fillBuffer_range_value(&raw.raw, NSRange::new(offset as usize, size as usize), 0);
+        rec.blit().fillBuffer_range_value(
+            &raw.raw,
+            NSRange::new(offset as usize, size as usize),
+            0,
+        );
         rec.keep([raw as _]);
     }
     fn insert_debug_marker(&self, _: &str) {}
     fn push_debug_group(&self, _: &str) {}
     fn pop_debug_group(&self) {}
-    fn write_timestamp(&self, _: &DispatchQuerySet, _: u32) { super::unsupported!("timestamps between passes") }
-    fn resolve_query_set(&self, set: &DispatchQuerySet, first: u32, count: u32, destination: &DispatchBuffer, offset: wgpu::BufferAddress) {
-        if count == 0 { return }
-        let set = set.as_custom::<QuerySet>().expect("a Metal query set").raw.clone();
+    fn write_timestamp(&self, _: &DispatchQuerySet, _: u32) {
+        super::unsupported!("timestamps between passes")
+    }
+    fn resolve_query_set(
+        &self,
+        set: &DispatchQuerySet,
+        first: u32,
+        count: u32,
+        destination: &DispatchBuffer,
+        offset: wgpu::BufferAddress,
+    ) {
+        if count == 0 {
+            return;
+        }
+        let set = set
+            .as_custom::<QuerySet>()
+            .expect("a Metal query set")
+            .raw
+            .clone();
         let dst = buffer(destination).store.gpu_write();
         let mut rec = self.rec.lock();
         // SAFETY: wgpu validated the range against the set and the destination's size.
-        unsafe { rec.blit().resolveCounters_inRange_destinationBuffer_destinationOffset(&set.0, NSRange::new(first as usize, count as usize), &dst.raw, offset as usize) };
+        unsafe {
+            rec.blit()
+                .resolveCounters_inRange_destinationBuffer_destinationOffset(
+                    &set.0,
+                    NSRange::new(first as usize, count as usize),
+                    &dst.raw,
+                    offset as usize,
+                )
+        };
         rec.keep([set as _, dst as _]);
     }
-    fn mark_acceleration_structures_built<'a>(&self, _: &mut dyn Iterator<Item = &'a wgpu::Blas>, _: &mut dyn Iterator<Item = &'a wgpu::Tlas>) {
+    fn mark_acceleration_structures_built<'a>(
+        &self,
+        _: &mut dyn Iterator<Item = &'a wgpu::Blas>,
+        _: &mut dyn Iterator<Item = &'a wgpu::Tlas>,
+    ) {
         super::unsupported!("ray tracing")
     }
-    fn build_acceleration_structures<'a>(&self, _: &mut dyn Iterator<Item = &'a wgpu::BlasBuildEntry<'a>>, _: &mut dyn Iterator<Item = &'a wgpu::Tlas>) {
+    fn build_acceleration_structures<'a>(
+        &self,
+        _: &mut dyn Iterator<Item = &'a wgpu::BlasBuildEntry<'a>>,
+        _: &mut dyn Iterator<Item = &'a wgpu::Tlas>,
+    ) {
         super::unsupported!("ray tracing")
     }
-    fn transition_resources<'a>(&mut self, _: &mut dyn Iterator<Item = wgpu::wgt::BufferTransition<&'a DispatchBuffer>>,
-        _: &mut dyn Iterator<Item = wgpu::wgt::TextureTransition<&'a DispatchTexture>>) {}
+    fn transition_resources<'a>(
+        &mut self,
+        _: &mut dyn Iterator<Item = wgpu::wgt::BufferTransition<&'a DispatchBuffer>>,
+        _: &mut dyn Iterator<Item = wgpu::wgt::TextureTransition<&'a DispatchTexture>>,
+    ) {
+    }
 }
 
 impl CommandBufferInterface for MetalCommandBuffer {}
 
 impl PipelineCacheInterface for Inert {
-    fn get_data(&self) -> Option<Vec<u8>> { None }
+    fn get_data(&self) -> Option<Vec<u8>> {
+        None
+    }
 }

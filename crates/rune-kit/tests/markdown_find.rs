@@ -18,12 +18,9 @@ fn matches_across_bold_italic_code_strike_and_links() {
     assert_eq!(m, vec![vec![0..2, 4..5]]);
     assert_eq!(slice_all(src, &m), vec![vec!["a ", "b"]]);
 
-    let rich = "Start *italic* and **bold** and `code` and ~~struck~~ and [linked words](https://example.org/path) end.";
-    let m = find(
-        rich,
-        "Start italic and bold and code and struck and linked words end.",
-        Case::Sensitive,
-    );
+    let rich =
+        "Start *italic* and **bold** and `code` and ~~struck~~ and [linked words](https://example.org/path) end.";
+    let m = find(rich, "Start italic and bold and code and struck and linked words end.", Case::Sensitive);
     assert_eq!(
         slice_all(rich, &m),
         vec![vec![
@@ -70,18 +67,11 @@ fn link_and_image_urls_are_not_matched_while_visible_text_autolinks_and_alt_text
     let guide = find(src, "Read the guide or ref text.", Case::Sensitive);
     assert_eq!(slice_all(src, &guide), vec![vec!["Read ", "the guide", " or ", "ref text", "."]]);
 
-    let auto = find(
-        src,
-        "Bare https://example.org/bare-link and https://example.org/angle-link work.",
-        Case::Sensitive,
-    );
+    let auto =
+        find(src, "Bare https://example.org/bare-link and https://example.org/angle-link work.", Case::Sensitive);
     assert_eq!(
         slice_all(src, &auto),
-        vec![vec![
-            "Bare https://example.org/bare-link and ",
-            "https://example.org/angle-link",
-            " work.",
-        ]]
+        vec![vec!["Bare https://example.org/bare-link and ", "https://example.org/angle-link", " work.",]]
     );
 
     let img = find(src, "Look at diagram alt text and .", Case::Sensitive);
@@ -166,10 +156,7 @@ fn entities_and_escapes_match_rendered_characters_and_merge_when_adjacent() {
     assert_eq!(slice_all(src, &star), vec![vec!["*literal", "*"]]);
 
     let whole = find(src, "AT&T — *literal* and & plus \\ end", Case::Sensitive);
-    assert_eq!(
-        slice_all(src, &whole),
-        vec![vec!["AT&amp;T &mdash; ", "*literal", "* and &#x26; plus ", "\\ end"]]
-    );
+    assert_eq!(slice_all(src, &whole), vec![vec!["AT&amp;T &mdash; ", "*literal", "* and &#x26; plus ", "\\ end"]]);
 
     // Escaped pipes in tables and inline code inside tables.
     let tbl = "| a\\|b | `c\\|d` |\n|---|---|\n| e\\|f | g |";
@@ -210,14 +197,8 @@ fn multibyte_and_case_folding_keep_valid_source_byte_ranges() {
 
     // Greek final sigma 'ς' folds with 'σ' and 'Σ'.
     let greek = "ΟΣ and ος and οσ";
-    assert_eq!(
-        slice_all(greek, &find(greek, "ος", Case::Insensitive)),
-        vec![vec!["ΟΣ"], vec!["ος"], vec!["οσ"]]
-    );
-    assert_eq!(
-        slice_all(greek, &find(greek, "ΟΣ", Case::Insensitive)),
-        vec![vec!["ΟΣ"], vec!["ος"], vec!["οσ"]]
-    );
+    assert_eq!(slice_all(greek, &find(greek, "ος", Case::Insensitive)), vec![vec!["ΟΣ"], vec!["ος"], vec!["οσ"]]);
+    assert_eq!(slice_all(greek, &find(greek, "ΟΣ", Case::Insensitive)), vec![vec!["ΟΣ"], vec!["ος"], vec!["οσ"]]);
 }
 
 #[test]
@@ -258,10 +239,7 @@ fn highlights_round_trip_paints_marks_and_scrolls_into_view() {
     // 1. Direct round-trip: `Markdown::new(src).highlights(find(src, ...))`
     let direct_hits = find(src, "target phrase", Case::Insensitive);
     assert_eq!(direct_hits.len(), 2);
-    assert_eq!(
-        slice_all(src, &direct_hits),
-        vec![vec!["target phrase"], vec!["target phrase"]]
-    );
+    assert_eq!(slice_all(src, &direct_hits), vec![vec!["target phrase"], vec!["target phrase"]]);
 
     // Cross-marker match: "First **target" and "list *target"
     let cross_hits = find(src, "target", Case::Insensitive);
@@ -275,8 +253,8 @@ fn highlights_round_trip_paints_marks_and_scrolls_into_view() {
 
     fn app_view(s: &App, _: &mut Cx<App>) -> El {
         let k = Kit::neutral(true);
-        let style = MarkdownStyle::from_kit(&k)
-            .highlight_current_ring(Some((rune::color::hex("#f59e0b").unwrap(), 1.5)));
+        let style =
+            MarkdownStyle::from_kit(&k).highlight_current_ring(Some((rune::color::hex("#f59e0b").unwrap(), 1.5)));
         let hits = find(&s.src, &s.query, Case::Insensitive);
         col()
             .key("scroll")
@@ -287,9 +265,7 @@ fn highlights_round_trip_paints_marks_and_scrolls_into_view() {
                 Markdown::new(s.src.clone())
                     .style(style)
                     .highlights(
-                        hits.iter()
-                            .enumerate()
-                            .map(|(i, m)| (m, Highlight::new().current_match(i == s.active))),
+                        hits.iter().enumerate().map(|(i, m)| (m, Highlight::new().current_match(i == s.active))),
                     )
                     .build(&k),
             )
@@ -410,13 +386,7 @@ fn unsorted_and_overlapping_multi_range_highlights_keep_all_ranges() {
         "alpha beta gamma",
         |src, _| {
             let k = Kit::neutral(true);
-            col()
-                .w(400.0)
-                .child(
-                    Markdown::new(*src)
-                        .highlights(vec![vec![11..16, 0..5], vec![2..5, 0..3]])
-                        .build(&k),
-                )
+            col().w(400.0).child(Markdown::new(*src).highlights(vec![vec![11..16, 0..5], vec![2..5, 0..3]]).build(&k))
         },
         (400.0, 120.0),
         Env::new(true, 1.0),
@@ -466,4 +436,3 @@ fn highlighting_fragmented_match_is_linear() {
     assert_eq!(marks.len(), 1);
     assert_eq!(marks[0].label.as_deref(), Some(expected.as_str()));
 }
-

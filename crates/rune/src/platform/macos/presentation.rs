@@ -1,9 +1,9 @@
 //! Native panel presentation: prewarm, sharing, and generation-fenced fades.
 
-use std::{cell::Cell, rc::Rc, time::Duration};
-use objc2::msg_send;
-use super::{Panel, set_sharing};
 use super::presence::Presence;
+use super::{Panel, set_sharing};
+use objc2::msg_send;
+use std::{cell::Cell, rc::Rc, time::Duration};
 
 pub(crate) struct Prewarm {
     warming: Rc<Cell<bool>>,
@@ -13,7 +13,9 @@ pub(crate) struct Prewarm {
 impl Drop for Prewarm {
     fn drop(&mut self) {
         self.warming.set(false);
-        if !self.presence.get().ordered() { self.panel.orderOut(None); }
+        if !self.presence.get().ordered() {
+            self.panel.orderOut(None);
+        }
     }
 }
 
@@ -30,7 +32,9 @@ impl Panel {
         if !self.panel.isVisible() {
             // SAFETY: AppKit calls on the main thread.
             unsafe {
-                if !fade.is_zero() { self.panel.setAlphaValue(0.0); }
+                if !fade.is_zero() {
+                    self.panel.setAlphaValue(0.0);
+                }
                 self.panel.orderFrontRegardless();
             }
         }
@@ -48,9 +52,13 @@ impl Panel {
         // SAFETY: AppKit calls on the main thread.
         unsafe {
             let behavior = self.panel.collectionBehavior();
-            if !behavior.contains(Behavior::CanJoinAllSpaces) { return; }
+            if !behavior.contains(Behavior::CanJoinAllSpaces) {
+                return;
+            }
             if self.panel.isVisible() {
-                if self.panel.isOnActiveSpace() { return; }
+                if self.panel.isOnActiveSpace() {
+                    return;
+                }
                 self.panel.orderOut(None);
             }
             self.panel.setCollectionBehavior(Behavior::Default);
@@ -82,14 +90,24 @@ impl Panel {
                 let current: *mut AnyObject = msg_send![context, currentContext];
                 let _: () = msg_send![current, setDuration: duration.as_secs_f64()];
                 if fading {
-                    let (panel, presence, flag) = (self.panel.clone(), self.presence.clone(), self.revealing.clone());
+                    let (panel, presence, flag) = (
+                        self.panel.clone(),
+                        self.presence.clone(),
+                        self.revealing.clone(),
+                    );
                     let done = block2::RcBlock::new(move || {
                         let mut now = presence.get();
-                        if !now.fade_done(generation, hiding) { return; }
+                        if !now.fade_done(generation, hiding) {
+                            return;
+                        }
                         presence.set(now);
                         flag.set(false);
-                        if !now.ordered() { panel.orderOut(None); }
-                        if hiding { set_sharing(&panel, now.excluded()); }
+                        if !now.ordered() {
+                            panel.orderOut(None);
+                        }
+                        if hiding {
+                            set_sharing(&panel, now.excluded());
+                        }
                     });
                     let _: () = msg_send![current, setCompletionHandler: &*done];
                 }
@@ -99,18 +117,28 @@ impl Panel {
             }
             if duration.is_zero() {
                 self.panel.setAlphaValue(alpha);
-                if !self.presence.get().ordered() { self.panel.orderOut(None); }
+                if !self.presence.get().ordered() {
+                    self.panel.orderOut(None);
+                }
             }
         }
     }
 
     pub fn prewarm(&self) -> Prewarm {
         debug_assert!(self.options.prewarm);
-        unsafe { self.panel.setAlphaValue(0.0); }
+        unsafe {
+            self.panel.setAlphaValue(0.0);
+        }
         self.panel.setIgnoresMouseEvents(true);
-        if !self.panel.isVisible() { unsafe { self.panel.orderFrontRegardless() }; }
+        if !self.panel.isVisible() {
+            unsafe { self.panel.orderFrontRegardless() };
+        }
         self.warming.set(true);
-        Prewarm { warming: self.warming.clone(), presence: self.presence.clone(), panel: self.panel.clone() }
+        Prewarm {
+            warming: self.warming.clone(),
+            presence: self.presence.clone(),
+            panel: self.panel.clone(),
+        }
     }
 
     /// Hides the panel, fading its alpha out over `fade` (instantly when zero). Input stops at once.
@@ -135,7 +163,9 @@ impl Panel {
         let generation = presence.hide(!fade.is_zero());
         self.presence.set(presence);
         self.fade_to(0.0, fade, generation);
-        unsafe { self.panel.resignKeyWindow(); }
+        unsafe {
+            self.panel.resignKeyWindow();
+        }
         // Already ordered out for an immediate hide; a fade keeps exclusion until completion.
         set_sharing(&self.panel, presence.excluded());
     }

@@ -140,8 +140,10 @@ mod tests {
 
     #[test]
     fn takes_its_own_flags_and_keeps_the_rest() {
-        let (c, rest) =
-            Config::parse(args("bento --seed 9 --snap a.png --intensity=2 --duration 4 --hud --naive --at 1")).unwrap();
+        let (c, rest) = Config::parse(args(
+            "bento --seed 9 --snap a.png --intensity=2 --duration 4 --hud --naive --at 1",
+        ))
+        .unwrap();
         assert_eq!(c.seed, 9);
         assert!(c.naive);
         assert_eq!(c.intensity, 2.0);
@@ -153,7 +155,10 @@ mod tests {
     #[test]
     fn a_ramp_sets_the_duration_unless_given() {
         let (c, rest) = Config::parse(args("bento --ramp 16:64 --hold 2")).unwrap();
-        assert_eq!(c.load.as_ref().map(|l| l.levels().to_vec()), Some(vec![16, 23, 32, 45, 64]));
+        assert_eq!(
+            c.load.as_ref().map(|l| l.levels().to_vec()),
+            Some(vec![16, 23, 32, 45, 64])
+        );
         assert_eq!(c.duration, 10.6);
         assert_eq!(rest, args("bento --duration 10.6"));
         let (c, _) = Config::parse(args("bento --load 40 --duration 3")).unwrap();

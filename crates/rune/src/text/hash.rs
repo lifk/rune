@@ -21,36 +21,75 @@ impl Hasher for KeyHasher {
         fx.write(bytes);
         self.write_u64(fx.finish() ^ bytes.len() as u64);
     }
-    fn write_u8(&mut self, i: u8) { self.write_u64(i as u64) }
-    fn write_u16(&mut self, i: u16) { self.write_u64(i as u64) }
-    fn write_u32(&mut self, i: u32) { self.write_u64(i as u64) }
-    fn write_usize(&mut self, i: usize) { self.write_u64(i as u64) }
+    fn write_u8(&mut self, i: u8) {
+        self.write_u64(i as u64)
+    }
+    fn write_u16(&mut self, i: u16) {
+        self.write_u64(i as u64)
+    }
+    fn write_u32(&mut self, i: u32) {
+        self.write_u64(i as u64)
+    }
+    fn write_usize(&mut self, i: usize) {
+        self.write_u64(i as u64)
+    }
     fn write_u64(&mut self, i: u64) {
         let full = ((self.0 ^ i ^ SEED) as u128).wrapping_mul(MUL as u128);
         self.0 = (full as u64) ^ ((full >> 64) as u64);
     }
-    fn finish(&self) -> u64 { self.0 }
+    fn finish(&self) -> u64 {
+        self.0
+    }
 }
 
 /// A key of `text` in `style` at `scale`, with `width` when given (see [`shape_key`]).
-pub fn text_hash(text: &str, spans: &[Span], style: TextStyle, scale: f32, width: Option<f32>) -> u64 {
+pub fn text_hash(
+    text: &str,
+    spans: &[Span],
+    style: TextStyle,
+    scale: f32,
+    width: Option<f32>,
+) -> u64 {
     let mut h = KeyHasher::default();
     text.hash(&mut h);
     for s in spans {
-        (s.start, s.end, s.mono, s.weight.map(f32::to_bits), s.size.map(f32::to_bits), s.italic).hash(&mut h);
+        (
+            s.start,
+            s.end,
+            s.mono,
+            s.weight.map(f32::to_bits),
+            s.size.map(f32::to_bits),
+            s.italic,
+        )
+            .hash(&mut h);
     }
-    (style.size.to_bits(), style.weight.to_bits(), style.family, style.line_height.to_bits(), style.tracking.to_bits())
+    (
+        style.size.to_bits(),
+        style.weight.to_bits(),
+        style.family,
+        style.line_height.to_bits(),
+        style.tracking.to_bits(),
+    )
         .hash(&mut h);
     (scale.to_bits(), width.map(f32::to_bits)).hash(&mut h);
     let optical = match style.optical_size {
-        OpticalSize::Auto => (0, 0), OpticalSize::FontDefault => (1, 0), OpticalSize::Fixed(size) => (2, size.to_bits()),
+        OpticalSize::Auto => (0, 0),
+        OpticalSize::FontDefault => (1, 0),
+        OpticalSize::Fixed(size) => (2, size.to_bits()),
     };
     (style.variations, style.features, optical, style.italic).hash(&mut h);
     h.finish()
 }
 
 /// What shaping depends on: the text, its spans, style and scale, overflow-wrap and pills.
-pub(crate) fn shape_key(text: &str, spans: &[Span], style: TextStyle, scale: f32, wrap_anywhere: bool, pills: &[PillChip]) -> u64 {
+pub(crate) fn shape_key(
+    text: &str,
+    spans: &[Span],
+    style: TextStyle,
+    scale: f32,
+    wrap_anywhere: bool,
+    pills: &[PillChip],
+) -> u64 {
     let key = text_hash(text, spans, style, scale, None);
     if !wrap_anywhere && pills.is_empty() {
         return key;
@@ -58,7 +97,13 @@ pub(crate) fn shape_key(text: &str, spans: &[Span], style: TextStyle, scale: f32
     let mut h = KeyHasher::default();
     (key, wrap_anywhere).hash(&mut h);
     for p in pills {
-        (p.start, p.end, p.icon.is_some(), p.bare.as_ref().map(|b| (b.size.to_bits(), b.gap.to_bits()))).hash(&mut h);
+        (
+            p.start,
+            p.end,
+            p.icon.is_some(),
+            p.bare.as_ref().map(|b| (b.size.to_bits(), b.gap.to_bits())),
+        )
+            .hash(&mut h);
     }
     h.finish()
 }
@@ -75,7 +120,12 @@ pub(crate) fn directed(key: u64, base: parley::BaseDirection) -> u64 {
 
 /// A shaping broken at `max_width`, aligned and block-indented: the shape key itself when the
 /// layout is unwrapped, start-aligned and unindented.
-pub(crate) fn break_key(shape: u64, max_width: Option<f32>, align: parley::Alignment, blocks: Option<&[crate::edit::Block]>) -> u64 {
+pub(crate) fn break_key(
+    shape: u64,
+    max_width: Option<f32>,
+    align: parley::Alignment,
+    blocks: Option<&[crate::edit::Block]>,
+) -> u64 {
     if max_width.is_none() && align == parley::Alignment::Start && blocks.is_none() {
         return shape;
     }

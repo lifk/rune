@@ -41,7 +41,13 @@ impl Spinner {
         let mut e = el().role("progressbar").label("Loading").size(self.size, self.size);
         for (i, d) in radar::dots().iter().enumerate() {
             let side = d.size * u;
-            let dot = el().key(format!("d{i}")).absolute(d.x * u, d.y * u).size(side, side).radius(side * 0.24).fill(ink).a11y_hidden();
+            let dot = el()
+                .key(format!("d{i}"))
+                .absolute(d.x * u, d.y * u)
+                .size(side, side)
+                .radius(side * 0.24)
+                .fill(ink)
+                .a11y_hidden();
             e = e.child(match d.cycle {
                 Some(c) => dot.cycle(c),
                 None => dot.opacity(d.still),

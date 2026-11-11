@@ -67,7 +67,8 @@ fn paths_become_a_tree_with_folders_first_in_natural_order() {
 
 #[test]
 fn compact_folders_and_dirs_first_can_be_turned_off() {
-    let mut m = FileTree::new().compact_folders(false).dirs_first(false).build(["b/c/d.rs", "a.rs", "c.rs"].map(|p| (p, ())));
+    let mut m =
+        FileTree::new().compact_folders(false).dirs_first(false).build(["b/c/d.rs", "a.rs", "c.rs"].map(|p| (p, ())));
     m.expand_all();
     let names: Vec<String> = (0..m.visible_len()).map(|i| m.row(i).unwrap().0.name.clone()).collect();
     assert_eq!(names, ["a.rs", "b", "c", "d.rs", "c.rs"]);
@@ -82,7 +83,11 @@ fn a_filter_keeps_the_folders_leading_to_a_match_open() {
     m.toggle("src/ui/tree");
     assert_eq!(outline(&m), ["-src", "  +ui/tree"], "a folder closes while filtering");
     m.clear_filter();
-    assert_eq!(outline(&m), ["+assets", "+docs/guide/intro", "+src", " Cargo.toml", " README.md"], "the folders go back to how they were");
+    assert_eq!(
+        outline(&m),
+        ["+assets", "+docs/guide/intro", "+src", " Cargo.toml", " README.md"],
+        "the folders go back to how they were"
+    );
 }
 
 #[test]
@@ -118,7 +123,8 @@ fn view(s: &App, _: &mut Cx<App>) -> El {
 }
 
 fn runtime(files: Files) -> Runtime<App> {
-    let mut rt = Runtime::new(App { files, picked: Vec::new(), opened: Vec::new() }, view, (320.0, 240.0), Env::new(true, 1.0));
+    let mut rt =
+        Runtime::new(App { files, picked: Vec::new(), opened: Vec::new() }, view, (320.0, 240.0), Env::new(true, 1.0));
     rt.frame(0.0);
     rt
 }
@@ -244,7 +250,8 @@ fn rows_carry_tree_roles_level_open_state_and_selection() {
     assert_eq!(tree.label.as_deref(), Some("Files"));
     assert!(tree.focusable);
     let rows = rows(&rt);
-    let get = |label: &str| rows.iter().find(|e| e.label.as_deref() == Some(label)).unwrap_or_else(|| panic!("{label}"));
+    let get =
+        |label: &str| rows.iter().find(|e| e.label.as_deref() == Some(label)).unwrap_or_else(|| panic!("{label}"));
     assert_eq!((get("src").level, get("src").expanded), (Some(1), Some(true)));
     assert_eq!((get("assets").level, get("assets").expanded), (Some(1), Some(false)));
     assert_eq!((get("lib.rs").level, get("lib.rs").expanded, get("lib.rs").item_selected), (Some(2), None, true));
@@ -263,7 +270,11 @@ fn a_click_selects_and_a_folder_click_toggles() {
     rt.pointer_up(x, y);
     rt.frame(0.0);
     assert!(rt.state.files.is_expanded("src") && rt.state.files.is_selected("src"));
-    assert_eq!(rt.elements().into_iter().find(|e| e.focused).and_then(|e| e.key).as_deref(), Some("files"), "the click focuses the tree");
+    assert_eq!(
+        rt.elements().into_iter().find(|e| e.focused).and_then(|e| e.key).as_deref(),
+        Some("files"),
+        "the click focuses the tree"
+    );
     let (x, y) = at(&rt, "main.rs");
     rt.pointer_down(x, y);
     rt.pointer_up(x, y);
@@ -320,7 +331,8 @@ fn reveal_opens_selects_and_scrolls_to_a_far_row() {
         rt.frame(f as f64 / 60.0);
     }
     assert!(rt.state.files.is_expanded("pkg321") && rt.state.files.is_selected("pkg321/file77.rs"));
-    let row = rows(&rt).into_iter().find(|e| e.label.as_deref() == Some("file77.rs")).expect("the revealed row is built");
+    let row =
+        rows(&rt).into_iter().find(|e| e.label.as_deref() == Some("file77.rs")).expect("the revealed row is built");
     let r = row.visible;
     assert!(r[3] > 20.0 && r[1] >= 0.0 && r[1] + r[3] <= 240.5, "and on screen: {r:?}");
     assert!(row.item_selected);
@@ -357,7 +369,12 @@ fn tree_time() {
         let files = big();
         let model = ms(t);
         let t = Instant::now();
-        let mut rt = Runtime::new(App { files, picked: Vec::new(), opened: Vec::new() }, bench_view, (360.0, 900.0), Env::new(true, 2.0));
+        let mut rt = Runtime::new(
+            App { files, picked: Vec::new(), opened: Vec::new() },
+            bench_view,
+            (360.0, 900.0),
+            Env::new(true, 2.0),
+        );
         rt.frame(0.0);
         let first = ms(t);
         let mut frames = Vec::new();
@@ -369,7 +386,9 @@ fn tree_time() {
         }
         let built = rows(&rt).len();
         let t = Instant::now();
-        rt.update(|s, tx| { s.files.reveal("pkg499/file99.rs", tx); });
+        rt.update(|s, tx| {
+            s.files.reveal("pkg499/file99.rs", tx);
+        });
         rt.frame(5.1);
         let end = ms(t);
         let t = Instant::now();

@@ -23,7 +23,8 @@ pub struct Event {
 const KINDS: [u32; 15] = [5, 4, 4, 9, 12, 8, 6, 8, 6, 6, 3, 8, 6, 8, 6];
 
 fn pick(rng: &mut Rng, m: &Model) -> Action {
-    let other = |rng: &mut Rng, n: usize, current: usize| ((current + 1 + rng.below(n - 1)) % n) as u8;
+    let other =
+        |rng: &mut Rng, n: usize, current: usize| ((current + 1 + rng.below(n - 1)) % n) as u8;
     match rng.weighted(&KINDS) {
         0 => Action::Scene(other(rng, SCENES.len(), m.scene)),
         1 => Action::TempUp,
@@ -87,7 +88,10 @@ pub fn script_json(config: &Config) -> String {
             e.action.key()
         ));
     }
-    out.push_str(&format!("  {{\"t\": {:.4}, \"type\": \"mark\", \"name\": \"end\"}}\n]}}\n", config.duration + 1.0));
+    out.push_str(&format!(
+        "  {{\"t\": {:.4}, \"type\": \"mark\", \"name\": \"end\"}}\n]}}\n",
+        config.duration + 1.0
+    ));
     out
 }
 
@@ -100,7 +104,10 @@ pub struct Player {
 
 impl Player {
     pub fn new(config: &Config) -> Player {
-        Player { events: schedule(config), next: 0 }
+        Player {
+            events: schedule(config),
+            next: 0,
+        }
     }
 
     /// The actions due by `t` seconds that haven't been handed out yet.
@@ -135,23 +142,42 @@ mod tests {
     use super::*;
 
     fn config(seed: u64, duration: f64, intensity: f64) -> Config {
-        Config { seed, duration, intensity, ..Config::default() }
+        Config {
+            seed,
+            duration,
+            intensity,
+            ..Config::default()
+        }
     }
 
     #[test]
     fn a_seed_names_one_schedule() {
-        assert_eq!(schedule(&config(5, 10.0, 1.0)), schedule(&config(5, 10.0, 1.0)));
-        assert_ne!(schedule(&config(5, 10.0, 1.0)), schedule(&config(6, 10.0, 1.0)));
+        assert_eq!(
+            schedule(&config(5, 10.0, 1.0)),
+            schedule(&config(5, 10.0, 1.0))
+        );
+        assert_ne!(
+            schedule(&config(5, 10.0, 1.0)),
+            schedule(&config(6, 10.0, 1.0))
+        );
     }
 
     #[test]
     fn intensity_scales_the_rate_and_bursts_happen() {
         let calm = schedule(&config(1, 20.0, 1.0));
         let busy = schedule(&config(1, 20.0, 2.0));
-        assert!(busy.len() as f64 > calm.len() as f64 * 1.4, "{} vs {}", busy.len(), calm.len());
+        assert!(
+            busy.len() as f64 > calm.len() as f64 * 1.4,
+            "{} vs {}",
+            busy.len(),
+            calm.len()
+        );
         let tight = calm.windows(2).filter(|w| w[1].t - w[0].t < 0.07).count();
         assert!(tight >= 30, "bursts: {tight} tight gaps");
-        assert!(calm.windows(2).all(|w| w[1].t > w[0].t && w[1].t - w[0].t >= 0.03 - 1e-9));
+        assert!(
+            calm.windows(2)
+                .all(|w| w[1].t > w[0].t && w[1].t - w[0].t >= 0.03 - 1e-9)
+        );
         assert!(calm.iter().all(|e| e.t >= START && e.t < 20.0));
     }
 

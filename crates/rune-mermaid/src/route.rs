@@ -8,8 +8,8 @@
 //! the screen with [`Ctx::screen`].
 
 use super::canvas::{dist, lerp};
-use super::layered_draw::{NodeShape, boundary, outline};
 use super::layered::Placed;
+use super::layered_draw::{NodeShape, boundary, outline};
 
 /// Clearance between an edge and nodes it passes.
 const NODE_GAP: f32 = 5.0;
@@ -50,11 +50,36 @@ pub(crate) struct Route {
 }
 
 impl<'a> Ctx<'a> {
-    pub(crate) fn new(placed: &'a Placed, sizes: &[[f32; 2]], shapes: Vec<NodeShape>, labels: Vec<Option<[f32; 2]>>, across: bool, ends: Vec<(usize, usize)>) -> Self {
+    pub(crate) fn new(
+        placed: &'a Placed,
+        sizes: &[[f32; 2]],
+        shapes: Vec<NodeShape>,
+        labels: Vec<Option<[f32; 2]>>,
+        across: bool,
+        ends: Vec<(usize, usize)>,
+    ) -> Self {
         let swap = |p: [f32; 2]| if across { [p[1], p[0]] } else { p };
-        let outlines = (0..sizes.len()).map(|v| outline(shapes[v], swap(placed.centers[v]), sizes[v]).into_iter().map(swap).collect()).collect();
+        let outlines = (0..sizes.len())
+            .map(|v| {
+                outline(shapes[v], swap(placed.centers[v]), sizes[v])
+                    .into_iter()
+                    .map(swap)
+                    .collect()
+            })
+            .collect();
         let centers = placed.centers.clone();
-        Ctx { placed, sizes: sizes.to_vec(), shapes, labels, across, ends, centers, real: sizes.len(), outlines, titles: Vec::new() }
+        Ctx {
+            placed,
+            sizes: sizes.to_vec(),
+            shapes,
+            labels,
+            across,
+            ends,
+            centers,
+            real: sizes.len(),
+            outlines,
+            titles: Vec::new(),
+        }
     }
 
     /// Stops edge ends on subgraph borders, `[start, end]` per edge: each subgraph named joins as
@@ -63,14 +88,31 @@ impl<'a> Ctx<'a> {
         let mut boxes: Vec<(usize, usize)> = Vec::new();
         for (i, ends) in on.iter().enumerate().take(self.ends.len()) {
             for (k, c) in ends.iter().enumerate() {
-                let Some(b) = c.and_then(|c| self.placed.clusters.get(c).copied().filter(|b| *b != [0.0; 4]).map(|b| (c, b))) else { continue };
+                let Some(b) = c.and_then(|c| {
+                    self.placed
+                        .clusters
+                        .get(c)
+                        .copied()
+                        .filter(|b| *b != [0.0; 4])
+                        .map(|b| (c, b))
+                }) else {
+                    continue;
+                };
                 let v = match boxes.iter().find(|x| x.0 == b.0) {
                     Some(&(_, v)) => v,
                     None => {
                         let [x0, y0, x1, y1] = b.1;
-                        let (c, size) = ([(x0 + x1) / 2.0, (y0 + y1) / 2.0], self.screen([x1 - x0, y1 - y0]));
+                        let (c, size) = (
+                            [(x0 + x1) / 2.0, (y0 + y1) / 2.0],
+                            self.screen([x1 - x0, y1 - y0]),
+                        );
                         let shape = NodeShape::Rect;
-                        self.outlines.push(outline(shape, self.screen(c), size).into_iter().map(|p| self.screen(p)).collect());
+                        self.outlines.push(
+                            outline(shape, self.screen(c), size)
+                                .into_iter()
+                                .map(|p| self.screen(p))
+                                .collect(),
+                        );
                         self.centers.push(c);
                         self.sizes.push(size);
                         self.shapes.push(shape);
@@ -103,8 +145,17 @@ impl<'a> Ctx<'a> {
     /// Whether a label's box (screen, `[x0, y0, x1, y1]`) crosses a subgraph's border.
     pub(crate) fn on_border(&self, r: [f32; 4]) -> bool {
         let (a, b) = (self.screen([r[0], r[1]]), self.screen([r[2], r[3]]));
-        let r = [a[0].min(b[0]), a[1].min(b[1]), a[0].max(b[0]), a[1].max(b[1])];
-        self.placed.clusters.iter().filter(|c| **c != [0.0; 4]).any(|c| straddles(r, *c))
+        let r = [
+            a[0].min(b[0]),
+            a[1].min(b[1]),
+            a[0].max(b[0]),
+            a[1].max(b[1]),
+        ];
+        self.placed
+            .clusters
+            .iter()
+            .filter(|c| **c != [0.0; 4])
+            .any(|c| straddles(r, *c))
     }
 
     /// A layout point on the screen (and back: the map is its own inverse).
@@ -126,8 +177,12 @@ impl<'a> Ctx<'a> {
         match self.shapes[v] {
             _ if flat => (half - 10.0).max(half * 0.5),
             // Their flat top and bottom, short of the round or slanted ends.
-            NodeShape::Stadium if !self.across => (half - self.size(v)[1] / 2.0 - 2.0).max(half * 0.4),
-            NodeShape::Hexagon if !self.across => (half - self.size(v)[1] / 4.0 - 6.0).max(half * 0.4),
+            NodeShape::Stadium if !self.across => {
+                (half - self.size(v)[1] / 2.0 - 2.0).max(half * 0.4)
+            }
+            NodeShape::Hexagon if !self.across => {
+                (half - self.size(v)[1] / 4.0 - 6.0).max(half * 0.4)
+            }
             NodeShape::Diamond | NodeShape::Hexagon => half * 0.6,
             _ => half * 0.45,
         }
@@ -152,7 +207,12 @@ impl<'a> Ctx<'a> {
         match best {
             Some(y) if (y - c[1]) * s >= 0.0 => [x, y],
             _ => {
-                let t = boundary(self.shapes[v], self.screen(c), self.sizes[v], self.screen([x, c[1] + s * 1e4]));
+                let t = boundary(
+                    self.shapes[v],
+                    self.screen(c),
+                    self.sizes[v],
+                    self.screen([x, c[1] + s * 1e4]),
+                );
                 self.screen(t)
             }
         }
@@ -165,15 +225,23 @@ impl<'a> Ctx<'a> {
             return true;
         }
         let poly = &self.outlines[v];
-        !inside(poly, p) && (0..poly.len()).all(|i| seg_dist(p, poly[i], poly[(i + 1) % poly.len()]) > gap)
+        !inside(poly, p)
+            && (0..poly.len()).all(|i| seg_dist(p, poly[i], poly[(i + 1) % poly.len()]) > gap)
     }
 
     /// Other edges' label boxes, where the layout put them, and subgraph titles.
     fn label_boxes(&self, skip: usize) -> impl Iterator<Item = [f32; 4]> + '_ {
-        let labels = (0..self.labels.len()).filter(move |&j| j != skip).filter_map(|j| {
-            let (at, s) = (self.placed.labels[j]?, self.labels[j]?);
-            Some([at[0] - s[0] / 2.0, at[1] - s[1] / 2.0, at[0] + s[0] / 2.0, at[1] + s[1] / 2.0])
-        });
+        let labels = (0..self.labels.len())
+            .filter(move |&j| j != skip)
+            .filter_map(|j| {
+                let (at, s) = (self.placed.labels[j]?, self.labels[j]?);
+                Some([
+                    at[0] - s[0] / 2.0,
+                    at[1] - s[1] / 2.0,
+                    at[0] + s[0] / 2.0,
+                    at[1] + s[1] / 2.0,
+                ])
+            });
         labels.chain(self.titles.iter().copied())
     }
 
@@ -190,7 +258,9 @@ impl<'a> Ctx<'a> {
         let boxes: Vec<[f32; 4]> = self.label_boxes(edge).collect();
         pts.iter().all(|&p| {
             (0..self.real).all(|v| v == ends.0 || v == ends.1 || self.clear_of(v, p, NODE_GAP))
-                && boxes.iter().all(|r| p[0] < r[0] || p[0] > r[2] || p[1] < r[1] || p[1] > r[3])
+                && boxes
+                    .iter()
+                    .all(|r| p[0] < r[0] || p[0] > r[2] || p[1] < r[1] || p[1] > r[3])
         })
     }
 
@@ -203,7 +273,11 @@ impl<'a> Ctx<'a> {
         }
         let label = self.placed.labels[i];
         // Edges between the same two nodes keep the layout's separate tracks.
-        let twin = self.ends.iter().enumerate().any(|(j, &(a, b))| j != i && ((a, b) == (from, to) || (a, b) == (to, from)));
+        let twin = self
+            .ends
+            .iter()
+            .enumerate()
+            .any(|(j, &(a, b))| j != i && ((a, b) == (from, to) || (a, b) == (to, from)));
         let label_at = label.and_then(|l| path.iter().position(|&p| p == l));
         let mut anchors = self.anchors(i, &path, twin, None);
         let mut at = label;
@@ -211,7 +285,10 @@ impl<'a> Ctx<'a> {
             // The label sits on the line where it crosses the label's rank, if the line runs
             // straight through it there; a slanted line would jog across the gap.
             let line = curve(&anchors);
-            let upright = |p: &[f32; 2]| match (along(&line, p[1] - size[1] / 2.0), along(&line, p[1] + size[1] / 2.0)) {
+            let upright = |p: &[f32; 2]| match (
+                along(&line, p[1] - size[1] / 2.0),
+                along(&line, p[1] + size[1] / 2.0),
+            ) {
                 (Some(a), Some(b)) => (a - b).abs() < 1.0,
                 _ => false,
             };
@@ -221,7 +298,11 @@ impl<'a> Ctx<'a> {
                 None => {
                     anchors = self.anchors(i, &path, false, label_at);
                     // The line meets the label square on: into its near side, out of its far one.
-                    if let Some(k) = anchors.iter().position(|&p| p == l).filter(|&k| k > 0 && k + 1 < anchors.len()) {
+                    if let Some(k) = anchors
+                        .iter()
+                        .position(|&p| p == l)
+                        .filter(|&k| k > 0 && k + 1 < anchors.len())
+                    {
                         let h = size[1] / 2.0 * (anchors[k + 1][1] - anchors[k - 1][1]).signum();
                         anchors.splice(k..=k, [[l[0], l[1] - h], [l[0], l[1] + h]]);
                     }
@@ -230,7 +311,10 @@ impl<'a> Ctx<'a> {
         }
 
         let n = anchors.len();
-        let (s0, s1) = ((anchors[1][1] - anchors[0][1]).signum(), (anchors[n - 1][1] - anchors[n - 2][1]).signum());
+        let (s0, s1) = (
+            (anchors[1][1] - anchors[0][1]).signum(),
+            (anchors[n - 1][1] - anchors[n - 2][1]).signum(),
+        );
         let (tip_start, tip_end) = (anchors[0], anchors[n - 1]);
         let room = |a: [f32; 2], b: [f32; 2], inset: f32| (b[1] - a[1]).abs() > inset + 4.0;
         if room(anchors[0], anchors[1], insets[0]) {
@@ -240,7 +324,10 @@ impl<'a> Ctx<'a> {
             anchors[n - 1][1] -= s1 * insets[1];
         }
         Route {
-            curve: curve(&anchors).into_iter().map(|p| self.screen(p)).collect(),
+            curve: curve(&anchors)
+                .into_iter()
+                .map(|p| self.screen(p))
+                .collect(),
             tip_start: self.screen(tip_start),
             tip_end: self.screen(tip_end),
             dir_start: self.screen([0.0, -s0]),
@@ -273,7 +360,10 @@ impl<'a> Ctx<'a> {
         let mut k = 0;
         while k < n - 1 {
             let stop = (k + 1..n).find(|&j| j == n - 1 || keep(j)).unwrap_or(n - 1);
-            let next = (k + 1..=stop).rev().find(|&j| j == k + 1 || self.clear(i, pts[k], pts[j], ends)).unwrap_or(k + 1);
+            let next = (k + 1..=stop)
+                .rev()
+                .find(|&j| j == k + 1 || self.clear(i, pts[k], pts[j], ends))
+                .unwrap_or(k + 1);
             kept.push(next);
             k = next;
         }
@@ -287,7 +377,11 @@ impl<'a> Ctx<'a> {
         let (lo, hi) = ((c0 - r0).max(c1 - r1), (c0 + r0).min(c1 + r1));
         let wanted = if m == 2 && lo <= hi {
             let mid = path[1..n - 1].iter().map(|p| p[0]).sum::<f32>() / (n - 2).max(1) as f32;
-            let x = if n > 2 { mid.clamp(lo, hi) } else { ((c0 + c1) / 2.0).clamp(lo, hi) };
+            let x = if n > 2 {
+                mid.clamp(lo, hi)
+            } else {
+                ((c0 + c1) / 2.0).clamp(lo, hi)
+            };
             (x, x)
         } else {
             (out[1][0], out[m - 2][0])
@@ -306,9 +400,18 @@ impl<'a> Ctx<'a> {
             // Each end on its own: the port nearest straight at its neighbour that stays clear.
             let near = |v: usize, toward: [f32; 2], s: f32, first: bool| {
                 let (c, r) = (self.centers[v][0], self.port_reach(v));
-                let mut xs: Vec<f32> = (0..=8).map(|k| c - r + 2.0 * r * k as f32 / 8.0).chain([toward[0].clamp(c - r, c + r)]).collect();
+                let mut xs: Vec<f32> = (0..=8)
+                    .map(|k| c - r + 2.0 * r * k as f32 / 8.0)
+                    .chain([toward[0].clamp(c - r, c + r)])
+                    .collect();
                 xs.sort_by(|a, b| (a - toward[0]).abs().total_cmp(&(b - toward[0]).abs()));
-                xs.into_iter().map(|x| self.port(v, x, s)).find(|&p| if first { self.clear(i, p, toward, ends) } else { self.clear(i, toward, p, ends) })
+                xs.into_iter().map(|x| self.port(v, x, s)).find(|&p| {
+                    if first {
+                        self.clear(i, p, toward, ends)
+                    } else {
+                        self.clear(i, toward, p, ends)
+                    }
+                })
             };
             if let Some(a) = near(from, out[1], s0, true) {
                 out[0] = a;
@@ -330,7 +433,13 @@ impl<'a> Ctx<'a> {
         let (r0, r1) = (self.port_reach(from), self.port_reach(to));
         let mut xs: Vec<f32> = path[1..path.len() - 1].iter().map(|p| p[0]).collect();
         xs.extend([c0, c1, c0 - r0, c0 + r0, c1 - r1, c1 + r1]);
-        let mut pairs: Vec<(f32, f32)> = xs.iter().flat_map(|&a| xs.iter().map(move |&b| (a.clamp(c0 - r0, c0 + r0), b.clamp(c1 - r1, c1 + r1)))).collect();
+        let mut pairs: Vec<(f32, f32)> = xs
+            .iter()
+            .flat_map(|&a| {
+                xs.iter()
+                    .map(move |&b| (a.clamp(c0 - r0, c0 + r0), b.clamp(c1 - r1, c1 + r1)))
+            })
+            .collect();
         let cost = |&(a, b): &(f32, f32)| (a - b).abs() * 4.0 + (a - c0).abs() + (b - c1).abs();
         pairs.sort_by(|p, q| cost(p).total_cmp(&cost(q)));
         pairs.dedup_by(|p, q| (p.0 - q.0).abs() < 0.5 && (p.1 - q.1).abs() < 0.5);
@@ -343,15 +452,35 @@ impl<'a> Ctx<'a> {
     /// Whether edge `i`'s label, centred at `p`, keeps clear of every node and other label.
     fn label_fits(&self, i: usize, p: [f32; 2], size: [f32; 2]) -> bool {
         let (hw, hh) = (size[0] / 2.0 + LABEL_GAP, size[1] / 2.0 + LABEL_GAP);
-        let corners = [[p[0] - hw, p[1] - hh], [p[0] + hw, p[1] - hh], [p[0] + hw, p[1] + hh], [p[0] - hw, p[1] + hh], p];
+        let corners = [
+            [p[0] - hw, p[1] - hh],
+            [p[0] + hw, p[1] - hh],
+            [p[0] + hw, p[1] + hh],
+            [p[0] - hw, p[1] + hh],
+            p,
+        ];
         let nodes_ok = (0..self.real).all(|v| {
             let (c, s) = (self.centers[v], self.size(v));
-            let apart = (p[0] - c[0]).abs() > hw + s[0] / 2.0 || (p[1] - c[1]).abs() > hh + s[1] / 2.0;
-            apart || (corners.iter().all(|&q| !inside(&self.outlines[v], q)) && self.outlines[v].iter().all(|q| (q[0] - p[0]).abs() > hw || (q[1] - p[1]).abs() > hh))
+            let apart =
+                (p[0] - c[0]).abs() > hw + s[0] / 2.0 || (p[1] - c[1]).abs() > hh + s[1] / 2.0;
+            apart
+                || (corners.iter().all(|&q| !inside(&self.outlines[v], q))
+                    && self.outlines[v]
+                        .iter()
+                        .all(|q| (q[0] - p[0]).abs() > hw || (q[1] - p[1]).abs() > hh))
         });
         let rect = [p[0] - hw, p[1] - hh, p[0] + hw, p[1] + hh];
-        let borders_ok = !self.placed.clusters.iter().filter(|c| **c != [0.0; 4]).any(|c| straddles(rect, *c));
-        nodes_ok && borders_ok && self.label_boxes(i).all(|r| p[0] + hw < r[0] || p[0] - hw > r[2] || p[1] + hh < r[1] || p[1] - hh > r[3])
+        let borders_ok = !self
+            .placed
+            .clusters
+            .iter()
+            .filter(|c| **c != [0.0; 4])
+            .any(|c| straddles(rect, *c));
+        nodes_ok
+            && borders_ok
+            && self.label_boxes(i).all(|r| {
+                p[0] + hw < r[0] || p[0] - hw > r[2] || p[1] + hh < r[1] || p[1] - hh > r[3]
+            })
     }
 }
 
@@ -369,7 +498,10 @@ pub(crate) fn cubic(a: [f32; 2], b: [f32; 2]) -> Vec<[f32; 2]> {
             let t = s as f32 / steps as f32;
             let u = 1.0 - t;
             let (b0, b1, b2, b3) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
-            [b0 * a[0] + b1 * c1[0] + b2 * c2[0] + b3 * b[0], b0 * a[1] + b1 * c1[1] + b2 * c2[1] + b3 * b[1]]
+            [
+                b0 * a[0] + b1 * c1[0] + b2 * c2[0] + b3 * b[0],
+                b0 * a[1] + b1 * c1[1] + b2 * c2[1] + b3 * b[1],
+            ]
         })
         .collect()
 }
@@ -405,7 +537,9 @@ fn inside(poly: &[[f32; 2]], p: [f32; 2]) -> bool {
     let mut odd = false;
     for i in 0..poly.len() {
         let (a, b) = (poly[i], poly[(i + 1) % poly.len()]);
-        if (a[1] > p[1]) != (b[1] > p[1]) && p[0] < a[0] + (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) {
+        if (a[1] > p[1]) != (b[1] > p[1])
+            && p[0] < a[0] + (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1])
+        {
             odd = !odd;
         }
     }
@@ -415,7 +549,11 @@ fn inside(poly: &[[f32; 2]], p: [f32; 2]) -> bool {
 fn seg_dist(p: [f32; 2], a: [f32; 2], b: [f32; 2]) -> f32 {
     let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
     let l = dx * dx + dy * dy;
-    let t = if l < 1e-6 { 0.0 } else { (((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l).clamp(0.0, 1.0) };
+    let t = if l < 1e-6 {
+        0.0
+    } else {
+        (((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l).clamp(0.0, 1.0)
+    };
     dist(p, [a[0] + dx * t, a[1] + dy * t])
 }
 

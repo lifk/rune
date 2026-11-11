@@ -28,8 +28,14 @@ impl Spring {
     /// `Spring(duration:bounce:)`. Panics (also in `const` contexts) on a non-positive duration or
     /// a bounce outside (−1, 1).
     pub const fn new(duration: f32, bounce: f32) -> Spring {
-        assert!(duration > 0.0 && duration < 1e4, "spring duration must be positive seconds");
-        assert!(bounce > -1.0 && bounce < 1.0, "spring bounce must be in (-1, 1)");
+        assert!(
+            duration > 0.0 && duration < 1e4,
+            "spring duration must be positive seconds"
+        );
+        assert!(
+            bounce > -1.0 && bounce < 1.0,
+            "spring bounce must be in (-1, 1)"
+        );
         Spring { duration, bounce }
     }
 
@@ -41,7 +47,11 @@ impl Spring {
     /// From angular frequency ω (rad/s) and damping ratio ζ (> 0).
     pub fn from_omega_zeta(omega: f32, zeta: f32) -> Spring {
         assert!(omega > 0.0 && zeta > 0.0, "omega and zeta must be positive");
-        let bounce = if zeta <= 1.0 { 1.0 - zeta } else { 1.0 / zeta - 1.0 };
+        let bounce = if zeta <= 1.0 {
+            1.0 - zeta
+        } else {
+            1.0 / zeta - 1.0
+        };
         Spring::new(core::f32::consts::TAU / omega, bounce.clamp(-0.999, 0.999))
     }
 
@@ -73,7 +83,11 @@ impl Spring {
     /// Damping ratio ζ.
     #[inline]
     pub fn zeta(self) -> f32 {
-        if self.bounce >= 0.0 { 1.0 - self.bounce } else { 1.0 / (1.0 + self.bounce) }
+        if self.bounce >= 0.0 {
+            1.0 - self.bounce
+        } else {
+            1.0 / (1.0 + self.bounce)
+        }
     }
 
     /// k = ω² (mass 1).
@@ -109,14 +123,38 @@ impl Spring {
     /// Seconds until a unit step (0 → 1 from rest) stays within `epsilon` of the target, in both
     /// position and velocity (velocity threshold `10·epsilon` per second).
     pub fn settling_duration(self, epsilon: f32) -> f32 {
-        let layer = Layer::spring(self, 0.0, -1.0, 0.0, Eps { pos: epsilon, vel: epsilon * 10.0 });
+        let layer = Layer::spring(
+            self,
+            0.0,
+            -1.0,
+            0.0,
+            Eps {
+                pos: epsilon,
+                vel: epsilon * 10.0,
+            },
+        );
         layer.end as f32
     }
 
     /// Tail bound for an arbitrary retarget, using the same thresholds and 120 s cap as the store.
-    pub fn settling_duration_from(self, from: f32, velocity: f32, target: f32, epsilon: f32) -> f32 {
+    pub fn settling_duration_from(
+        self,
+        from: f32,
+        velocity: f32,
+        target: f32,
+        epsilon: f32,
+    ) -> f32 {
         assert!(epsilon.is_finite() && epsilon > 0.0);
-        let layer = Layer::spring(self, 0.0, from - target, velocity, Eps { pos: epsilon, vel: epsilon * 10.0 });
+        let layer = Layer::spring(
+            self,
+            0.0,
+            from - target,
+            velocity,
+            Eps {
+                pos: epsilon,
+                vel: epsilon * 10.0,
+            },
+        );
         layer.end.max(0.0) as f32
     }
 
@@ -186,6 +224,9 @@ impl SpringPair {
     pub const NONE: SpringPair = SpringPair::new(Spring::NONE, Spring::NONE);
     /// A pair whose exit is `enter` shortened by `ratio` (Kit: 0.75–0.9).
     pub fn with_exit_ratio(enter: Spring, ratio: f32) -> SpringPair {
-        SpringPair { enter, exit: Spring::new(enter.duration * ratio, enter.bounce * 0.5) }
+        SpringPair {
+            enter,
+            exit: Spring::new(enter.duration * ratio, enter.bounce * 0.5),
+        }
     }
 }

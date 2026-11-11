@@ -108,9 +108,10 @@ struct S {
 
 fn view(s: &S, _: &mut Cx<S>) -> El {
     let kit = rune_theme_opencode::kit(s.dark);
-    col().w_full().padding(16.0).child(
-        Markdown::new(s.src).style(MarkdownStyle::from_kit(kit)).streaming(s.streaming).build(kit),
-    )
+    col()
+        .w_full()
+        .padding(16.0)
+        .child(Markdown::new(s.src).style(MarkdownStyle::from_kit(kit)).streaming(s.streaming).build(kit))
 }
 
 fn render(src: &'static str, dark: bool, streaming: bool, width: f32) -> String {
@@ -122,11 +123,29 @@ fn render(src: &'static str, dark: bool, streaming: bool, width: f32) -> String 
     let els = rt.elements();
     for (i, e) in els.iter().enumerate() {
         let r = e.rect;
-        let _ = write!(out, "{{\"path\":{:?},\"role\":{:?},\"rect\":[{:.2},{:.2},{:.2},{:.2}],\"fill\":{:?}", e.path, e.role, r[0], r[1], r[2], r[3], e.fill.hex());
-        if let Some(k) = &e.key { let _ = write!(out, ",\"key\":{k:?}"); }
-        if let Some(t) = &e.text { let _ = write!(out, ",\"text\":{t:?}"); }
-        if let Some(c) = e.text_color { let _ = write!(out, ",\"color\":{:?}", c.hex()); }
-        if e.opacity != 1.0 { let _ = write!(out, ",\"opacity\":{:.3}", e.opacity); }
+        let _ = write!(
+            out,
+            "{{\"path\":{:?},\"role\":{:?},\"rect\":[{:.2},{:.2},{:.2},{:.2}],\"fill\":{:?}",
+            e.path,
+            e.role,
+            r[0],
+            r[1],
+            r[2],
+            r[3],
+            e.fill.hex()
+        );
+        if let Some(k) = &e.key {
+            let _ = write!(out, ",\"key\":{k:?}");
+        }
+        if let Some(t) = &e.text {
+            let _ = write!(out, ",\"text\":{t:?}");
+        }
+        if let Some(c) = e.text_color {
+            let _ = write!(out, ",\"color\":{:?}", c.hex());
+        }
+        if e.opacity != 1.0 {
+            let _ = write!(out, ",\"opacity\":{:.3}", e.opacity);
+        }
         out.push('}');
         out.push_str(if i + 1 < els.len() { ",\n" } else { "\n" });
     }
@@ -145,11 +164,16 @@ fn check_ext(name: &str, ext: &str, actual: String) {
         std::fs::write(&golden, &actual).unwrap();
         return;
     }
-    let want = std::fs::read_to_string(&golden).unwrap_or_else(|_| panic!("missing golden {name}; run with RUNE_BLESS=1"));
+    let want =
+        std::fs::read_to_string(&golden).unwrap_or_else(|_| panic!("missing golden {name}; run with RUNE_BLESS=1"));
     if want != actual {
         let fresh = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("{name}.{ext}"));
         std::fs::write(&fresh, &actual).unwrap();
-        let line = want.lines().zip(actual.lines()).position(|(a, b)| a != b).unwrap_or(want.lines().count().min(actual.lines().count()));
+        let line = want
+            .lines()
+            .zip(actual.lines())
+            .position(|(a, b)| a != b)
+            .unwrap_or(want.lines().count().min(actual.lines().count()));
         panic!(
             "golden differs: {name} (first difference at line {})\n  golden: {}\n  fresh:  {}\n  accept with RUNE_BLESS=1 after review",
             line + 1,
@@ -160,28 +184,44 @@ fn check_ext(name: &str, ext: &str, actual: String) {
 }
 
 #[test]
-fn session_dark() { check("session-dark", render(DOC, true, false, 720.0)); }
+fn session_dark() {
+    check("session-dark", render(DOC, true, false, 720.0));
+}
 
 #[test]
-fn session_light() { check("session-light", render(DOC, false, false, 720.0)); }
+fn session_light() {
+    check("session-light", render(DOC, false, false, 720.0));
+}
 
 #[test]
-fn narrow_dark() { check("narrow-dark", render(DOC, true, false, 340.0)); }
+fn narrow_dark() {
+    check("narrow-dark", render(DOC, true, false, 340.0));
+}
 
 #[test]
-fn narrow_light() { check("narrow-light", render(DOC, false, false, 340.0)); }
+fn narrow_light() {
+    check("narrow-light", render(DOC, false, false, 340.0));
+}
 
 #[test]
-fn streaming_table_dark() { check("streaming-table-dark", render(STREAMING, true, true, 720.0)); }
+fn streaming_table_dark() {
+    check("streaming-table-dark", render(STREAMING, true, true, 720.0));
+}
 
 #[test]
-fn streaming_table_light() { check("streaming-table-light", render(STREAMING, false, true, 720.0)); }
+fn streaming_table_light() {
+    check("streaming-table-light", render(STREAMING, false, true, 720.0));
+}
 
 #[test]
-fn streaming_fence_dark() { check("streaming-fence-dark", render(STREAMING_FENCE, true, true, 720.0)); }
+fn streaming_fence_dark() {
+    check("streaming-fence-dark", render(STREAMING_FENCE, true, true, 720.0));
+}
 
 #[test]
-fn streaming_fence_light() { check("streaming-fence-light", render(STREAMING_FENCE, false, true, 720.0)); }
+fn streaming_fence_light() {
+    check("streaming-fence-light", render(STREAMING_FENCE, false, true, 720.0));
+}
 
 /// What the element tree can't show: each block's inline spans (emphasis, code, links) and the
 /// built-in highlighter's tokens for the first code fence.

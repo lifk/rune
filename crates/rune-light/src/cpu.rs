@@ -22,7 +22,11 @@ fn sd_rrect(p: [f32; 2], half: [f32; 2], radii: [f32; 4]) -> f32 {
 
 fn prim_sd(pr: &Prim, p: [f32; 2]) -> f32 {
     let half = [pr.rect[2] * 0.5, pr.rect[3] * 0.5];
-    sd_rrect([p[0] - pr.rect[0] - half[0], p[1] - pr.rect[1] - half[1]], half, pr.radii)
+    sd_rrect(
+        [p[0] - pr.rect[0] - half[0], p[1] - pr.rect[1] - half[1]],
+        half,
+        pr.radii,
+    )
 }
 
 /// The field texel the shader builds: union 2D distance and the nearest occluder's z range.
@@ -65,7 +69,11 @@ pub fn estimate(prims: &[Prim], light: &Light, p: [f32; 3]) -> f32 {
     let dist = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
     let rd = [d[0] / dist, d[1] / dist, d[2] / dist];
     let theta = (radius / dist).max(1e-3);
-    let zmax = prims.iter().filter(|p| p.flags() & FLAG_OCCLUDER != 0).fold(0.0f32, |m, p| m.max(p.z[1])) + 0.5;
+    let zmax = prims
+        .iter()
+        .filter(|p| p.flags() & FLAG_OCCLUDER != 0)
+        .fold(0.0f32, |m, p| m.max(p.z[1]))
+        + 0.5;
     let (mut t, mut res, mut ph) = (0.75f32, 1.0f32, 1e10f32);
     for _ in 0..64 {
         if t >= dist - radius {
@@ -115,8 +123,18 @@ pub fn ground_truth(prims: &[Prim], light: &Light, p: [f32; 3], n: u32) -> f32 {
     let w = [c[0] - p[0], c[1] - p[1], c[2] - p[2]];
     let wl = (w[0] * w[0] + w[1] * w[1] + w[2] * w[2]).sqrt();
     let w = [w[0] / wl, w[1] / wl, w[2] / wl];
-    let up = if w[2].abs() < 0.9 { [0.0, 0.0, 1.0] } else { [1.0, 0.0, 0.0] };
-    let cross = |a: [f32; 3], b: [f32; 3]| [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    let up = if w[2].abs() < 0.9 {
+        [0.0, 0.0, 1.0]
+    } else {
+        [1.0, 0.0, 0.0]
+    };
+    let cross = |a: [f32; 3], b: [f32; 3]| {
+        [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ]
+    };
     let u = cross(w, up);
     let ul = (u[0] * u[0] + u[1] * u[1] + u[2] * u[2]).sqrt();
     let u = [u[0] / ul, u[1] / ul, u[2] / ul];
@@ -124,7 +142,10 @@ pub fn ground_truth(prims: &[Prim], light: &Light, p: [f32; 3], n: u32) -> f32 {
     let (mut lit, mut total) = (0u32, 0u32);
     for i in 0..n {
         for j in 0..n {
-            let a = [(i as f32 + 0.5) / n as f32 * 2.0 - 1.0, (j as f32 + 0.5) / n as f32 * 2.0 - 1.0];
+            let a = [
+                (i as f32 + 0.5) / n as f32 * 2.0 - 1.0,
+                (j as f32 + 0.5) / n as f32 * 2.0 - 1.0,
+            ];
             if a[0] * a[0] + a[1] * a[1] > 1.0 {
                 continue;
             }

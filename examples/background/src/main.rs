@@ -32,7 +32,12 @@ fn init() -> Background {
     }
 }
 
-fn button(key: &'static str, label: &'static str, t: tok::Theme, f: impl Fn(&mut Background, &mut Tx) + 'static) -> El {
+fn button(
+    key: &'static str,
+    label: &'static str,
+    t: tok::Theme,
+    f: impl Fn(&mut Background, &mut Tx) + 'static,
+) -> El {
     row()
         .key(key)
         .role("button")
@@ -55,7 +60,12 @@ fn view(s: &Background, cx: &mut Cx<Background>) -> El {
         .px(space::S6)
         .py(space::S6)
         .gap(space::S3)
-        .child(text("Background app").key("title").font(type_::TITLE).color(t.text))
+        .child(
+            text("Background app")
+                .key("title")
+                .font(type_::TITLE)
+                .color(t.text),
+        )
         .child(
             text(format!(
                 "{} ticks from a background thread, window closed {} times",
@@ -85,7 +95,9 @@ fn view(s: &Background, cx: &mut Cx<Background>) -> El {
             row()
                 .key("actions")
                 .gap(space::S2)
-                .child(button("close", "Close window", t, |_, tx| tx.close_window()))
+                .child(button("close", "Close window", t, |_, tx| {
+                    tx.close_window()
+                }))
                 .child(button("quit", "Quit", t, |_, tx| tx.quit())),
         )
 }
@@ -113,7 +125,11 @@ struct Hud {
 }
 
 fn hud(h: &Hud, _: &mut Cx<Hud>) -> El {
-    let label = if h.transcribing { "Transcribing".to_owned() } else { format!("Recording {}:{:02}", h.seconds / 60, h.seconds % 60) };
+    let label = if h.transcribing {
+        "Transcribing".to_owned()
+    } else {
+        format!("Recording {}:{:02}", h.seconds / 60, h.seconds % 60)
+    };
     row().key("hud").w_full().h_full().center().child(
         row()
             .key("pill")
@@ -124,24 +140,56 @@ fn hud(h: &Hud, _: &mut Cx<Hud>) -> El {
             .radius(18.0)
             .fill(rune::oklch(0.2, 0.0, 0.0))
             .border(1.0, rune::oklch(0.3, 0.0, 0.0))
-            .child(el().key("dot").size(8.0, 8.0).radius(4.0).fill(if h.seconds.is_multiple_of(2) { rune::oklch(0.65, 0.2, 25.0) } else { rune::oklch(0.45, 0.12, 25.0) }))
-            .child(text(label).key("label").font(type_::LABEL).color(rune::oklch(0.93, 0.0, 0.0))),
+            .child(el().key("dot").size(8.0, 8.0).radius(4.0).fill(
+                if h.seconds.is_multiple_of(2) {
+                    rune::oklch(0.65, 0.2, 25.0)
+                } else {
+                    rune::oklch(0.45, 0.12, 25.0)
+                },
+            ))
+            .child(
+                text(label)
+                    .key("label")
+                    .font(type_::LABEL)
+                    .color(rune::oklch(0.93, 0.0, 0.0)),
+            ),
     )
 }
 
 fn capsule(presses: &u32, _: &mut Cx<u32>) -> El {
     let t = tok::theme(true);
-    row().key("capsule").w_full().h_full().px(space::S2).gap(space::S2).center().radius(24.0).fill(t.card).border(1.0, t.card_border).child(
-        text(format!("Pressed {presses} times")).key("presses").font(type_::LABEL).color(t.text),
-    )
-    .child(
-        row().key("press").role("button").h(28.0).px(space::S3).center().radius(radius::MD).fill(t.control_off).hover(t.hover)
-            .on_press(|n: &mut u32| {
-                *n += 1;
-                eprintln!("background: capsule pressed {n}");
-            })
-            .child(text("Press").font(type_::LABEL).color(t.text)),
-    )
+    row()
+        .key("capsule")
+        .w_full()
+        .h_full()
+        .px(space::S2)
+        .gap(space::S2)
+        .center()
+        .radius(24.0)
+        .fill(t.card)
+        .border(1.0, t.card_border)
+        .child(
+            text(format!("Pressed {presses} times"))
+                .key("presses")
+                .font(type_::LABEL)
+                .color(t.text),
+        )
+        .child(
+            row()
+                .key("press")
+                .role("button")
+                .h(28.0)
+                .px(space::S3)
+                .center()
+                .radius(radius::MD)
+                .fill(t.control_off)
+                .hover(t.hover)
+                .on_press(|n: &mut u32| {
+                    *n += 1;
+                    eprintln!("background: capsule pressed {n}");
+                })
+                .child(text("Press").font(type_::LABEL).color(t.text)),
+        )
 }
 
 fn main() {
@@ -153,8 +201,13 @@ fn main() {
     .keep_running()
     .on_close(on_close)
     .on_window(|window| {
-        let native = window.with_raw_handle(|handle| format!("{:?}", handle.as_raw())).unwrap_or_default();
-        eprintln!("background: native window {}", native.split('(').next().unwrap_or_default());
+        let native = window
+            .with_raw_handle(|handle| format!("{:?}", handle.as_raw()))
+            .unwrap_or_default();
+        eprintln!(
+            "background: native window {}",
+            native.split('(').next().unwrap_or_default()
+        );
     });
     if !std::env::args().any(|a| a == "--open") {
         app = app.windowless();
@@ -166,7 +219,11 @@ fn main() {
         app = app.release_gpu_when_closed();
     }
     // `--hud-large` covers most of the screen, to check that clicks pass through it.
-    let size = if std::env::args().any(|a| a == "--hud-large") { (1200.0, 700.0) } else { (240.0, 44.0) };
+    let size = if std::env::args().any(|a| a == "--hud-large") {
+        (1200.0, 700.0)
+    } else {
+        (240.0, 44.0)
+    };
     let overlay = app.overlay(
         rune::OverlaySpec {
             name: "background-hud",
@@ -215,14 +272,20 @@ fn main() {
                 (Some("hide"), _) => commands.hide(),
                 (Some("focus"), _) => commands.focus(),
                 (Some("position"), Some(x)) => {
-                    if let (Ok(x), Some(Ok(y))) = (x.parse::<i32>(), words.next().map(str::parse::<i32>)) {
+                    if let (Ok(x), Some(Ok(y))) =
+                        (x.parse::<i32>(), words.next().map(str::parse::<i32>))
+                    {
                         commands.set_position((x, y));
                     }
                 }
                 (Some("activate"), Some(token)) => commands.activate(token),
                 (Some("close"), _) => commands.close(),
                 (Some("quit"), _) => commands.quit(),
-                (Some("status"), _) => eprintln!("background: visible {}, window error {:?}", commands.is_visible(), commands.window_error()),
+                (Some("status"), _) => eprintln!(
+                    "background: visible {}, window error {:?}",
+                    commands.is_visible(),
+                    commands.window_error()
+                ),
                 (Some("dock"), Some(on)) => commands.set_dock_icon(on == "on"),
                 (Some("hud"), Some("show")) => overlay.show(),
                 (Some("hud"), Some("hide")) => overlay.hide(),
@@ -230,14 +293,20 @@ fn main() {
                 (Some("hud"), Some("bottom")) => overlay.set_edge(rune::ScreenEdge::Bottom),
                 (Some("hud"), Some("transcribing")) => overlay.update(|h, _| h.transcribing = true),
                 (Some("hud"), Some("recording")) => overlay.update(|h, _| h.transcribing = false),
-                (Some("hud"), Some("status")) => eprintln!("background: hud {:?}", overlay.availability()),
+                (Some("hud"), Some("status")) => {
+                    eprintln!("background: hud {:?}", overlay.availability())
+                }
                 (Some("capsule"), Some("show")) => capsule.show(),
                 (Some("capsule"), Some("hide")) => capsule.hide(),
                 (Some("capsule"), Some("left")) => capsule.set_align(rune::Align::Start, 12.0),
                 (Some("capsule"), Some("wide")) => capsule.resize((320.0, 48.0)),
-                (Some("capsule"), Some("status")) => eprintln!("background: capsule {:?}", capsule.availability()),
+                (Some("capsule"), Some("status")) => {
+                    eprintln!("background: capsule {:?}", capsule.availability())
+                }
                 (Some(other), _) => {
-                    eprintln!("background: unknown command {other:?} (open | show | hide | focus | position X Y | activate TOKEN | close | dock on|off | hud show|hide|top|bottom|recording|transcribing|status | capsule show|hide|left|wide|status | quit)")
+                    eprintln!(
+                        "background: unknown command {other:?} (open | show | hide | focus | position X Y | activate TOKEN | close | dock on|off | hud show|hide|top|bottom|recording|transcribing|status | capsule show|hide|left|wide|status | quit)"
+                    )
                 }
                 (None, _) => {}
             }

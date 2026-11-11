@@ -25,7 +25,13 @@ fn dialog(s: &App, _: &mut Cx<App>) -> El {
         .open(s.open)
         .on_close(close)
         .fit()
-        .child(Button::new("Delete").variant(ButtonVariant::Danger).on_press(|s: &mut App| s.presses += 1).build(&k).key("confirm-delete"))
+        .child(
+            Button::new("Delete")
+                .variant(ButtonVariant::Danger)
+                .on_press(|s: &mut App| s.presses += 1)
+                .build(&k)
+                .key("confirm-delete"),
+        )
         .build(&k, &mut layer);
     root(col().child(behind), layer)
 }
@@ -36,7 +42,10 @@ fn a_dialog_is_modal_named_and_described() {
     assert!(act(&mut rt, "delete", Action::Click));
     let tree = rt.accessibility_json();
     let panel = node(&tree, "confirm-dialog");
-    assert_eq!((said(panel), panel["description"].as_str()), (("dialog", "Delete file?"), Some("This can't be undone.")));
+    assert_eq!(
+        (said(panel), panel["description"].as_str()),
+        (("dialog", "Delete file?"), Some("This can't be undone."))
+    );
     assert!(has(panel, "modal"));
     assert!(find(&tree, "delete").is_none(), "the page behind a modal leaves the tree");
     assert_eq!(said(node(&tree, "close")), ("button", "Close"));
@@ -55,7 +64,10 @@ fn menu(s: &App, _: &mut Cx<App>) -> El {
     let mut layer = Vec::new();
     let trigger = Menu::new("file")
         .trigger(Button::new("File").on_press(toggle).build(&k).key("file-button"))
-        .item(MenuItem::new("New").shortcut("Ctrl+N").on_select(|s: &mut App| { s.presses += 1; s.open = false; }))
+        .item(MenuItem::new("New").shortcut("Ctrl+N").on_select(|s: &mut App| {
+            s.presses += 1;
+            s.open = false;
+        }))
         .item(MenuItem::new("Word wrap").checked(s.on).on_select(|s: &mut App| s.on = !s.on))
         .item(MenuItem::new("Revert").disabled(true))
         .separator()
@@ -108,7 +120,11 @@ fn popover(s: &App, _: &mut Cx<App>) -> El {
         .open(s.open)
         .on_close(close)
         .build(&k, &mut layer);
-    let tip = Tooltip::new("tip").trigger(Button::new("Save").build(&k).key("save")).label("Saves to disk").open(true).build(&k, &mut layer);
+    let tip = Tooltip::new("tip")
+        .trigger(Button::new("Save").build(&k).key("save"))
+        .label("Saves to disk")
+        .open(true)
+        .build(&k, &mut layer);
     root(col().gap(8.0).child(share).child(tip), layer)
 }
 
@@ -125,7 +141,10 @@ fn popovers_and_tooltips_name_describe_and_open() {
     let tree = rt.accessibility_json();
     assert!(has(node(&tree, "share-button"), "expanded"));
     let panel = node(&tree, "share-content");
-    assert_eq!((said(panel), panel["description"].as_str()), (("dialog", "Share"), Some("Anyone with the link can view")));
+    assert_eq!(
+        (said(panel), panel["description"].as_str()),
+        (("dialog", "Share"), Some("Anyone with the link can view"))
+    );
     assert_eq!(said(node(panel, "link")), ("label", "example.com/f/1"));
     golden("popover", &tree);
     assert!(act(&mut rt, "close", Action::Click));
@@ -144,7 +163,10 @@ fn select(s: &App, _: &mut Cx<App>) -> El {
         .open(s.open)
         .on_toggle(toggle)
         .on_close(close)
-        .on_choose(|s: &mut App, v: &str, _| { s.chosen = Some(v.to_owned()); s.open = false; })
+        .on_choose(|s: &mut App, v: &str, _| {
+            s.chosen = Some(v.to_owned());
+            s.open = false;
+        })
         .build(&k, &mut layer);
     let off = Select::new("size", &FRUIT).placeholder("Size").disabled(true).build(&k, &mut layer);
     root(col().gap(8.0).child(fruit).child(off), layer)
@@ -218,7 +240,11 @@ fn a_combobox_reads_its_choice_search_and_results() {
     press_key(&mut rt, Key::Down);
     let tree = rt.accessibility_json();
     assert!(has(node(&tree, "model-option-smart"), "selected"), "arrows move the active result");
-    assert_eq!(node(node(&tree, "search"), "input")["activeDescendant"], "model-option-smart", "focus stays in the search field");
+    assert_eq!(
+        node(node(&tree, "search"), "input")["activeDescendant"],
+        "model-option-smart",
+        "focus stays in the search field"
+    );
     press_key(&mut rt, Key::Enter);
     assert_eq!((rt.state.chosen.as_deref(), rt.state.combo.is_open()), (Some("smart"), false));
 }

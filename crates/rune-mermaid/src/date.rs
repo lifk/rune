@@ -28,7 +28,15 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let mp = (5 * doy + 2) / 153;
     let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
     let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
-    (if m <= 2 { yoe + era * 400 + 1 } else { yoe + era * 400 }, m, d)
+    (
+        if m <= 2 {
+            yoe + era * 400 + 1
+        } else {
+            yoe + era * 400
+        },
+        m,
+        d,
+    )
 }
 
 fn days_in_month(y: i64, m: u32) -> u32 {
@@ -71,8 +79,20 @@ fn fields(t: f64) -> Fields {
 }
 
 fn at(y: i64, mo: u32, d: u32, h: u32, mi: u32, s: u32, ms: u32) -> Option<f64> {
-    let ok = (1..=12).contains(&mo) && d >= 1 && d <= days_in_month(y, mo) && h < 24 && mi < 60 && s < 60 && (-9999..=9999).contains(&y);
-    ok.then(|| days_from_civil(y, mo, d) as f64 * DAY + h as f64 * HOUR + mi as f64 * MIN + s as f64 * SEC + ms as f64)
+    let ok = (1..=12).contains(&mo)
+        && d >= 1
+        && d <= days_in_month(y, mo)
+        && h < 24
+        && mi < 60
+        && s < 60
+        && (-9999..=9999).contains(&y);
+    ok.then(|| {
+        days_from_civil(y, mo, d) as f64 * DAY
+            + h as f64 * HOUR
+            + mi as f64 * MIN
+            + s as f64 * SEC
+            + ms as f64
+    })
 }
 
 /// `t` moved by `n` calendar months, keeping its day where the month has it.
@@ -84,29 +104,67 @@ fn add_months(t: f64, n: i64) -> f64 {
     at(y, mo, d, f.h, f.mi, f.s, f.ms).unwrap_or(t)
 }
 
-const MONTHS: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const DAYS: [&str; 7] = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MONTHS: [&str; 12] = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+];
+const DAYS: [&str; 7] = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+];
 
 /// `s` read with a dayjs format (`YYYY-MM-DD`, `DD/MM/YYYY HH:mm`, `X`, …), or, failing that,
 /// as an ISO date and time.
 pub(crate) fn parse(s: &str, format: &str) -> Option<f64> {
     let s = s.trim();
-    with_format(s, format)
-        .or_else(|| ["YYYY-MM-DDTHH:mm:ss", "YYYY-MM-DD HH:mm:ss", "YYYY-MM-DDTHH:mm", "YYYY-MM-DD HH:mm", "YYYY-MM-DD"].iter().find_map(|f| with_format(s, f)))
+    with_format(s, format).or_else(|| {
+        [
+            "YYYY-MM-DDTHH:mm:ss",
+            "YYYY-MM-DD HH:mm:ss",
+            "YYYY-MM-DDTHH:mm",
+            "YYYY-MM-DD HH:mm",
+            "YYYY-MM-DD",
+        ]
+        .iter()
+        .find_map(|f| with_format(s, f))
+    })
 }
 
 fn with_format(s: &str, format: &str) -> Option<f64> {
-    let (mut y, mut mo, mut d, mut h, mut mi, mut sec, mut ms) = (1970i64, 1u32, 1u32, 0u32, 0u32, 0u32, 0u32);
+    let (mut y, mut mo, mut d, mut h, mut mi, mut sec, mut ms) =
+        (1970i64, 1u32, 1u32, 0u32, 0u32, 0u32, 0u32);
     let mut pm = None;
     let (f, mut rest) = (format.as_bytes(), s);
     let mut i = 0;
     let number = |rest: &mut &str, max: usize| -> Option<i64> {
-        let n = rest.bytes().take(max).take_while(u8::is_ascii_digit).count();
+        let n = rest
+            .bytes()
+            .take(max)
+            .take_while(u8::is_ascii_digit)
+            .count();
         let v = rest.get(..n).filter(|v| !v.is_empty())?.parse().ok()?;
         *rest = &rest[n..];
         Some(v)
     };
-    const TOKENS: [&str; 20] = ["YYYY", "MMMM", "MMM", "SSS", "YY", "MM", "DD", "HH", "hh", "mm", "ss", "Do", "M", "D", "H", "h", "m", "s", "A", "a"];
+    const TOKENS: [&str; 20] = [
+        "YYYY", "MMMM", "MMM", "SSS", "YY", "MM", "DD", "HH", "hh", "mm", "ss", "Do", "M", "D",
+        "H", "h", "m", "s", "A", "a",
+    ];
     while i < f.len() {
         if f[i] == b'[' {
             let end = format[i..].find(']').map_or(f.len(), |e| i + e);
@@ -117,7 +175,10 @@ fn with_format(s: &str, format: &str) -> Option<f64> {
         if f[i] == b'X' || f[i] == b'x' {
             let neg = rest.starts_with('-');
             let digits = rest.trim_start_matches('-');
-            let n = digits.bytes().take_while(|b| b.is_ascii_digit() || *b == b'.').count();
+            let n = digits
+                .bytes()
+                .take_while(|b| b.is_ascii_digit() || *b == b'.')
+                .count();
             let v: f64 = digits[..n].parse().ok()?;
             let v = if neg { -v } else { v } * if f[i] == b'X' { SEC } else { 1.0 };
             return (digits[n..].trim().is_empty() && v.abs() < 2.5e14).then_some(v);
@@ -147,7 +208,9 @@ fn with_format(s: &str, format: &str) -> Option<f64> {
             "DD" | "D" => d = number(&mut rest, 2)? as u32,
             "Do" => {
                 d = number(&mut rest, 2)? as u32;
-                rest = rest.get(2..).filter(|_| rest.starts_with(|c: char| c.is_ascii_alphabetic()))?;
+                rest = rest
+                    .get(2..)
+                    .filter(|_| rest.starts_with(|c: char| c.is_ascii_alphabetic()))?;
             }
             "HH" | "H" | "hh" | "h" => h = number(&mut rest, 2)? as u32,
             "mm" | "m" => mi = number(&mut rest, 2)? as u32,
@@ -196,7 +259,10 @@ impl Span {
 /// `3d`, `1.5h`, `2w`, `30m`, `250ms`, `1M` (a month), `1y`.
 pub(crate) fn span(s: &str) -> Option<Span> {
     let s = s.trim();
-    let n = s.bytes().take_while(|b| b.is_ascii_digit() || *b == b'.').count();
+    let n = s
+        .bytes()
+        .take_while(|b| b.is_ascii_digit() || *b == b'.')
+        .count();
     let v: f64 = s.get(..n).filter(|v| !v.is_empty())?.parse().ok()?;
     if !v.is_finite() || v > 1e6 {
         return None;
@@ -234,11 +300,12 @@ pub(crate) fn format(t: f64, fmt: &str) -> String {
             }
             _ => None,
         };
-        let num = |out: &mut String, v: i64, width: usize, default: char| match pad.unwrap_or(default) {
-            '-' => out.push_str(&v.to_string()),
-            '_' => out.push_str(&format!("{v:>width$}")),
-            _ => out.push_str(&format!("{v:0width$}")),
-        };
+        let num =
+            |out: &mut String, v: i64, width: usize, default: char| match pad.unwrap_or(default) {
+                '-' => out.push_str(&v.to_string()),
+                '_' => out.push_str(&format!("{v:>width$}")),
+                _ => out.push_str(&format!("{v:0width$}")),
+            };
         let doy = days_from_civil(f.y, f.mo, f.d) - days_from_civil(f.y, 1, 1) + 1;
         match code {
             'Y' => num(&mut out, f.y, 4, '0'),
@@ -350,7 +417,16 @@ impl Step {
                 while m0.rem_euclid(n as i64) != 0 {
                     m0 += 1;
                 }
-                at(m0.div_euclid(12), m0.rem_euclid(12) as u32 + 1, 1, 0, 0, 0, 0).unwrap_or(lo)
+                at(
+                    m0.div_euclid(12),
+                    m0.rem_euclid(12) as u32 + 1,
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                )
+                .unwrap_or(lo)
             }
         };
         let mut out = Vec::new();
@@ -363,7 +439,11 @@ impl Step {
                     // Back to the 1st at month ends, as d3 does.
                     let next = t + n as f64 * DAY;
                     let (f, g) = (fields(t), fields(next));
-                    if g.mo != f.mo && g.d > 1 { at(g.y, g.mo, 1, 0, 0, 0, 0).unwrap_or(next) } else { next }
+                    if g.mo != f.mo && g.d > 1 {
+                        at(g.y, g.mo, 1, 0, 0, 0, 0).unwrap_or(next)
+                    } else {
+                        next
+                    }
                 }
                 Step::Months(n) => add_months(t, n as i64),
             };

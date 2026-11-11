@@ -23,10 +23,16 @@ thread_local! {
 /// share mutable cells with it. This is for component history, not application state or I/O.
 pub fn snapshot<T: Clone + 'static>(key: &str, value: &T) -> Rc<T> {
     SCOPES.with_borrow_mut(|scopes| {
-        let Some(scope) = scopes.last_mut() else { return Rc::new(value.clone()) };
-        scope.entry((TypeId::of::<T>(), key.to_owned()))
+        let Some(scope) = scopes.last_mut() else {
+            return Rc::new(value.clone());
+        };
+        scope
+            .entry((TypeId::of::<T>(), key.to_owned()))
             .or_insert_with(|| Rc::new(value.clone()))
-            .clone().downcast::<T>().ok().expect("snapshot type is part of its key")
+            .clone()
+            .downcast::<T>()
+            .ok()
+            .expect("snapshot type is part of its key")
     })
 }
 
@@ -40,7 +46,9 @@ pub(crate) fn enter() -> Guard {
 
 impl Drop for Guard {
     fn drop(&mut self) {
-        SCOPES.with_borrow_mut(|scopes| { scopes.pop(); });
+        SCOPES.with_borrow_mut(|scopes| {
+            scopes.pop();
+        });
     }
 }
 

@@ -52,7 +52,12 @@ mod wasi {
     }
 
     #[unsafe(no_mangle)]
-    unsafe extern "C" fn __imported_wasi_snapshot_preview1_fd_write(fd: i32, iovs: i32, len: i32, written: i32) -> i32 {
+    unsafe extern "C" fn __imported_wasi_snapshot_preview1_fd_write(
+        fd: i32,
+        iovs: i32,
+        len: i32,
+        written: i32,
+    ) -> i32 {
         if fd != 1 && fd != 2 {
             return BADF;
         }
@@ -61,7 +66,10 @@ mod wasi {
             // SAFETY: `iovs` holds `len` (pointer, length) pairs of u32.
             let bytes = unsafe {
                 let iov = (iovs as usize as *const u32).add(i * 2);
-                std::slice::from_raw_parts(iov.read_unaligned() as usize as *const u8, iov.add(1).read_unaligned() as usize)
+                std::slice::from_raw_parts(
+                    iov.read_unaligned() as usize as *const u8,
+                    iov.add(1).read_unaligned() as usize,
+                )
             };
             total += bytes.len() as u32;
             LINES.with_borrow_mut(|lines| {
@@ -91,12 +99,20 @@ mod wasi {
     }
 
     #[unsafe(no_mangle)]
-    unsafe extern "C" fn __imported_wasi_snapshot_preview1_fd_seek(_fd: i32, _offset: i64, _whence: i32, _new: i32) -> i32 {
+    unsafe extern "C" fn __imported_wasi_snapshot_preview1_fd_seek(
+        _fd: i32,
+        _offset: i64,
+        _whence: i32,
+        _new: i32,
+    ) -> i32 {
         SPIPE
     }
 
     #[unsafe(no_mangle)]
-    unsafe extern "C" fn __imported_wasi_snapshot_preview1_fd_fdstat_get(fd: i32, stat: i32) -> i32 {
+    unsafe extern "C" fn __imported_wasi_snapshot_preview1_fd_fdstat_get(
+        fd: i32,
+        stat: i32,
+    ) -> i32 {
         if !(0..=2).contains(&fd) {
             return BADF;
         }
@@ -110,7 +126,10 @@ mod wasi {
     }
 
     #[unsafe(no_mangle)]
-    unsafe extern "C" fn __imported_wasi_snapshot_preview1_environ_sizes_get(count: i32, size: i32) -> i32 {
+    unsafe extern "C" fn __imported_wasi_snapshot_preview1_environ_sizes_get(
+        count: i32,
+        size: i32,
+    ) -> i32 {
         unsafe {
             put::<u32>(count, 0);
             put::<u32>(size, 0);
@@ -119,12 +138,19 @@ mod wasi {
     }
 
     #[unsafe(no_mangle)]
-    unsafe extern "C" fn __imported_wasi_snapshot_preview1_environ_get(_environ: i32, _buf: i32) -> i32 {
+    unsafe extern "C" fn __imported_wasi_snapshot_preview1_environ_get(
+        _environ: i32,
+        _buf: i32,
+    ) -> i32 {
         SUCCESS
     }
 
     #[unsafe(no_mangle)]
-    unsafe extern "C" fn __imported_wasi_snapshot_preview1_clock_time_get(id: i32, _precision: i64, time: i32) -> i32 {
+    unsafe extern "C" fn __imported_wasi_snapshot_preview1_clock_time_get(
+        id: i32,
+        _precision: i64,
+        time: i32,
+    ) -> i32 {
         let ns = match id {
             // The real-time clock: the wall clock.
             0 => (js_sys::Date::now() * 1e6) as u64,

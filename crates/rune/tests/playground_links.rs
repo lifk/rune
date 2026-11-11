@@ -29,9 +29,20 @@ fn upload(u: &Upload, _: &mut Cx<Upload>) -> El {
 
 fn runtime() -> Runtime<Real> {
     let playground = Playground::<Real>::new()
-        .story(Story::new("Timeline/Send", Upload::default, upload).variant("Small", |u| u.bytes = 10).variant("Large", |u| u.bytes = 1_000_000))
+        .story(
+            Story::new("Timeline/Send", Upload::default, upload)
+                .variant("Small", |u| u.bytes = 10)
+                .variant("Large", |u| u.bytes = 1_000_000),
+        )
         .story(Story::new("Lists/Many devices", Upload::default, upload));
-    App::new(AppSpec::new("links", (800.0, 500.0), Real::default, app_view)).playground(playground).headless_runtime((800.0, 500.0), Env::new(false, 1.0))
+    App::new(AppSpec::new(
+        "links",
+        (800.0, 500.0),
+        Real::default,
+        app_view,
+    ))
+    .playground(playground)
+    .headless_runtime((800.0, 500.0), Env::new(false, 1.0))
 }
 
 fn bytes(rt: &Runtime<Real>) -> Option<u32> {
@@ -62,7 +73,13 @@ fn a_link_before_the_first_frame_opens_straight_onto_the_story() {
     // As App::on_open_url delivers the link that launched the app: an update before frame 1.
     rt.update(|_, tx| tx.open_playground_at("timeline-send", Some("Large")));
     rt.frame(0.0);
-    assert_eq!(rt.playground_element("upload").and_then(|e| e.text).as_deref(), Some("1000000 bytes"), "the first frame shows the story");
+    assert_eq!(
+        rt.playground_element("upload")
+            .and_then(|e| e.text)
+            .as_deref(),
+        Some("1000000 bytes"),
+        "the first frame shows the story"
+    );
     assert_eq!(APP_VIEWS.with(Cell::get), 0, "and the app's view never ran");
 }
 
@@ -72,7 +89,11 @@ fn from_a_handler_it_moves_an_open_playground_to_the_story() {
     rt.open_playground("Lists/Many devices", None);
     rt.update(|_, tx| tx.open_playground_at("Send", Some("2")));
     rt.frame(0.0);
-    assert_eq!(bytes(&rt), Some(1_000_000), "by name, on the variant by number");
+    assert_eq!(
+        bytes(&rt),
+        Some(1_000_000),
+        "by name, on the variant by number"
+    );
 }
 
 #[test]
@@ -80,8 +101,15 @@ fn an_unknown_story_opens_the_list_instead_of_stopping_the_app() {
     let mut rt = runtime();
     rt.update(|_, tx| tx.open_playground_at("timeline-nope", None));
     rt.frame(0.0);
-    assert!(rt.find("playground-list").is_some(), "the playground is open, on its list");
-    assert_eq!(bytes(&rt), Some(10), "on the first story, as it would open without a name");
+    assert!(
+        rt.find("playground-list").is_some(),
+        "the playground is open, on its list"
+    );
+    assert_eq!(
+        bytes(&rt),
+        Some(10),
+        "on the first story, as it would open without a name"
+    );
 }
 
 #[test]

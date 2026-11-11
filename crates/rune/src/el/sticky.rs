@@ -6,7 +6,11 @@ use crate::el::Shadow;
 /// Which viewport edge an [`El::sticky_top`], [`El::sticky_bottom`] or [`El::sticky_left`]
 /// element holds to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum StickyEdge { Top, Bottom, Left }
+pub(crate) enum StickyEdge {
+    Top,
+    Bottom,
+    Left,
+}
 
 /// `El::sticky_top`, `El::sticky_bottom`, `El::sticky_left` and `El::stuck_shadow`.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -56,7 +60,9 @@ impl El {
     /// grows or a new page's taller one sticks in the right place on its first frame.
     pub fn sticky_top_showing(mut self, show: f32) -> Self {
         self = self.sticky_top(show);
-        if let Some(s) = self.cold.get_mut_if_some().and_then(|c| c.sticky.as_mut()) { s.tail = true; }
+        if let Some(s) = self.cold.get_mut_if_some().and_then(|c| c.sticky.as_mut()) {
+            s.tail = true;
+        }
         self
     }
     /// [`El::sticky_top`] against the viewport's bottom edge: held `inset` points above it while
@@ -86,7 +92,11 @@ impl El {
     /// follows the scroll exactly: an elevation under a stuck header, or a hairline divider with
     /// `Shadow { y: 0.5, color, ..Default::default() }` under an opaque one. Several stack.
     pub fn stuck_shadow(mut self, shadow: Shadow) -> Self {
-        self.cold_mut().sticky.get_or_insert_with(Default::default).shadows.push(shadow);
+        self.cold_mut()
+            .sticky
+            .get_or_insert_with(Default::default)
+            .shadows
+            .push(shadow);
         self
     }
     /// Fades this [`El::sticky_top`] element's first child (its title), not its own fill or its
@@ -98,7 +108,10 @@ impl El {
     /// header, a later sibling drawn over it, takes its place. A header with no sticky sibling
     /// after it stays whole.
     pub fn stuck_fade(mut self, lead: f32, span: f32) -> Self {
-        self.cold_mut().sticky.get_or_insert_with(Default::default).fade = Some([lead, span.max(0.0)]);
+        self.cold_mut()
+            .sticky
+            .get_or_insert_with(Default::default)
+            .fade = Some([lead, span.max(0.0)]);
         self
     }
     /// Shows this child of a [`El::sticky_top`] element as far as its parent is stuck: hidden
@@ -107,7 +120,10 @@ impl El {
     /// beneath, as Desktop's model dialog fades its header's `::after` by how far its rows have
     /// scrolled under it (`select-dialog.tsx` `--model-dialog-header-fade`).
     pub fn stuck_reveal(mut self, span: f32) -> Self {
-        self.cold_mut().sticky.get_or_insert_with(Default::default).reveal = Some(span.max(1e-3));
+        self.cold_mut()
+            .sticky
+            .get_or_insert_with(Default::default)
+            .reveal = Some(span.max(1e-3));
         self
     }
 }

@@ -6,8 +6,8 @@
 //! Mac have neither variable: every check is one load of a cached byte.
 
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 /// Where `RUNE_PERF=1` sends when no loopback endpoint is set: a local OTLP/HTTP collector.
 pub(crate) const DEFAULT_ENDPOINT: &str = "127.0.0.1:27686";
@@ -32,14 +32,20 @@ pub(crate) fn on() -> bool {
 }
 
 /// A headless run: on only for an explicit `RUNE_PERF=1`.
-pub(crate) fn headless() { decide(true); }
+pub(crate) fn headless() {
+    decide(true);
+}
 
 #[cold]
 fn decide(headless: bool) -> bool {
     let perf = std::env::var("RUNE_PERF").ok();
     let otel = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok();
-    let on = !cfg!(test) && !cfg!(target_arch = "wasm32") && wanted(perf.as_deref(), otel.as_deref(), headless);
-    if on { let _ = ENDPOINT.set(endpoint(otel.as_deref())); }
+    let on = !cfg!(test)
+        && !cfg!(target_arch = "wasm32")
+        && wanted(perf.as_deref(), otel.as_deref(), headless);
+    if on {
+        let _ = ENDPOINT.set(endpoint(otel.as_deref()));
+    }
     STATE.store(if on { ON } else { OFF }, Ordering::Relaxed);
     on
 }
@@ -55,7 +61,8 @@ pub(crate) fn wanted(perf: Option<&str>, otel: Option<&str>, headless: bool) -> 
 
 /// Where spans go: the loopback endpoint set, else [`DEFAULT_ENDPOINT`].
 pub(crate) fn endpoint(otel: Option<&str>) -> Option<SocketAddr> {
-    otel.and_then(loopback).or_else(|| DEFAULT_ENDPOINT.parse().ok())
+    otel.and_then(loopback)
+        .or_else(|| DEFAULT_ENDPOINT.parse().ok())
 }
 
 /// `http://host:port[/path]` or `host:port` on loopback; anything else is `None`.
@@ -63,11 +70,15 @@ pub(crate) fn loopback(setting: &str) -> Option<SocketAddr> {
     let rest = setting.trim();
     let rest = rest.strip_prefix("http://").unwrap_or(rest);
     let host = rest.split('/').next()?.replace("localhost", "127.0.0.1");
-    host.parse::<SocketAddr>().ok().filter(|a| a.ip().is_loopback())
+    host.parse::<SocketAddr>()
+        .ok()
+        .filter(|a| a.ip().is_loopback())
 }
 
 /// The collector, once timing is on.
-pub(crate) fn collector() -> Option<SocketAddr> { ENDPOINT.get().copied().flatten() }
+pub(crate) fn collector() -> Option<SocketAddr> {
+    ENDPOINT.get().copied().flatten()
+}
 
 #[cfg(test)]
 thread_local! {
@@ -76,4 +87,6 @@ thread_local! {
 
 /// Turns timing on for this test thread, sending nowhere.
 #[cfg(test)]
-pub(crate) fn force_on() { FORCED.set(true); }
+pub(crate) fn force_on() {
+    FORCED.set(true);
+}

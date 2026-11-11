@@ -31,8 +31,18 @@ pub struct Snippet {
     end: End,
 }
 
-pub const HELLO_VIEW: Snippet = Snippet { file: "examples/hello/src/main.rs", source: HELLO, from: "fn view(", end: End::Until("fn main()") };
-pub const HELLO_TEST: Snippet = Snippet { file: "examples/hello/src/main.rs", source: HELLO, from: "    fn a_tap_flips_the_switch", end: End::Brace };
+pub const HELLO_VIEW: Snippet = Snippet {
+    file: "examples/hello/src/main.rs",
+    source: HELLO,
+    from: "fn view(",
+    end: End::Until("fn main()"),
+};
+pub const HELLO_TEST: Snippet = Snippet {
+    file: "examples/hello/src/main.rs",
+    source: HELLO,
+    from: "    fn a_tap_flips_the_switch",
+    end: End::Brace,
+};
 pub const RETARGET: Snippet = Snippet {
     file: "crates/rune-motion/tests/spring.rs",
     source: SPRING_TESTS,
@@ -62,7 +72,9 @@ impl Snippet {
         }
         let end = match self.end {
             End::Until(until) => {
-                let mut end = (first + 1..lines.len()).find(|&i| lines[i].starts_with(until))?.checked_sub(1)?;
+                let mut end = (first + 1..lines.len())
+                    .find(|&i| lines[i].starts_with(until))?
+                    .checked_sub(1)?;
                 while end > first && lines[end].trim().is_empty() {
                     end -= 1;
                 }
@@ -75,8 +87,16 @@ impl Snippet {
             }
         };
         let taken = &lines[start..=end];
-        let pad = taken.iter().filter(|l| !l.trim().is_empty()).map(|l| indent(l)).min().unwrap_or(0);
-        let mut out: Vec<String> = taken.iter().map(|l| l.get(pad..).unwrap_or("").to_owned()).collect();
+        let pad = taken
+            .iter()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| indent(l))
+            .min()
+            .unwrap_or(0);
+        let mut out: Vec<String> = taken
+            .iter()
+            .map(|l| l.get(pad..).unwrap_or("").to_owned())
+            .collect();
         // A block cut short keeps its shape: an elision inside, then its closing brace.
         let joined = out.join("\n");
         if joined.matches('{').count() > joined.matches('}').count() {
@@ -84,7 +104,11 @@ impl Snippet {
             out.push(format!("{lead}    // …"));
             out.push(format!("{lead}}}"));
         }
-        Some(Cut { code: out.join("\n"), start: start + 1, end: end + 1 })
+        Some(Cut {
+            code: out.join("\n"),
+            start: start + 1,
+            end: end + 1,
+        })
     }
 }
 
@@ -115,18 +139,53 @@ pub fn colored(code: &str) -> Vec<Span> {
 
 /// A code block: the file and lines it came from, linked to GitHub, over the code.
 pub fn block(key: &str, s: &Snippet) -> El {
-    let Some(cut) = s.cut() else { return col().key(key) };
+    let Some(cut) = s.cut() else {
+        return col().key(key);
+    };
     let href = format!("{REPO}/blob/dev/{}#L{}-L{}", s.file, cut.start, cut.end);
     let file = format!("{}:{}–{}", s.file, cut.start, cut.end);
     let lines_from = s.file.len();
-    let head = row().key("head").w_full().justify_between().gap(16.0).px(16.0).py(8.0)
-        .child(row().key("source").href(href).shrink().hover_group()
-            .child(rich(file.clone(), vec![Span::new(0, lines_from).color(fg2()), Span::new(lines_from, file.len()).color(fg3())])
-                .font(MONO_12).color(fg2()).wrap_anywhere().shrink().group_color(fg())))
+    let head = row()
+        .key("head")
+        .w_full()
+        .justify_between()
+        .gap(16.0)
+        .px(16.0)
+        .py(8.0)
+        .child(
+            row().key("source").href(href).shrink().hover_group().child(
+                rich(
+                    file.clone(),
+                    vec![
+                        Span::new(0, lines_from).color(fg2()),
+                        Span::new(lines_from, file.len()).color(fg3()),
+                    ],
+                )
+                .font(MONO_12)
+                .color(fg2())
+                .wrap_anywhere()
+                .shrink()
+                .group_color(fg()),
+            ),
+        )
         .child(text("Rust").font(MONO_12).color(fg3()));
-    let body = col().key("scroll").w_full().scroll_x()
-        .child(rich(cut.code.clone(), colored(&cut.code)).key("code").font(CODE).color(fg()).selectable(true).padding(16.0));
-    col().key(key).role("figure").w_full().min_w(0.0).radius(R2).fill(surface1()).border(1.0, line()).clip_rounded(R2)
+    let body = col().key("scroll").w_full().scroll_x().child(
+        rich(cut.code.clone(), colored(&cut.code))
+            .key("code")
+            .font(CODE)
+            .color(fg())
+            .selectable(true)
+            .padding(16.0),
+    );
+    col()
+        .key(key)
+        .role("figure")
+        .w_full()
+        .min_w(0.0)
+        .radius(R2)
+        .fill(surface1())
+        .border(1.0, line())
+        .clip_rounded(R2)
         .child(head)
         .child(hairline("rule"))
         .child(body)

@@ -3,7 +3,9 @@
 use super::*;
 
 fn minimize_ignored(what: &str) {
-    if cfg!(debug_assertions) { eprintln!("rune: minimize ignored: {what} can't minimize"); }
+    if cfg!(debug_assertions) {
+        eprintln!("rune: minimize ignored: {what} can't minimize");
+    }
 }
 
 impl<S: 'static> Host<S> {
@@ -13,15 +15,26 @@ impl<S: 'static> Host<S> {
     pub(super) fn minimize(&mut self) {
         #[cfg(target_os = "macos")]
         let launcher = self.launcher();
-        let Some(w) = self.win.as_mut().filter(|w| w.visible) else { return minimize_ignored("a hidden window") };
+        let Some(w) = self.win.as_mut().filter(|w| w.visible) else {
+            return minimize_ignored("a hidden window");
+        };
         #[cfg(target_os = "macos")]
-        if w.native.panel.is_some() || launcher { return minimize_ignored("a panel"); }
+        if w.native.panel.is_some() || launcher {
+            return minimize_ignored("a panel");
+        }
         // Off macOS winit reports a minimize button on a borderless window too.
-        if self.options.borderless || !w.window.enabled_buttons().contains(winit::window::WindowButtons::MINIMIZE) {
+        if self.options.borderless
+            || !w
+                .window
+                .enabled_buttons()
+                .contains(winit::window::WindowButtons::MINIMIZE)
+        {
             return minimize_ignored("a window without a minimize button");
         }
         #[cfg(target_os = "macos")]
-        { w.native.prime = 0; }
+        {
+            w.native.prime = 0;
+        }
         w.window.set_minimized(true);
     }
 
@@ -29,18 +42,31 @@ impl<S: 'static> Host<S> {
     /// borderless fullscreen. A hidden window remembers it and applies it when shown; a panel,
     /// launcher, overlay or borderless window ignores it. Wayland's compositor may refuse.
     pub(super) fn fullscreen(&mut self, on: bool) {
-        if self.rt.fullscreen == on { return; }
+        if self.rt.fullscreen == on {
+            return;
+        }
         self.rt.fullscreen = on;
-        let Some(w) = self.win.as_mut().filter(|w| w.visible) else { return };
+        let Some(w) = self.win.as_mut().filter(|w| w.visible) else {
+            return;
+        };
         #[cfg(target_os = "macos")]
-        if w.native.panel.is_some() { return; }
-        if self.options.borderless || self.options.click_through { return; }
-        w.window.set_fullscreen(on.then_some(winit::window::Fullscreen::Borderless(None)));
+        if w.native.panel.is_some() {
+            return;
+        }
+        if self.options.borderless || self.options.click_through {
+            return;
+        }
+        w.window
+            .set_fullscreen(on.then_some(winit::window::Fullscreen::Borderless(None)));
     }
 
     /// `Tx::set_title`: shows a title set since the window last showed one, hidden or covered
     /// as it may be. A window created later opens with the current title (`try_create`).
     pub(super) fn show_title(&mut self) {
-        if let Some(title) = self.rt.window_title.take_change() && let Some(w) = &self.win { w.window.set_title(title); }
+        if let Some(title) = self.rt.window_title.take_change()
+            && let Some(w) = &self.win
+        {
+            w.window.set_title(title);
+        }
     }
 }

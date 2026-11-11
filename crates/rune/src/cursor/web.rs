@@ -25,12 +25,18 @@ thread_local! {
 
 pub(super) fn set(window: &Arc<Window>, image: CursorImage, _scale: f32) {
     window.set_cursor(CursorIcon::Default);
-    let Some(canvas) = window.canvas() else { return };
-    if let Some(css) = made(image) { set_cursor(&canvas, &css); }
+    let Some(canvas) = window.canvas() else {
+        return;
+    };
+    if let Some(css) = made(image) {
+        set_cursor(&canvas, &css);
+    }
 }
 
 pub(super) fn forget(window: &Arc<Window>) {
-    if let Some(canvas) = window.canvas() { set_cursor(&canvas, ""); }
+    if let Some(canvas) = window.canvas() {
+        set_cursor(&canvas, "");
+    }
 }
 
 pub(super) fn make_pending(_: &ActiveEventLoop) {}
@@ -46,7 +52,10 @@ fn made(image: CursorImage) -> Option<String> {
                     Ok(css) => Some((css, url)),
                     Err(problem) => {
                         revoke_url(&url);
-                        eprintln!("rune: cursor image ({} bytes) shows the arrow instead: {problem}", image.bytes().len());
+                        eprintln!(
+                            "rune: cursor image ({} bytes) shows the arrow instead: {problem}",
+                            image.bytes().len()
+                        );
                         None
                     }
                 };
@@ -55,7 +64,11 @@ fn made(image: CursorImage) -> Option<String> {
         };
         let css = entry.1.as_ref().map(|(css, _)| css.clone());
         made.push(entry);
-        if made.len() > MAX_ENTRIES && let (_, Some((_, url))) = made.remove(0) { revoke_url(&url); }
+        if made.len() > MAX_ENTRIES
+            && let (_, Some((_, url))) = made.remove(0)
+        {
+            revoke_url(&url);
+        }
         css
     })
 }

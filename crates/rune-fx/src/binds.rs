@@ -9,7 +9,10 @@ pub(crate) struct BindSet<K> {
 
 impl<K> BindSet<K> {
     pub(crate) const fn new() -> Self {
-        BindSet { now: Vec::new(), last: Vec::new() }
+        BindSet {
+            now: Vec::new(),
+            last: Vec::new(),
+        }
     }
 
     /// Start a frame: last frame's groups become reusable, the older ones are dropped.
@@ -19,7 +22,11 @@ impl<K> BindSet<K> {
     }
 
     /// The index of a group whose key passes `is`, reusing this or last frame's before calling `make`.
-    pub(crate) fn find(&mut self, is: impl Fn(&K) -> bool, make: impl FnOnce() -> (K, wgpu::BindGroup)) -> usize {
+    pub(crate) fn find(
+        &mut self,
+        is: impl Fn(&K) -> bool,
+        make: impl FnOnce() -> (K, wgpu::BindGroup),
+    ) -> usize {
         if let Some(i) = self.now.iter().position(|(k, _)| is(k)) {
             return i;
         }

@@ -59,7 +59,9 @@ fn renders_each_block_type_with_kit_tokens() {
     assert_eq!(title.text_color, Some(k.c.text_base));
     assert_eq!(by_key(&rt, "b1").text_color, Some(k.c.text_base));
     assert_eq!(by_key(&rt, "b2").text_color, Some(k.c.text_muted), "level 4+ headings are muted");
-    assert!(keys(&rt).iter().filter(|k| *k == "i0").count() == 2 && keys(&rt).iter().filter(|k| *k == "i1").count() == 1);
+    assert!(
+        keys(&rt).iter().filter(|k| *k == "i0").count() == 2 && keys(&rt).iter().filter(|k| *k == "i1").count() == 1
+    );
     let texts: Vec<_> = rt.elements().into_iter().filter_map(|e| e.text).collect();
     for want in ["•", "one", "two", "3.", "three", "quoted", "fn main() {}"] {
         assert!(texts.iter().any(|t| t == want), "{want} in {texts:?}");
@@ -88,7 +90,12 @@ fn style_builders_override_kit_tokens() {
 
 #[test]
 fn a_streaming_append_keeps_earlier_blocks_mounted() {
-    let steps = ["# Plan\n\nFirst para", "# Plan\n\nFirst para is done.\n\n- a", "# Plan\n\nFirst para is done.\n\n- a\n- b\n\n```sh\nls", "# Plan\n\nFirst para is done.\n\n- a\n- b\n\n```sh\nls -la\n"];
+    let steps = [
+        "# Plan\n\nFirst para",
+        "# Plan\n\nFirst para is done.\n\n- a",
+        "# Plan\n\nFirst para is done.\n\n- a\n- b\n\n```sh\nls",
+        "# Plan\n\nFirst para is done.\n\n- a\n- b\n\n```sh\nls -la\n",
+    ];
     let parsed: Vec<_> = steps.iter().map(|s| parse(s)).collect();
     assert_eq!(parsed[2][0], parsed[3][0]);
     assert_eq!(parsed[1][0], parsed[3][0], "the heading block never changes while later text arrives");
@@ -150,7 +157,12 @@ const LINKS: &str = "See [one](https://a.dev) and [two](https://b.dev).\n\n- an 
 
 #[test]
 fn links_press_through_on_link() {
-    let mut rt = Runtime::new(Reader { src: LINKS.into(), handled: true, opened: Vec::new() }, reader, (480.0, 400.0), Env::new(true, 1.0));
+    let mut rt = Runtime::new(
+        Reader { src: LINKS.into(), handled: true, opened: Vec::new() },
+        reader,
+        (480.0, 400.0),
+        Env::new(true, 1.0),
+    );
     rt.frame(0.0);
     let find = |rt: &Runtime<Reader>, key: &str| {
         rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key)).unwrap_or_else(|| panic!("no {key}"))
@@ -188,7 +200,12 @@ fn links_press_through_on_link() {
     assert_eq!(rt.state.opened, ["https://b.dev", "https://c.dev", "https://a.dev"]);
 
     // Without a handler, links are styled text: no stops, no hand.
-    let mut rt = Runtime::new(Reader { src: LINKS.into(), handled: false, opened: Vec::new() }, reader, (480.0, 400.0), Env::new(true, 1.0));
+    let mut rt = Runtime::new(
+        Reader { src: LINKS.into(), handled: false, opened: Vec::new() },
+        reader,
+        (480.0, 400.0),
+        Env::new(true, 1.0),
+    );
     rt.frame(0.0);
     assert!(rt.elements().iter().all(|e| !e.path.contains("#link-") && !e.focusable));
     rt.pointer_move(centre(&two).0, centre(&two).1);
@@ -238,7 +255,11 @@ fn a_trailing_header_line_is_already_a_table() {
 
 /// The x of every cell `c{j}` in the header row, in order.
 fn column_edges(rt: &Runtime<String>) -> Vec<f32> {
-    rt.elements().into_iter().filter(|e| e.path.contains("th") && e.key.as_deref().is_some_and(|k| k.starts_with('c'))).map(|e| e.rect[0]).collect()
+    rt.elements()
+        .into_iter()
+        .filter(|e| e.path.contains("th") && e.key.as_deref().is_some_and(|k| k.starts_with('c')))
+        .map(|e| e.rect[0])
+        .collect()
 }
 
 fn streaming(src: &String, _: &mut Cx<String>) -> El {
@@ -257,7 +278,10 @@ fn a_streaming_row_does_not_move_the_columns() {
     rt.frame(0.0);
     let before = column_edges(&rt);
     assert_eq!(before.len(), 2, "{:?}", keys(&rt));
-    for partial in ["| a much longer first cell that is still arriving", "| a much longer first cell that is still arriving | and more"] {
+    for partial in [
+        "| a much longer first cell that is still arriving",
+        "| a much longer first cell that is still arriving | and more",
+    ] {
         rt.state = format!("{base}{partial}");
         rt.invalidate();
         rt.frame(1.0 / 60.0);
@@ -301,16 +325,20 @@ fn a_table_narrower_than_its_container_never_wraps_a_cell() {
             let mut rt = Runtime::new(Doc { src, family }, view, (1100.0, 600.0), Env::new(true, scale));
             rt.frame(0.0);
             let all = rt.elements();
-            let in_cell = |mut i: usize| loop {
-                if all[i].key.as_deref().is_some_and(|k| k.len() > 1 && k.starts_with('c') && k[1..].bytes().all(|b| b.is_ascii_digit())) {
-                    return true;
-                }
-                match all[i].parent {
-                    Some(p) => i = p,
-                    None => return false,
-                }
-            };
-            let cells: Vec<_> = (0..all.len()).filter(|&i| all[i].text.is_some() && in_cell(i)).map(|i| &all[i]).collect();
+            let in_cell =
+                |mut i: usize| loop {
+                    if all[i].key.as_deref().is_some_and(|k| {
+                        k.len() > 1 && k.starts_with('c') && k[1..].bytes().all(|b| b.is_ascii_digit())
+                    }) {
+                        return true;
+                    }
+                    match all[i].parent {
+                        Some(p) => i = p,
+                        None => return false,
+                    }
+                };
+            let cells: Vec<_> =
+                (0..all.len()).filter(|&i| all[i].text.is_some() && in_cell(i)).map(|i| &all[i]).collect();
             assert_eq!(cells.len(), 10, "{family:?} @{scale}");
             let line = cells[0].rect[3];
             for c in &cells {
@@ -325,10 +353,15 @@ fn table_options_drop_the_outline_dim_the_header_and_line_up_figures() {
     let [dim, rule] = [[0.5, 0.5, 0.5], [0.0, 0.0, 1.0]].map(|[r, g, b]| rune::Color { r, g, b, a: 1.0 });
     fn styled(src: &String, _: &mut Cx<String>) -> El {
         let [dim, rule] = [[0.5, 0.5, 0.5], [0.0, 0.0, 1.0]].map(|[r, g, b]| rune::Color { r, g, b, a: 1.0 });
-        col().w_full().child(Markdown::new(src.clone()).render(&MarkdownStyle::neutral(true).table_outline(None).table_rules(rule).table_header_text(dim)))
+        col().w_full().child(
+            Markdown::new(src.clone())
+                .render(&MarkdownStyle::neutral(true).table_outline(None).table_rules(rule).table_header_text(dim)),
+        )
     }
     let src = "| Name | Count |\n|---|--:|\n| a | 1111 |\n| b | 0000 |\n";
-    let text_color = |rt: &Runtime<String>, t: &str| rt.elements().into_iter().find(|e| e.text.as_deref() == Some(t)).unwrap().text_color;
+    let text_color = |rt: &Runtime<String>, t: &str| {
+        rt.elements().into_iter().find(|e| e.text.as_deref() == Some(t)).unwrap().text_color
+    };
     let frame_radius = |rt: &Runtime<String>| {
         let all = rt.elements();
         let th = all.iter().position(|e| e.key.as_deref() == Some("th")).unwrap();
@@ -408,15 +441,34 @@ fn table_font_and_padding_set_the_cells_and_the_first_column_sits_flush() {
     rt.frame(0.0);
     let all = rt.elements();
     let text = |t: &str| all.iter().find(|e| e.text.as_deref() == Some(t)).unwrap_or_else(|| panic!("no {t}"));
-    let cells: Vec<_> = all.iter().filter(|e| e.path.contains("th") && e.key.as_deref().is_some_and(|k| k.starts_with('c'))).collect();
+    let cells: Vec<_> =
+        all.iter().filter(|e| e.path.contains("th") && e.key.as_deref().is_some_and(|k| k.starts_with('c'))).collect();
     assert_eq!(text("Name").rect[0], text("Intro").rect[0], "the first column is flush with the paragraph");
     assert_eq!(text("Name").rect[0], cells[0].rect[0]);
     assert_eq!(text("Count").rect[0] - cells[1].rect[0], 10.0);
     assert_eq!(by_key(&rt, "th").rect[3], 20.0 + 2.0 * 4.0, "the table font's line and the cell padding");
     assert_eq!(by_key(&rt, "r0").rect[3], 28.0);
     // Columns hold their text on one line: the first is its text plus the right padding only.
-    let name = rune::text::measure("Name", &[], rune::TextStyle { size: 15.0 * 0.93, line_height: 20.0, weight: 670.0, features: "'tnum' 1", ..Kit::neutral(true).ty.body }, None).0;
-    let alpha = rune::text::measure("alpha", &[], rune::TextStyle { size: 15.0 * 0.93, line_height: 20.0, features: "'tnum' 1", ..Kit::neutral(true).ty.body }, None).0;
+    let name = rune::text::measure(
+        "Name",
+        &[],
+        rune::TextStyle {
+            size: 15.0 * 0.93,
+            line_height: 20.0,
+            weight: 670.0,
+            features: "'tnum' 1",
+            ..Kit::neutral(true).ty.body
+        },
+        None,
+    )
+    .0;
+    let alpha = rune::text::measure(
+        "alpha",
+        &[],
+        rune::TextStyle { size: 15.0 * 0.93, line_height: 20.0, features: "'tnum' 1", ..Kit::neutral(true).ty.body },
+        None,
+    )
+    .0;
     assert_eq!(cells[0].rect[2], name.max(alpha) + 10.0);
 }
 
@@ -437,7 +489,8 @@ fn columns_too_wide_to_fit_stop_at_the_frame_with_or_without_an_outline() {
         let th = all.iter().position(|e| e.key.as_deref() == Some("th")).unwrap();
         let frame = all[all[th].parent.unwrap()].rect;
         let right = frame[0] + frame[2];
-        let cells: Vec<_> = all.iter().filter(|e| e.key.as_deref().is_some_and(|k| k.len() == 2 && k.starts_with('c'))).collect();
+        let cells: Vec<_> =
+            all.iter().filter(|e| e.key.as_deref().is_some_and(|k| k.len() == 2 && k.starts_with('c'))).collect();
         assert_eq!(cells.len(), 20, "outline {outline}");
         assert!(
             cells.iter().any(|c| c.rect[0] < right && c.rect[0] + c.rect[2] > right),
@@ -456,20 +509,26 @@ fn diffs_tint_whole_lines_and_dim_hunk_headers() {
     assert!(matches!(&parse(src)[0], Block::Diff(d) if d.lines().count() == 4));
     assert!(matches!(&parse("```patch\n+a\n```")[0], Block::Diff(_)));
     fn styled(src: &String, _: &mut Cx<String>) -> El {
-        let [add, remove, hunk] = [[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]].map(|[r, g, b]| rune::Color { r, g, b, a: 1.0 });
-        col().w_full().child(Markdown::new(src.clone()).render(&MarkdownStyle::neutral(false).diff(add, remove).diff_hunk(hunk)))
+        let [add, remove, hunk] =
+            [[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]].map(|[r, g, b]| rune::Color { r, g, b, a: 1.0 });
+        col()
+            .w_full()
+            .child(Markdown::new(src.clone()).render(&MarkdownStyle::neutral(false).diff(add, remove).diff_hunk(hunk)))
     }
     let mut rt = Runtime::new(src.to_owned(), styled, (480.0, 400.0), Env::new(false, 1.0));
     rt.frame(0.0);
     let fill = |k: &str| by_key(&rt, k).fill;
-    let [add, remove, hunk] = [[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]].map(|[r, g, b]| rune::Color { r, g, b, a: 1.0 });
+    let [add, remove, hunk] =
+        [[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]].map(|[r, g, b]| rune::Color { r, g, b, a: 1.0 });
     assert_eq!((fill("l2"), fill("l3")), (remove, add));
     assert_ne!(fill("l1"), add);
     let block = by_key(&rt, "b0");
     assert_eq!(by_key(&rt, "l3").rect[2], block.rect[2], "tints run edge to edge");
     let header = rt.elements().into_iter().find(|e| e.text.as_deref() == Some("@@ -1,2 +1,2 @@")).unwrap();
     assert_eq!(header.text_color, Some(hunk));
-    let line_color = |rt: &Runtime<String>, t: &str| rt.elements().into_iter().find(|e| e.text.as_deref() == Some(t)).unwrap().text_color.unwrap();
+    let line_color = |rt: &Runtime<String>, t: &str| {
+        rt.elements().into_iter().find(|e| e.text.as_deref() == Some(t)).unwrap().text_color.unwrap()
+    };
     let text = Kit::neutral(false).c.text_base;
     assert_eq!((line_color(&rt, "+new"), line_color(&rt, "-old")), (text, text), "line text is untinted by default");
 
@@ -487,8 +546,15 @@ fn diffs_tint_whole_lines_and_dim_hunk_headers() {
 fn markdown_and_tooltips_render_without_a_kit() {
     fn plain(src: &String, _: &mut Cx<String>) -> El {
         let mut layer = Vec::new();
-        let tip = rune_kit::Tooltip::new("t").trigger(rune::text("?")).label("Help").open(true).render(&rune_kit::TooltipStyle::neutral(true), &mut layer);
-        rune_kit::root(col().w_full().child(Markdown::new(src.clone()).render(&MarkdownStyle::neutral(true))).child(tip), layer)
+        let tip = rune_kit::Tooltip::new("t")
+            .trigger(rune::text("?"))
+            .label("Help")
+            .open(true)
+            .render(&rune_kit::TooltipStyle::neutral(true), &mut layer);
+        rune_kit::root(
+            col().w_full().child(Markdown::new(src.clone()).render(&MarkdownStyle::neutral(true))).child(tip),
+            layer,
+        )
     }
     let mut rt = Runtime::new(DOC.to_owned(), plain, (480.0, 800.0), Env::new(true, 1.0));
     rt.frame(0.0);
@@ -516,7 +582,10 @@ fn a_mermaid_block_draws_a_diagram_or_falls_back_to_its_source() {
     for bad in ["kanban\n  Todo\n    task", "graph TD\n  this is not valid", "sequenceDiagram\n  A->>"] {
         let rt = laid_out(&format!("```mermaid\n{bad}\n```\n"));
         let k = keys(&rt);
-        assert!(k.iter().any(|k| k == "source") && !k.iter().any(|k| k == "hint") && !k.iter().any(|k| k == "diagram"), "{bad:?}: {k:?}");
+        assert!(
+            k.iter().any(|k| k == "source") && !k.iter().any(|k| k == "hint") && !k.iter().any(|k| k == "diagram"),
+            "{bad:?}: {k:?}"
+        );
     }
 
     // A fence still arriving is a diagram already.
@@ -533,7 +602,9 @@ fn scroll_wide_keeps_code_lines_whole_and_scrolls_them_sideways() {
     }
     let line = format!("let wide = [{}];", (0..60).map(|i| i.to_string()).collect::<Vec<_>>().join(", "));
     let src = format!("Intro\n\n```rust\n{line}\nshort();\n```\n");
-    let code = |rt: &Runtime<String>| rt.elements().into_iter().find(|e| e.text.as_deref().is_some_and(|t| t.starts_with("let wide"))).expect("code");
+    let code = |rt: &Runtime<String>| {
+        rt.elements().into_iter().find(|e| e.text.as_deref().is_some_and(|t| t.starts_with("let wide"))).expect("code")
+    };
 
     // Off (the default) the line wraps inside the column.
     let plain = laid_out(&src);
@@ -543,9 +614,16 @@ fn scroll_wide_keeps_code_lines_whole_and_scrolls_them_sideways() {
     let mut rt = Runtime::new(src.clone(), wide, (480.0, 800.0), Env::new(true, 1.0));
     rt.frame(0.0);
     let before = code(&rt).rect;
-    assert!(before[2] > 600.0 && before[3] < code(&plain).rect[3], "one long line, unwrapped: {before:?} vs {:?}", code(&plain).rect);
+    assert!(
+        before[2] > 600.0 && before[3] < code(&plain).rect[3],
+        "one long line, unwrapped: {before:?} vs {:?}",
+        code(&plain).rect
+    );
     let viewport = by_key(&rt, "scroll").rect;
-    assert!((viewport[3] - (before[3] + 24.0)).abs() < 0.5, "the block fits the unwrapped lines: {viewport:?} {before:?}");
+    assert!(
+        (viewport[3] - (before[3] + 24.0)).abs() < 0.5,
+        "the block fits the unwrapped lines: {viewport:?} {before:?}"
+    );
     let (x, y) = (240.0, before[1] + 8.0);
     rt.wheel_xy(x, y, -100.0, -5.0);
     rt.frame(1.0 / 60.0);
@@ -553,7 +631,10 @@ fn scroll_wide_keeps_code_lines_whole_and_scrolls_them_sideways() {
     rt.wheel_xy(x, y, -100_000.0, 0.0);
     rt.frame(1.0 / 60.0);
     let end = code(&rt).rect;
-    assert!((end[0] + end[2] + 12.0 - 480.0).abs() < 1.0, "the line's end and its padding reach the right edge: {end:?}");
+    assert!(
+        (end[0] + end[2] + 12.0 - 480.0).abs() < 1.0,
+        "the line's end and its padding reach the right edge: {end:?}"
+    );
 }
 
 #[test]
@@ -585,19 +666,32 @@ fn cell(rt: &Runtime<String>, row: &str, j: usize) -> rune::runtime::ElementInfo
     let all = rt.elements();
     let r = all.iter().position(|e| e.key.as_deref() == Some(row)).unwrap_or_else(|| panic!("no {row}"));
     let key = format!("c{j}");
-    all.iter().find(|e| e.parent == Some(r) && e.key.as_deref() == Some(key.as_str())).cloned().unwrap_or_else(|| panic!("no {row}/{key}"))
+    all.iter()
+        .find(|e| e.parent == Some(r) && e.key.as_deref() == Some(key.as_str()))
+        .cloned()
+        .unwrap_or_else(|| panic!("no {row}/{key}"))
 }
 
 #[test]
 fn cells_sit_where_their_column_aligns_them() {
-    let rt = laid_out("| Left column heading | Centred column heading | Right column heading |\n|:--|:-:|--:|\n| a | b | c |\n");
+    let rt = laid_out(
+        "| Left column heading | Centred column heading | Right column heading |\n|:--|:-:|--:|\n| a | b | c |\n",
+    );
     for row in ["th", "r0"] {
         let [left, centre, right] = [0, 1, 2].map(|j| cell(&rt, row, j));
         let ([l0, _], [c0, c1], [_, r1]) = (ink(&rt, &left), ink(&rt, &centre), ink(&rt, &right));
-        assert!((l0 - (left.rect[0] + 10.0)).abs() < 2.0, "{row}: start-aligned text starts at the padding, {l0} in {:?}", left.rect);
+        assert!(
+            (l0 - (left.rect[0] + 10.0)).abs() < 2.0,
+            "{row}: start-aligned text starts at the padding, {l0} in {:?}",
+            left.rect
+        );
         let (before, after) = (c0 - centre.rect[0], centre.rect[0] + centre.rect[2] - c1);
         assert!((before - after).abs() < 2.0, "{row}: centred, {before} either side {after}");
-        assert!((right.rect[0] + right.rect[2] - 10.0 - r1).abs() < 2.0, "{row}: end-aligned text ends at the padding, {r1} in {:?}", right.rect);
+        assert!(
+            (right.rect[0] + right.rect[2] - 10.0 - r1).abs() < 2.0,
+            "{row}: end-aligned text ends at the padding, {r1} in {:?}",
+            right.rect
+        );
     }
 }
 
@@ -611,7 +705,12 @@ fn a_long_cell_wraps_inside_its_column_and_its_row_grows_to_fit() {
     let mut rt = Runtime::new(LONG_CELL.to_owned(), narrow, (480.0, 600.0), Env::new(true, 1.0));
     rt.frame(0.0);
     let all = rt.elements();
-    let text = |t: &str| all.iter().find(|e| e.text.as_deref().is_some_and(|x| x.starts_with(t))).unwrap_or_else(|| panic!("no {t}")).rect;
+    let text = |t: &str| {
+        all.iter()
+            .find(|e| e.text.as_deref().is_some_and(|x| x.starts_with(t)))
+            .unwrap_or_else(|| panic!("no {t}"))
+            .rect
+    };
     let (term, long, hit) = (text("cache"), text("a sentence"), text("hit"));
     assert!(long[3] > 2.5 * term[3], "the long cell wraps onto several lines: {long:?} vs {term:?}");
     assert!(long[0] + long[2] <= 300.0, "and stays inside the table: {long:?}");
@@ -626,11 +725,15 @@ fn a_long_cell_wraps_inside_its_column_and_its_row_grows_to_fit() {
 #[test]
 fn scroll_wide_keeps_a_wide_tables_cells_on_one_line_and_scrolls_it_sideways() {
     fn wide(src: &String, _: &mut Cx<String>) -> El {
-        col().w_full().child(col().w(300.0).child(Markdown::new(src.clone()).scroll_wide(true).build(&Kit::neutral(true))))
+        col()
+            .w_full()
+            .child(col().w(300.0).child(Markdown::new(src.clone()).scroll_wide(true).build(&Kit::neutral(true))))
     }
     let mut rt = Runtime::new(LONG_CELL.to_owned(), wide, (480.0, 600.0), Env::new(true, 1.0));
     rt.frame(0.0);
-    let text = |rt: &Runtime<String>, t: &str| rt.elements().into_iter().find(|e| e.text.as_deref().is_some_and(|x| x.starts_with(t))).unwrap().rect;
+    let text = |rt: &Runtime<String>, t: &str| {
+        rt.elements().into_iter().find(|e| e.text.as_deref().is_some_and(|x| x.starts_with(t))).unwrap().rect
+    };
     let (term, long) = (text(&rt, "cache"), text(&rt, "a sentence"));
     assert_eq!(long[3], term[3], "one line: {long:?}");
     assert!(long[0] + long[2] > 400.0, "wider than the column: {long:?}");
@@ -648,11 +751,15 @@ fn scroll_wide_keeps_a_wide_tables_cells_on_one_line_and_scrolls_it_sideways() {
 fn table_like_draws_markdown_tables_with_the_data_tables_metrics() {
     fn shared(src: &String, _: &mut Cx<String>) -> El {
         let k = Kit::neutral(true);
-        col().w_full().child(Markdown::new(src.clone()).render(&MarkdownStyle::from_kit(&k).table_like(&rune_kit::TableStyle::from_kit(&k))))
+        col().w_full().child(
+            Markdown::new(src.clone())
+                .render(&MarkdownStyle::from_kit(&k).table_like(&rune_kit::TableStyle::from_kit(&k))),
+        )
     }
     let k = Kit::neutral(true);
     let t = rune_kit::TableStyle::from_kit(&k);
-    let mut rt = Runtime::new("| Name | Size |\n|---|--:|\n| a | 1 |\n".to_owned(), shared, (480.0, 400.0), Env::new(true, 1.0));
+    let mut rt =
+        Runtime::new("| Name | Size |\n|---|--:|\n| a | 1 |\n".to_owned(), shared, (480.0, 400.0), Env::new(true, 1.0));
     rt.frame(0.0);
     let row = by_key(&rt, "r0").rect[3];
     assert!((row - t.row_height).abs() <= 0.5, "a one-line row is the data table's row height: {row}");
@@ -675,7 +782,9 @@ fn chips(s: &Chips, _: &mut Cx<Chips>) -> El {
     let bg = rune::color::hex(CHIP_BG).unwrap();
     let hover = rune::color::hex(CHIP_HOVER).unwrap();
     let md = Markdown::new(s.src.clone()).link_style(move |url| {
-        url.starts_with("session:").then(|| (rune::Span { color: Some(Color::WHITE), ..rune::Span::new(0, 0) }.bg(bg, 3.0), LinkPaint::new().bg(hover)))
+        url.starts_with("session:").then(|| {
+            (rune::Span { color: Some(Color::WHITE), ..rune::Span::new(0, 0) }.bg(bg, 3.0), LinkPaint::new().bg(hover))
+        })
     });
     let md = if s.tx_mode {
         md.on_link_tx(|s: &mut Chips, url, tx| {
@@ -699,7 +808,9 @@ fn fill_rects<S>(rt: &Runtime<S>, hex: &str) -> Vec<[f32; 4]> {
     let want = rune::color::hex(hex).unwrap().premul(1.0);
     rt.instances
         .iter()
-        .filter(|i| i.params[1] == rune::render::KIND_RECT && i.fill.iter().zip(want).all(|(a, b)| (a - b).abs() < 1e-3))
+        .filter(|i| {
+            i.params[1] == rune::render::KIND_RECT && i.fill.iter().zip(want).all(|(a, b)| (a - b).abs() < 1e-3)
+        })
         .map(|i| i.rect)
         .collect()
 }
@@ -780,7 +891,12 @@ fn link_style_looks_only_at_the_urls_it_names_and_hover_matches_its_padded_rect(
     assert_eq!(resting.len(), 1, "one resting chip rect: {resting:?}");
     let chip_el = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("session:abc")).unwrap();
     assert_eq!((chip_el.role, chip_el.label.as_deref()), ("link", Some("Title")));
-    assert!((resting[0][2] - (chip_el.rect[2] + 6.0)).abs() < 1.5, "bg_pad 3 widens both sides: {:?} vs {:?}", resting[0], chip_el.rect);
+    assert!(
+        (resting[0][2] - (chip_el.rect[2] + 6.0)).abs() < 1.5,
+        "bg_pad 3 widens both sides: {:?} vs {:?}",
+        resting[0],
+        chip_el.rect
+    );
 
     // The https link stays at the default look: hovering it paints no chip hover colour.
     let (x, y) = centre(&rt, "https://a.dev");
@@ -807,7 +923,10 @@ fn styled_links_keep_inner_styles_select_copy_and_stream_across_chunks() {
                 .selectable(true)
                 .link_style(move |url| {
                     url.starts_with("session:").then(|| {
-                        (rune::Span::new(0, 0).color(Color::WHITE).weight(500.0).bg(bg, 3.0), LinkPaint::new().bg(hover))
+                        (
+                            rune::Span::new(0, 0).color(Color::WHITE).weight(500.0).bg(bg, 3.0),
+                            LinkPaint::new().bg(hover),
+                        )
                     })
                 })
                 .on_link(|_: &mut String, _| {})
@@ -816,7 +935,8 @@ fn styled_links_keep_inner_styles_select_copy_and_stream_across_chunks() {
     }
 
     // 1. Streaming a link split across chunks: once `)` arrives, the link gets its chip style.
-    let mut rt = Runtime::new("Start [First **bold** `code`](ses".to_owned(), view, (160.0, 200.0), Env::new(true, 1.0));
+    let mut rt =
+        Runtime::new("Start [First **bold** `code`](ses".to_owned(), view, (160.0, 200.0), Env::new(true, 1.0));
     rt.frame(0.0);
     assert!(fill_rects(&rt, CHIP_BG).is_empty(), "unclosed link syntax is still plain text");
 
@@ -833,7 +953,8 @@ fn styled_links_keep_inner_styles_select_copy_and_stream_across_chunks() {
     assert_eq!(chips.len(), 2, "inner bold and code runs share one merged chip rect per link: {chips:?}");
     assert!(chips[0][1] + chips[0][3] < chips[1][1], "chips on adjacent lines do not overlap: {chips:?}");
     // Mid-reveal the newly arrived second link's glyphs are fading in (0 < alpha < 1).
-    let fading = rt.instances.iter().any(|i| i.params[1] == rune::render::KIND_GLYPH && i.fill[3] > 0.01 && i.fill[3] < 0.99);
+    let fading =
+        rt.instances.iter().any(|i| i.params[1] == rune::render::KIND_GLYPH && i.fill[3] > 0.01 && i.fill[3] < 0.99);
     assert!(fading, "reveal fades in styled link glyphs");
     for _ in 0..30 {
         rt.frame(1.0 / 60.0);
@@ -842,9 +963,18 @@ fn styled_links_keep_inner_styles_select_copy_and_stream_across_chunks() {
     let white_glyphs = rt
         .instances
         .iter()
-        .filter(|i| i.params[1] == rune::render::KIND_GLYPH && (i.fill[0] - 1.0).abs() < 1e-3 && (i.fill[1] - 1.0).abs() < 1e-3 && (i.fill[2] - 1.0).abs() < 1e-3 && (i.fill[3] - 1.0).abs() < 1e-3)
+        .filter(|i| {
+            i.params[1] == rune::render::KIND_GLYPH
+                && (i.fill[0] - 1.0).abs() < 1e-3
+                && (i.fill[1] - 1.0).abs() < 1e-3
+                && (i.fill[2] - 1.0).abs() < 1e-3
+                && (i.fill[3] - 1.0).abs() < 1e-3
+        })
         .count();
-    assert!(white_glyphs >= "FirstboldcodeSecond".len(), "both links' glyphs keep WHITE (even inside *em*): {white_glyphs}");
+    assert!(
+        white_glyphs >= "FirstboldcodeSecond".len(),
+        "both links' glyphs keep WHITE (even inside *em*): {white_glyphs}"
+    );
 
     // Selecting and copying gets the link text without markdown syntax or inline-code padding.
     rt.pointer_move(2.0, 6.0);
@@ -858,7 +988,6 @@ fn styled_links_keep_inner_styles_select_copy_and_stream_across_chunks() {
     rt.frame(1.0 / 60.0);
     assert_eq!(rt.copy_request.as_deref(), Some("Start First bold code and Second on the next line."));
 }
-
 
 #[test]
 fn link_ring_frames_chosen_links_merges_inner_runs_and_stays_on_hover() {
@@ -882,12 +1011,8 @@ fn link_ring_frames_chosen_links_merges_inner_runs_and_stays_on_hover() {
     let mut rt = Runtime::new((), view, (320.0, 100.0), Env::new(true, 1.0));
     rt.frame(0.0);
     let want_ring = rune::color::hex(CHIP_RING).unwrap().premul(1.0);
-    let ringed: Vec<_> = rt
-        .instances
-        .iter()
-        .filter(|i| i.params[1] == rune::render::KIND_RECT && i.params[0] > 0.0)
-        .copied()
-        .collect();
+    let ringed: Vec<_> =
+        rt.instances.iter().filter(|i| i.params[1] == rune::render::KIND_RECT && i.params[0] > 0.0).copied().collect();
     assert_eq!(ringed.len(), 1, "only the session: link gets a ring, merged across plain/bold/code runs: {ringed:?}");
     assert_eq!((ringed[0].radii, ringed[0].params[0], ringed[0].border), ([4.0; 4], 1.0, want_ring));
     assert_eq!(fill_rects(&rt, CHIP_BG), [ringed[0].rect]);
@@ -896,22 +1021,15 @@ fn link_ring_frames_chosen_links_merges_inner_runs_and_stays_on_hover() {
     let (hx, hy) = centre(&rt, "https://a.dev");
     rt.pointer_move(hx, hy);
     rt.frame(1.0 / 60.0);
-    assert_eq!(
-        rt.instances.iter().filter(|i| i.params[1] == rune::render::KIND_RECT && i.params[0] > 0.0).count(),
-        1
-    );
+    assert_eq!(rt.instances.iter().filter(|i| i.params[1] == rune::render::KIND_RECT && i.params[0] > 0.0).count(), 1);
 
     // Hovering the session link swaps its fill to CHIP_HOVER and keeps the ring.
     let (sx, sy) = centre(&rt, "session:abc");
     rt.pointer_move(sx, sy);
     rt.frame(1.0 / 60.0);
     assert_eq!(fill_rects(&rt, CHIP_HOVER), [ringed[0].rect]);
-    let hovered: Vec<_> = rt
-        .instances
-        .iter()
-        .filter(|i| i.params[1] == rune::render::KIND_RECT && i.params[0] > 0.0)
-        .copied()
-        .collect();
+    let hovered: Vec<_> =
+        rt.instances.iter().filter(|i| i.params[1] == rune::render::KIND_RECT && i.params[0] > 0.0).copied().collect();
     assert_eq!(hovered.len(), 1);
     assert_eq!((hovered[0].rect, hovered[0].params[0], hovered[0].border), (ringed[0].rect, 1.0, want_ring));
 }

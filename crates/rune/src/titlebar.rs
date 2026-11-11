@@ -39,7 +39,10 @@ impl Titlebar {
     pub const CAPTION_BUTTON_WIDTH: f32 = 46.0;
 
     pub const fn new(height: f32) -> Self {
-        Self { height, traffic_lights: None }
+        Self {
+            height,
+            traffic_lights: None,
+        }
     }
 
     /// macOS: the close button's top-left, in points from the window's top-left, for this
@@ -63,9 +66,18 @@ impl Titlebar {
     /// only, and the traffic lights where this titlebar or the app placed them, else in the
     /// band's middle.
     pub(crate) fn mac_chrome(&self, chrome: Chrome) -> Chrome {
-        let y = ((self.height - Chrome::TRAFFIC_LIGHT) / 2.0).max(0.0).round();
-        let lights = self.traffic_lights.or(chrome.traffic_lights).or(Some((16.0, y)));
-        Chrome { full_size_content: true, drag_regions: true, traffic_lights: lights }
+        let y = ((self.height - Chrome::TRAFFIC_LIGHT) / 2.0)
+            .max(0.0)
+            .round();
+        let lights = self
+            .traffic_lights
+            .or(chrome.traffic_lights)
+            .or(Some((16.0, y)));
+        Chrome {
+            full_size_content: true,
+            drag_regions: true,
+            traffic_lights: lights,
+        }
     }
 }
 
@@ -81,7 +93,8 @@ impl TitlebarSet {
     /// The titlebar the window draws in place of the app's `base`.
     pub(crate) fn over(self, base: Titlebar) -> Titlebar {
         let titlebar = self.titlebar.unwrap_or(base);
-        self.height.map_or(titlebar, |height| Titlebar { height, ..titlebar })
+        self.height
+            .map_or(titlebar, |height| Titlebar { height, ..titlebar })
     }
 }
 
@@ -106,7 +119,11 @@ pub struct ChromeInsets {
 
 impl ChromeInsets {
     pub(crate) fn new(leading: f32, trailing: f32, height: f32) -> Self {
-        Self { leading, trailing, height }
+        Self {
+            leading,
+            trailing,
+            height,
+        }
     }
 
     /// The bits a memo scope hashes, so memos rebuild when the insets change.
@@ -124,7 +141,11 @@ pub(crate) enum CaptionButton {
 }
 
 impl CaptionButton {
-    const ALL: [CaptionButton; 3] = [CaptionButton::Minimize, CaptionButton::Maximize, CaptionButton::Close];
+    const ALL: [CaptionButton; 3] = [
+        CaptionButton::Minimize,
+        CaptionButton::Maximize,
+        CaptionButton::Close,
+    ];
 }
 
 /// Where the pointer is with the caption buttons. The system answers presses on them as
@@ -158,7 +179,14 @@ pub(crate) struct Caption {
 
 impl Caption {
     pub(crate) fn new(height: f32) -> Self {
-        Self { height, state: CaptionState::Idle, maximized: false, minimizable: true, maximizable: true, hidden: false }
+        Self {
+            height,
+            state: CaptionState::Idle,
+            maximized: false,
+            minimizable: true,
+            maximizable: true,
+            hidden: false,
+        }
     }
 
     /// The buttons drawn, left to right. A window that can neither minimize nor maximize shows
@@ -183,10 +211,17 @@ impl Caption {
     /// The buttons' rects, left to right, in points from the window's top-left for a window
     /// `width` points wide at `scale`: each a whole number of pixels, flush with the right edge.
     #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
-    pub(crate) fn rects(&self, width: f32, scale: f32) -> impl Iterator<Item = (CaptionButton, [f32; 4])> + use<> {
+    pub(crate) fn rects(
+        &self,
+        width: f32,
+        scale: f32,
+    ) -> impl Iterator<Item = (CaptionButton, [f32; 4])> + use<> {
         let (w, h) = caption::size(self.height, scale);
         let buttons = self.buttons();
-        buttons.iter().enumerate().map(move |(i, &b)| (b, [width - w * (buttons.len() - i) as f32, 0.0, w, h]))
+        buttons
+            .iter()
+            .enumerate()
+            .map(move |(i, &b)| (b, [width - w * (buttons.len() - i) as f32, 0.0, w, h]))
     }
 
     /// The enabled button at (x, y), in points from the window's top-left, in a window `width`

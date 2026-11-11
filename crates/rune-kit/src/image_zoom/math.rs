@@ -40,7 +40,11 @@ pub fn zoom_at(view: ZoomView, scale: f32, anchor: [f32; 2], bounds: &ZoomBounds
     let next = scale.clamp(1.0, bounds.max_scale.max(1.0));
     let ratio = next / view.scale;
     clamp_view(
-        ZoomView { scale: next, x: anchor[0] - (anchor[0] - view.x) * ratio, y: anchor[1] - (anchor[1] - view.y) * ratio },
+        ZoomView {
+            scale: next,
+            x: anchor[0] - (anchor[0] - view.x) * ratio,
+            y: anchor[1] - (anchor[1] - view.y) * ratio,
+        },
         bounds,
     )
 }

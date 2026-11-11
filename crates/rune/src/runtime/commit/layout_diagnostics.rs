@@ -22,10 +22,18 @@ pub(super) fn collapsed_scrolls(taffy: &LayoutEngine, nodes: &[Node]) {
         s.flex_grow() > 0.0 && s.flex_basis() == length(0.0)
     };
     for (i, n) in nodes.iter().enumerate() {
-        if n.scroll.is_none() { continue; }
-        let direct = || (i + 1..nodes.len()).take_while(|&j| nodes[j].parent >= Some(i)).filter(|&j| nodes[j].parent == Some(i));
+        if n.scroll.is_none() {
+            continue;
+        }
+        let direct = || {
+            (i + 1..nodes.len())
+                .take_while(|&j| nodes[j].parent >= Some(i))
+                .filter(|&j| nodes[j].parent == Some(i))
+        };
         if n.growth.is_some() {
-            let site = n.scroll_source.map_or_else(|| n.path.clone(), |s| s.to_string());
+            let site = n
+                .scroll_source
+                .map_or_else(|| n.path.clone(), |s| s.to_string());
             if WARNED.lock().unwrap().insert(format!("growth:{site}")) {
                 eprintln!(
                     "rune: scroll viewport {:?} (.scroll at {site}) also sets .growth(..); \
@@ -39,8 +47,14 @@ pub(super) fn collapsed_scrolls(taffy: &LayoutEngine, nodes: &[Node]) {
         if let Some(g) = kids.find(|&j| nodes[j].growth.is_some())
             && kids.next().is_some()
         {
-            let site = n.scroll_source.map_or_else(|| n.path.clone(), |s| s.to_string());
-            if WARNED.lock().unwrap().insert(format!("growth-sibling:{site}")) {
+            let site = n
+                .scroll_source
+                .map_or_else(|| n.path.clone(), |s| s.to_string());
+            if WARNED
+                .lock()
+                .unwrap()
+                .insert(format!("growth-sibling:{site}"))
+            {
                 eprintln!(
                     "rune: growth stack {:?} inside scroll viewport {:?} (.scroll at {site}) \
                      has sibling elements after it; a growth stack must be the last (or only) \
@@ -49,18 +63,31 @@ pub(super) fn collapsed_scrolls(taffy: &LayoutEngine, nodes: &[Node]) {
                 );
             }
         }
-        if !n.scroll_axes.y() || height(i) >= 0.5 { continue; }
+        if !n.scroll_axes.y() || height(i) >= 0.5 {
+            continue;
+        }
         let content = direct().map(bottom).fold(0.0_f32, f32::max);
-        if content < 0.5 { continue; }
+        if content < 0.5 {
+            continue;
+        }
         let mut up = Some(i);
         let mut collapsed = false;
         while let Some(j) = up {
-            if grown(j) && height(j) < 0.5 { collapsed = true; break; }
+            if grown(j) && height(j) < 0.5 {
+                collapsed = true;
+                break;
+            }
             up = nodes[j].parent;
         }
-        if !collapsed { continue; }
-        let site = n.scroll_source.map_or_else(|| n.path.clone(), |s| s.to_string());
-        if !WARNED.lock().unwrap().insert(site.clone()) { continue; }
+        if !collapsed {
+            continue;
+        }
+        let site = n
+            .scroll_source
+            .map_or_else(|| n.path.clone(), |s| s.to_string());
+        if !WARNED.lock().unwrap().insert(site.clone()) {
+            continue;
+        }
         eprintln!(
             "rune: scroll viewport {:?} (.scroll at {site}) is 0 pt tall inside a .grow() container \
              while its content is {content} pt. .grow() sets flex-basis 0, so it only fills space a \
@@ -73,7 +100,11 @@ pub(super) fn collapsed_scrolls(taffy: &LayoutEngine, nodes: &[Node]) {
 
 #[cfg(test)]
 pub(super) fn warned_at(needle: &str) -> bool {
-    WARNED.lock().unwrap().iter().any(|site| site.contains(needle))
+    WARNED
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|site| site.contains(needle))
 }
 
 #[cfg(test)]
@@ -81,14 +112,23 @@ mod tests {
     use crate::{Env, Runtime, ScrollSpec, col, el};
 
     fn view(bounded: &bool, _: &mut crate::Cx<bool>) -> crate::El {
-        let list = col().key("list").scroll(ScrollSpec { stick_bottom: false }).grow(1.0)
+        let list = col()
+            .key("list")
+            .scroll(ScrollSpec {
+                stick_bottom: false,
+            })
+            .grow(1.0)
             .child(col().key("rows").child(el().h(400.0)));
         let page = col().key("page").child(list);
         col().child(if *bounded { page.h_full() } else { page })
     }
 
     fn warned() -> bool {
-        super::WARNED.lock().unwrap().iter().any(|site| site.contains("layout_diagnostics.rs"))
+        super::WARNED
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|site| site.contains("layout_diagnostics.rs"))
     }
 
     #[test]
@@ -96,8 +136,16 @@ mod tests {
         for bounded in [true, false] {
             let mut rt = Runtime::new(bounded, view, (200.0, 200.0), Env::new(true, 1.0));
             rt.frame(0.0);
-            let list = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("list")).unwrap();
-            assert_eq!(list.rect[3], if bounded { 200.0 } else { 0.0 }, "layout is unchanged");
+            let list = rt
+                .elements()
+                .into_iter()
+                .find(|e| e.key.as_deref() == Some("list"))
+                .unwrap();
+            assert_eq!(
+                list.rect[3],
+                if bounded { 200.0 } else { 0.0 },
+                "layout is unchanged"
+            );
             assert_eq!(warned(), !bounded);
         }
     }

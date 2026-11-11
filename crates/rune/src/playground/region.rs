@@ -39,7 +39,9 @@ impl<S: 'static> Live<S> {
     /// Focus as the region last saw it, so a focus that only a hover moved (a row under the
     /// pointer) is passed over rather than taken as a move: true when `focused` is new.
     pub(crate) fn see_focus(&mut self, focused: Option<&str>) -> bool {
-        if self.region_seen.as_deref() == focused { return false; }
+        if self.region_seen.as_deref() == focused {
+            return false;
+        }
         self.region_seen = focused.map(str::to_owned);
         true
     }

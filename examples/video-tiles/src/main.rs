@@ -6,7 +6,12 @@ mod bench;
 
 fn push(surface: &NativeSurface, bytes: &ByteFrame, id: u64) {
     #[cfg(target_os = "macos")]
-    surface.push(rune::native_surface::macos::PixelBuffer::from_bytes(bytes).unwrap(), id).unwrap();
+    surface
+        .push(
+            rune::native_surface::macos::PixelBuffer::from_bytes(bytes).unwrap(),
+            id,
+        )
+        .unwrap();
     #[cfg(not(target_os = "macos"))]
     surface
         .push_bytes(
@@ -37,9 +42,12 @@ fn setup(s: &mut Tiles, wake: Waker) {
         surface.set_waker(wake.clone());
     }
     // Headless scenes use the deterministic initial frame, not a wall-clock producer.
-    if std::env::args()
-        .any(|v| matches!(v.as_str(), "--snap" | "--frames" | "--first-pixels" | "--tree" | "--trace" | "--strip"))
-    {
+    if std::env::args().any(|v| {
+        matches!(
+            v.as_str(),
+            "--snap" | "--frames" | "--first-pixels" | "--tree" | "--trace" | "--strip"
+        )
+    }) {
         return;
     }
     let surfaces = s.surfaces.clone();
@@ -54,20 +62,27 @@ fn setup(s: &mut Tiles, wake: Waker) {
     });
 }
 fn view(s: &Tiles, _: &mut Cx<Tiles>) -> El {
-    col().key("tiles").gap(8.0).padding(8.0).children((0..2).map(|y| {
-        row().gap(8.0).children((0..2).map(|x| {
-            el().key(format!("tile-{x}-{y}"))
-                .w(320.0)
-                .h(180.0)
-                .radius(8.0)
-                .native_surface(&s.surfaces[y * 2 + x], SurfaceFit::Fit)
+    col()
+        .key("tiles")
+        .gap(8.0)
+        .padding(8.0)
+        .children((0..2).map(|y| {
+            row().gap(8.0).children((0..2).map(|x| {
+                el().key(format!("tile-{x}-{y}"))
+                    .w(320.0)
+                    .h(180.0)
+                    .radius(8.0)
+                    .native_surface(&s.surfaces[y * 2 + x], SurfaceFit::Fit)
+            }))
         }))
-    }))
 }
 fn main() {
     if std::env::args().any(|a| a == "--bench-native") {
         bench::run();
         return;
     }
-    rune::run(AppSpec { setup: Some(setup), ..AppSpec::new("Video tiles", (664.0, 384.0), state, view) });
+    rune::run(AppSpec {
+        setup: Some(setup),
+        ..AppSpec::new("Video tiles", (664.0, 384.0), state, view)
+    });
 }

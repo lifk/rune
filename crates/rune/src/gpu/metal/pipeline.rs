@@ -4,8 +4,9 @@
 use std::sync::Arc;
 
 use objc2_metal::{
-    MTLBlendFactor, MTLBlendOperation, MTLColorWriteMask, MTLCullMode, MTLDevice, MTLPixelFormat, MTLPrimitiveTopologyClass,
-    MTLPrimitiveType, MTLRenderPipelineDescriptor, MTLRenderPipelineState, MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexFormat,
+    MTLBlendFactor, MTLBlendOperation, MTLColorWriteMask, MTLCullMode, MTLDevice, MTLPixelFormat,
+    MTLPrimitiveTopologyClass, MTLPrimitiveType, MTLRenderPipelineDescriptor,
+    MTLRenderPipelineState, MTLTriangleFillMode, MTLVertexDescriptor, MTLVertexFormat,
     MTLVertexStepFunction, MTLWinding,
 };
 use wgpu::custom::*;
@@ -38,7 +39,9 @@ pub(crate) struct PipelineRaw {
 }
 send_sync!(PipelineRaw);
 
-pub(super) fn vertex_slot(index: u32) -> usize { MAX_BUFFERS - 1 - index as usize }
+pub(super) fn vertex_slot(index: u32) -> usize {
+    MAX_BUFFERS - 1 - index as usize
+}
 
 fn vertex_format(format: wgpu::VertexFormat) -> MTLVertexFormat {
     use MTLVertexFormat as M;
@@ -108,10 +111,22 @@ fn blend_operation(operation: wgpu::BlendOperation) -> MTLBlendOperation {
 
 fn write_mask(writes: wgpu::ColorWrites) -> MTLColorWriteMask {
     let mut mask = MTLColorWriteMask::None;
-    mask.set(MTLColorWriteMask::Red, writes.contains(wgpu::ColorWrites::RED));
-    mask.set(MTLColorWriteMask::Green, writes.contains(wgpu::ColorWrites::GREEN));
-    mask.set(MTLColorWriteMask::Blue, writes.contains(wgpu::ColorWrites::BLUE));
-    mask.set(MTLColorWriteMask::Alpha, writes.contains(wgpu::ColorWrites::ALPHA));
+    mask.set(
+        MTLColorWriteMask::Red,
+        writes.contains(wgpu::ColorWrites::RED),
+    );
+    mask.set(
+        MTLColorWriteMask::Green,
+        writes.contains(wgpu::ColorWrites::GREEN),
+    );
+    mask.set(
+        MTLColorWriteMask::Blue,
+        writes.contains(wgpu::ColorWrites::BLUE),
+    );
+    mask.set(
+        MTLColorWriteMask::Alpha,
+        writes.contains(wgpu::ColorWrites::ALPHA),
+    );
     mask
 }
 
@@ -121,13 +136,23 @@ fn topology(topology: wgpu::PrimitiveTopology) -> (MTLPrimitiveTopologyClass, MT
         T::PointList => (MTLPrimitiveTopologyClass::Point, MTLPrimitiveType::Point),
         T::LineList => (MTLPrimitiveTopologyClass::Line, MTLPrimitiveType::Line),
         T::LineStrip => (MTLPrimitiveTopologyClass::Line, MTLPrimitiveType::LineStrip),
-        T::TriangleList => (MTLPrimitiveTopologyClass::Triangle, MTLPrimitiveType::Triangle),
-        T::TriangleStrip => (MTLPrimitiveTopologyClass::Triangle, MTLPrimitiveType::TriangleStrip),
+        T::TriangleList => (
+            MTLPrimitiveTopologyClass::Triangle,
+            MTLPrimitiveType::Triangle,
+        ),
+        T::TriangleStrip => (
+            MTLPrimitiveTopologyClass::Triangle,
+            MTLPrimitiveType::TriangleStrip,
+        ),
     }
 }
 
-fn vertex_descriptor(buffers: &[Option<wgpu::VertexBufferLayout<'_>>]) -> Option<objc2_video::rc::Retained<MTLVertexDescriptor>> {
-    if buffers.iter().all(Option::is_none) { return None }
+fn vertex_descriptor(
+    buffers: &[Option<wgpu::VertexBufferLayout<'_>>],
+) -> Option<objc2_video::rc::Retained<MTLVertexDescriptor>> {
+    if buffers.iter().all(Option::is_none) {
+        return None;
+    }
     let d = MTLVertexDescriptor::new();
     for (i, vb) in buffers.iter().enumerate() {
         let Some(vb) = vb else { continue };
@@ -136,7 +161,12 @@ fn vertex_descriptor(buffers: &[Option<wgpu::VertexBufferLayout<'_>>]) -> Option
         unsafe {
             let layout = d.layouts().objectAtIndexedSubscript(slot);
             if vb.array_stride == 0 {
-                let stride = vb.attributes.iter().map(|a| a.offset + a.format.size()).max().unwrap_or(0);
+                let stride = vb
+                    .attributes
+                    .iter()
+                    .map(|a| a.offset + a.format.size())
+                    .max()
+                    .unwrap_or(0);
                 layout.setStride(stride.next_multiple_of(4) as usize);
                 layout.setStepFunction(MTLVertexStepFunction::Constant);
                 layout.setStepRate(0);
@@ -148,7 +178,9 @@ fn vertex_descriptor(buffers: &[Option<wgpu::VertexBufferLayout<'_>>]) -> Option
                 });
             }
             for a in vb.attributes {
-                let attribute = d.attributes().objectAtIndexedSubscript(a.shader_location as usize);
+                let attribute = d
+                    .attributes()
+                    .objectAtIndexedSubscript(a.shader_location as usize);
                 attribute.setFormat(vertex_format(a.format));
                 attribute.setBufferIndex(slot);
                 attribute.setOffset(a.offset as usize);
@@ -161,33 +193,69 @@ fn vertex_descriptor(buffers: &[Option<wgpu::VertexBufferLayout<'_>>]) -> Option
 pub(super) fn create(shared: &Shared, desc: &wgpu::RenderPipelineDescriptor<'_>) -> RenderPipeline {
     let label = desc.label.unwrap_or("pipeline");
     let layout = match desc.layout {
-        Some(layout) => layout.as_custom::<PipelineLayout>().expect("a Metal pipeline layout").raw.clone(),
+        Some(layout) => layout
+            .as_custom::<PipelineLayout>()
+            .expect("a Metal pipeline layout")
+            .raw
+            .clone(),
         None => {
-            let vertex = Use { module: desc.vertex.module, entry: desc.vertex.entry_point, kind: naga::ShaderStage::Vertex };
-            let fragment = desc.fragment.as_ref().map(|f| Use { module: f.module, entry: f.entry_point, kind: naga::ShaderStage::Fragment });
-            derive::layout(label, &[Some(vertex), fragment].into_iter().flatten().collect::<Vec<_>>()).raw
+            let vertex = Use {
+                module: desc.vertex.module,
+                entry: desc.vertex.entry_point,
+                kind: naga::ShaderStage::Vertex,
+            };
+            let fragment = desc.fragment.as_ref().map(|f| Use {
+                module: f.module,
+                entry: f.entry_point,
+                kind: naga::ShaderStage::Fragment,
+            });
+            derive::layout(
+                label,
+                &[Some(vertex), fragment]
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>(),
+            )
+            .raw
         }
     };
-    if desc.depth_stencil.is_some() { super::unsupported!("depth and stencil") }
+    if desc.depth_stencil.is_some() {
+        super::unsupported!("depth and stencil")
+    }
     let (class, primitive) = topology(desc.primitive.topology);
     let points = class == MTLPrimitiveTopologyClass::Point;
     let d = MTLRenderPipelineDescriptor::new();
-    let vertex = Stage { module: desc.vertex.module, entry: desc.vertex.entry_point, constants: desc.vertex.compilation_options.constants,
-        kind: naga::ShaderStage::Vertex };
-    let vs = compile(shared, &vertex, &layout.stages[0], points).unwrap_or_else(|e| panic!("{label}: {e}"));
+    let vertex = Stage {
+        module: desc.vertex.module,
+        entry: desc.vertex.entry_point,
+        constants: desc.vertex.compilation_options.constants,
+        kind: naga::ShaderStage::Vertex,
+    };
+    let vs = compile(shared, &vertex, &layout.stages[0], points)
+        .unwrap_or_else(|e| panic!("{label}: {e}"));
     d.setVertexFunction(Some(&vs.function));
     let mut sized = [vs.sized, Vec::new()];
     if let Some(fragment) = &desc.fragment {
-        let stage = Stage { module: fragment.module, entry: fragment.entry_point, constants: fragment.compilation_options.constants,
-            kind: naga::ShaderStage::Fragment };
-        let fs = compile(shared, &stage, &layout.stages[1], points).unwrap_or_else(|e| panic!("{label}: {e}"));
+        let stage = Stage {
+            module: fragment.module,
+            entry: fragment.entry_point,
+            constants: fragment.compilation_options.constants,
+            kind: naga::ShaderStage::Fragment,
+        };
+        let fs = compile(shared, &stage, &layout.stages[1], points)
+            .unwrap_or_else(|e| panic!("{label}: {e}"));
         d.setFragmentFunction(Some(&fs.function));
         sized[1] = fs.sized;
-        if fragment.targets.len() > 4 { super::unsupported!("more than four color targets") }
+        if fragment.targets.len() > 4 {
+            super::unsupported!("more than four color targets")
+        }
         for (i, target) in fragment.targets.iter().enumerate() {
             // SAFETY: at most four attachments, checked above.
             let attachment = unsafe { d.colorAttachments().objectAtIndexedSubscript(i) };
-            let Some(target) = target else { attachment.setPixelFormat(MTLPixelFormat::Invalid); continue };
+            let Some(target) = target else {
+                attachment.setPixelFormat(MTLPixelFormat::Invalid);
+                continue;
+            };
             attachment.setPixelFormat(pixel_format(target.format));
             attachment.setWriteMask(write_mask(target.write_mask));
             if let Some(blend) = target.blend {
@@ -206,7 +274,10 @@ pub(super) fn create(shared: &Shared, desc: &wgpu::RenderPipelineDescriptor<'_>)
     unsafe { d.setInputPrimitiveTopology(class) };
     d.setRasterSampleCount(desc.multisample.count as usize);
     d.setAlphaToCoverageEnabled(desc.multisample.alpha_to_coverage_enabled);
-    let state = shared.device.newRenderPipelineStateWithDescriptor_error(&d).unwrap_or_else(|e| panic!("{label}: {}", e.localizedDescription()));
+    let state = shared
+        .device
+        .newRenderPipelineStateWithDescriptor_error(&d)
+        .unwrap_or_else(|e| panic!("{label}: {}", e.localizedDescription()));
     let raw = PipelineRaw {
         state,
         layout,

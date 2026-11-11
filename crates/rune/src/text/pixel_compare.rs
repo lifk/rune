@@ -31,10 +31,26 @@ pub struct Pair {
 /// Dark ink on paper; light grey (macOS's q = 0.75 smoothing bucket) and near-white (q = 1) on
 /// a dark page; a mid blue (q = 0.25).
 pub const PAIRS: [Pair; 4] = [
-    Pair { name: "light", fg: "#1d1e22", bg: "#fcfcfb" },
-    Pair { name: "dark", fg: "#e6e6e6", bg: "#1d1e22" },
-    Pair { name: "white", fg: "#fcfcfb", bg: "#1d1e22" },
-    Pair { name: "blue", fg: "#296d9a", bg: "#fcfcfb" },
+    Pair {
+        name: "light",
+        fg: "#1d1e22",
+        bg: "#fcfcfb",
+    },
+    Pair {
+        name: "dark",
+        fg: "#e6e6e6",
+        bg: "#1d1e22",
+    },
+    Pair {
+        name: "white",
+        fg: "#fcfcfb",
+        bg: "#1d1e22",
+    },
+    Pair {
+        name: "blue",
+        fg: "#296d9a",
+        bg: "#fcfcfb",
+    },
 ];
 pub const SCALES: [f32; 2] = [1.0, 2.0];
 /// Inter sizes, in points (device px at 1×).
@@ -83,12 +99,18 @@ impl Reference {
         }
     }
     fn prefix(self) -> &'static str {
-        match self { Reference::Smoothed => "", Reference::Unsmoothed => "flat-" }
+        match self {
+            Reference::Smoothed => "",
+            Reference::Unsmoothed => "flat-",
+        }
     }
     /// Unsmoothed sheets cover the light and dark pairs: without dilation, ink colour changes
     /// only the blend.
     pub fn pairs(self) -> &'static [Pair] {
-        match self { Reference::Smoothed => &PAIRS, Reference::Unsmoothed => &PAIRS[..2] }
+        match self {
+            Reference::Smoothed => &PAIRS,
+            Reference::Unsmoothed => &PAIRS[..2],
+        }
     }
 }
 
@@ -123,7 +145,11 @@ impl Case {
 
 /// The cases of `set`, top to bottom.
 pub fn cases(set: Set) -> Vec<Case> {
-    let text = if set == Set::Mono { MONO_SAMPLE } else { SAMPLE };
+    let text = if set == Set::Mono {
+        MONO_SAMPLE
+    } else {
+        SAMPLE
+    };
     let (family, rows): (Family, Vec<(&str, f32, f32)>) = match set {
         Set::Inter => {
             let mut rows = Vec::new();
@@ -132,8 +158,22 @@ pub fn cases(set: Set) -> Vec<Case> {
             }
             (Family::Sans, rows)
         }
-        Set::Sf => (Family::Named(SYSTEM_FONT), vec![("sf regular", 400.0, 16.0), ("sf bold", 700.0, 16.0), ("sf bold", 700.0, 28.0), ("sf bold", 700.0, 32.0)]),
-        Set::Mono => (Family::SystemMono, [11.0, 12.0, 13.0, 13.5, 14.0, 16.0].iter().map(|&size| ("mono", 400.0, size)).collect()),
+        Set::Sf => (
+            Family::Named(SYSTEM_FONT),
+            vec![
+                ("sf regular", 400.0, 16.0),
+                ("sf bold", 700.0, 16.0),
+                ("sf bold", 700.0, 28.0),
+                ("sf bold", 700.0, 32.0),
+            ],
+        ),
+        Set::Mono => (
+            Family::SystemMono,
+            [11.0, 12.0, 13.0, 13.5, 14.0, 16.0]
+                .iter()
+                .map(|&size| ("mono", 400.0, size))
+                .collect(),
+        ),
     };
     let mut out = Vec::new();
     let mut y = 4.0f32;
@@ -174,7 +214,11 @@ fn paragraph_case(family: Family, top: f32) -> Case {
         };
     }
     Case {
-        name: if family == Family::Sans { "paragraph 16/26".into() } else { "sf paragraph 16/26".into() },
+        name: if family == Family::Sans {
+            "paragraph 16/26".into()
+        } else {
+            "sf paragraph 16/26".into()
+        },
         family,
         weight: 400.0,
         size: 16.0,
@@ -200,29 +244,46 @@ pub fn refs_dir() -> PathBuf {
 impl Set {
     /// Where this set's sheets and `layout.txt` live.
     pub fn dir(self) -> PathBuf {
-        match self { Set::Inter => refs_dir(), Set::Sf => refs_dir().join("sf"), Set::Mono => refs_dir().join("mono") }
+        match self {
+            Set::Inter => refs_dir(),
+            Set::Sf => refs_dir().join("sf"),
+            Set::Mono => refs_dir().join("mono"),
+        }
     }
     pub fn name(self) -> &'static str {
-        match self { Set::Inter => "Inter", Set::Sf => "San Francisco", Set::Mono => "SF Mono" }
+        match self {
+            Set::Inter => "Inter",
+            Set::Sf => "San Francisco",
+            Set::Mono => "SF Mono",
+        }
     }
 }
 
 /// The font files: Rune's own Inter Regular and an ASCII subset of Inter 4.1 Bold.
 pub fn font_paths() -> [PathBuf; 2] {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    [root.join("assets/Inter-Regular.ttf"), refs_dir().join("Inter-Bold-subset.ttf")]
+    [
+        root.join("assets/Inter-Regular.ttf"),
+        refs_dir().join("Inter-Bold-subset.ttf"),
+    ]
 }
 
 /// The system font file Rune loads for "System Font", when this machine has one.
 pub fn system_font_path() -> Option<PathBuf> {
-    if !cfg!(target_os = "macos") { return None; }
+    if !cfg!(target_os = "macos") {
+        return None;
+    }
     super::system_font_files(&["sfnsttf"]).into_iter().next()
 }
 
 /// The SF Mono file `Family::SystemMono` loads, when this machine has one.
 pub fn system_mono_path() -> Option<PathBuf> {
-    if !cfg!(target_os = "macos") { return None; }
-    super::system_font_files(&["sfnsmono"]).into_iter().find(|p| !p.to_string_lossy().to_lowercase().contains("italic"))
+    if !cfg!(target_os = "macos") {
+        return None;
+    }
+    super::system_font_files(&["sfnsmono"])
+        .into_iter()
+        .find(|p| !p.to_string_lossy().to_lowercase().contains("italic"))
 }
 
 fn text_system() -> Result<TextSystem, String> {
@@ -235,18 +296,29 @@ fn text_system() -> Result<TextSystem, String> {
 }
 
 fn style(case: &Case) -> TextStyle {
-    TextStyle { line_height: case.line_height, ..TextStyle::new(case.size, case.weight).family(case.family) }
+    TextStyle {
+        line_height: case.line_height,
+        ..TextStyle::new(case.size, case.weight).family(case.family)
+    }
 }
 
 /// Each case's glyphs as `(id, x, baseline)` in device px: the pen x before any quantisation
 /// and the whole-pixel baseline, as `TextSystem::glyphs_for_layout` computes them.
 fn positions(text: &mut TextSystem, case: &Case, scale: f32) -> Vec<(u32, f32, f32)> {
-    let layout = text.layout_rich(case.text, &[], style(case), scale, case.wrap.map(|w| w * scale));
+    let layout = text.layout_rich(
+        case.text,
+        &[],
+        style(case),
+        scale,
+        case.wrap.map(|w| w * scale),
+    );
     let origin = case.origin.map(|v| v * scale);
     let mut out = Vec::new();
     for line in layout.lines() {
         for item in line.items() {
-            let PositionedLayoutItem::GlyphRun(run) = item else { continue };
+            let PositionedLayoutItem::GlyphRun(run) = item else {
+                continue;
+            };
             let baseline = (origin[1] + run.baseline()).round();
             let mut rel = run.offset();
             for g in run.glyphs() {
@@ -267,11 +339,18 @@ pub fn available(set: Set) -> Result<(), String> {
         return Err("no SF Mono (SFNSMono) on this machine".into());
     }
     let have = std::fs::read_to_string(set.dir().join("layout.txt")).map_err(|_| {
-        format!("no {} references in {}: run scripts/coretext-reference.sh", set.name(), set.dir().display())
+        format!(
+            "no {} references in {}: run scripts/coretext-reference.sh",
+            set.name(),
+            set.dir().display()
+        )
     })?;
     let want = layout_file(set)?;
     if have != want {
-        return Err(format!("{} references are stale (layout.txt {have:?}, now {want:?}): run scripts/coretext-reference.sh", set.name()));
+        return Err(format!(
+            "{} references are stale (layout.txt {have:?}, now {want:?}): run scripts/coretext-reference.sh",
+            set.name()
+        ));
     }
     Ok(())
 }
@@ -290,7 +369,10 @@ pub fn export(set: Set, scale: f32) -> Result<serde_json::Value, String> {
     }
     let mut rows = Vec::new();
     for case in cases(set) {
-        let glyphs: Vec<_> = positions(&mut text, &case, scale).into_iter().map(|(id, x, y)| serde_json::json!([id, x, y])).collect();
+        let glyphs: Vec<_> = positions(&mut text, &case, scale)
+            .into_iter()
+            .map(|(id, x, y)| serde_json::json!([id, x, y]))
+            .collect();
         rows.push(serde_json::json!({
             "name": case.name, "font": case.font(), "size": case.size, "weight": case.weight, "opsz": case.size, "glyphs": glyphs,
         }));
@@ -349,7 +431,8 @@ impl Image {
     }
 
     fn green(&self, x: i64, y: i64) -> Option<u8> {
-        (x >= 0 && y >= 0 && x < self.width as i64 && y < self.height as i64).then(|| self.px(x as u32, y as u32)[1])
+        (x >= 0 && y >= 0 && x < self.width as i64 && y < self.height as i64)
+            .then(|| self.px(x as u32, y as u32)[1])
     }
 
     pub fn read_png(path: &Path) -> Result<Image, String> {
@@ -362,13 +445,27 @@ impl Image {
         let channels = info.color_type.samples();
         let rgb = buf[..info.buffer_size()]
             .chunks_exact(channels)
-            .flat_map(|p| if channels >= 3 { [p[0], p[1], p[2]] } else { [p[0]; 3] })
+            .flat_map(|p| {
+                if channels >= 3 {
+                    [p[0], p[1], p[2]]
+                } else {
+                    [p[0]; 3]
+                }
+            })
             .collect();
-        Ok(Image { width: info.width, height: info.height, rgb })
+        Ok(Image {
+            width: info.width,
+            height: info.height,
+            rgb,
+        })
     }
 
     pub fn write_png(&self, path: &Path) -> std::io::Result<()> {
-        let rgba: Vec<u8> = self.rgb.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect();
+        let rgba: Vec<u8> = self
+            .rgb
+            .chunks_exact(3)
+            .flat_map(|p| [p[0], p[1], p[2], 255])
+            .collect();
         crate::render::write_png(path, self.width, self.height, &rgba)
     }
 
@@ -381,7 +478,9 @@ impl Image {
         enc.set_compression(png::Compression::High);
         enc.set_filter(png::Filter::Adaptive);
         let green: Vec<u8> = self.rgb.chunks_exact(3).map(|p| p[1]).collect();
-        enc.write_header().and_then(|mut w| w.write_image_data(&green)).map_err(|e| e.to_string())
+        enc.write_header()
+            .and_then(|mut w| w.write_image_data(&green))
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -396,37 +495,91 @@ pub struct Harness {
 
 impl Harness {
     pub fn new() -> Result<Harness, String> {
-        Ok(Harness { gpu: Gpu::try_new(Gpu::instance(), None)?, text: text_system()?, renderer: None })
+        Ok(Harness {
+            gpu: Gpu::try_new(Gpu::instance(), None)?,
+            text: text_system()?,
+            renderer: None,
+        })
     }
 
     /// `cases` in `pair`'s colours on a `size` (points) canvas at `scale`.
-    pub fn render(&mut self, pair: Pair, scale: f32, srgb_blend: bool, smoothing: FontSmoothing, cases: &[Case], size: [f32; 2]) -> Image {
+    pub fn render(
+        &mut self,
+        pair: Pair,
+        scale: f32,
+        srgb_blend: bool,
+        smoothing: FontSmoothing,
+        cases: &[Case],
+        size: [f32; 2],
+    ) -> Image {
         self.text.set_font_smoothing(smoothing);
         let (fg, bg) = (hex(pair.fg).expect("fg"), hex(pair.bg).expect("bg"));
         let (w, h) = ((size[0] * scale) as u32, (size[1] * scale) as u32);
         let mut quads: Vec<GlyphQuad> = Vec::new();
         self.text.set_glyph_inks(fg, &[]);
         for case in cases {
-            let layout = self.text.layout_rich(case.text, &[], style(case), scale, case.wrap.map(|w| w * scale));
-            self.text.glyphs_for_layout(&layout, scale, case.origin.map(|v| v * scale), false, &mut quads);
+            let layout = self.text.layout_rich(
+                case.text,
+                &[],
+                style(case),
+                scale,
+                case.wrap.map(|w| w * scale),
+            );
+            self.text.glyphs_for_layout(
+                &layout,
+                scale,
+                case.origin.map(|v| v * scale),
+                false,
+                &mut quads,
+            );
         }
         let fill = crate::runtime::premul(fg, 1.0, srgb_blend);
         // The coverage exponent a window's paint applies, so the sheets are what an app draws.
         let exponent = self.text.coverage_exponent(fill);
-        let instances: Vec<_> = quads.iter().map(|q| { let mut g = crate::runtime::glyph(q, fill, NO_CLIP, [0.0; 4]); g.params[3] = exponent; g }).collect();
-        let format = if srgb_blend { OFFSCREEN_FORMAT.remove_srgb_suffix() } else { OFFSCREEN_FORMAT };
-        let renderer = self.renderer.get_or_insert_with(|| Renderer::new(&self.gpu.device, format));
+        let instances: Vec<_> = quads
+            .iter()
+            .map(|q| {
+                let mut g = crate::runtime::glyph(q, fill, NO_CLIP, [0.0; 4]);
+                g.params[3] = exponent;
+                g
+            })
+            .collect();
+        let format = if srgb_blend {
+            OFFSCREEN_FORMAT.remove_srgb_suffix()
+        } else {
+            OFFSCREEN_FORMAT
+        };
+        let renderer = self
+            .renderer
+            .get_or_insert_with(|| Renderer::new(&self.gpu.device, format));
         renderer.set_format(&self.gpu.device, format);
         renderer.set_srgb_blend(srgb_blend);
         let target = Offscreen::with_format(&self.gpu.device, w, h, format);
-        renderer.prepare(&self.gpu.device, &self.gpu.queue, &mut self.text.atlas, &instances, (w, h));
-        let clear = if srgb_blend { [srgb_encode(bg.r), srgb_encode(bg.g), srgb_encode(bg.b), 1.0] } else { [bg.r, bg.g, bg.b, 1.0] };
+        renderer.prepare(
+            &self.gpu.device,
+            &self.gpu.queue,
+            &mut self.text.atlas,
+            &instances,
+            (w, h),
+        );
+        let clear = if srgb_blend {
+            [srgb_encode(bg.r), srgb_encode(bg.g), srgb_encode(bg.b), 1.0]
+        } else {
+            [bg.r, bg.g, bg.b, 1.0]
+        };
         let mut encoder = self.gpu.device.create_command_encoder(&Default::default());
         renderer.draw(&mut encoder, &target.view, clear);
         target.copy(&mut encoder);
         renderer.submit(&self.gpu.queue, encoder);
         let rgba = target.read(&self.gpu.device);
-        Image { width: w, height: h, rgb: rgba.chunks_exact(4).flat_map(|p| [p[0], p[1], p[2]]).collect() }
+        Image {
+            width: w,
+            height: h,
+            rgb: rgba
+                .chunks_exact(4)
+                .flat_map(|p| [p[0], p[1], p[2]])
+                .collect(),
+        }
     }
 }
 
@@ -454,12 +607,20 @@ impl Stats {
         self.ink_ref += o.ink_ref;
     }
     /// Mean |difference|.
-    pub fn meanabs(&self) -> f64 { self.abs_sum / self.pixels.max(1) as f64 }
+    pub fn meanabs(&self) -> f64 {
+        self.abs_sum / self.pixels.max(1) as f64
+    }
     /// Rune's ink over CoreText's.
-    pub fn ink_ratio(&self) -> f64 { self.ink_rune / self.ink_ref.max(1.0) }
-    pub fn differing_share(&self) -> f64 { self.differing as f64 / self.pixels.max(1) as f64 }
+    pub fn ink_ratio(&self) -> f64 {
+        self.ink_rune / self.ink_ref.max(1.0)
+    }
+    pub fn differing_share(&self) -> f64 {
+        self.differing as f64 / self.pixels.max(1) as f64
+    }
     /// Share of pixels off by more than 8.
-    pub fn over8_share(&self) -> f64 { self.over8 as f64 / self.pixels.max(1) as f64 }
+    pub fn over8_share(&self) -> f64 {
+        self.over8 as f64 / self.pixels.max(1) as f64
+    }
 }
 
 /// Stats over `[x0, y0, x1, y1)` (px of `reference`), with Rune's image read `shift` px away.
@@ -468,7 +629,9 @@ fn stats_in(rune: &Image, reference: &Image, [x0, y0, x1, y1]: [u32; 4], shift: 
     let mut s = Stats::default();
     for y in y0..y1 {
         for x in x0..x1 {
-            let a = rune.green(x as i64 - shift[0], y as i64 - shift[1]).unwrap_or(paper_rune);
+            let a = rune
+                .green(x as i64 - shift[0], y as i64 - shift[1])
+                .unwrap_or(paper_rune);
             let b = reference.px(x, y)[1];
             let d = a.abs_diff(b);
             s.pixels += 1;
@@ -497,19 +660,31 @@ fn ink_bounds(images: [&Image; 2], [x0, y0, x1, y1]: [u32; 4]) -> Option<[u32; 4
             }
         }
     }
-    (hi.0 > 0).then(|| [lo.0.saturating_sub(1).max(x0), lo.1.saturating_sub(1).max(y0), (hi.0 + 1).min(x1), (hi.1 + 1).min(y1)])
+    (hi.0 > 0).then(|| {
+        [
+            lo.0.saturating_sub(1).max(x0),
+            lo.1.saturating_sub(1).max(y0),
+            (hi.0 + 1).min(x1),
+            (hi.1 + 1).min(y1),
+        ]
+    })
 }
 
 /// Compares `case`'s region of two sheets of the same size.
 pub fn compare(rune: &Image, reference: &Image, case: &Case, scale: f32) -> Stats {
     let [x, y, w, h] = case.region.map(|v| (v * scale).round() as u32);
     let region = [x, y, (x + w).min(rune.width), (y + h).min(rune.height)];
-    let rect = if case.whole_region { Some(region) } else { ink_bounds([rune, reference], region) };
+    let rect = if case.whole_region {
+        Some(region)
+    } else {
+        ink_bounds([rune, reference], region)
+    };
     rect.map_or_else(Stats::default, |r| stats_in(rune, reference, r, [0, 0]))
 }
 
 pub fn reference_path(set: Set, reference: Reference, pair: Pair, scale: f32) -> PathBuf {
-    set.dir().join(format!("{}{}-{scale}x.png", reference.prefix(), pair.name))
+    set.dir()
+        .join(format!("{}{}-{scale}x.png", reference.prefix(), pair.name))
 }
 
 /// One table row.
@@ -534,16 +709,31 @@ pub struct Options {
 
 impl Options {
     pub fn new(set: Set) -> Options {
-        Options { set, smoothing: None, srgb_blend: None, reference: None }
+        Options {
+            set,
+            smoothing: None,
+            srgb_blend: None,
+            reference: None,
+        }
     }
-    pub fn smoothing(&self) -> FontSmoothing { self.smoothing.unwrap_or_default() }
-    pub fn srgb_blend(&self) -> bool { self.srgb_blend.unwrap_or(true) }
-    pub fn reference(&self) -> Reference { self.reference.unwrap_or(Reference::for_mode(self.smoothing())) }
+    pub fn smoothing(&self) -> FontSmoothing {
+        self.smoothing.unwrap_or_default()
+    }
+    pub fn srgb_blend(&self) -> bool {
+        self.srgb_blend.unwrap_or(true)
+    }
+    pub fn reference(&self) -> Reference {
+        self.reference
+            .unwrap_or(Reference::for_mode(self.smoothing()))
+    }
 }
 
 /// Every case of every pair at every scale. Errs when the set can't be compared here
 /// ([`available`]).
-pub fn run(o: Options, mut keep: impl FnMut(Pair, f32, &Image, &Image)) -> Result<Vec<Row>, String> {
+pub fn run(
+    o: Options,
+    mut keep: impl FnMut(Pair, f32, &Image, &Image),
+) -> Result<Vec<Row>, String> {
     available(o.set)?;
     let cases = cases(o.set);
     let mut harness = Harness::new()?;
@@ -551,14 +741,29 @@ pub fn run(o: Options, mut keep: impl FnMut(Pair, f32, &Image, &Image)) -> Resul
     for scale in SCALES {
         for &pair in o.reference().pairs() {
             let reference = Image::read_png(&reference_path(o.set, o.reference(), pair, scale))?;
-            let rune = harness.render(pair, scale, o.srgb_blend(), o.smoothing(), &cases, [SHEET_WIDTH, sheet_height(o.set)]);
+            let rune = harness.render(
+                pair,
+                scale,
+                o.srgb_blend(),
+                o.smoothing(),
+                &cases,
+                [SHEET_WIDTH, sheet_height(o.set)],
+            );
             if (rune.width, rune.height) != (reference.width, reference.height) {
-                return Err(format!("{} {scale}x: reference is {}x{}, Rune {}x{}", pair.name, reference.width, reference.height, rune.width, rune.height));
+                return Err(format!(
+                    "{} {scale}x: reference is {}x{}, Rune {}x{}",
+                    pair.name, reference.width, reference.height, rune.width, rune.height
+                ));
             }
             keep(pair, scale, &rune, &reference);
             for case in &cases {
                 let stats = compare(&rune, &reference, case, scale);
-                rows.push(Row { pair, scale, case: case.clone(), stats });
+                rows.push(Row {
+                    pair,
+                    scale,
+                    case: case.clone(),
+                    stats,
+                });
             }
         }
     }
@@ -579,13 +784,18 @@ fn line(out: &mut String, label: &str, s: &Stats) {
 
 /// The paragraph's stats for `pair` at `scale`, the report's headline numbers.
 pub fn paragraph(rows: &[Row], pair: &str, scale: f32) -> Option<Stats> {
-    rows.iter().find(|r| r.pair.name == pair && r.scale == scale && r.case.whole_region).map(|r| r.stats)
+    rows.iter()
+        .find(|r| r.pair.name == pair && r.scale == scale && r.case.whole_region)
+        .map(|r| r.stats)
 }
 
 /// All rows of `pair` at `scale` but the paragraph, pooled by pixel.
 pub fn pooled(rows: &[Row], pair: &str, scale: f32) -> Stats {
     let mut s = Stats::default();
-    for r in rows.iter().filter(|r| r.pair.name == pair && r.scale == scale && !r.case.whole_region) {
+    for r in rows
+        .iter()
+        .filter(|r| r.pair.name == pair && r.scale == scale && !r.case.whole_region)
+    {
         s.add(&r.stats);
     }
     s
@@ -596,25 +806,48 @@ const HEAD: &str = "case                           differ       >8  max  meanabs
 /// The full table, then a summary per pair and scale.
 pub fn table(o: &Options, rows: &[Row]) -> String {
     let mut out = String::new();
-    let against = match o.reference() { Reference::Smoothed => "smoothing on", Reference::Unsmoothed => "smoothing off" };
-    let _ = writeln!(out, "{}: Rune {:?} ({} blending) vs CoreText with {against}", o.set.name(), o.smoothing(), if o.srgb_blend() { "sRGB" } else { "linear" });
+    let against = match o.reference() {
+        Reference::Smoothed => "smoothing on",
+        Reference::Unsmoothed => "smoothing off",
+    };
+    let _ = writeln!(
+        out,
+        "{}: Rune {:?} ({} blending) vs CoreText with {against}",
+        o.set.name(),
+        o.smoothing(),
+        if o.srgb_blend() { "sRGB" } else { "linear" }
+    );
     for scale in SCALES {
         for pair in o.reference().pairs() {
-            let _ = writeln!(out, "\n{} ({} on {}), {scale}x", pair.name, pair.fg, pair.bg);
+            let _ = writeln!(
+                out,
+                "\n{} ({} on {}), {scale}x",
+                pair.name, pair.fg, pair.bg
+            );
             out += HEAD;
-            for r in rows.iter().filter(|r| r.pair.name == pair.name && r.scale == scale) {
+            for r in rows
+                .iter()
+                .filter(|r| r.pair.name == pair.name && r.scale == scale)
+            {
                 line(&mut out, &r.case.name, &r.stats);
             }
         }
     }
-    let _ = writeln!(out, "\nsummary: paragraph (report band) and all sample rows pooled");
+    let _ = writeln!(
+        out,
+        "\nsummary: paragraph (report band) and all sample rows pooled"
+    );
     out += HEAD;
     for scale in SCALES.iter().rev() {
         for pair in o.reference().pairs() {
             if let Some(p) = paragraph(rows, pair.name, *scale) {
                 line(&mut out, &format!("{} {scale}x paragraph", pair.name), &p);
             }
-            line(&mut out, &format!("{} {scale}x rows", pair.name), &pooled(rows, pair.name, *scale));
+            line(
+                &mut out,
+                &format!("{} {scale}x rows", pair.name),
+                &pooled(rows, pair.name, *scale),
+            );
         }
     }
     out
@@ -624,11 +857,23 @@ pub fn table(o: &Options, rows: &[Row]) -> String {
 /// Inter 16/26, wrapped at 567 pt). CSS places the line box differently from Rune, so Rune's
 /// render is moved by the whole-pixel offset (within ±120 px down, ±4 px across) that minimises
 /// the mean difference over the shot's ink bounds; returns that offset and the stats there.
-pub fn compare_shot(shot: &Image, pair: Pair, smoothing: FontSmoothing, srgb_blend: bool) -> Result<([i64; 2], Stats), String> {
+pub fn compare_shot(
+    shot: &Image,
+    pair: Pair,
+    smoothing: FontSmoothing,
+    srgb_blend: bool,
+) -> Result<([i64; 2], Stats), String> {
     let scale = 2.0;
     let mut harness = Harness::new()?;
     let case = paragraph_case(Family::Sans, 0.0);
-    let rune = harness.render(pair, scale, srgb_blend, smoothing, &[case], [shot.width as f32 / scale, shot.height as f32 / scale]);
+    let rune = harness.render(
+        pair,
+        scale,
+        srgb_blend,
+        smoothing,
+        &[case],
+        [shot.width as f32 / scale, shot.height as f32 / scale],
+    );
     let all = [0, 0, shot.width, shot.height];
     let bounds = ink_bounds([shot, shot], all).ok_or("no ink in the screenshot")?;
     let band = [0, bounds[1], shot.width, bounds[3]];
@@ -650,7 +895,10 @@ pub fn heatmap(rune: &Image, reference: &Image) -> Image {
     let (paper_rune, paper_ref) = (rune.px(0, 0)[1] as i32, reference.px(0, 0)[1] as i32);
     let mut rgb = Vec::with_capacity(rune.rgb.len());
     for (a, b) in rune.rgb.chunks_exact(3).zip(reference.rgb.chunks_exact(3)) {
-        let (ia, ib) = ((a[1] as i32 - paper_rune).abs(), (b[1] as i32 - paper_ref).abs());
+        let (ia, ib) = (
+            (a[1] as i32 - paper_rune).abs(),
+            (b[1] as i32 - paper_ref).abs(),
+        );
         let k = ((ib - ia).abs() * 4).min(255) as u8;
         rgb.extend_from_slice(&if a[1] == b[1] {
             let g = (252 - ia / 4) as u8;
@@ -661,7 +909,11 @@ pub fn heatmap(rune: &Image, reference: &Image) -> Image {
             [255 - k, 255 - k, 255]
         });
     }
-    Image { width: rune.width, height: rune.height, rgb }
+    Image {
+        width: rune.width,
+        height: rune.height,
+        rgb,
+    }
 }
 
 #[cfg(all(test, target_os = "macos"))]

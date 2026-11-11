@@ -23,7 +23,14 @@ pub(crate) fn parse(body: &[&str]) -> Option<Sankey> {
     for &l in body {
         let f = fields(l);
         let [a, b, v] = f.as_slice() else { continue };
-        let Some(v) = v.trim().parse::<f32>().ok().filter(|v| v.is_finite() && *v >= 0.0) else { continue };
+        let Some(v) = v
+            .trim()
+            .parse::<f32>()
+            .ok()
+            .filter(|v| v.is_finite() && *v >= 0.0)
+        else {
+            continue;
+        };
         let (a, b) = (clean(a), clean(b));
         if a.is_empty() || b.is_empty() || a == b {
             continue;
@@ -104,10 +111,15 @@ pub(crate) fn draw(s: &Sankey, paint: &DiagramStyle) -> Option<Scene> {
         ins[b] += v;
     }
     let value: Vec<f32> = (0..n).map(|i| ins[i].max(outs[i])).collect();
-    let members: Vec<Vec<usize>> = (0..cols).map(|c| (0..n).filter(|&i| col[i] == c).collect()).collect();
+    let members: Vec<Vec<usize>> = (0..cols)
+        .map(|c| (0..n).filter(|&i| col[i] == c).collect())
+        .collect();
     let ky = members
         .iter()
-        .map(|m| (HEIGHT - PAD * (m.len() as f32 - 1.0)) / m.iter().map(|&i| value[i]).sum::<f32>().max(1e-6))
+        .map(|m| {
+            (HEIGHT - PAD * (m.len() as f32 - 1.0))
+                / m.iter().map(|&i| value[i]).sum::<f32>().max(1e-6)
+        })
         .fold(f32::MAX, f32::min)
         .max(0.0);
     let h: Vec<f32> = value.iter().map(|v| (v * ky).max(1.0)).collect();
@@ -133,7 +145,13 @@ pub(crate) fn draw(s: &Sankey, paint: &DiagramStyle) -> Option<Scene> {
             let mid = |i: usize| {
                 let (mut sum, mut w) = (0.0, 0.0);
                 for &(a, b, v) in &s.links {
-                    let other = if b == i && forward { a } else if a == i && !forward { b } else { continue };
+                    let other = if b == i && forward {
+                        a
+                    } else if a == i && !forward {
+                        b
+                    } else {
+                        continue;
+                    };
                     sum += (y[other] + h[other] / 2.0) * v;
                     w += v;
                 }
@@ -148,7 +166,13 @@ pub(crate) fn draw(s: &Sankey, paint: &DiagramStyle) -> Option<Scene> {
 
     // Columns spread across the room, leaving the labels of the first and last some space.
     let width = room(paint);
-    let x_of = |c: usize| if cols == 1 { 0.0 } else { c as f32 * (width - NODE_W) / (cols - 1) as f32 };
+    let x_of = |c: usize| {
+        if cols == 1 {
+            0.0
+        } else {
+            c as f32 * (width - NODE_W) / (cols - 1) as f32
+        }
+    };
     let mut c = Canvas::default();
     let mut links: Vec<usize> = (0..s.links.len()).collect();
     links.sort_by(|&p, &q| y[s.links[p].1].total_cmp(&y[s.links[q].1]));
@@ -175,8 +199,19 @@ pub(crate) fn draw(s: &Sankey, paint: &DiagramStyle) -> Option<Scene> {
     }
     for i in 0..n {
         let x = x_of(col[i]);
-        c.fill(vec![[x, y[i]], [x + NODE_W, y[i]], [x + NODE_W, y[i] + h[i]], [x, y[i] + h[i]]], solid(paint, hue(i)));
-        let m = measure(&format!("{} {}", s.nodes[i], number(f64::from(value[i]))), note);
+        c.fill(
+            vec![
+                [x, y[i]],
+                [x + NODE_W, y[i]],
+                [x + NODE_W, y[i] + h[i]],
+                [x, y[i] + h[i]],
+            ],
+            solid(paint, hue(i)),
+        );
+        let m = measure(
+            &format!("{} {}", s.nodes[i], number(f64::from(value[i]))),
+            note,
+        );
         let mid = y[i] + h[i] / 2.0 - m.size[1] / 2.0;
         if col[i] + 1 == cols && cols > 1 {
             c.label_at(&m, [x - 6.0 - m.size[0], mid], note, paint.text, Align::End);

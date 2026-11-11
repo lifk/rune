@@ -109,14 +109,24 @@ pub(crate) struct Attach {
 pub(crate) type Fields = Rc<[(&'static str, crate::Data)]>;
 
 pub(crate) fn attach<S: 'static>() -> &'static Attach {
-    const { &Attach { press: press::<S>, hover: hover::<S>, rows: rows::attach::<S>, reload: reload::<S> } }
+    const {
+        &Attach {
+            press: press::<S>,
+            hover: hover::<S>,
+            rows: rows::attach::<S>,
+            reload: reload::<S>,
+        }
+    }
 }
 
 fn press<S: 'static>(el: &mut El, cb: Rc<Callback>, key: Option<Rc<str>>, fields: Fields) {
     el.set_on_press_tx(move |s: &mut S, tx| {
         if let Some(script) = cb.script.upgrade() {
             let mods = tx.mods();
-            let event = Event { fields: fields.clone(), ..Event::press(key.as_deref(), mods.shift, mods.alt, mods.cmd) };
+            let event = Event {
+                fields: fields.clone(),
+                ..Event::press(key.as_deref(), mods.shift, mods.alt, mods.cmd)
+            };
             script.around_write(s, Some(tx), |tx| script.handle(&cb, event, tx));
         }
     });
@@ -125,7 +135,14 @@ fn press<S: 'static>(el: &mut El, cb: Rc<Callback>, key: Option<Rc<str>>, fields
 fn hover<S: 'static>(el: El, cb: Rc<Callback>, key: Option<Rc<str>>) -> El {
     el.on_hover_change(move |s: &mut S, on: bool, tx: &mut rune::Tx| {
         if let Some(script) = cb.script.upgrade() {
-            let event = Event { kind: "hover", key: key.as_deref(), mods: None, rows: None, entered: Some(on), fields: Rc::new([]) };
+            let event = Event {
+                kind: "hover",
+                key: key.as_deref(),
+                mods: None,
+                rows: None,
+                entered: Some(on),
+                fields: Rc::new([]),
+            };
             script.around_write(s, Some(tx), |tx| script.handle(&cb, event, tx));
         }
     })
@@ -143,7 +160,14 @@ pub(crate) struct Event<'a> {
 
 impl<'a> Event<'a> {
     pub(crate) fn press(key: Option<&'a str>, shift: bool, alt: bool, cmd: bool) -> Self {
-        Event { kind: "press", key, mods: Some((shift, alt, cmd)), rows: None, entered: None, fields: Rc::new([]) }
+        Event {
+            kind: "press",
+            key,
+            mods: Some((shift, alt, cmd)),
+            rows: None,
+            entered: None,
+            fields: Rc::new([]),
+        }
     }
 
     pub(crate) fn to_table(&self, lua: &mlua::Lua) -> mlua::Result<mlua::Table> {
@@ -182,7 +206,6 @@ fn reload<S: 'static>(el: El, script: Weak<Inner>) -> El {
         }
     })
 }
-
 
 /// One render's built nodes, by handle.
 pub(crate) struct Arena {
@@ -223,7 +246,13 @@ pub(crate) fn with_frame<R>(attach: &'static Attach, env: Rc<Env>, f: impl FnOnc
     let generation = GENERATION.get().wrapping_add(1) & 0xfff;
     GENERATION.set(generation);
     let slots = POOL.with_borrow_mut(Vec::pop).unwrap_or_default();
-    FRAMES.with_borrow_mut(|f| f.push(Frame { arena: Arena { slots, generation }, attach, env }));
+    FRAMES.with_borrow_mut(|f| {
+        f.push(Frame {
+            arena: Arena { slots, generation },
+            attach,
+            env,
+        })
+    });
     let _pop = Pop;
     f()
 }
@@ -267,25 +296,41 @@ impl Arena {
 
     /// The element `alloc` stored in `slot`.
     pub(crate) fn get_mut(&mut self, slot: usize) -> &mut El {
-        self.slots[slot].as_mut().expect("a node keeps its slot until its handle is placed")
+        self.slots[slot]
+            .as_mut()
+            .expect("a node keeps its slot until its handle is placed")
     }
 
     /// The element in `slot`, and the slots before it, where its children wait: a script
     /// builds a node's children before the node.
     pub(crate) fn split(&mut self, slot: usize) -> (Slots<'_>, &mut El) {
         let (before, rest) = self.slots.split_at_mut(slot);
-        let el = rest[0].as_mut().expect("a node keeps its slot until its handle is placed");
-        (Slots { slots: before, generation: self.generation }, el)
+        let el = rest[0]
+            .as_mut()
+            .expect("a node keeps its slot until its handle is placed");
+        (
+            Slots {
+                slots: before,
+                generation: self.generation,
+            },
+            el,
+        )
     }
 
     /// Every slot, for children a host node takes.
     pub(crate) fn all(&mut self) -> Slots<'_> {
-        Slots { slots: &mut self.slots, generation: self.generation }
+        Slots {
+            slots: &mut self.slots,
+            generation: self.generation,
+        }
     }
 
     /// Takes the element behind `handle`; each handle gives its element once.
     pub(crate) fn take(&mut self, handle: *mut c_void) -> Result<El, String> {
-        self.all().slot(handle)?.take().ok_or_else(|| "a node can only be placed once".to_owned())
+        self.all()
+            .slot(handle)?
+            .take()
+            .ok_or_else(|| "a node can only be placed once".to_owned())
     }
 }
 
@@ -301,12 +346,16 @@ impl Slots<'_> {
         let raw = handle as usize;
         let slot = (raw & SLOT_MASK).wrapping_sub(1);
         if (raw >> SLOT_BITS) as u32 != self.generation {
-            return Err("a node from an earlier render can't be reused; build it again or use view:Memo".into());
+            return Err(
+                "a node from an earlier render can't be reused; build it again or use view:Memo"
+                    .into(),
+            );
         }
-        self.slots.get_mut(slot).ok_or_else(|| "not a ui node".to_owned())
+        self.slots
+            .get_mut(slot)
+            .ok_or_else(|| "not a ui node".to_owned())
     }
 }
-
 
 impl Env {
     pub(crate) fn resolve(&self, name: &str) -> Result<Color, String> {
@@ -314,7 +363,8 @@ impl Env {
             return Ok(c);
         }
         let c = if name.starts_with('#') {
-            rune::color::hex(name).ok_or_else(|| format!("{name} is not a #rrggbb or #rrggbbaa colour"))?
+            rune::color::hex(name)
+                .ok_or_else(|| format!("{name} is not a #rrggbb or #rrggbbaa colour"))?
         } else if let Some(c) = (self.palette)(name, self.dark) {
             c
         } else {
@@ -326,7 +376,11 @@ impl Env {
     }
 
     fn cached(&self, name: &str) -> Option<Color> {
-        self.colors.borrow().iter().find(|(n, _)| &**n == name).map(|(_, c)| *c)
+        self.colors
+            .borrow()
+            .iter()
+            .find(|(n, _)| &**n == name)
+            .map(|(_, c)| *c)
     }
 
     pub(crate) fn color(&self, name: &str) -> Option<Color> {
@@ -339,7 +393,11 @@ impl Env {
     }
 
     pub(crate) fn text_color(&self) -> Color {
-        self.color("text").unwrap_or(if self.dark { Color::WHITE } else { Color::BLACK })
+        self.color("text").unwrap_or(if self.dark {
+            Color::WHITE
+        } else {
+            Color::BLACK
+        })
     }
 
     /// Logs `message` once per script.
@@ -356,7 +414,10 @@ impl Env {
         // SAFETY: the caller checked slot `idx` holds a function.
         let r = unsafe { ffi::lua_ref(state, idx) };
         Rc::new(Callback {
-            func: LuaRef { r, garbage: self.garbage.clone() },
+            func: LuaRef {
+                r,
+                garbage: self.garbage.clone(),
+            },
             vm: self.vm,
             script: self.script.clone(),
         })
@@ -365,7 +426,10 @@ impl Env {
 
 /// Runs a C function body: its error becomes a Lua error once every Rust value it held is
 /// dropped, and a Rust panic becomes an error too, where the target can catch one.
-pub(crate) unsafe fn guard(state: *mut ffi::lua_State, body: impl FnOnce() -> Result<c_int, String>) -> c_int {
+pub(crate) unsafe fn guard(
+    state: *mut ffi::lua_State,
+    body: impl FnOnce() -> Result<c_int, String>,
+) -> c_int {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
     let message = match result {
         Ok(Ok(n)) => return n,

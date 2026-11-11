@@ -9,7 +9,12 @@ use crate::{Cx, El, Env, Runtime, el, text};
 fn counter() -> (Waker, Arc<AtomicUsize>) {
     let wakes = Arc::new(AtomicUsize::new(0));
     let count = wakes.clone();
-    (Arc::new(move || { count.fetch_add(1, Ordering::SeqCst); }), wakes)
+    (
+        Arc::new(move || {
+            count.fetch_add(1, Ordering::SeqCst);
+        }),
+        wakes,
+    )
 }
 
 fn pool() -> Arc<Pool> {
@@ -30,18 +35,26 @@ fn eventually(what: &str, done: impl Fn() -> bool) {
 }
 
 /// Holds a request's work, once started, until the test opens the gate.
-struct Gate { open: mpsc::Sender<()>, started: Arc<AtomicUsize> }
+struct Gate {
+    open: mpsc::Sender<()>,
+    started: Arc<AtomicUsize>,
+}
 
 fn gate() -> (Gate, impl FnOnce() + Send + 'static) {
     let (open, wait) = mpsc::channel();
     let started = Arc::new(AtomicUsize::new(0));
     let flag = started.clone();
-    (Gate { open, started }, move || { flag.store(1, Ordering::SeqCst); let _ = wait.recv(); })
+    (Gate { open, started }, move || {
+        flag.store(1, Ordering::SeqCst);
+        let _ = wait.recv();
+    })
 }
 
 impl Gate {
     fn wait_started(&self) {
-        eventually("the work starts", || self.started.load(Ordering::SeqCst) == 1);
+        eventually("the work starts", || {
+            self.started.load(Ordering::SeqCst) == 1
+        });
     }
     fn open(&self) {
         self.open.send(()).unwrap();
@@ -54,7 +67,11 @@ fn the_newest_answer_wins_when_an_older_one_finishes_last() {
     let (open_a, wait_a) = gate();
     let a_done = Arc::new(AtomicUsize::new(0));
     let done = a_done.clone();
-    search.request("a", move |q| { wait_a(); done.fetch_add(1, Ordering::SeqCst); q.to_owned() });
+    search.request("a", move |q| {
+        wait_a();
+        done.fetch_add(1, Ordering::SeqCst);
+        q.to_owned()
+    });
     open_a.wait_started();
     search.request("ab", |q| q.to_owned());
     eventually("ab lands", || wakes.load(Ordering::SeqCst) == 1);
@@ -73,7 +90,10 @@ fn a_newer_request_drops_an_answer_not_yet_taken() {
     search.request("a", |q| q);
     eventually("a lands", || wakes.load(Ordering::SeqCst) == 1);
     let (open, wait) = gate();
-    search.request("ab", move |q| { wait(); q });
+    search.request("ab", move |q| {
+        wait();
+        q
+    });
     assert_eq!(search.take(), None, "a is no longer the newest ask");
     assert!(search.is_pending());
     open.open();
@@ -107,15 +127,26 @@ fn debounce_runs_only_the_last_request_of_a_burst_after_a_quiet_wait() {
     for q in ["a", "ab", "abc"] {
         let ran = ran.clone();
         last = start.elapsed();
-        search.request(q, move |q| { ran.lock().unwrap().push((q, start.elapsed())); q });
+        search.request(q, move |q| {
+            ran.lock().unwrap().push((q, start.elapsed()));
+            q
+        });
         std::thread::sleep(Duration::from_millis(10));
     }
     eventually("abc lands", || wakes.load(Ordering::SeqCst) == 1);
     assert_eq!(search.take(), Some("abc"));
     let ran = ran.lock().unwrap();
-    assert_eq!(ran.iter().map(|(q, _)| *q).collect::<Vec<_>>(), ["abc"], "superseded requests never ran");
+    assert_eq!(
+        ran.iter().map(|(q, _)| *q).collect::<Vec<_>>(),
+        ["abc"],
+        "superseded requests never ran"
+    );
     // The wait restarted on each key, so it counts from the last request.
-    assert!(ran[0].1 >= last + quiet, "started after the quiet wait: {:?} (last asked at {last:?})", ran[0].1);
+    assert!(
+        ran[0].1 >= last + quiet,
+        "started after the quiet wait: {:?} (last asked at {last:?})",
+        ran[0].1
+    );
 }
 
 #[test]
@@ -136,20 +167,37 @@ fn cancel_drops_pending_and_running_requests() {
     let (open, wait) = gate();
     let finished = Arc::new(AtomicUsize::new(0));
     let done = finished.clone();
-    search.request((), move |_| { wait(); done.fetch_add(1, Ordering::SeqCst); 1 });
+    search.request((), move |_| {
+        wait();
+        done.fetch_add(1, Ordering::SeqCst);
+        1
+    });
     open.wait_started();
     search.cancel();
     assert!(!search.is_pending());
     open.open();
-    eventually("the running work finishes", || finished.load(Ordering::SeqCst) == 1);
+    eventually("the running work finishes", || {
+        finished.load(Ordering::SeqCst) == 1
+    });
 
     let ran = Arc::new(AtomicUsize::new(0));
     let counted = ran.clone();
-    search.request((), move |_| { counted.fetch_add(1, Ordering::SeqCst); 2 });
+    search.request((), move |_| {
+        counted.fetch_add(1, Ordering::SeqCst);
+        2
+    });
     search.cancel();
     std::thread::sleep(Duration::from_millis(60));
-    assert_eq!(ran.load(Ordering::SeqCst), 0, "a debounced request cancelled before it started never runs");
-    assert_eq!((search.take(), wakes.load(Ordering::SeqCst)), (None, 0), "nothing lands or wakes");
+    assert_eq!(
+        ran.load(Ordering::SeqCst),
+        0,
+        "a debounced request cancelled before it started never runs"
+    );
+    assert_eq!(
+        (search.take(), wakes.load(Ordering::SeqCst)),
+        (None, 0),
+        "nothing lands or wakes"
+    );
 }
 
 #[test]
@@ -158,11 +206,17 @@ fn dropping_it_cancels_and_nothing_wakes_after() {
     let (open, wait) = gate();
     let finished = Arc::new(AtomicUsize::new(0));
     let done = finished.clone();
-    search.request((), move |_| { wait(); done.fetch_add(1, Ordering::SeqCst); 1 });
+    search.request((), move |_| {
+        wait();
+        done.fetch_add(1, Ordering::SeqCst);
+        1
+    });
     open.wait_started();
     drop(search);
     open.open();
-    eventually("the running work finishes", || finished.load(Ordering::SeqCst) == 1);
+    eventually("the running work finishes", || {
+        finished.load(Ordering::SeqCst) == 1
+    });
     std::thread::sleep(Duration::from_millis(5));
     assert_eq!(wakes.load(Ordering::SeqCst), 0);
 }
@@ -189,14 +243,22 @@ fn requests_reuse_a_few_threads_that_exit_when_idle() {
     for key in 0..200u64 {
         let list = &lists[key as usize % 3];
         list.request(key, move |k| {
-            if k % 50 == 0 { std::thread::sleep(Duration::from_millis(5)); }
+            if k % 50 == 0 {
+                std::thread::sleep(Duration::from_millis(5));
+            }
             k
         });
         assert!(pool.threads().0 <= 2);
     }
-    eventually("every list settles", || lists.iter().all(|l| !l.is_pending()));
+    eventually("every list settles", || {
+        lists.iter().all(|l| !l.is_pending())
+    });
     assert_eq!(lists[197 % 3].take(), Some(197));
-    assert!(pool.threads().1 <= 2, "started {} threads", pool.threads().1);
+    assert!(
+        pool.threads().1 <= 2,
+        "started {} threads",
+        pool.threads().1
+    );
     eventually("the workers exit", || pool.threads().0 == 0);
 }
 
@@ -204,19 +266,31 @@ fn requests_reuse_a_few_threads_that_exit_when_idle() {
 /// between them.
 #[test]
 fn poll_changes_state_once_per_answer() {
-    struct Search { hits: String, results: Latest<String> }
-    fn view(s: &Search, _: &mut Cx<Search>) -> El { el().child(text(s.hits.clone())) }
+    struct Search {
+        hits: String,
+        results: Latest<String>,
+    }
+    fn view(s: &Search, _: &mut Cx<Search>) -> El {
+        el().child(text(s.hits.clone()))
+    }
     let (waker, wakes) = counter();
-    let state = Search { hits: String::new(), results: Latest::on(pool(), Some(waker)) };
+    let state = Search {
+        hits: String::new(),
+        results: Latest::on(pool(), Some(waker)),
+    };
     let mut rt = Runtime::new(state, view, (200.0, 100.0), Env::default());
     rt.poll = Some(|s, _, _| {
-        let Some(hits) = s.results.take() else { return false };
+        let Some(hits) = s.results.take() else {
+            return false;
+        };
         s.hits = hits;
         true
     });
     rt.frame(0.0);
     let commits = rt.stats.commits;
-    rt.state.results.request("rune".to_owned(), |q| format!("{q}.md"));
+    rt.state
+        .results
+        .request("rune".to_owned(), |q| format!("{q}.md"));
     eventually("the answer lands", || wakes.load(Ordering::SeqCst) == 1);
     rt.frame(1.0 / 60.0);
     assert_eq!(rt.state.hits, "rune.md");
@@ -235,7 +309,11 @@ fn set_waker_keeps_the_debounce_and_a_pending_request() {
     search.set_waker(waker);
     assert!(search.is_pending(), "the pending request survives");
     std::thread::sleep(Duration::from_millis(50));
-    assert_eq!(wakes.load(Ordering::SeqCst), 0, "the debounce is still waited out");
+    assert_eq!(
+        wakes.load(Ordering::SeqCst),
+        0,
+        "the debounce is still waited out"
+    );
     eventually("the request lands", || wakes.load(Ordering::SeqCst) == 1);
     assert_eq!(search.take(), Some(7));
 }
@@ -257,13 +335,23 @@ fn request_if_changed_ignores_an_unchanged_key() {
     let runs = Arc::new(AtomicUsize::new(0));
     for _ in 0..5 {
         let runs = runs.clone();
-        search.request_if_changed(&"ab".to_string(), move |q| { runs.fetch_add(1, Ordering::SeqCst); q });
+        search.request_if_changed(&"ab".to_string(), move |q| {
+            runs.fetch_add(1, Ordering::SeqCst);
+            q
+        });
     }
     eventually("it lands", || wakes.load(Ordering::SeqCst) == 1);
     let again = runs.clone();
-    search.request_if_changed(&"ab".to_string(), move |q| { again.fetch_add(1, Ordering::SeqCst); q });
+    search.request_if_changed(&"ab".to_string(), move |q| {
+        again.fetch_add(1, Ordering::SeqCst);
+        q
+    });
     std::thread::sleep(Duration::from_millis(30));
-    assert_eq!(runs.load(Ordering::SeqCst), 1, "one run for one key, even after it landed");
+    assert_eq!(
+        runs.load(Ordering::SeqCst),
+        1,
+        "one run for one key, even after it landed"
+    );
     assert_eq!(wakes.load(Ordering::SeqCst), 1);
     assert_eq!(search.take().as_deref(), Some("ab"));
 
@@ -310,7 +398,10 @@ fn request_opt_none_lands_nothing_and_wakes_nothing() {
     let (search, wakes) = latest::<usize>();
     let ran = Arc::new(AtomicUsize::new(0));
     let flag = ran.clone();
-    search.request_opt(3, move |_| { flag.store(1, Ordering::SeqCst); None });
+    search.request_opt(3, move |_| {
+        flag.store(1, Ordering::SeqCst);
+        None
+    });
     eventually("the work ran", || ran.load(Ordering::SeqCst) == 1);
     eventually("it settles", || !search.is_pending());
     std::thread::sleep(Duration::from_millis(30));
@@ -326,7 +417,10 @@ fn request_opt_none_lands_nothing_and_wakes_nothing() {
 fn request_opt_none_still_supersedes_older_answers() {
     let (search, wakes) = latest::<usize>();
     let (open, wait) = gate();
-    search.request(1, move |n| { wait(); n });
+    search.request(1, move |n| {
+        wait();
+        n
+    });
     open.wait_started();
     search.request_opt(2, |_| None);
     eventually("it settles", || !search.is_pending());

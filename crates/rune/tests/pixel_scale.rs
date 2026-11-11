@@ -2,8 +2,12 @@ use rune::{Color, Cx, El, Env, Runtime, col, el};
 
 fn view(_: &(), _: &mut Cx<()>) -> El {
     col().w_full().h_full().child(
-        el().key("row").absolute(0.123, 0.137).size(30.123, 20.137)
-            .fill(Color::WHITE).hover(Color::BLACK).on_press(|_: &mut ()| {}),
+        el().key("row")
+            .absolute(0.123, 0.137)
+            .size(30.123, 20.137)
+            .fill(Color::WHITE)
+            .hover(Color::BLACK)
+            .on_press(|_: &mut ()| {}),
     )
 }
 
@@ -19,7 +23,10 @@ fn pixel_scale_change_matches_instances_from_a_fresh_runtime() {
         rt.set_viewport((240.0, 150.0), scale);
         rt.frame(0.0);
         let fresh = make(scale);
-        assert_eq!(bytemuck::cast_slice::<_, u8>(&rt.instances), bytemuck::cast_slice::<_, u8>(&fresh.instances),
-            "settled hover rows resnap at scale {scale}");
+        assert_eq!(
+            bytemuck::cast_slice::<_, u8>(&rt.instances),
+            bytemuck::cast_slice::<_, u8>(&fresh.instances),
+            "settled hover rows resnap at scale {scale}"
+        );
     }
 }

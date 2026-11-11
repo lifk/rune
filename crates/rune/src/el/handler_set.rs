@@ -2,9 +2,9 @@
 //! `Cold<Handlers>`, so elements without callbacks pay one pointer.
 use crate::cold::Empty;
 use crate::el::{
-    AtBottomFn, Cursor, DragEndFn, DragFn, DragOutFn, DropSpec, LanguagesFn, LayoutFn, LayoutTxFn, ModalSpec,
-    PasteFn, PointerFn, PressFn, ScrollOffsetFn, SelectionChangeFn, SelectionCopy, VisibleRowsFn,
-    WindowFocusFn,
+    AtBottomFn, Cursor, DragEndFn, DragFn, DragOutFn, DropSpec, LanguagesFn, LayoutFn, LayoutTxFn,
+    ModalSpec, PasteFn, PointerFn, PressFn, ScrollOffsetFn, SelectionChangeFn, SelectionCopy,
+    VisibleRowsFn, WindowFocusFn,
 };
 
 #[derive(Clone)]
@@ -47,6 +47,8 @@ pub(crate) struct Handlers {
     pub on_selection_change: Option<SelectionChangeFn>,
     pub cursor: Option<Cursor>,
     pub press_scale: Option<f32>,
+    /// `El::focus_scale`: the factor a focused control rests at.
+    pub focus_scale: Option<f32>,
     /// Debug builds: where the app set the handlers the commit warnings name.
     #[cfg(debug_assertions)]
     pub sites: HandlerSites,
@@ -127,7 +129,15 @@ impl Empty for Handlers {
         on_selection_change: None,
         cursor: None,
         press_scale: None,
+        focus_scale: None,
         #[cfg(debug_assertions)]
-        sites: HandlerSites { hover: None, hover_change: None, pointer_move: None, layout: None, drawn_layout: None, visible_rows: None },
+        sites: HandlerSites {
+            hover: None,
+            hover_change: None,
+            pointer_move: None,
+            layout: None,
+            drawn_layout: None,
+            visible_rows: None,
+        },
     };
 }

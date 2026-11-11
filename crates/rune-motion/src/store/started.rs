@@ -13,13 +13,17 @@ impl AnimationStore {
     /// now on where they would have `secs` sooner: motion they started holds its first pose
     /// that much longer. Each live track moves once, however often `ids` lists it.
     pub fn delay(&mut self, ids: &mut [TrackId], secs: f64) {
-        if secs <= 0.0 { return; }
+        if secs <= 0.0 {
+            return;
+        }
         ids.sort_unstable_by_key(|id| id.index);
         let mut last = NONE;
         for id in ids.iter() {
             let t = id.index_usize();
             let m = self.t_meta[t];
-            if id.index == last || !m.alive || m.generation != id.generation { continue; }
+            if id.index == last || !m.alive || m.generation != id.generation {
+                continue;
+            }
             last = id.index;
             self.rebase(t, secs * f64::from(self.clock_scale(self.t_clock[t])));
             self.t_held[t] = false;
@@ -56,12 +60,17 @@ mod tests {
         reference.set_time(0.1);
         reference.animate(new, X, 100.0, spring);
         reference.tick_at(0.12);
-        assert!((s.get(new, X).unwrap() - reference.get(new, X).unwrap()).abs() < 1e-4,
-            "new motion moved 10 ms on from its first pose {first}, not 60 ms");
+        assert!(
+            (s.get(new, X).unwrap() - reference.get(new, X).unwrap()).abs() < 1e-4,
+            "new motion moved 10 ms on from its first pose {first}, not 60 ms"
+        );
         let mut steady = AnimationStore::new();
         steady.set(old, X, 0.0);
         steady.animate(old, X, 100.0, spring);
         steady.tick_at(0.17);
-        assert!((s.get(old, X).unwrap() - steady.get(old, X).unwrap()).abs() < 1e-4, "running motion keeps real time");
+        assert!(
+            (s.get(old, X).unwrap() - steady.get(old, X).unwrap()).abs() < 1e-4,
+            "running motion keeps real time"
+        );
     }
 }

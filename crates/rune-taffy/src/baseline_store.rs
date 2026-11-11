@@ -6,7 +6,9 @@ use std::collections::HashMap;
 
 use taffy::geometry::Size;
 use taffy::style::{AvailableSpace, Style};
-use taffy::tree::{DetailedLayoutInfo, Layout, LayoutInput, LayoutOutput, NodeId, TraversePartialTree};
+use taffy::tree::{
+    DetailedLayoutInfo, Layout, LayoutInput, LayoutOutput, NodeId, TraversePartialTree,
+};
 
 use crate::BaselineTaffyTree;
 use crate::store::{BoxLayout, SlotId, StorageStats};
@@ -31,7 +33,8 @@ pub fn baseline_storage_stats<NodeContext>(
     let children_slot_bytes = core::mem::size_of::<Vec<NodeId>>() + 8;
     let parents_slot_bytes = core::mem::size_of::<Option<NodeId>>() + 8;
     let context_slot_bytes = core::mem::size_of::<NodeContext>() + 16;
-    let bytes_per_slot = node_data_bytes + children_slot_bytes + parents_slot_bytes + context_slot_bytes;
+    let bytes_per_slot =
+        node_data_bytes + children_slot_bytes + parents_slot_bytes + context_slot_bytes;
     let inline_buffer_bytes = slot_cap * bytes_per_slot;
 
     let mut child_heap_bytes = 0usize;
@@ -226,7 +229,9 @@ impl BaselineLayoutStore {
                 dirty = true;
             }
             if slot.measure.is_some() != measured {
-                self.tree.set_node_context(id, measured.then_some(me)).unwrap();
+                self.tree
+                    .set_node_context(id, measured.then_some(me))
+                    .unwrap();
                 dirty = true;
             } else if measured {
                 *self.tree.get_node_context_mut(id).unwrap() = me;
@@ -340,12 +345,18 @@ impl BaselineLayoutStore {
         _ancestors: impl IntoIterator<Item = SlotId>,
     ) {
         let slot = self.slots[id.0 as usize].as_mut().unwrap();
-        self.tree.set_style(slot.taffy_id, style.to_style()).unwrap();
+        self.tree
+            .set_style(slot.taffy_id, style.to_style())
+            .unwrap();
         slot.style = style;
         slot.mutated = true;
     }
 
-    pub fn mark_dirty_and_ancestors(&mut self, id: SlotId, _ancestors: impl IntoIterator<Item = SlotId>) {
+    pub fn mark_dirty_and_ancestors(
+        &mut self,
+        id: SlotId,
+        _ancestors: impl IntoIterator<Item = SlotId>,
+    ) {
         let tid = self.slots[id.0 as usize].as_ref().unwrap().taffy_id;
         drop(self.tree.mark_dirty(tid));
     }
@@ -358,8 +369,12 @@ impl BaselineLayoutStore {
         }
     }
 
-    pub fn compute_layout<F>(&mut self, root: SlotId, available_space: Size<AvailableSpace>, mut measure_leaf: F)
-    where
+    pub fn compute_layout<F>(
+        &mut self,
+        root: SlotId,
+        available_space: Size<AvailableSpace>,
+        mut measure_leaf: F,
+    ) where
         F: FnMut(LayoutInput, Option<usize>, &CompactStyle) -> LayoutOutput,
     {
         let root_id = self.slots[root.0 as usize].as_ref().unwrap().taffy_id;
@@ -373,6 +388,10 @@ impl BaselineLayoutStore {
     }
 
     pub fn storage_stats(&self) -> StorageStats {
-        baseline_storage_stats(&self.tree, self.last_root, self.peak_nodes.max(self.by_key.len()))
+        baseline_storage_stats(
+            &self.tree,
+            self.last_root,
+            self.peak_nodes.max(self.by_key.len()),
+        )
     }
 }

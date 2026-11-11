@@ -9,8 +9,7 @@ fn cls(src: &str) -> ClassDiagram {
 
 #[test]
 fn classes_members_stereotypes_namespaces_and_relations() {
-    let c = cls(
-        "classDiagram\n\
+    let c = cls("classDiagram\n\
          direction LR\n\
          namespace core {\n\
            class Runtime~S~ {\n\
@@ -27,8 +26,7 @@ fn classes_members_stereotypes_namespaces_and_relations() {
          }\n\
          Runtime \"1\" *-- \"*\" El : builds\n\
          Widget <|.. Button : implements\n\
-         style Runtime fill:#dcf5dc",
-    );
+         style Runtime fill:#dcf5dc");
     assert_eq!(c.dir, Dir::Right);
     assert_eq!(c.namespaces.len(), 1);
     assert_eq!(c.namespaces[0].title, "core");
@@ -47,7 +45,11 @@ fn classes_members_stereotypes_namespaces_and_relations() {
 
 #[test]
 fn only_sources_where_nothing_reads_are_rejected() {
-    for src in ["classDiagram", "classDiagram\n}", "classDiagram\njust garbage words here"] {
+    for src in [
+        "classDiagram",
+        "classDiagram\n}",
+        "classDiagram\njust garbage words here",
+    ] {
         assert!(crate::parse(src).is_none(), "{src:?}");
     }
 }
@@ -55,7 +57,11 @@ fn only_sources_where_nothing_reads_are_rejected() {
 #[test]
 fn a_statement_that_does_not_read_is_skipped_with_its_body() {
     let c = cls("classDiagram\nclass Open {\n  +x");
-    assert_eq!(c.classes[0].fields, ["+x"], "an open class body closes at the end");
+    assert_eq!(
+        c.classes[0].fields,
+        ["+x"],
+        "an open class body closes at the end"
+    );
     let c = cls("classDiagram\njust garbage words here\nclass Bad<<x {\n  +y\n}\nA --> B");
     let ids: Vec<&str> = c.classes.iter().map(|k| k.id.as_str()).collect();
     assert_eq!((ids, c.edges.len()), (vec!["A", "B"], 1));

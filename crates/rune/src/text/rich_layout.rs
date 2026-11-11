@@ -13,7 +13,11 @@ pub struct RichLayoutOptions {
 
 impl Default for RichLayoutOptions {
     fn default() -> Self {
-        RichLayoutOptions { align: Alignment::Start, wrap_anywhere: false, direction: parley::BaseDirection::Auto }
+        RichLayoutOptions {
+            align: Alignment::Start,
+            wrap_anywhere: false,
+            direction: parley::BaseDirection::Auto,
+        }
     }
 }
 
@@ -94,7 +98,20 @@ impl TextSystem {
         max_width: Option<f32>,
         options: RichLayoutOptions,
     ) -> Rc<Layout<Ink>> {
-        self.layout_keyed(None, text, spans, &[], &[], style, scale, max_width, options.align, options.wrap_anywhere, true, options.direction)
+        self.layout_keyed(
+            None,
+            text,
+            spans,
+            &[],
+            &[],
+            style,
+            scale,
+            max_width,
+            options.align,
+            options.wrap_anywhere,
+            true,
+            options.direction,
+        )
     }
 
     /// [`layout_aligned`](Self::layout_aligned) with per-paragraph [`Block`](crate::Block)
@@ -112,7 +129,9 @@ impl TextSystem {
         max_width: Option<f32>,
         align: Alignment,
     ) -> Rc<Layout<Ink>> {
-        self.layout_blocks_inner(text, spans, blocks, pills, style, scale, max_width, align, false, true)
+        self.layout_blocks_inner(
+            text, spans, blocks, pills, style, scale, max_width, align, false, true,
+        )
     }
 
     /// [`layout_blocks`](Self::layout_blocks) with overflow-wrap, and out of the shared cache
@@ -131,7 +150,20 @@ impl TextSystem {
         wrap_anywhere: bool,
         cache: bool,
     ) -> Rc<Layout<Ink>> {
-        self.layout_keyed(None, text, spans, blocks, pills, style, scale, max_width, align, wrap_anywhere, cache, parley::BaseDirection::Auto)
+        self.layout_keyed(
+            None,
+            text,
+            spans,
+            blocks,
+            pills,
+            style,
+            scale,
+            max_width,
+            align,
+            wrap_anywhere,
+            cache,
+            parley::BaseDirection::Auto,
+        )
     }
 
     /// Secure display runs must not enter the shared layout cache or leave character
@@ -145,7 +177,20 @@ impl TextSystem {
         align: Alignment,
     ) -> Rc<Layout<Ink>> {
         let shape = spec.shape_key(scale);
-        self.layout_keyed(shape, &spec.content, &spec.spans, &spec.blocks, &spec.pills, spec.style, scale, max_width, align, spec.wrap_anywhere, !spec.redacted, spec.base())
+        self.layout_keyed(
+            shape,
+            &spec.content,
+            &spec.spans,
+            &spec.blocks,
+            &spec.pills,
+            spec.style,
+            scale,
+            max_width,
+            align,
+            spec.wrap_anywhere,
+            !spec.redacted,
+            spec.base(),
+        )
     }
 
     /// [`Self::layout_blocks_inner`] of a cut of `spec`'s content, in its direction.
@@ -160,7 +205,20 @@ impl TextSystem {
         align: Alignment,
         cache: bool,
     ) -> Rc<Layout<Ink>> {
-        self.layout_keyed(None, text, spans, &spec.blocks, &[], spec.style, scale, max_width, align, spec.wrap_anywhere, cache, spec.base())
+        self.layout_keyed(
+            None,
+            text,
+            spans,
+            &spec.blocks,
+            &[],
+            spec.style,
+            scale,
+            max_width,
+            align,
+            spec.wrap_anywhere,
+            cache,
+            spec.base(),
+        )
     }
 }
 

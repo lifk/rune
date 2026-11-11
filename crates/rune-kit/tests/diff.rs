@@ -7,7 +7,9 @@ use std::fmt::Write;
 use rune::runtime::ElementInfo;
 use rune::{Cx, El, Env, Key, KeyEvent, Mods, Runtime, TextEdit, TextStyle, Tx, col, el, text_input};
 use rune_kit::Kit;
-use rune_kit::diff::{Annotation, DiffMode, DiffState, DiffView, Expand, FileDiff, LineKind, LineRange, LineRef, Side, parse};
+use rune_kit::diff::{
+    Annotation, DiffMode, DiffState, DiffView, Expand, FileDiff, LineKind, LineRange, LineRef, Side, parse,
+};
 
 /// Files, hunks and lines as text: `-`/`+`/space, the old and new numbers, and word changes
 /// in brackets.
@@ -226,7 +228,15 @@ fn bottom(e: &ElementInfo) -> f32 {
 
 fn numbered(n: usize, every: usize) -> (String, String) {
     let old: String = (1..=n).map(|i| format!("let value_{i} = compute({i});\n")).collect();
-    let new: String = (1..=n).map(|i| if i % every == 0 { format!("let value_{i} = compute({i}) + 1;\n") } else { format!("let value_{i} = compute({i});\n") }).collect();
+    let new: String = (1..=n)
+        .map(|i| {
+            if i % every == 0 {
+                format!("let value_{i} = compute({i}) + 1;\n")
+            } else {
+                format!("let value_{i} = compute({i});\n")
+            }
+        })
+        .collect();
     (old, new)
 }
 
@@ -234,7 +244,10 @@ fn numbered(n: usize, every: usize) -> (String, String) {
 fn annotations_sit_under_their_line_and_push_the_rest_down() {
     let (old, new) = numbered(30, 10);
     let mut d = DiffState::new(vec![FileDiff::from_texts("a.rs", &old, &new)]);
-    d.set_annotations(vec![Annotation::new(0, LineRef::new(Side::New, 10), "c1"), Annotation::new(0, LineRef::new(Side::New, 10), "c2")]);
+    d.set_annotations(vec![
+        Annotation::new(0, LineRef::new(Side::New, 10), "c1"),
+        Annotation::new(0, LineRef::new(Side::New, 10), "c2"),
+    ]);
     let mut rt = runtime(d, (900.0, 1200.0));
     let line = find(&rt, "df0.n10/line");
     let (c1, c2) = (find(&rt, "note-c1"), find(&rt, "note-c2"));
@@ -353,7 +366,11 @@ fn copying_lines_takes_one_side_without_numbers_or_markers() {
     let new = old.replace("\tline 2\n", "\tline two\n").replace("\tline 29\n", "\tline twenty-nine\n");
     let mut across = DiffState::new(vec![FileDiff::from_texts("gap.rs", &old, &new)]);
     assert_eq!(across.files()[0].hunks.len(), 2);
-    across.set_selection(Some(LineRange { file: 0, start: LineRef::new(Side::New, 1), end: LineRef::new(Side::New, 30) }));
+    across.set_selection(Some(LineRange {
+        file: 0,
+        start: LineRef::new(Side::New, 1),
+        end: LineRef::new(Side::New, 30),
+    }));
     let copied = across.selected_text().unwrap();
     assert!(!copied.contains("unchanged"), "no gap label in copied text: {copied}");
     assert!(!copied.contains("@@"), "no hunk header in copied text: {copied}");
@@ -408,7 +425,11 @@ fn line_numbers_select_lines_and_the_plus_comments_on_them() {
 #[test]
 fn unified_file_headers_span_the_viewport_while_code_scrolls_sideways() {
     let long = "x".repeat(400);
-    let text = |n: &str| (0..60).map(|i| if i == 1 { format!("{long}\n") } else { format!("let v{i} = {}{n};\n", i % 2) }).collect::<String>();
+    let text = |n: &str| {
+        (0..60)
+            .map(|i| if i == 1 { format!("{long}\n") } else { format!("let v{i} = {}{n};\n", i % 2) })
+            .collect::<String>()
+    };
     let (old, new) = (text(""), text("+1"));
     let files = (0..2).map(|i| FileDiff::from_texts(format!("dir/f{i}.rs"), &old, &new)).collect();
     let mut d = DiffState::new(files);
@@ -455,7 +476,11 @@ fn unified_file_headers_span_the_viewport_while_code_scrolls_sideways() {
     rt.wheel(300.0, 200.0, -150.0);
     settle(&mut rt);
     let sticky = find(&rt, "sticky");
-    assert!(sticky.rect[0].abs() < 0.5 && (sticky.rect[2] - 600.0).abs() < 0.5, "sticky spans the viewport: {:?}", sticky.rect);
+    assert!(
+        sticky.rect[0].abs() < 0.5 && (sticky.rect[2] - 600.0).abs() < 0.5,
+        "sticky spans the viewport: {:?}",
+        sticky.rect
+    );
     inside(&rt, 600.0, "sticky/inner/adds");
     press(&mut rt, "sticky/inner/actions");
     assert_eq!(rt.state.actions, vec![0, 0, 0]);
@@ -485,7 +510,11 @@ fn cancelling_a_gutter_drag_restores_selection_without_notifying_a_drop() {
 #[test]
 fn unified_gutters_stay_at_the_left_edge_while_code_scrolls_sideways() {
     let long = "x".repeat(400);
-    let text = |n: &str| (0..30).map(|i| if i == 1 { format!("{long}\n") } else { format!("let v{i} = {}{n};\n", i % 2) }).collect::<String>();
+    let text = |n: &str| {
+        (0..30)
+            .map(|i| if i == 1 { format!("{long}\n") } else { format!("let v{i} = {}{n};\n", i % 2) })
+            .collect::<String>()
+    };
     let mut d = DiffState::new(vec![FileDiff::from_texts("a.rs", &text(""), &text("+1"))]);
     d.set_mode(DiffMode::Unified);
     let mut rt = runtime(d, (600.0, 400.0));
@@ -575,7 +604,12 @@ fn focused_annotation_input_keeps_navigation_and_escape_keys() {
                             .size(300.0, 28.0)
                             .on_edit(|s: &mut ComposeApp| &mut s.comment),
                     )
-                    .child(el().key(format!("pop-{}", a.id)).size(80.0, 20.0).anchored(format!("input-{}", a.id), rune::Side::Bottom, rune::Align::Start, 4.0))
+                    .child(el().key(format!("pop-{}", a.id)).size(80.0, 20.0).anchored(
+                        format!("input-{}", a.id),
+                        rune::Side::Bottom,
+                        rune::Align::Start,
+                        4.0,
+                    ))
             })
             .build(s, &k);
         col().w_full().h_full().child(diff)
@@ -593,7 +627,12 @@ fn focused_annotation_input_keeps_navigation_and_escape_keys() {
     diff.set_annotations(vec![Annotation::new(0, LineRef::new(Side::New, 10), "c1")]);
     let sel = LineRange::line(0, LineRef::new(Side::New, 10));
     diff.set_selection(Some(sel));
-    let mut rt = Runtime::new(ComposeApp { diff, comment: TextEdit::default() }, compose_view, (600.0, 600.0), Env::new(true, 2.0));
+    let mut rt = Runtime::new(
+        ComposeApp { diff, comment: TextEdit::default() },
+        compose_view,
+        (600.0, 600.0),
+        Env::new(true, 2.0),
+    );
     rt.on_key = Some(compose_key);
     rt.frame(0.0);
     for _ in 0..30 {
@@ -615,7 +654,8 @@ fn focused_annotation_input_keeps_navigation_and_escape_keys() {
     assert!((inp.rect[0]).abs() < 0.5, "input stays pinned at left edge: {:?}", inp.rect);
     let pop = find_el(&rt, "pop-c1");
     assert!(
-        (pop.rect[0] - inp.rect[0].max(8.0)).abs() < 0.5 && (pop.rect[1] - (inp.rect[1] + inp.rect[3] + 4.0)).abs() < 0.5,
+        (pop.rect[0] - inp.rect[0].max(8.0)).abs() < 0.5
+            && (pop.rect[1] - (inp.rect[1] + inp.rect[3] + 4.0)).abs() < 0.5,
         "popover follows pinned input: {:?} vs {:?}",
         pop.rect,
         inp.rect
@@ -644,7 +684,8 @@ fn focused_annotation_input_keeps_navigation_and_escape_keys() {
     );
     let pop = find_el(&rt, "pop-c1");
     assert!(
-        (pop.rect[0] - inp.rect[0].max(8.0)).abs() < 0.5 && (pop.rect[1] - (inp.rect[1] + inp.rect[3] + 4.0)).abs() < 0.5,
+        (pop.rect[0] - inp.rect[0].max(8.0)).abs() < 0.5
+            && (pop.rect[1] - (inp.rect[1] + inp.rect[3] + 4.0)).abs() < 0.5,
         "popover stays anchored after commit while scrolled: {:?} vs {:?}",
         pop.rect,
         inp.rect
@@ -656,7 +697,11 @@ fn focused_annotation_input_keeps_navigation_and_escape_keys() {
     rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
     rt.frame(1.0 / 60.0);
     assert!(!rt.state.comment.focused, "Escape blurred the comment box");
-    assert_eq!(rt.state.diff.selection(), Some(sel), "Escape did not steal the diff's selection while blurring the field");
+    assert_eq!(
+        rt.state.diff.selection(),
+        Some(sel),
+        "Escape did not steal the diff's selection while blurring the field"
+    );
 
     // Now that the comment box is blurred, Escape clears the diff's selection.
     rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
@@ -674,11 +719,14 @@ fn hovering_lines_at_rest_builds_nothing_new() {
         let mut d = DiffState::new(vec![FileDiff::from_texts("a.rs", &old, &new)]);
         d.set_mode(mode);
         let mut rt = runtime(d, (900.0, 1200.0));
-        let cells: Vec<[f32; 4]> = rt.elements().into_iter().filter(|e| e.path.ends_with("/code") && !e.exiting).map(|e| e.rect).collect();
+        let cells: Vec<[f32; 4]> =
+            rt.elements().into_iter().filter(|e| e.path.ends_with("/code") && !e.exiting).map(|e| e.rect).collect();
         assert!(cells.len() > 30, "{mode:?}: {} code cells", cells.len());
         let checks = rt.live_only_events();
         for (i, r) in cells.iter().enumerate() {
-            if i % 2 == 0 { rt.frame(0.3); }
+            if i % 2 == 0 {
+                rt.frame(0.3);
+            }
             rt.pointer_move(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
             tick(&mut rt);
         }
@@ -698,7 +746,10 @@ fn a_live_only_event_while_hovering_scrolling_or_selecting_builds_nothing_new() 
         d.set_mode(mode);
         d.set_wrap(wrap);
         let mut rt = runtime(d, (900.0, 600.0));
-        rt.on_key = Some(|_, _, tx| { tx.live_only(); true });
+        rt.on_key = Some(|_, _, tx| {
+            tx.live_only();
+            true
+        });
         rt.check_live_only(false);
         let probe = |rt: &mut Runtime<App>| {
             rt.check_live_only(true);
@@ -710,13 +761,17 @@ fn a_live_only_event_while_hovering_scrolling_or_selecting_builds_nothing_new() 
             for i in 0..200 {
                 rt.pointer_move(x + (i % 5) as f32, 30.0 + (i as f32 * 7.3) % 560.0);
                 tick(rt);
-                if i % 20 == 19 { probe(rt); }
+                if i % 20 == 19 {
+                    probe(rt);
+                }
             }
         };
         sweep(&mut rt, 300.0);
         sweep(&mut rt, 700.0);
         rt.wheel(400.0, 300.0, -900.0);
-        for _ in 0..3 { tick(&mut rt); }
+        for _ in 0..3 {
+            tick(&mut rt);
+        }
         probe(&mut rt);
         sweep(&mut rt, 300.0);
         rt.pointer_down(260.0, 210.0);
@@ -726,7 +781,9 @@ fn a_live_only_event_while_hovering_scrolling_or_selecting_builds_nothing_new() 
         }
         probe(&mut rt);
         rt.pointer_up(500.0, 270.0);
-        for _ in 0..20 { tick(&mut rt); }
+        for _ in 0..20 {
+            tick(&mut rt);
+        }
         probe(&mut rt);
         sweep(&mut rt, 300.0);
         assert!(rt.live_only_warnings().is_empty(), "{mode:?} wrap {wrap}: {:#?}", rt.live_only_warnings());
@@ -755,16 +812,26 @@ fn diff_50k_time() {
     let start = Instant::now();
     let state = DiffState::new(vec![file]);
     let rows_ms = start.elapsed().as_secs_f64() * 1e3;
-    let app = App { diff: state, selections: Vec::new(), comments: Vec::new(), visible: Vec::new(), actions: Vec::new() };
+    let app =
+        App { diff: state, selections: Vec::new(), comments: Vec::new(), visible: Vec::new(), actions: Vec::new() };
     let start = Instant::now();
     let mut rt = Runtime::new(app, view, (1200.0, 900.0), Env::new(true, 2.0));
     rt.frame(0.0);
     let open_ms = start.elapsed().as_secs_f64() * 1e3;
-    println!("50k lines (every 7th changed): diff {diff_ms:.1} ms, rows {rows_ms:.1} ms, first frame {open_ms:.1} ms, {} rows", rows(&rt).len());
+    println!(
+        "50k lines (every 7th changed): diff {diff_ms:.1} ms, rows {rows_ms:.1} ms, first frame {open_ms:.1} ms, {} rows",
+        rows(&rt).len()
+    );
     // A commit costs the same as a short diff's: the rows in view, not the length.
     {
         let (old, new) = numbered(300, 7);
-        let app = App { diff: DiffState::new(vec![FileDiff::from_texts("small.rs", &old, &new)]), selections: Vec::new(), comments: Vec::new(), visible: Vec::new(), actions: Vec::new() };
+        let app = App {
+            diff: DiffState::new(vec![FileDiff::from_texts("small.rs", &old, &new)]),
+            selections: Vec::new(),
+            comments: Vec::new(),
+            visible: Vec::new(),
+            actions: Vec::new(),
+        };
         let mut small = Runtime::new(app, view, (1200.0, 900.0), Env::new(true, 2.0));
         for _ in 0..30 {
             small.frame(1.0 / 120.0);
@@ -808,7 +875,10 @@ fn diff_50k_time() {
             times.push(start.elapsed().as_secs_f64() * 1e3);
         }
         times.sort_by(f64::total_cmp);
-        println!("{name}: p50 {:.2} ms, p90 {:.2} ms, p99 {:.2} ms, max {:.2} ms", times[300], times[540], times[594], times[599]);
+        println!(
+            "{name}: p50 {:.2} ms, p90 {:.2} ms, p99 {:.2} ms, max {:.2} ms",
+            times[300], times[540], times[594], times[599]
+        );
     }
     let mut jumps = Vec::new();
     for i in 0..20 {

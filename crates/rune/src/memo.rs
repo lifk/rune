@@ -53,7 +53,9 @@ use std::rc::Rc;
 use crate::El;
 use crate::el::ElFlags;
 use crate::runtime::HashMap;
-use crate::runtime::layout_read::{LayoutRects, SELECTION, Same, boxes_moved, moved, note_read, seen_rect, size, window_key};
+use crate::runtime::layout_read::{
+    LayoutRects, SELECTION, Same, boxes_moved, moved, note_read, seen_rect, size, window_key,
+};
 
 pub(crate) mod snapshot;
 pub use snapshot::snapshot;
@@ -77,7 +79,10 @@ pub(crate) struct Shared {
 impl El {
     /// Every child: those shared with a memo cache, then the element's own.
     pub(crate) fn all_children(&self) -> impl Iterator<Item = &El> {
-        self.memo_children().into_iter().flat_map(|c| c.children.iter()).chain(&self.children)
+        self.memo_children()
+            .into_iter()
+            .flat_map(|c| c.children.iter())
+            .chain(&self.children)
     }
 
     /// The children shared with a memo cache, which come before `children`.
@@ -89,7 +94,9 @@ impl El {
     /// The cached subtree this placeholder is, unless it was expanded or given extra children.
     #[inline]
     pub(crate) fn memo_built(&self) -> Option<&Rc<Built>> {
-        self.memo.as_ref().filter(|_| !self.flags.has(ElFlags::MEMO_EXTENDED))
+        self.memo
+            .as_ref()
+            .filter(|_| !self.flags.has(ElFlags::MEMO_EXTENDED))
     }
 
     /// Copies in the children shared with a memo cache, so the element owns all of them.
@@ -116,12 +123,15 @@ fn el_flatten_reusable(e: &El) -> bool {
         && c.input.is_none()
         && e.handlers.get().is_none_or(|h| h.modal.is_none())
         && !(c.scroll.is_some() && c.scroll_axes.x())
-        && e.text.as_ref().is_none_or(|t| !t.redacted && t.live.is_none())
+        && e.text
+            .as_ref()
+            .is_none_or(|t| !t.redacted && t.live.is_none())
         && e.vis.pixels.as_ref().is_none_or(|_| {
             let sz = e.style.size();
             e.style.aspect_ratio().is_some() || (sz.width.is_auto() == sz.height.is_auto())
         })
-        && e.memo_children().is_none_or(|m| m.reusable && !m.duplicate_keys)
+        && e.memo_children()
+            .is_none_or(|m| m.reusable && !m.duplicate_keys)
         && e.children.iter().all(el_flatten_reusable)
 }
 
@@ -165,7 +175,9 @@ impl Built {
     fn new(mut el: El, scale: f32) -> (Rc<Built>, Option<String>) {
         let key = el.key.take();
         el.flags.set(ElFlags::MEMO_EXTENDED, false);
-        let shared = if el.children.is_empty() && let Some(built) = el.memo.take() {
+        let shared = if el.children.is_empty()
+            && let Some(built) = el.memo.take()
+        {
             prekey_text_shapes(&mut el, scale);
             built.children.clone()
         } else {
@@ -173,15 +185,32 @@ impl Built {
             prekey_text_shapes(&mut el, scale);
             let children = std::mem::take(&mut el.children);
             let focused_input = children.iter().any(has_focused_input);
-            let duplicate_keys = crate::input::key_diagnostics::memo_children_have_duplicates(&el, &children);
+            let duplicate_keys =
+                crate::input::key_diagnostics::memo_children_have_duplicates(&el, &children);
             let has_virtual = children.iter().any(|c| c.flags.has(ElFlags::HAS_VIRTUAL));
-            let reusable = !duplicate_keys && !has_virtual && children.iter().all(el_flatten_reusable);
-            Rc::new(Shared { children, focused_input, duplicate_keys, has_virtual, reusable })
+            let reusable =
+                !duplicate_keys && !has_virtual && children.iter().all(el_flatten_reusable);
+            Rc::new(Shared {
+                children,
+                focused_input,
+                duplicate_keys,
+                has_virtual,
+                reusable,
+            })
         };
-        el.flags.set(ElFlags::HAS_VIRTUAL, el.cold.virtual_estimate.is_some());
+        el.flags
+            .set(ElFlags::HAS_VIRTUAL, el.cold.virtual_estimate.is_some());
         let reusable = shared.reusable && !shared.duplicate_keys && el_flatten_reusable(&el);
         let id = NEXT_BUILT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        (Rc::new(Built { id, reusable, root: el, children: shared }), key)
+        (
+            Rc::new(Built {
+                id,
+                reusable,
+                root: el,
+                children: shared,
+            }),
+            key,
+        )
     }
 
     /// The root, with its children shared rather than copied.
@@ -210,7 +239,9 @@ enum Read {
 impl PartialEq for Read {
     fn eq(&self, other: &Read) -> bool {
         match (self, other) {
-            (Read::Caret(a, x), Read::Caret(b, y)) | (Read::Layout(a, x), Read::Layout(b, y)) => a == b && x == y,
+            (Read::Caret(a, x), Read::Caret(b, y)) | (Read::Layout(a, x), Read::Layout(b, y)) => {
+                a == b && x == y
+            }
             (Read::LayoutWith(a, f, x), Read::LayoutWith(b, g, y)) => a == b && f.is(g) && x == y,
             (Read::Selection(a), Read::Selection(b)) => a == b,
             _ => false,
@@ -287,7 +318,10 @@ impl MemoCache {
     /// No memos, counting passes on from this cache's, for a build that must start from scratch.
     #[cfg(feature = "hot")]
     pub(crate) fn emptied(&self) -> MemoCache {
-        MemoCache { pass: self.pass, ..MemoCache::default() }
+        MemoCache {
+            pass: self.pass,
+            ..MemoCache::default()
+        }
     }
 
     #[cfg(test)]
@@ -304,9 +338,15 @@ impl MemoCache {
     /// inside them.
     pub(crate) fn evict_prefix(&mut self, prefix: &str) {
         let before = self.entries.len();
-        self.entries.retain(|id, _| !(id.starts_with(prefix) || id.match_indices('/').any(|(i, _)| id[i + 1..].starts_with(prefix))));
+        self.entries.retain(|id, _| {
+            !(id.starts_with(prefix)
+                || id
+                    .match_indices('/')
+                    .any(|(i, _)| id[i + 1..].starts_with(prefix)))
+        });
         if self.entries.len() < before {
-            let live: crate::runtime::HashSet<u64> = self.entries.values().map(|e| e.built.id).collect();
+            let live: crate::runtime::HashSet<u64> =
+                self.entries.values().map(|e| e.built.id).collect();
             self.flattened.retain(|id, _| live.contains(id));
         }
     }
@@ -315,11 +355,14 @@ impl MemoCache {
     /// keeps what any of its view builds used.
     pub(crate) fn keep_since(&mut self, since: u64) {
         // A commit that didn't build the view used no memos, and drops none.
-        if self.pass < since { return; }
+        if self.pass < since {
+            return;
+        }
         let before = self.entries.len();
         self.entries.retain(|_, e| e.pass >= since);
         if self.entries.len() < before && !self.flattened.is_empty() {
-            let live: crate::runtime::HashSet<u64> = self.entries.values().map(|e| e.built.id).collect();
+            let live: crate::runtime::HashSet<u64> =
+                self.entries.values().map(|e| e.built.id).collect();
             self.flattened.retain(|id, _| live.contains(id));
         }
     }
@@ -354,7 +397,9 @@ struct Scope {
 impl Scope {
     /// Counts `reads` toward the running closure, if any.
     fn note(&mut self, reads: &[Read]) {
-        let Some(frame) = self.reads.last_mut() else { return };
+        let Some(frame) = self.reads.last_mut() else {
+            return;
+        };
         for read in reads {
             if !frame.contains(read) {
                 frame.push(read.clone());
@@ -382,13 +427,26 @@ pub(crate) fn enter(
 ) -> Guard {
     cache.pass += 1;
     cache.pure_counts.clear();
-    let accent = [accent.accent(env.system_dark), accent.focus(env.system_dark)].map(|c| [c.r, c.g, c.b, c.a].map(f32::to_bits));
+    let accent = [
+        accent.accent(env.system_dark),
+        accent.focus(env.system_dark),
+    ]
+    .map(|c| [c.r, c.g, c.b, c.a].map(f32::to_bits));
     let scale = env.scale;
     // Theme colours resolve per blend mode (`theme::blends_srgb`), so a switch rebuilds memos.
     // So does a change to what the window's controls take (`Cx::chrome_insets`), and to the icon
     // swap, whose icons can take another size (`text::set_icon_swap_size`).
     let icons = crate::text::icon::swap_state();
-    let env = hash_of(&(env.system_dark, scale.to_bits(), reduced_motion, accent, crate::platform::scroll_bars::scoped(), srgb_blend, chrome, icons));
+    let env = hash_of(&(
+        env.system_dark,
+        scale.to_bits(),
+        reduced_motion,
+        accent,
+        crate::platform::scroll_bars::scoped(),
+        srgb_blend,
+        chrome,
+        icons,
+    ));
     let scope = Scope {
         cache,
         env,
@@ -422,7 +480,9 @@ pub(crate) fn in_virtual_row<R>(tag: u64, f: impl FnOnce() -> R) -> R {
         }
     }
     let prev = SCOPES.with_borrow_mut(|scopes| {
-        scopes.last_mut().map(|s| std::mem::replace(&mut s.virtual_row, tag))
+        scopes
+            .last_mut()
+            .map(|s| std::mem::replace(&mut s.virtual_row, tag))
     });
     let _reset = Reset(prev);
     f()
@@ -455,7 +515,16 @@ pub(crate) fn enter_partial(
         keep_nested_rows(&mut cache, &mut nested, next);
     }
     cache.nested_scratch = nested;
-    enter(cache, env, accent, reduced_motion, srgb_blend, chrome, caret, layout)
+    enter(
+        cache,
+        env,
+        accent,
+        reduced_motion,
+        srgb_blend,
+        chrome,
+        caret,
+        layout,
+    )
 }
 
 /// Records a `Cx::caret` read for the memo building, if any.
@@ -486,7 +555,10 @@ pub fn layout(key: &str) -> Option<[f32; 4]> {
 
 /// [`Cx::layout_with`](crate::Cx::layout_with) for a component that builds inside a view
 /// without taking [`Cx`](crate::Cx); `None` outside a view build.
-pub fn layout_with<T: PartialEq + 'static>(key: &str, f: impl Fn([f32; 4]) -> T + 'static) -> Option<T> {
+pub fn layout_with<T: PartialEq + 'static>(
+    key: &str,
+    f: impl Fn([f32; 4]) -> T + 'static,
+) -> Option<T> {
     let mut value = None;
     let found = read_outside_cx(key, |rect| {
         value = rect.map(&f);
@@ -510,19 +582,28 @@ pub fn window_layout(key: &str) -> Option<[f32; 4]> {
 
 /// [`Cx::window_layout_with`](crate::Cx::window_layout_with) for a component that builds
 /// inside a view without taking [`Cx`](crate::Cx); `None` outside a view build.
-pub fn window_layout_with<T: PartialEq + 'static>(key: &str, f: impl Fn([f32; 4]) -> T + 'static) -> Option<T> {
+pub fn window_layout_with<T: PartialEq + 'static>(
+    key: &str,
+    f: impl Fn([f32; 4]) -> T + 'static,
+) -> Option<T> {
     layout_with(&window_key(key), f)
 }
 
 /// A layout read of `key` made without a `Cx`, counted toward the view and the memo building,
 /// if any: `read` turns the rect the view sees into its record. The rect, or `None` outside a
 /// view build.
-fn read_outside_cx(key: &str, read: impl FnOnce(Option<[f32; 4]>) -> Read) -> Option<Option<[f32; 4]>> {
+fn read_outside_cx(
+    key: &str,
+    read: impl FnOnce(Option<[f32; 4]>) -> Read,
+) -> Option<Option<[f32; 4]>> {
     SCOPES.with_borrow_mut(|scopes| {
         let s = scopes.last_mut()?;
         let rect = seen_rect(&s.seen.layout, key);
         let made = read(rect);
-        let same = match &made { Read::LayoutWith(_, same, _) => Some(same.clone()), _ => None };
+        let same = match &made {
+            Read::LayoutWith(_, same, _) => Some(same.clone()),
+            _ => None,
+        };
         note_read(&mut s.replayed.layout, key, same);
         if !s.reads.is_empty() {
             s.note(&[made]);
@@ -550,7 +631,9 @@ impl Guard {
     /// until [`MemoCache::keep_since`], since a commit may build its view more than once.
     pub(crate) fn finish(mut self) -> (MemoCache, Replayed) {
         self.0 = false;
-        let Scope { cache, replayed, .. } = SCOPES.with_borrow_mut(|s| s.pop()).expect("memo scope");
+        let Scope {
+            cache, replayed, ..
+        } = SCOPES.with_borrow_mut(|s| s.pop()).expect("memo scope");
         (cache, replayed)
     }
 }
@@ -574,7 +657,11 @@ pub(crate) fn hash_of(v: &impl Hash) -> u64 {
 fn keyed(el: El, key: String) -> El {
     #[cfg(debug_assertions)]
     if let Some(existing) = &el.key {
-        crate::tooling::perf_warn::memo_key_replaced(&key, existing, std::panic::Location::caller());
+        crate::tooling::perf_warn::memo_key_replaced(
+            &key,
+            existing,
+            std::panic::Location::caller(),
+        );
     }
     el.key(key)
 }
@@ -606,11 +693,17 @@ pub fn memo_with_hash(id: impl Into<String>, version: u64, build: impl FnOnce() 
     let key = id.into();
     enum Step {
         Reuse(Rc<Built>),
-        Build { id: Rc<str>, version: u64, store: bool },
+        Build {
+            id: Rc<str>,
+            version: u64,
+            store: bool,
+        },
         Plain,
     }
     let step = SCOPES.with_borrow_mut(|scopes| {
-        let Some(s) = scopes.last_mut() else { return Step::Plain };
+        let Some(s) = scopes.last_mut() else {
+            return Step::Plain;
+        };
         let version = hash_of(&(version, s.env));
         let name: &str = if let Some(p) = s.path.last() {
             s.cache.id_scratch.clear();
@@ -636,13 +729,25 @@ pub fn memo_with_hash(id: impl Into<String>, version: u64, build: impl FnOnce() 
                     match read {
                         Read::Caret(..) => s.replayed.caret = true,
                         Read::Layout(k, _) => note_read(&mut s.replayed.layout, k, None),
-                        Read::LayoutWith(k, same, _) => note_read(&mut s.replayed.layout, k, Some(same.clone())),
+                        Read::LayoutWith(k, same, _) => {
+                            note_read(&mut s.replayed.layout, k, Some(same.clone()))
+                        }
                         Read::Selection(_) => note_read(&mut s.replayed.layout, SELECTION, None),
                     }
                 }
-                let parent_reads = if s.reads.is_empty() || e.reads.is_empty() { Vec::new() } else { e.reads.clone() };
-                s.cache.nested_scratch.extend(e.nested.iter().map(|id| (id.clone(), s.virtual_row)));
-                reused = Some((has_parent.then(|| e.id.clone()), e.built.clone(), parent_reads));
+                let parent_reads = if s.reads.is_empty() || e.reads.is_empty() {
+                    Vec::new()
+                } else {
+                    e.reads.clone()
+                };
+                s.cache
+                    .nested_scratch
+                    .extend(e.nested.iter().map(|id| (id.clone(), s.virtual_row)));
+                reused = Some((
+                    has_parent.then(|| e.id.clone()),
+                    e.built.clone(),
+                    parent_reads,
+                ));
             }
         }
         if let Some((parent_id, built, reads)) = reused {
@@ -675,7 +780,9 @@ pub fn memo_with_hash(id: impl Into<String>, version: u64, build: impl FnOnce() 
     };
     let el = keyed(build(), key);
     SCOPES.with_borrow_mut(|scopes| {
-        let Some(s) = scopes.last_mut() else { return el };
+        let Some(s) = scopes.last_mut() else {
+            return el;
+        };
         s.path.pop();
         let nested = s.nested.pop().unwrap_or_default();
         let reads = s.reads.pop().unwrap_or_default();
@@ -692,7 +799,19 @@ pub fn memo_with_hash(id: impl Into<String>, version: u64, build: impl FnOnce() 
         let pass = s.cache.pass;
         let virtual_row = s.virtual_row;
         let entry_id = id.clone();
-        s.cache.entries.insert(id, Entry { id: entry_id, version, built, key, reads, nested, pass, virtual_row });
+        s.cache.entries.insert(
+            id,
+            Entry {
+                id: entry_id,
+                version,
+                built,
+                key,
+                reads,
+                nested,
+                pass,
+                virtual_row,
+            },
+        );
         el
     })
 }
@@ -715,7 +834,9 @@ pub fn cached((h1, h2): (u64, u64), build: impl FnOnce() -> El) -> El {
         Plain,
     }
     let step = SCOPES.with_borrow_mut(|scopes| {
-        let Some(s) = scopes.last_mut() else { return Step::Plain };
+        let Some(s) = scopes.last_mut() else {
+            return Step::Plain;
+        };
         let occ = *s
             .cache
             .pure_counts
@@ -730,7 +851,11 @@ pub fn cached((h1, h2): (u64, u64), build: impl FnOnce() -> El) -> El {
                 s.cache.id_scratch.push_str(p);
                 s.cache.id_scratch.push('/');
             }
-            let _ = write!(s.cache.id_scratch, "\0{}:{h1:016x}:{h2:016x}:{occ}", s.virtual_row);
+            let _ = write!(
+                s.cache.id_scratch,
+                "\0{}:{h1:016x}:{h2:016x}:{occ}",
+                s.virtual_row
+            );
         }
         let pass = s.cache.pass;
         let has_parent = !s.nested.is_empty();
@@ -746,13 +871,26 @@ pub fn cached((h1, h2): (u64, u64), build: impl FnOnce() -> El) -> El {
                 match read {
                     Read::Caret(..) => s.replayed.caret = true,
                     Read::Layout(k, _) => note_read(&mut s.replayed.layout, k, None),
-                    Read::LayoutWith(k, same, _) => note_read(&mut s.replayed.layout, k, Some(same.clone())),
+                    Read::LayoutWith(k, same, _) => {
+                        note_read(&mut s.replayed.layout, k, Some(same.clone()))
+                    }
                     Read::Selection(_) => note_read(&mut s.replayed.layout, SELECTION, None),
                 }
             }
-            let parent_reads = if s.reads.is_empty() || e.reads.is_empty() { Vec::new() } else { e.reads.clone() };
-            s.cache.nested_scratch.extend(e.nested.iter().map(|id| (id.clone(), s.virtual_row)));
-            reused = Some((has_parent.then(|| e.id.clone()), e.built.clone(), e.key.clone(), parent_reads));
+            let parent_reads = if s.reads.is_empty() || e.reads.is_empty() {
+                Vec::new()
+            } else {
+                e.reads.clone()
+            };
+            s.cache
+                .nested_scratch
+                .extend(e.nested.iter().map(|id| (id.clone(), s.virtual_row)));
+            reused = Some((
+                has_parent.then(|| e.id.clone()),
+                e.built.clone(),
+                e.key.clone(),
+                parent_reads,
+            ));
         }
         if let Some((parent_id, built, key, reads)) = reused {
             if !s.cache.nested_scratch.is_empty() {
@@ -784,7 +922,9 @@ pub fn cached((h1, h2): (u64, u64), build: impl FnOnce() -> El) -> El {
     };
     let el = build();
     SCOPES.with_borrow_mut(|scopes| {
-        let Some(s) = scopes.last_mut() else { return el };
+        let Some(s) = scopes.last_mut() else {
+            return el;
+        };
         s.path.pop();
         let nested = s.nested.pop().unwrap_or_default();
         let reads = s.reads.pop().unwrap_or_default();
@@ -798,7 +938,19 @@ pub fn cached((h1, h2): (u64, u64), build: impl FnOnce() -> El) -> El {
         let pass = s.cache.pass;
         let virtual_row = s.virtual_row;
         let entry_id = id.clone();
-        s.cache.entries.insert(id, Entry { id: entry_id, version, built, key, reads, nested, pass, virtual_row });
+        s.cache.entries.insert(
+            id,
+            Entry {
+                id: entry_id,
+                version,
+                built,
+                key,
+                reads,
+                nested,
+                pass,
+                virtual_row,
+            },
+        );
         el
     })
 }
@@ -841,7 +993,14 @@ mod tests {
     fn view(s: &S, _: &mut Cx<S>) -> El {
         col().size(200.0, 200.0).children([
             memo("card", s.version, || {
-                counted(col().child(el().key("button").size(40.0, 40.0).fill(crate::Color::WHITE).on_press(|s: &mut S| s.presses += 1)))
+                counted(
+                    col().child(
+                        el().key("button")
+                            .size(40.0, 40.0)
+                            .fill(crate::Color::WHITE)
+                            .on_press(|s: &mut S| s.presses += 1),
+                    ),
+                )
             }),
             text(format!("tick {}", s.ticks)).key("tick"),
         ])
@@ -855,16 +1014,35 @@ mod tests {
     #[test]
     fn an_unchanged_version_reuses_the_subtree_and_a_new_version_or_theme_builds() {
         BUILDS.set(0);
-        let mut rt = Runtime::new(S { version: 0, ticks: 0, presses: 0 }, view, (200.0, 200.0), Env::new(true, 1.0));
+        let mut rt = Runtime::new(
+            S {
+                version: 0,
+                ticks: 0,
+                presses: 0,
+            },
+            view,
+            (200.0, 200.0),
+            Env::new(true, 1.0),
+        );
         rt.frame(0.0);
         assert_eq!(BUILDS.get(), 1);
-        let id = |rt: &Runtime<S>| rt.nodes.iter().find(|n| n.key.as_deref() == Some("button")).unwrap().id;
+        let id = |rt: &Runtime<S>| {
+            rt.nodes
+                .iter()
+                .find(|n| n.key.as_deref() == Some("button"))
+                .unwrap()
+                .id
+        };
         let first = id(&rt);
         for _ in 0..3 {
             rt.state.ticks += 1;
             commit(&mut rt);
         }
-        assert_eq!(BUILDS.get(), 1, "other state changing doesn't build the memo");
+        assert_eq!(
+            BUILDS.get(),
+            1,
+            "other state changing doesn't build the memo"
+        );
         assert_eq!(id(&rt), first, "the reused subtree keeps its node ids");
         let (x, y) = rt.find("button").unwrap();
         rt.pointer_down(x, y);
@@ -883,20 +1061,50 @@ mod tests {
         assert_eq!(BUILDS.get(), 4, "a scale change builds");
         rt.memo.clear();
         commit(&mut rt);
-        assert_eq!(BUILDS.get(), 5, "a cleared cache (hot patch, tunables) builds");
-        assert!(rt.elements().iter().any(|e| e.key.as_deref() == Some("button")), "tools see reused nodes");
+        assert_eq!(
+            BUILDS.get(),
+            5,
+            "a cleared cache (hot patch, tunables) builds"
+        );
+        assert!(
+            rt.elements()
+                .iter()
+                .any(|e| e.key.as_deref() == Some("button")),
+            "tools see reused nodes"
+        );
     }
 
     #[test]
     fn a_view_panicking_inside_a_memo_leaves_no_scope_for_the_next_build() {
         let panicked = std::panic::catch_unwind(|| {
-            let _scope = enter(MemoCache::default(), Env::new(true, 1.0), crate::SystemAccent::DEFAULT, false, true, [0; 4], None, LayoutRects::default());
+            let _scope = enter(
+                MemoCache::default(),
+                Env::new(true, 1.0),
+                crate::SystemAccent::DEFAULT,
+                false,
+                true,
+                [0; 4],
+                None,
+                LayoutRects::default(),
+            );
             memo("outer", 0, || memo("inner", 0, || panic!("view panicked")))
         });
         assert!(panicked.is_err());
-        assert!(SCOPES.with_borrow(|s| s.is_empty()), "unwinding pops the build's scope");
+        assert!(
+            SCOPES.with_borrow(|s| s.is_empty()),
+            "unwinding pops the build's scope"
+        );
         BUILDS.set(0);
-        let mut rt = Runtime::new(S { version: 0, ticks: 0, presses: 0 }, view, (200.0, 200.0), Env::new(true, 1.0));
+        let mut rt = Runtime::new(
+            S {
+                version: 0,
+                ticks: 0,
+                presses: 0,
+            },
+            view,
+            (200.0, 200.0),
+            Env::new(true, 1.0),
+        );
         rt.frame(0.0);
         commit(&mut rt);
         assert_eq!(BUILDS.get(), 1, "the next window's memos cache as usual");
@@ -907,7 +1115,10 @@ mod tests {
         BUILDS.set(0);
         fn view(s: &(u32, u32), _: &mut Cx<(u32, u32)>) -> El {
             col().child(memo("outer", s.0, || {
-                counted(col().children([memo("inner", s.1, || counted(text("inner").key("t"))), text(format!("outer {}", s.0))]))
+                counted(col().children([
+                    memo("inner", s.1, || counted(text("inner").key("t"))),
+                    text(format!("outer {}", s.0)),
+                ]))
             }))
         }
         let mut rt = Runtime::new((0, 0), view, (200.0, 200.0), Env::default());
@@ -918,10 +1129,18 @@ mod tests {
         assert_eq!(BUILDS.get(), 2);
         rt.state.0 += 1;
         commit(&mut rt);
-        assert_eq!(BUILDS.get(), 3, "the outer builds and finds the inner unchanged");
+        assert_eq!(
+            BUILDS.get(),
+            3,
+            "the outer builds and finds the inner unchanged"
+        );
         rt.state.1 += 1;
         commit(&mut rt);
-        assert_eq!(BUILDS.get(), 3, "the outer's version gates its closure, inner included");
+        assert_eq!(
+            BUILDS.get(),
+            3,
+            "the outer's version gates its closure, inner included"
+        );
     }
 
     #[test]
@@ -929,8 +1148,12 @@ mod tests {
         BUILDS.set(0);
         fn view(_: &(), _: &mut Cx<()>) -> El {
             col().children([
-                col().key("a").child(memo("same", 0, || counted(text("a").key("t")))),
-                col().key("b").child(memo("same", 0, || counted(text("b").key("t")))),
+                col()
+                    .key("a")
+                    .child(memo("same", 0, || counted(text("a").key("t")))),
+                col()
+                    .key("b")
+                    .child(memo("same", 0, || counted(text("b").key("t")))),
             ])
         }
         let mut rt = Runtime::new((), view, (200.0, 200.0), Env::default());
@@ -938,7 +1161,11 @@ mod tests {
         commit(&mut rt);
         let texts: Vec<_> = rt.elements().into_iter().filter_map(|e| e.text).collect();
         assert_eq!(texts, ["a", "b"]);
-        assert_eq!(BUILDS.get(), 3, "the first is reused, the duplicate builds each time");
+        assert_eq!(
+            BUILDS.get(),
+            3,
+            "the first is reused, the duplicate builds each time"
+        );
     }
 
     struct Rows {
@@ -950,29 +1177,65 @@ mod tests {
     fn row(i: usize) -> El {
         col().w_full().h(72.0).padding(8.0).gap(4.0).children([
             text(format!("Message {i}")).key("title"),
-            text(format!("Body of message {i}, a line of text that is long enough to wrap twice")).wrap().w_full().key("body"),
+            text(format!(
+                "Body of message {i}, a line of text that is long enough to wrap twice"
+            ))
+            .wrap()
+            .w_full()
+            .key("body"),
             text(format!("{i} min ago")).key("time"),
         ])
     }
 
     fn rows(s: &Rows, _: &mut Cx<Rows>) -> El {
-        let stack = col().key("rows").w_full().growth(GrowthSpec::default()).virtualize(72.0).children((0..s.n).map(|i| {
-            let key = format!("r{i}");
-            if s.memo { memo(key, 0, || counted(row(i))) } else { counted(row(i)).key(key) }
-        }));
+        let stack = col()
+            .key("rows")
+            .w_full()
+            .growth(GrowthSpec::default())
+            .virtualize(72.0)
+            .children((0..s.n).map(|i| {
+                let key = format!("r{i}");
+                if s.memo {
+                    memo(key, 0, || counted(row(i)))
+                } else {
+                    counted(row(i)).key(key)
+                }
+            }));
         col().w_full().h_full().children([
             text(format!("tick {}", s.tick)).key("counter"),
-            col().key("scroll").w_full().grow(1.0).scroll(ScrollSpec { stick_bottom: true }).child(stack),
+            col()
+                .key("scroll")
+                .w_full()
+                .grow(1.0)
+                .scroll(ScrollSpec { stick_bottom: true })
+                .child(stack),
         ])
     }
 
     #[test]
     fn virtual_rows_scroll_out_and_back_in_without_building() {
         BUILDS.set(0);
-        let mut rt = Runtime::new(Rows { n: 500, tick: 0, memo: true }, rows, (400.0, 600.0), Env::default());
+        let mut rt = Runtime::new(
+            Rows {
+                n: 500,
+                tick: 0,
+                memo: true,
+            },
+            rows,
+            (400.0, 600.0),
+            Env::default(),
+        );
         rt.frame(0.0);
-        assert_eq!(BUILDS.get(), 500, "a miss builds in the view, mounted or not");
-        assert!(rt.nodes.len() < 200, "offscreen rows' children never reach the element tree: {}", rt.nodes.len());
+        assert_eq!(
+            BUILDS.get(),
+            500,
+            "a miss builds in the view, mounted or not"
+        );
+        assert!(
+            rt.nodes.len() < 200,
+            "offscreen rows' children never reach the element tree: {}",
+            rt.nodes.len()
+        );
         for _ in 0..5 {
             rt.state.tick += 1;
             commit(&mut rt);
@@ -985,9 +1248,15 @@ mod tests {
             }
         };
         scroll(&mut rt, 400.0);
-        assert!(rt.find("r499/title").is_none(), "scrolled up, the last row unmounts");
+        assert!(
+            rt.find("r499/title").is_none(),
+            "scrolled up, the last row unmounts"
+        );
         scroll(&mut rt, -400.0);
-        assert!(rt.find("r499/title").is_some(), "scrolled back down, it mounts again");
+        assert!(
+            rt.find("r499/title").is_some(),
+            "scrolled back down, it mounts again"
+        );
         assert_eq!(BUILDS.get(), 500, "ticks and scrolling build no row");
     }
 
@@ -995,14 +1264,30 @@ mod tests {
     fn a_focused_field_in_an_offscreen_memo_row_keeps_focus_and_typing() {
         use crate::{TextEdit, TextStyle, text_input};
         fn view(s: &Vec<TextEdit>, _: &mut Cx<Vec<TextEdit>>) -> El {
-            col().key("viewport").size(200.0, 200.0).scroll(ScrollSpec { stick_bottom: false }).clip_soft(0.0)
-                .child(col().key("rows").w_full().growth(GrowthSpec::default()).virtualize(40.0)
-                    .children(s.iter().enumerate().map(|(i, edit)| {
-                        memo(format!("row-{i}"), edit, || {
-                            col().size(200.0, 40.0).child(text_input(edit, TextStyle::new(14.0, 400.0)).key("field")
-                                .size(200.0, 40.0).on_edit(move |s: &mut Vec<TextEdit>| &mut s[i]))
-                        })
-                    })))
+            col()
+                .key("viewport")
+                .size(200.0, 200.0)
+                .scroll(ScrollSpec {
+                    stick_bottom: false,
+                })
+                .clip_soft(0.0)
+                .child(
+                    col()
+                        .key("rows")
+                        .w_full()
+                        .growth(GrowthSpec::default())
+                        .virtualize(40.0)
+                        .children(s.iter().enumerate().map(|(i, edit)| {
+                            memo(format!("row-{i}"), edit, || {
+                                col().size(200.0, 40.0).child(
+                                    text_input(edit, TextStyle::new(14.0, 400.0))
+                                        .key("field")
+                                        .size(200.0, 40.0)
+                                        .on_edit(move |s: &mut Vec<TextEdit>| &mut s[i]),
+                                )
+                            })
+                        })),
+                )
         }
         let mut state: Vec<_> = (0..100).map(|_| TextEdit::new("")).collect();
         state[0].focused = true;
@@ -1010,8 +1295,14 @@ mod tests {
         rt.frame(0.0);
         rt.wheel(100.0, 100.0, -2000.0);
         rt.frame(0.0);
-        assert!(rt.find("row-0/field").is_none(), "the focused row scrolled out");
-        rt.key(crate::KeyEvent { key: crate::Key::Text("offscreen".into()), mods: Default::default() });
+        assert!(
+            rt.find("row-0/field").is_none(),
+            "the focused row scrolled out"
+        );
+        rt.key(crate::KeyEvent {
+            key: crate::Key::Text("offscreen".into()),
+            mods: Default::default(),
+        });
         rt.frame(0.0);
         assert_eq!(rt.state[0].text, "offscreen");
     }
@@ -1021,19 +1312,32 @@ mod tests {
         use crate::{Ime, Key, KeyEvent, TextEdit, TextStyle, text_input};
         fn view(s: &TextEdit, _: &mut Cx<TextEdit>) -> El {
             col().size(200.0, 100.0).child(memo("field", s, || {
-                text_input(s, TextStyle::new(14.0, 400.0)).size(200.0, 40.0).on_edit(|s: &mut TextEdit| s)
+                text_input(s, TextStyle::new(14.0, 400.0))
+                    .size(200.0, 40.0)
+                    .on_edit(|s: &mut TextEdit| s)
             }))
         }
         let mut edit = TextEdit::new("ab");
         edit.focused = true;
         let mut rt = Runtime::new(edit, view, (200.0, 100.0), Env::new(true, 1.0));
         rt.frame(0.0);
-        rt.key(KeyEvent { key: Key::Left, mods: Default::default() });
+        rt.key(KeyEvent {
+            key: Key::Left,
+            mods: Default::default(),
+        });
         rt.frame(1.0 / 60.0);
         rt.ime(Ime::Preedit("X".into(), None));
         rt.frame(1.0 / 60.0);
-        let shown = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("field")).and_then(|e| e.text);
-        assert_eq!(shown.as_deref(), Some("aXb"), "the composition draws at the moved caret");
+        let shown = rt
+            .elements()
+            .into_iter()
+            .find(|e| e.key.as_deref() == Some("field"))
+            .and_then(|e| e.text);
+        assert_eq!(
+            shown.as_deref(),
+            Some("aXb"),
+            "the composition draws at the moved caret"
+        );
         let mut edit = TextEdit::new("ab");
         let caret = hash_of(&edit);
         edit.anchor = 0;
@@ -1057,15 +1361,30 @@ mod tests {
     }
 
     fn label<S>(rt: &Runtime<S>) -> Option<String> {
-        rt.elements().into_iter().find(|e| e.key.as_deref() == Some("label")).and_then(|e| e.text)
+        rt.elements()
+            .into_iter()
+            .find(|e| e.key.as_deref() == Some("label"))
+            .and_then(|e| e.text)
     }
 
     #[test]
     fn a_layout_read_inside_a_memo_rebuilds_it_when_the_rect_changes() {
         BUILDS.set(0);
-        let mut rt = Runtime::new(Probe { width: 100.0, ticks: 0 }, probe, (300.0, 300.0), Env::default());
+        let mut rt = Runtime::new(
+            Probe {
+                width: 100.0,
+                ticks: 0,
+            },
+            probe,
+            (300.0, 300.0),
+            Env::default(),
+        );
         rt.frame(0.0);
-        assert_eq!(label(&rt).as_deref(), Some("width 100"), "the first commit settles the read");
+        assert_eq!(
+            label(&rt).as_deref(),
+            Some("width 100"),
+            "the first commit settles the read"
+        );
         let builds = BUILDS.get();
         for _ in 0..3 {
             rt.state.ticks += 1;
@@ -1074,7 +1393,11 @@ mod tests {
         assert_eq!(BUILDS.get(), builds, "an unmoved read reuses");
         rt.state.width = 150.0;
         commit(&mut rt);
-        assert_eq!(label(&rt).as_deref(), Some("width 150"), "a moved read builds, though the version didn't change");
+        assert_eq!(
+            label(&rt).as_deref(),
+            Some("width 150"),
+            "a moved read builds, though the version didn't change"
+        );
     }
 
     struct Moving {
@@ -1090,7 +1413,9 @@ mod tests {
             el().key("probe").w(s.width).h(10.0),
             memo("cx", 0, || shown("cx", cx.layout_size("probe"))),
             memo("free", 0, || shown("free", layout_size("probe"))),
-            memo("rect", 0, || shown("rect", cx.layout("probe").map(|r| [r[2], r[3]]))),
+            memo("rect", 0, || {
+                shown("rect", cx.layout("probe").map(|r| [r[2], r[3]]))
+            }),
             text(format!("tick {}", s.ticks)).key("tick"),
         ])
     }
@@ -1098,16 +1423,38 @@ mod tests {
     #[test]
     fn a_size_read_inside_a_memo_rebuilds_it_only_when_the_size_changes() {
         BUILDS.set(0);
-        let mut rt = Runtime::new(Moving { top: 0.0, width: 100.0, ticks: 0 }, moving, (300.0, 300.0), Env::default());
+        let mut rt = Runtime::new(
+            Moving {
+                top: 0.0,
+                width: 100.0,
+                ticks: 0,
+            },
+            moving,
+            (300.0, 300.0),
+            Env::default(),
+        );
         rt.frame(0.0);
-        let shown = |rt: &Runtime<Moving>, key| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key)).and_then(|e| e.text);
-        assert_eq!(shown(&rt, "cx").as_deref(), Some("Some([100.0, 10.0])"), "settled on the first commit");
+        let shown = |rt: &Runtime<Moving>, key| {
+            rt.elements()
+                .into_iter()
+                .find(|e| e.key.as_deref() == Some(key))
+                .and_then(|e| e.text)
+        };
+        assert_eq!(
+            shown(&rt, "cx").as_deref(),
+            Some("Some([100.0, 10.0])"),
+            "settled on the first commit"
+        );
         assert_eq!(shown(&rt, "free"), shown(&rt, "cx"));
         let builds = BUILDS.get();
         rt.state.top = 40.0;
         rt.state.ticks += 1;
         commit(&mut rt);
-        assert_eq!(BUILDS.get(), builds + 1, "a move rebuilds only the whole-rect read");
+        assert_eq!(
+            BUILDS.get(),
+            builds + 1,
+            "a move rebuilds only the whole-rect read"
+        );
         rt.state.width = 150.0;
         commit(&mut rt);
         assert_eq!(BUILDS.get(), builds + 4, "a resize rebuilds all three");
@@ -1116,10 +1463,21 @@ mod tests {
     }
 
     fn scrolled(s: &Probe, cx: &mut Cx<Probe>) -> El {
-        let rows = (0..20).fold(col().w_full(), |c, i| c.child(el().key(format!("r{i}")).w_full().h(30.0)));
+        let rows = (0..20).fold(col().w_full(), |c, i| {
+            c.child(el().key(format!("r{i}")).w_full().h(30.0))
+        });
         col().size(300.0, 300.0).children([
-            col().key("scroll").w_full().h(200.0).scroll(ScrollSpec { stick_bottom: false }).child(rows),
-            memo("label", 0, || counted(text(format!("{:?}", cx.window_layout("r3"))).key("label"))),
+            col()
+                .key("scroll")
+                .w_full()
+                .h(200.0)
+                .scroll(ScrollSpec {
+                    stick_bottom: false,
+                })
+                .child(rows),
+            memo("label", 0, || {
+                counted(text(format!("{:?}", cx.window_layout("r3"))).key("label"))
+            }),
             text(format!("tick {}", s.ticks)).key("tick"),
         ])
     }
@@ -1127,14 +1485,26 @@ mod tests {
     #[test]
     fn a_whole_rect_read_inside_a_memo_holds_through_a_move_below_the_threshold() {
         BUILDS.set(0);
-        let mut rt = Runtime::new(Probe { width: 0.0, ticks: 0 }, scrolled, (300.0, 300.0), Env::default());
+        let mut rt = Runtime::new(
+            Probe {
+                width: 0.0,
+                ticks: 0,
+            },
+            scrolled,
+            (300.0, 300.0),
+            Env::default(),
+        );
         rt.frame(0.0);
         let builds = BUILDS.get();
         rt.wheel(100.0, 100.0, -0.3);
         rt.frame(1.0 / 60.0);
         rt.state.ticks += 1;
         commit(&mut rt);
-        assert_eq!(BUILDS.get(), builds, "0.3 pt is within the half point a whole-rect read ignores");
+        assert_eq!(
+            BUILDS.get(),
+            builds,
+            "0.3 pt is within the half point a whole-rect read ignores"
+        );
         rt.wheel(100.0, 100.0, -0.3);
         rt.frame(1.0 / 60.0);
         rt.state.ticks += 1;
@@ -1147,7 +1517,10 @@ mod tests {
         use crate::{Key, KeyEvent, TextEdit, TextStyle, text_input};
         fn view(s: &TextEdit, cx: &mut Cx<TextEdit>) -> El {
             col().size(300.0, 300.0).children([
-                text_input(s, TextStyle::new(14.0, 400.0)).key("field").size(300.0, 40.0).on_edit(|s: &mut TextEdit| s),
+                text_input(s, TextStyle::new(14.0, 400.0))
+                    .key("field")
+                    .size(300.0, 40.0)
+                    .on_edit(|s: &mut TextEdit| s),
                 memo("label", 0, || {
                     let x = cx.caret("field").map_or(-1.0, |r| r[0]);
                     text(format!("caret {x}")).key("label")
@@ -1162,18 +1535,31 @@ mod tests {
         let at_start = label(&rt);
         assert_ne!(at_start.as_deref(), Some("caret -1"), "{at_start:?}");
         for _ in 0..3 {
-            rt.key(KeyEvent { key: Key::Text("w".into()), mods: Default::default() });
+            rt.key(KeyEvent {
+                key: Key::Text("w".into()),
+                mods: Default::default(),
+            });
             rt.frame(1.0 / 60.0);
             rt.frame(1.0 / 60.0);
         }
-        assert_ne!(label(&rt), at_start, "typing moved the caret the label shows");
+        assert_ne!(
+            label(&rt),
+            at_start,
+            "typing moved the caret the label shows"
+        );
     }
 
     #[test]
     fn a_memo_names_its_callers_line_for_key_warnings() {
         let line = line!() + 1;
         let built = memo("id", 0, el);
-        assert!(built.key_location().starts_with(&format!("{}:{line}:", file!())), "{}", built.key_location());
+        assert!(
+            built
+                .key_location()
+                .starts_with(&format!("{}:{line}:", file!())),
+            "{}",
+            built.key_location()
+        );
     }
 
     #[test]
@@ -1191,7 +1577,11 @@ mod tests {
         rt.key_warnings = Some(Vec::new());
         rt.frame(0.0);
         assert_eq!(BUILDS.get(), 3);
-        assert!(rt.key_warnings.as_ref().unwrap().is_empty(), "{:?}", rt.key_warnings);
+        assert!(
+            rt.key_warnings.as_ref().unwrap().is_empty(),
+            "{:?}",
+            rt.key_warnings
+        );
         let paths: Vec<_> = rt.elements().into_iter().map(|e| e.path).collect();
         assert_eq!(paths, vec!["#0", "#0/#0", "#0/#1", "#0/named"]);
 
@@ -1207,7 +1597,12 @@ mod tests {
     fn memo_build_time() {
         for memo in [false, true] {
             for n in [100, 500, 2000] {
-                let mut rt = Runtime::new(Rows { n, tick: 0, memo }, rows, (400.0, 600.0), Env::new(true, 2.0));
+                let mut rt = Runtime::new(
+                    Rows { n, tick: 0, memo },
+                    rows,
+                    (400.0, 600.0),
+                    Env::new(true, 2.0),
+                );
                 rt.frame(0.0);
                 for _ in 0..30 {
                     rt.state.tick += 1;

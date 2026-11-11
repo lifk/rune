@@ -105,13 +105,22 @@ impl Effect {
     };
 
     pub fn opacity(opacity: f32) -> Effect {
-        Effect { opacity, ..Effect::IDENTITY }
+        Effect {
+            opacity,
+            ..Effect::IDENTITY
+        }
     }
     pub fn scale(scale: f32) -> Effect {
-        Effect { scale, ..Effect::IDENTITY }
+        Effect {
+            scale,
+            ..Effect::IDENTITY
+        }
     }
     pub fn blur(sigma: f32) -> Effect {
-        Effect { blur: sigma, ..Effect::IDENTITY }
+        Effect {
+            blur: sigma,
+            ..Effect::IDENTITY
+        }
     }
 
     /// Both effects at once: opacities and scales multiply, offsets add, blur takes the max.
@@ -119,7 +128,11 @@ impl Effect {
         Effect {
             opacity: self.opacity * o.opacity,
             scale: self.scale * o.scale,
-            anchor: if self.scale != 1.0 { self.anchor } else { o.anchor },
+            anchor: if self.scale != 1.0 {
+                self.anchor
+            } else {
+                o.anchor
+            },
             offset: Vec2::new(self.offset.x + o.offset.x, self.offset.y + o.offset.y),
             offset_fraction: Vec2::new(
                 self.offset_fraction.x + o.offset_fraction.x,
@@ -142,13 +155,25 @@ impl Effect {
     /// Whether the node looks the same absent as present: no fade, scale, offset, blur, reveal
     /// or drawing (the anchor alone moves nothing).
     pub fn shows_nothing(&self) -> bool {
-        Effect { anchor: Effect::IDENTITY.anchor, small_scale: false, ..*self } == Effect::IDENTITY
+        Effect {
+            anchor: Effect::IDENTITY.anchor,
+            small_scale: false,
+            ..*self
+        } == Effect::IDENTITY
     }
 
     pub fn kit_rules(mut self, removal: bool) -> Effect {
-        let floor = if self.small_scale { SMALL_SCALE_FLOOR } else { 0.9 };
+        let floor = if self.small_scale {
+            SMALL_SCALE_FLOOR
+        } else {
+            0.9
+        };
         self.scale = self.scale.clamp(floor, 1.1);
-        self.blur = if self.travels() { 0.0 } else { self.blur.clamp(0.0, 4.0) };
+        self.blur = if self.travels() {
+            0.0
+        } else {
+            self.blur.clamp(0.0, 4.0)
+        };
         self.opacity = self.opacity.clamp(0.0, 1.0);
         self.draw = self.draw.clamp(0.0, 1.0);
         if removal {
@@ -179,7 +204,12 @@ impl Default for Transition {
 
 impl Transition {
     fn symmetric(e: Effect) -> Transition {
-        Transition { insertion: e, removal: e, pop_layout: true, springs: tokens::pair::SETTLE }
+        Transition {
+            insertion: e,
+            removal: e,
+            pop_layout: true,
+            springs: tokens::pair::SETTLE,
+        }
     }
 
     /// No visual change (presence still holds removal until its fade settles).
@@ -200,55 +230,107 @@ impl Transition {
     }
     /// `.scale(s)` about the centre, plus a fade.
     pub fn scale(scale: f32) -> Transition {
-        Transition::symmetric(Effect { scale, opacity: 0.0, ..Effect::IDENTITY })
+        Transition::symmetric(Effect {
+            scale,
+            opacity: 0.0,
+            ..Effect::IDENTITY
+        })
     }
     /// `.scale(s, anchor:)`.
     pub fn scale_anchor(scale: f32, anchor: Vec2) -> Transition {
-        Transition::symmetric(Effect { scale, anchor, opacity: 0.0, ..Effect::IDENTITY })
+        Transition::symmetric(Effect {
+            scale,
+            anchor,
+            opacity: 0.0,
+            ..Effect::IDENTITY
+        })
     }
     /// `.offset(x:y:)`.
     pub fn offset(x: f32, y: f32) -> Transition {
-        Transition::symmetric(Effect { offset: Vec2::new(x, y), ..Effect::IDENTITY })
+        Transition::symmetric(Effect {
+            offset: Vec2::new(x, y),
+            ..Effect::IDENTITY
+        })
     }
     /// `.move(edge:)`: in from and out to `edge`, by the node's full size.
     pub fn move_edge(edge: Edge) -> Transition {
-        Transition::symmetric(Effect { offset_fraction: edge.direction(), ..Effect::IDENTITY })
+        Transition::symmetric(Effect {
+            offset_fraction: edge.direction(),
+            ..Effect::IDENTITY
+        })
     }
     /// `.push(from:)`: in from `edge`, out through the opposite edge, fading.
     pub fn push(edge: Edge) -> Transition {
-        let e = |d: Edge| Effect { offset_fraction: d.direction(), opacity: 0.0, ..Effect::IDENTITY };
-        Transition { insertion: e(edge), removal: e(edge.opposite()), ..Transition::symmetric(Effect::IDENTITY) }
+        let e = |d: Edge| Effect {
+            offset_fraction: d.direction(),
+            opacity: 0.0,
+            ..Effect::IDENTITY
+        };
+        Transition {
+            insertion: e(edge),
+            removal: e(edge.opposite()),
+            ..Transition::symmetric(Effect::IDENTITY)
+        }
     }
     /// `.slide`: in from the leading edge, out through the trailing edge.
     pub fn slide() -> Transition {
-        let e = |d: Edge| Effect { offset_fraction: d.direction(), ..Effect::IDENTITY };
-        Transition { insertion: e(Edge::Leading), removal: e(Edge::Trailing), ..Transition::symmetric(Effect::IDENTITY) }
+        let e = |d: Edge| Effect {
+            offset_fraction: d.direction(),
+            ..Effect::IDENTITY
+        };
+        Transition {
+            insertion: e(Edge::Leading),
+            removal: e(Edge::Trailing),
+            ..Transition::symmetric(Effect::IDENTITY)
+        }
     }
     /// `.blurReplace`: whole-element in-place replacement: sigma 1.5 pt, scale .96, fade.
     /// The old 4 pt shape-edge ramp left glyphs sharp; it is not equivalent to sigma 4.
     /// This preset stays within the two-pass Gaussian path at 1×/2×. Explicit `blur(sigma)`
     /// remains available for stronger effects.
     pub fn blur_replace() -> Transition {
-        Transition::symmetric(Effect { opacity: 0.0, scale: 0.96, blur: 1.5, ..Effect::IDENTITY })
+        Transition::symmetric(Effect {
+            opacity: 0.0,
+            scale: 0.96,
+            blur: 1.5,
+            ..Effect::IDENTITY
+        })
     }
     /// Gaussian blur (sigma in points) and fade only.
     pub fn blur(sigma: f32) -> Transition {
-        Transition::symmetric(Effect { opacity: 0.0, blur: sigma, ..Effect::IDENTITY })
+        Transition::symmetric(Effect {
+            opacity: 0.0,
+            blur: sigma,
+            ..Effect::IDENTITY
+        })
     }
     /// A shape that draws itself on, as a connector draws from its source to its target: its
     /// strokes trace from their first point to their last, one after another, and each fill (an
     /// arrowhead) fades in as the line reaches it. Applies to the node's own shape (`canvas`)
     /// only; children enter by their own transitions.
     pub fn draw() -> Transition {
-        Transition::symmetric(Effect { draw: 0.0, ..Effect::IDENTITY })
+        Transition::symmetric(Effect {
+            draw: 0.0,
+            ..Effect::IDENTITY
+        })
     }
     /// A soft-edged wipe from `edge` (mask reveal), 24 pt feather.
     pub fn reveal(edge: Edge) -> Transition {
-        Transition::symmetric(Effect { reveal: Some(Reveal { edge, feather: 24.0 }), ..Effect::IDENTITY })
+        Transition::symmetric(Effect {
+            reveal: Some(Reveal {
+                edge,
+                feather: 24.0,
+            }),
+            ..Effect::IDENTITY
+        })
     }
     /// `.asymmetric(insertion:removal:)`.
     pub fn asymmetric(insertion: Transition, removal: Transition) -> Transition {
-        Transition { insertion: insertion.insertion, removal: removal.removal, ..insertion }
+        Transition {
+            insertion: insertion.insertion,
+            removal: removal.removal,
+            ..insertion
+        }
     }
     /// `.combined(with:)`.
     pub fn combined(self, other: Transition) -> Transition {

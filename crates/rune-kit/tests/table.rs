@@ -23,7 +23,11 @@ struct App {
 impl App {
     fn new(n: usize, multi: bool) -> App {
         let files = (0..n)
-            .map(|i| File { id: format!("f{i}"), name: format!("file {i} with a name long enough to cut short.rs"), size: (i as u64 * 7919) % 100_000 })
+            .map(|i| File {
+                id: format!("f{i}"),
+                name: format!("file {i} with a name long enough to cut short.rs"),
+                size: (i as u64 * 7919) % 100_000,
+            })
             .collect();
         App { files, table: TableState::new().multi_select(multi), sorts: Vec::new(), opened: Vec::new() }
     }
@@ -39,26 +43,31 @@ fn view(s: &App, _: &mut Cx<App>) -> El {
 fn sized(s: &App, w: f32, h: f32) -> El {
     let k = Kit::neutral(true);
     col().size(w, h).child(
-        Table::new(|s: &App| &s.table, |s: &mut App| &mut s.table, |s: &App| s.files.len(), |s: &App, i| Cow::Borrowed(s.files[i].id.as_str()))
-            .name("Files")
-            .column(TableColumn::new("name", "Name").flex(1.0).min(120.0).sortable())
-            .column(TableColumn::new("size", "Size").width(100.0).min(60.0).max(180.0).align(Align::End).sortable())
-            .column(TableColumn::new("kind", "Kind").width(80.0).resizable(false))
-            .cell(|s: &App, i, col| match col {
-                "name" => Cell::text(&s.files[i].name),
-                "size" => Cell::text(s.files[i].size.to_string()).mono(),
-                _ => Cell::text("Rust").muted(),
-            })
-            .on_sort(|s: &mut App, col, dir, _| {
-                s.sorts.push((col.to_owned(), dir));
-                if col == "size" {
-                    s.files.sort_by(|a, b| dir.apply(a.size.cmp(&b.size)));
-                }
-            })
-            .on_open(|s: &mut App, id, _| s.opened.push(id.to_owned()))
-            .zebra(true)
-            .build(s, &k)
-            .h(h),
+        Table::new(
+            |s: &App| &s.table,
+            |s: &mut App| &mut s.table,
+            |s: &App| s.files.len(),
+            |s: &App, i| Cow::Borrowed(s.files[i].id.as_str()),
+        )
+        .name("Files")
+        .column(TableColumn::new("name", "Name").flex(1.0).min(120.0).sortable())
+        .column(TableColumn::new("size", "Size").width(100.0).min(60.0).max(180.0).align(Align::End).sortable())
+        .column(TableColumn::new("kind", "Kind").width(80.0).resizable(false))
+        .cell(|s: &App, i, col| match col {
+            "name" => Cell::text(&s.files[i].name),
+            "size" => Cell::text(s.files[i].size.to_string()).mono(),
+            _ => Cell::text("Rust").muted(),
+        })
+        .on_sort(|s: &mut App, col, dir, _| {
+            s.sorts.push((col.to_owned(), dir));
+            if col == "size" {
+                s.files.sort_by(|a, b| dir.apply(a.size.cmp(&b.size)));
+            }
+        })
+        .on_open(|s: &mut App, id, _| s.opened.push(id.to_owned()))
+        .zebra(true)
+        .build(s, &k)
+        .h(h),
     )
 }
 
@@ -80,7 +89,9 @@ fn header(rt: &Runtime<App>, id: &str) -> ElementInfo {
 /// How assistive technology hears column `id` sorted: "ascending", "descending" or "".
 fn sort_read(rt: &Runtime<App>, id: &str) -> String {
     fn walk(v: &serde_json::Value, id: &str) -> Option<String> {
-        if v["role"] == "column-header" && v["key"] == id { return Some(v["sort"].as_str().unwrap_or("").to_owned()); }
+        if v["role"] == "column-header" && v["key"] == id {
+            return Some(v["sort"].as_str().unwrap_or("").to_owned());
+        }
         v["children"].as_array()?.iter().find_map(|c| walk(c, id))
     }
     walk(&rt.accessibility_json(), id).unwrap_or_default()
@@ -179,7 +190,10 @@ fn a_header_click_sorts_and_shows_the_direction() {
 fn cancelling_a_column_resize_restores_the_original_width_policy() {
     for initial in [None, Some(110.0)] {
         let mut rt = runtime(App::new(20, false));
-        if let Some(w) = initial { rt.update(|s, _| s.table.set_column_width("size", w)); rt.frame(0.0); }
+        if let Some(w) = initial {
+            rt.update(|s, _| s.table.set_column_width("size", w));
+            rt.frame(0.0);
+        }
         let handle = find(&rt, |e| e.label.as_deref() == Some("Resize Size")).remove(0).rect;
         let (x, y) = (handle[0] + handle[2] / 2.0, handle[1] + handle[3] / 2.0);
         rt.pointer_down(x, y);
@@ -321,7 +335,11 @@ fn table_time() {
                 with_commit.push(ms(t));
             }
         }
-        println!("  {} commits in 600 scroll frames, p50 {:.3} ms", rt.stats.commits - c0, percentile(&mut with_commit, 0.5));
+        println!(
+            "  {} commits in 600 scroll frames, p50 {:.3} ms",
+            rt.stats.commits - c0,
+            percentile(&mut with_commit, 0.5)
+        );
         let built = find(&rt, |e| e.role == "row").len();
         let commits = rt.stats.commits;
         let mut rebuild = Vec::new();
@@ -331,7 +349,11 @@ fn table_time() {
             rt.frame(5.0);
             rebuild.push(ms(t));
         }
-        println!("  rebuild at rest p50 {:.3} ms, {} commits", percentile(&mut rebuild, 0.5), rt.stats.commits - commits);
+        println!(
+            "  rebuild at rest p50 {:.3} ms, {} commits",
+            percentile(&mut rebuild, 0.5),
+            rt.stats.commits - commits
+        );
         let r = header(&rt, "size").rect;
         let t = Instant::now();
         click(&mut rt, r[0] + 20.0, r[1] + r[3] * 0.5);

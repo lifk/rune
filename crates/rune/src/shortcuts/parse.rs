@@ -21,7 +21,9 @@ pub struct Shortcut {
 
 impl FromStr for Shortcut {
     type Err = ShortcutError;
-    fn from_str(input: &str) -> Result<Self, Self::Err> { Self::parse_on(input, crate::KeyPlatform::current()) }
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        Self::parse_on(input, crate::KeyPlatform::current())
+    }
 }
 
 impl Shortcut {
@@ -40,38 +42,79 @@ impl Shortcut {
                 "alt" | "option" | "opt" => (ALT, ALT),
                 "shift" => (SHIFT, SHIFT),
                 "cmd" | "command" | "super" | "meta" | "logo" | "win" => (SUPER, SUPER),
-                "mod" | "primary" => (PRIMARY_NAME, if platform == crate::KeyPlatform::Mac { SUPER } else { CTRL }),
+                "mod" | "primary" => (
+                    PRIMARY_NAME,
+                    if platform == crate::KeyPlatform::Mac {
+                        SUPER
+                    } else {
+                        CTRL
+                    },
+                ),
                 _ => (0, 0),
             };
             if modifier != 0 {
-                if key.is_some() || named & name != 0 { return Err(invalid()); }
+                if key.is_some() || named & name != 0 {
+                    return Err(invalid());
+                }
                 named |= name;
                 mods |= modifier;
             } else {
-                if key.is_some() { return Err(invalid()); }
+                if key.is_some() {
+                    return Err(invalid());
+                }
                 let name = match part.as_str() {
-                    "esc" => "escape", "return" | "numpadenter" => "enter", "spacebar" => "space",
-                    "arrowleft" => "left", "arrowright" => "right", "arrowup" => "up", "arrowdown" => "down",
-                    "del" => "delete", "ins" => "insert", "pgup" => "pageup", "pgdn" => "pagedown",
-                    "-" => "minus", "=" | "plus" => "equal", "," => "comma", "." => "period", "/" => "slash",
-                    ";" => "semicolon", "'" => "quote", "[" => "bracketleft", "]" => "bracketright",
-                    "\\" => "backslash", "`" => "backquote",
+                    "esc" => "escape",
+                    "return" | "numpadenter" => "enter",
+                    "spacebar" => "space",
+                    "arrowleft" => "left",
+                    "arrowright" => "right",
+                    "arrowup" => "up",
+                    "arrowdown" => "down",
+                    "del" => "delete",
+                    "ins" => "insert",
+                    "pgup" => "pageup",
+                    "pgdn" => "pagedown",
+                    "-" => "minus",
+                    "=" | "plus" => "equal",
+                    "," => "comma",
+                    "." => "period",
+                    "/" => "slash",
+                    ";" => "semicolon",
+                    "'" => "quote",
+                    "[" => "bracketleft",
+                    "]" => "bracketright",
+                    "\\" => "backslash",
+                    "`" => "backquote",
                     name => name
-                        .strip_prefix("key").filter(|s| s.len() == 1 && s.as_bytes()[0].is_ascii_lowercase())
-                        .or_else(|| name.strip_prefix("digit").filter(|s| s.len() == 1 && s.as_bytes()[0].is_ascii_digit()))
+                        .strip_prefix("key")
+                        .filter(|s| s.len() == 1 && s.as_bytes()[0].is_ascii_lowercase())
+                        .or_else(|| {
+                            name.strip_prefix("digit")
+                                .filter(|s| s.len() == 1 && s.as_bytes()[0].is_ascii_digit())
+                        })
                         .unwrap_or(name),
                 };
                 key = Some(super::keys::named(name).ok_or_else(invalid)?);
             }
         }
-        Ok(Self { mods, key: key.ok_or_else(invalid)? })
+        Ok(Self {
+            mods,
+            key: key.ok_or_else(invalid)?,
+        })
     }
 }
 
 impl fmt::Display for Shortcut {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (bit, name) in [(CTRL, "ctrl"), (ALT, "alt"), (SHIFT, "shift"), (SUPER, "super")] {
-            if self.mods & bit != 0 { write!(f, "{name}+")?; }
+        for (bit, name) in [
+            (CTRL, "ctrl"),
+            (ALT, "alt"),
+            (SHIFT, "shift"),
+            (SUPER, "super"),
+        ] {
+            if self.mods & bit != 0 {
+                write!(f, "{name}+")?;
+            }
         }
         f.write_str(self.key_name())
     }
@@ -81,19 +124,40 @@ impl fmt::Display for Shortcut {
 impl Shortcut {
     pub(super) fn keysym_name(&self) -> String {
         match self.key_name() {
-            "escape" => "Escape", "enter" => "Return", "tab" => "Tab", "backspace" => "BackSpace",
-            "delete" => "Delete", "insert" => "Insert", "home" => "Home", "end" => "End", "pageup" => "Prior",
-            "pagedown" => "Next", "left" => "Left", "right" => "Right", "up" => "Up", "down" => "Down",
-            "quote" => "apostrophe", "backquote" => "grave",
+            "escape" => "Escape",
+            "enter" => "Return",
+            "tab" => "Tab",
+            "backspace" => "BackSpace",
+            "delete" => "Delete",
+            "insert" => "Insert",
+            "home" => "Home",
+            "end" => "End",
+            "pageup" => "Prior",
+            "pagedown" => "Next",
+            "left" => "Left",
+            "right" => "Right",
+            "up" => "Up",
+            "down" => "Down",
+            "quote" => "apostrophe",
+            "backquote" => "grave",
             k if k.starts_with('f') && k.len() > 1 => return k.to_uppercase(),
             k => k,
-        }.into()
+        }
+        .into()
     }
 
     pub(super) fn portal_trigger(&self) -> String {
         let mut s = String::new();
-        for (bit, name) in [(CTRL, "CTRL"), (ALT, "ALT"), (SHIFT, "SHIFT"), (SUPER, "LOGO")] {
-            if self.mods & bit != 0 { s.push_str(name); s.push('+'); }
+        for (bit, name) in [
+            (CTRL, "CTRL"),
+            (ALT, "ALT"),
+            (SHIFT, "SHIFT"),
+            (SUPER, "LOGO"),
+        ] {
+            if self.mods & bit != 0 {
+                s.push_str(name);
+                s.push('+');
+            }
         }
         s.push_str(&self.keysym_name());
         s
@@ -109,8 +173,13 @@ mod tests {
             ("CMD+Shift+Space", "shift+super+space"),
             ("OPTION+Control+Return", "ctrl+alt+enter"),
             ("super+SHIFT+ctrl+ALT+F24", "ctrl+alt+shift+super+f24"),
-            (" ctrl + A ", "ctrl+a"), ("esc", "escape"), ("cmd+/", "super+slash"),
-            ("KeyK", "k"), ("Digit7", "7"), ("BracketLeft", "bracketleft"), ("Semicolon", "semicolon"),
+            (" ctrl + A ", "ctrl+a"),
+            ("esc", "escape"),
+            ("cmd+/", "super+slash"),
+            ("KeyK", "k"),
+            ("Digit7", "7"),
+            ("BracketLeft", "bracketleft"),
+            ("Semicolon", "semicolon"),
         ] {
             let shortcut: Shortcut = input.parse().unwrap();
             assert_eq!(shortcut.to_string(), expected);
@@ -119,8 +188,27 @@ mod tests {
     }
     #[test]
     fn reject_ambiguous_and_incomplete_accelerators() {
-        for input in ["", "cmd", "cmd+", "cmd++a", "cmd+super+a", "a+b", "a+shift", "ctrl+unknown", "F0", "f25", "f01", "é"] {
-            assert!(matches!(input.parse::<Shortcut>(), Err(ShortcutError::InvalidAccelerator(_))), "{input}");
+        for input in [
+            "",
+            "cmd",
+            "cmd+",
+            "cmd++a",
+            "cmd+super+a",
+            "a+b",
+            "a+shift",
+            "ctrl+unknown",
+            "F0",
+            "f25",
+            "f01",
+            "é",
+        ] {
+            assert!(
+                matches!(
+                    input.parse::<Shortcut>(),
+                    Err(ShortcutError::InvalidAccelerator(_))
+                ),
+                "{input}"
+            );
         }
     }
 }

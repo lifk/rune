@@ -8,7 +8,9 @@ thread_local! {
 struct Allocator;
 fn allocated() {
     let _ = COUNT.try_with(|count| {
-        if let Some(n) = count.get() { count.set(Some(n + 1)); }
+        if let Some(n) = count.get() {
+            count.set(Some(n + 1));
+        }
     });
 }
 unsafe impl GlobalAlloc for Allocator {
@@ -34,7 +36,9 @@ static ALLOCATOR: Allocator = Allocator;
 #[test]
 fn sixty_hud_updates_allocate_nothing_and_keep_the_same_slot() {
     use rune::{Cx, El, Env, Pixels, Runtime, el};
-    fn view(p: &Pixels, _: &mut Cx<Pixels>) -> El { el().size(112.0, 64.0).pixels(p) }
+    fn view(p: &Pixels, _: &mut Cx<Pixels>) -> El {
+        el().size(112.0, 64.0).pixels(p)
+    }
     let pixels = Pixels::new();
     pixels.set(224, 128, vec![0; 224 * 128 * 4]);
     let mut rt = Runtime::new(pixels.clone(), view, (112.0, 64.0), Env::new(true, 2.0));
@@ -51,6 +55,9 @@ fn sixty_hud_updates_allocate_nothing_and_keep_the_same_slot() {
     }
     let allocations = COUNT.replace(None).unwrap();
     assert_eq!(allocations, 0);
-    assert!(stable && !slot.premultiplied, "streaming never selects a mip");
+    assert!(
+        stable && !slot.premultiplied,
+        "streaming never selects a mip"
+    );
     assert_eq!(rt.images.pages[0].data.as_ptr(), page);
 }

@@ -45,9 +45,9 @@ mod sources;
 mod task;
 mod ui;
 mod vm;
-mod watchdog;
 #[cfg(all(feature = "watch", not(target_arch = "wasm32")))]
 mod watch;
+mod watchdog;
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 mod web;
 mod workers;

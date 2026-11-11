@@ -4,7 +4,9 @@ use rune_kit::*;
 fn view(s: &TextEdit, cx: &mut Cx<TextEdit>) -> El {
     let k = Kit::neutral(cx.system_dark());
     let mut layers = Vec::new();
-    let body = col().gap(8.0).items_start()
+    let body = col()
+        .gap(8.0)
+        .items_start()
         .child(Button::new("Button").on_press(|_: &mut TextEdit| {}).build(&k))
         .child(IconButton::new(k.glyph.copy).on_press(|_: &mut TextEdit| {}).build(&k))
         .child(Switch::new(true).label("Switch").build(&k))
@@ -31,7 +33,9 @@ fn kit_controls_draw_one_ring_their_own() {
         rt.frame(0.0);
         let Some(at) = rt.elements().into_iter().find(|e| e.focused).map(|e| e.path) else { continue };
         assert!(!rt.instances.iter().any(|i| i.border == default_ring), "{at} drew the default ring");
-        if !stops.contains(&at) { stops.push(at); }
+        if !stops.contains(&at) {
+            stops.push(at);
+        }
     }
     assert!(stops.len() >= 8, "Tab visited {stops:?}");
 }

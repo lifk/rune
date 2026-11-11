@@ -49,7 +49,11 @@ impl Data {
 
     /// The value as a string, if it is one.
     pub fn as_str(&self) -> Option<&str> {
-        if let Data::String(s) = self { Some(s) } else { None }
+        if let Data::String(s) = self {
+            Some(s)
+        } else {
+            None
+        }
     }
 
     /// The field `key` of a map, or [`Data::Nil`].
@@ -80,7 +84,12 @@ impl Data {
             Data::Number(n) => serde_json::Number::from_f64(*n).map_or(J::Null, J::Number),
             Data::String(s) => J::String(s.clone()),
             Data::List(items) => J::Array(items.iter().map(Data::to_json).collect()),
-            Data::Map(fields) => J::Object(fields.iter().map(|(k, v)| (k.clone(), v.to_json())).collect()),
+            Data::Map(fields) => J::Object(
+                fields
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.to_json()))
+                    .collect(),
+            ),
         }
     }
 
@@ -98,7 +107,13 @@ impl Data {
             Value::Table(t) if depth < MAX_DEPTH => {
                 let len = t.raw_len();
                 if len > 0 {
-                    return Data::List((1..=len).map(|i| Data::from_value(&t.raw_get(i).unwrap_or(Value::Nil), depth + 1)).collect());
+                    return Data::List(
+                        (1..=len)
+                            .map(|i| {
+                                Data::from_value(&t.raw_get(i).unwrap_or(Value::Nil), depth + 1)
+                            })
+                            .collect(),
+                    );
                 }
                 Data::Map(
                     t.pairs::<Value, Value>()
@@ -123,12 +138,19 @@ impl Data {
 /// The value at stack slot `idx` as [`Data`], read with the C API inside a C function: whole
 /// numbers as integers, arrays as lists, string-keyed tables as maps; functions and userdata as
 /// `nil`.
-pub(crate) unsafe fn from_stack(state: *mut mlua::ffi::lua_State, idx: std::os::raw::c_int) -> Data {
+pub(crate) unsafe fn from_stack(
+    state: *mut mlua::ffi::lua_State,
+    idx: std::os::raw::c_int,
+) -> Data {
     // SAFETY: the caller passes a valid slot.
     unsafe { read_stack(state, mlua::ffi::lua_absindex(state, idx), 0) }
 }
 
-unsafe fn read_stack(state: *mut mlua::ffi::lua_State, idx: std::os::raw::c_int, depth: usize) -> Data {
+unsafe fn read_stack(
+    state: *mut mlua::ffi::lua_State,
+    idx: std::os::raw::c_int,
+    depth: usize,
+) -> Data {
     use mlua::ffi;
     // SAFETY: `idx` is an absolute slot; every value pushed below is popped before returning.
     unsafe {
@@ -136,12 +158,19 @@ unsafe fn read_stack(state: *mut mlua::ffi::lua_State, idx: std::os::raw::c_int,
             ffi::LUA_TBOOLEAN => Data::Bool(ffi::lua_toboolean(state, idx) != 0),
             ffi::LUA_TNUMBER => {
                 let n = ffi::lua_tonumberx(state, idx, std::ptr::null_mut());
-                if n.fract() == 0.0 && n.abs() <= MAX_SAFE { Data::Integer(n as i64) } else { Data::Number(n) }
+                if n.fract() == 0.0 && n.abs() <= MAX_SAFE {
+                    Data::Integer(n as i64)
+                } else {
+                    Data::Number(n)
+                }
             }
             ffi::LUA_TSTRING => {
                 let mut len = 0;
                 let p = ffi::lua_tolstring(state, idx, &mut len);
-                Data::String(String::from_utf8_lossy(std::slice::from_raw_parts(p.cast::<u8>(), len)).into_owned())
+                Data::String(
+                    String::from_utf8_lossy(std::slice::from_raw_parts(p.cast::<u8>(), len))
+                        .into_owned(),
+                )
             }
             ffi::LUA_TTABLE if depth < MAX_DEPTH => {
                 let len = ffi::lua_objlen(state, idx);
@@ -164,12 +193,14 @@ unsafe fn read_stack(state: *mut mlua::ffi::lua_State, idx: std::os::raw::c_int,
                 } {
                     let top = ffi::lua_gettop(state);
                     let key = match ffi::lua_type(state, top - 1) {
-                        ffi::LUA_TSTRING | ffi::LUA_TNUMBER => match read_stack(state, top - 1, MAX_DEPTH) {
-                            Data::String(s) => Some(s),
-                            Data::Integer(i) => Some(i.to_string()),
-                            Data::Number(n) => Some(n.to_string()),
-                            _ => None,
-                        },
+                        ffi::LUA_TSTRING | ffi::LUA_TNUMBER => {
+                            match read_stack(state, top - 1, MAX_DEPTH) {
+                                Data::String(s) => Some(s),
+                                Data::Integer(i) => Some(i.to_string()),
+                                Data::Number(n) => Some(n.to_string()),
+                                _ => None,
+                            }
+                        }
                         _ => None,
                     };
                     if let Some(key) = key {

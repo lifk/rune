@@ -69,11 +69,18 @@ impl<S: 'static> Runtime<S> {
             && (!any_animating || !self.scene.store().is_node_animating(new_n.id))
             && self.scene.phase(new_n.id) == Some(PresencePhase::Present)
             && !old_n.group_fade
-            && new_n.cold.get().is_none_or(|c| c.matched.is_none() && c.looping.is_none())
+            && new_n
+                .cold
+                .get()
+                .is_none_or(|c| c.matched.is_none() && c.looping.is_none())
             && (self.flying.is_empty() || !self.flying.iter().any(|f| f.0 == new_n.id))
             && (self.aspect_snap.is_empty() || !self.aspect_snap.contains(&new_n.id))
             && new_n.text.as_ref().is_none_or(|t| {
-                t.reveal < 0.0 || self.reveals.get(&new_n.id).is_some_and(|r| r.words.is_empty() && r.len == t.content.len())
+                t.reveal < 0.0
+                    || self
+                        .reveals
+                        .get(&new_n.id)
+                        .is_some_and(|r| r.words.is_empty() && r.len == t.content.len())
             })
     }
 
@@ -92,7 +99,11 @@ impl<S: 'static> Runtime<S> {
         out.reserve(reused.len());
         let any_animating = self.scene.store().active_len() > 0;
         for span in reused {
-            if !span.same_path || span.len == 0 || span.old_start + span.len > self.nodes.len() || span.new_start + span.len > nodes.len() {
+            if !span.same_path
+                || span.len == 0
+                || span.old_start + span.len > self.nodes.len()
+                || span.new_start + span.len > nodes.len()
+            {
                 continue;
             }
             let r_new = &nodes[span.new_start];
@@ -125,7 +136,10 @@ impl<S: 'static> Runtime<S> {
                 && self.scene.is_resting_at(r_new.id, scene_rect)
                 && (self.stacks.is_empty() || self.reorder_jump(nodes, span.new_start) == 0.0)
                 && (self.virtuals.is_empty()
-                    || !r_new.parent.and_then(|p| self.virtuals.get(&nodes[p].path)).is_some_and(crate::el::virtual_list::VirtualList::replaced_view));
+                    || !r_new
+                        .parent
+                        .and_then(|p| self.virtuals.get(&nodes[p].path))
+                        .is_some_and(crate::el::virtual_list::VirtualList::replaced_view));
 
             if !root_clean && !self.flying.is_empty() {
                 continue;
@@ -135,7 +149,11 @@ impl<S: 'static> Runtime<S> {
                 continue;
             }
             let interior_clean = (offset..span.len).all(|k| {
-                self.node_clean_for_apply(&nodes[span.new_start + k], &self.nodes[span.old_start + k], any_animating)
+                self.node_clean_for_apply(
+                    &nodes[span.new_start + k],
+                    &self.nodes[span.old_start + k],
+                    any_animating,
+                )
             });
             if interior_clean {
                 let new_start = span.new_start + offset;
@@ -147,7 +165,11 @@ impl<S: 'static> Runtime<S> {
                 {
                     last.len += len;
                 } else {
-                    out.push(CleanApplySpan { new_start, old_start, len });
+                    out.push(CleanApplySpan {
+                        new_start,
+                        old_start,
+                        len,
+                    });
                 }
             }
         }
@@ -188,65 +210,175 @@ fn opt_box_eq<T: PartialEq>(a: &Option<Box<T>>, b: &Option<Box<T>>) -> bool {
 
 fn same_visual_cold(a: &crate::el::VisualCold, b: &crate::el::VisualCold) -> bool {
     let crate::el::VisualCold {
-        surface, surface_place, border_bottom, border_sides, border_layout, border_dash, border_dash_phase, shadows, blur_motion,
-        clip, clip_radius, clip_corners, cutout, icon, icon_inked, icon_one_color, gradient, radial, outline, shape,
-        pixels, pixels_fit, effect, backdrop_blur, hover_motion, hover_within,
-        group_opacity, group_color, hover_alone, hover_share, hover_focus, icon_turn, cache_key, offset_motion, scale_motion,
-        origin, rotate_motion, child_exit, enter_delay, motion_intent, instant_motion, clip_to_content, flight_crop,
-        hold_landing, offset, paint_alpha, layer_opacity, blur, rotate, mark, mirror_rtl, paint_order,
+        surface,
+        surface_place,
+        border_bottom,
+        border_sides,
+        border_layout,
+        border_dash,
+        border_dash_phase,
+        shadows,
+        blur_motion,
+        clip,
+        clip_radius,
+        clip_corners,
+        cutout,
+        icon,
+        icon_inked,
+        icon_one_color,
+        gradient,
+        radial,
+        outline,
+        shape,
+        pixels,
+        pixels_fit,
+        effect,
+        backdrop_blur,
+        hover_motion,
+        hover_within,
+        group_opacity,
+        group_color,
+        hover_alone,
+        hover_share,
+        hover_focus,
+        icon_turn,
+        cache_key,
+        offset_motion,
+        scale_motion,
+        origin,
+        rotate_motion,
+        child_exit,
+        enter_delay,
+        motion_intent,
+        instant_motion,
+        clip_to_content,
+        flight_crop,
+        hold_landing,
+        offset,
+        paint_alpha,
+        layer_opacity,
+        blur,
+        rotate,
+        mark,
+        mirror_rtl,
+        paint_order,
     } = b;
     (match (&a.surface, surface) {
         (None, None) => true,
         (Some((sa, fa)), Some((sb, fb))) => sa.key() == sb.key() && fa == fb,
         _ => false,
-    }) && a.surface_place == *surface_place && a.border_bottom == *border_bottom && a.border_sides == *border_sides && a.border_layout == *border_layout && a.border_dash == *border_dash
-        && a.border_dash_phase == *border_dash_phase && a.shadows == *shadows
-        && opt_box_eq(&a.blur_motion, blur_motion) && a.clip == *clip
-        && a.clip_radius == *clip_radius && a.clip_corners == *clip_corners && a.cutout == *cutout
+    }) && a.surface_place == *surface_place
+        && a.border_bottom == *border_bottom
+        && a.border_sides == *border_sides
+        && a.border_layout == *border_layout
+        && a.border_dash == *border_dash
+        && a.border_dash_phase == *border_dash_phase
+        && a.shadows == *shadows
+        && opt_box_eq(&a.blur_motion, blur_motion)
+        && a.clip == *clip
+        && a.clip_radius == *clip_radius
+        && a.clip_corners == *clip_corners
+        && a.cutout == *cutout
         && match (&a.icon, icon) {
             (None, None) => true,
             (Some((ia, ca)), Some((ib, cb))) => std::ptr::eq(*ia, *ib) && ca == cb,
             _ => false,
         }
-        && a.icon_inked == *icon_inked && a.icon_one_color == *icon_one_color
-        && opt_box_eq(&a.gradient, gradient) && opt_box_eq(&a.radial, radial)
-        && a.outline == *outline && opt_rc_eq(&a.shape, shape)
+        && a.icon_inked == *icon_inked
+        && a.icon_one_color == *icon_one_color
+        && opt_box_eq(&a.gradient, gradient)
+        && opt_box_eq(&a.radial, radial)
+        && a.outline == *outline
+        && opt_rc_eq(&a.shape, shape)
         && match (&a.pixels, pixels) {
             (None, None) => true,
             (Some(pa), Some(pb)) => Arc::ptr_eq(&pa.source, &pb.source),
             _ => false,
         }
-        && a.pixels_fit == *pixels_fit && a.effect == *effect && a.backdrop_blur == *backdrop_blur
-        && opt_rc_eq(&a.hover_motion, hover_motion) && opt_rc_eq(&a.hover_within, hover_within)
-        && a.group_opacity == *group_opacity && a.group_color == *group_color && a.hover_alone == *hover_alone && a.hover_share == *hover_share && a.hover_focus == *hover_focus
-        && a.icon_turn == *icon_turn && a.cache_key == *cache_key
-        && opt_box_eq(&a.offset_motion, offset_motion) && opt_box_eq(&a.scale_motion, scale_motion)
-        && a.origin == *origin && opt_box_eq(&a.rotate_motion, rotate_motion)
-        && opt_box_eq(&a.child_exit, child_exit) && a.enter_delay == *enter_delay
-        && a.motion_intent == *motion_intent && a.instant_motion == *instant_motion
+        && a.pixels_fit == *pixels_fit
+        && a.effect == *effect
+        && a.backdrop_blur == *backdrop_blur
+        && opt_rc_eq(&a.hover_motion, hover_motion)
+        && opt_rc_eq(&a.hover_within, hover_within)
+        && a.group_opacity == *group_opacity
+        && a.group_color == *group_color
+        && a.hover_alone == *hover_alone
+        && a.hover_share == *hover_share
+        && a.hover_focus == *hover_focus
+        && a.icon_turn == *icon_turn
+        && a.cache_key == *cache_key
+        && opt_box_eq(&a.offset_motion, offset_motion)
+        && opt_box_eq(&a.scale_motion, scale_motion)
+        && a.origin == *origin
+        && opt_box_eq(&a.rotate_motion, rotate_motion)
+        && opt_box_eq(&a.child_exit, child_exit)
+        && a.enter_delay == *enter_delay
+        && a.motion_intent == *motion_intent
+        && a.instant_motion == *instant_motion
         && a.clip_to_content == *clip_to_content
         && a.flight_crop == *flight_crop
         && a.hold_landing == *hold_landing
-        && a.offset == *offset && a.paint_alpha == *paint_alpha && a.layer_opacity == *layer_opacity
-        && a.blur == *blur && a.rotate == *rotate && a.mark == *mark && a.mirror_rtl == *mirror_rtl && a.paint_order == *paint_order
+        && a.offset == *offset
+        && a.paint_alpha == *paint_alpha
+        && a.layer_opacity == *layer_opacity
+        && a.blur == *blur
+        && a.rotate == *rotate
+        && a.mark == *mark
+        && a.mirror_rtl == *mirror_rtl
+        && a.paint_order == *paint_order
 }
 
 pub(super) fn same_visual(a: &Visual, b: &Visual) -> bool {
-    let Visual { fill, radius, opacity, box_paint, cold } = b;
-    a.fill == *fill && a.radius.to_bits() == radius.to_bits() && a.opacity == *opacity
+    let Visual {
+        fill,
+        radius,
+        opacity,
+        box_paint,
+        cold,
+    } = b;
+    a.fill == *fill
+        && a.radius.to_bits() == radius.to_bits()
+        && a.opacity == *opacity
         && (crate::cold::Cold::ptr_eq(&a.box_paint, box_paint) || *a.box_paint == **box_paint)
         && (crate::cold::Cold::ptr_eq(&a.cold, cold) || same_visual_cold(&a.cold, cold))
 }
 
 fn same_el_cold(a: &crate::el::ElCold, b: &crate::el::ElCold) -> bool {
     let crate::el::ElCold {
-        focus, looping, trace_name, trace_namespace, role, label, live, above, motion, opacity_motion, lead,
-        transition, matched, scroll, scroll_axes, sticky, scroll_edges, growth, virtual_estimate, virtual_rows,
-        virtual_rows_version, glide, input, time_scale, help, help_cut, help_above, material, aspect_fit, a11y,
+        focus,
+        looping,
+        trace_name,
+        trace_namespace,
+        role,
+        label,
+        live,
+        above,
+        motion,
+        opacity_motion,
+        lead,
+        transition,
+        matched,
+        scroll,
+        scroll_axes,
+        sticky,
+        scroll_edges,
+        growth,
+        virtual_estimate,
+        virtual_rows,
+        virtual_rows_version,
+        glide,
+        input,
+        time_scale,
+        help,
+        help_cut,
+        help_above,
+        material,
+        aspect_fit,
+        a11y,
         #[cfg(debug_assertions)]
-        scroll_source: _,
+            scroll_source: _,
         #[cfg(debug_assertions)]
-        virtual_source: _,
+            virtual_source: _,
     } = b;
     crate::cold::Cold::ptr_eq(&a.focus, focus)
         && opt_box_eq(&a.looping, looping)
@@ -299,10 +431,7 @@ fn same_gestures(
     }
 }
 
-fn same_drop(
-    a: &Option<Box<crate::el::DropSpec>>,
-    b: &Option<Box<crate::el::DropSpec>>,
-) -> bool {
+fn same_drop(a: &Option<Box<crate::el::DropSpec>>, b: &Option<Box<crate::el::DropSpec>>) -> bool {
     match (a, b) {
         (None, None) => true,
         (Some(x), Some(y)) => {
@@ -357,8 +486,9 @@ fn same_handlers(
         on_selection_change,
         cursor,
         press_scale,
+        focus_scale,
         #[cfg(debug_assertions)]
-        sites: _,
+            sites: _,
     } = &**b;
     a.modal.is_none()
         && modal.is_none()
@@ -409,6 +539,7 @@ fn same_handlers(
         && opt_rc_eq(&a.on_selection_change, on_selection_change)
         && a.cursor == *cursor
         && a.press_scale == *press_scale
+        && a.focus_scale == *focus_scale
 }
 
 /// Exhaustively checks that `el` has not been mutated by builders after `Built::placeholder`
@@ -429,17 +560,21 @@ pub(super) fn same_root_el(el: &El, built: &crate::memo::Built) -> bool {
         role,
         vis_flags,
         #[cfg(debug_assertions)]
-        key_source: _,
+            key_source: _,
     } = base;
     // Flags flattening handles itself, or that only describe the children.
-    let ignored = crate::el::ElFlags::HAS_VIRTUAL | crate::el::ElFlags::MEMO_EXTENDED | crate::el::ElFlags::VIRTUAL_MOUNT;
+    let ignored = crate::el::ElFlags::HAS_VIRTUAL
+        | crate::el::ElFlags::MEMO_EXTENDED
+        | crate::el::ElFlags::VIRTUAL_MOUNT;
     let mut a = el.flags;
     let mut b = *flags;
     a.set(ignored, false);
     b.set(ignored, false);
 
     el.children.is_empty()
-        && el.memo_children().is_some_and(|mc| Rc::ptr_eq(mc, &built.children))
+        && el
+            .memo_children()
+            .is_some_and(|mc| Rc::ptr_eq(mc, &built.children))
         && el.role == *role
         && a == b
         && el.vis_flags == *vis_flags
@@ -491,14 +626,19 @@ fn path_matches(old_path: &str, parent_path: &str, key: Option<&str>, index: usi
     let tail = if parent_path.is_empty() {
         old_path
     } else {
-        let Some(rest) = old_path.strip_prefix(parent_path).and_then(|r| r.strip_prefix('/')) else {
+        let Some(rest) = old_path
+            .strip_prefix(parent_path)
+            .and_then(|r| r.strip_prefix('/'))
+        else {
             return false;
         };
         rest
     };
     match key {
         Some(k) => tail == k,
-        None => tail.strip_prefix('#').is_some_and(|n| !n.contains('/') && n.parse::<usize>().ok() == Some(index)),
+        None => tail
+            .strip_prefix('#')
+            .is_some_and(|n| !n.contains('/') && n.parse::<usize>().ok() == Some(index)),
     }
 }
 
@@ -525,10 +665,15 @@ pub(super) fn try_reuse_memo(
         return None;
     }
     let old_slice = &ctx.old_nodes[flat.start..end];
-    if old_slice[0].is_moved_stub() || old_slice[0].path.is_empty() || old_slice[0].id != flat.root_id || old_slice[flat.len - 1].id != flat.last_id {
+    if old_slice[0].is_moved_stub()
+        || old_slice[0].path.is_empty()
+        || old_slice[0].id != flat.root_id
+        || old_slice[flat.len - 1].id != flat.last_id
+    {
         return None;
     }
-    let (inherited, hover_within) = inherited_for(parent, nodes, motion, in_row, scale, ctx.foreground);
+    let (inherited, hover_within) =
+        inherited_for(parent, nodes, motion, in_row, scale, ctx.foreground);
     // By value: a view that sets `hover_motion_within` above the memo builds a new pair each time.
     if flat.inherited != inherited || flat.hover_within.as_deref() != hover_within.as_deref() {
         return None;
@@ -536,7 +681,9 @@ pub(super) fn try_reuse_memo(
     if el.key != old_slice[0].key || !same_root_el(el, built) {
         return None;
     }
-    if !old_slice.iter().all(|old| !old.is_moved_stub() && !old.path.is_empty() && taffy.can_reuse(old.id.0, old.taffy)) {
+    if !old_slice.iter().all(|old| {
+        !old.is_moved_stub() && !old.path.is_empty() && taffy.can_reuse(old.id.0, old.taffy)
+    }) {
         return None;
     }
 
@@ -558,8 +705,16 @@ pub(super) fn try_reuse_memo(
             n.clear_run_layout();
             n.scale_track = false;
             n.group_fade = false;
-            n.virtual_mount = if k == 0 { el.flags.has(crate::el::ElFlags::VIRTUAL_MOUNT) } else { false };
-            n.parent = if k == 0 { parent } else { n.parent.map(|p| new_start + (p - flat.start)) };
+            n.virtual_mount = if k == 0 {
+                el.flags.has(crate::el::ElFlags::VIRTUAL_MOUNT)
+            } else {
+                false
+            };
+            n.parent = if k == 0 {
+                parent
+            } else {
+                n.parent.map(|p| new_start + (p - flat.start))
+            };
             n.target = [0.0; 4];
             n.local = MRect::ZERO;
             n.inset = [0.0; 4];
@@ -575,8 +730,16 @@ pub(super) fn try_reuse_memo(
                 elided: None,
                 scale_track: false,
                 group_fade: false,
-                virtual_mount: if k == 0 { el.flags.has(crate::el::ElFlags::VIRTUAL_MOUNT) } else { false },
-                parent: if k == 0 { parent } else { old.parent.map(|p| new_start + (p - flat.start)) },
+                virtual_mount: if k == 0 {
+                    el.flags.has(crate::el::ElFlags::VIRTUAL_MOUNT)
+                } else {
+                    false
+                },
+                parent: if k == 0 {
+                    parent
+                } else {
+                    old.parent.map(|p| new_start + (p - flat.start))
+                },
                 target: [0.0; 4],
                 local: MRect::ZERO,
                 inset: [0.0; 4],
@@ -598,7 +761,11 @@ pub(super) fn try_reuse_memo(
                 s.push_str(tail);
                 s
             };
-            if ctx.path_ids.get(&path).is_some_and(|id| taffy.is_used_this_commit(id.0)) {
+            if ctx
+                .path_ids
+                .get(&path)
+                .is_some_and(|id| taffy.is_used_this_commit(id.0))
+            {
                 return None;
             }
             rebased.push(path);
@@ -631,8 +798,16 @@ pub(super) fn try_reuse_memo(
                 elided: None,
                 scale_track: false,
                 group_fade: false,
-                virtual_mount: if k == 0 { el.flags.has(crate::el::ElFlags::VIRTUAL_MOUNT) } else { false },
-                parent: if k == 0 { parent } else { old.parent.map(|p| new_start + (p - flat.start)) },
+                virtual_mount: if k == 0 {
+                    el.flags.has(crate::el::ElFlags::VIRTUAL_MOUNT)
+                } else {
+                    false
+                },
+                parent: if k == 0 {
+                    parent
+                } else {
+                    old.parent.map(|p| new_start + (p - flat.start))
+                },
                 target: [0.0; 4],
                 local: MRect::ZERO,
                 inset: [0.0; 4],

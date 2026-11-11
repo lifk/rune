@@ -22,14 +22,28 @@ mod platform;
 mod platform;
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 mod platform {
-    pub(super) fn misspelled(_: &str) -> Vec<(usize, usize)> { Vec::new() }
-    pub(super) fn suggest(_: &str) -> Vec<String> { Vec::new() }
+    pub(super) fn misspelled(_: &str) -> Vec<(usize, usize)> {
+        Vec::new()
+    }
+    pub(super) fn suggest(_: &str) -> Vec<String> {
+        Vec::new()
+    }
     pub(super) fn learn(_: &str) {}
-    pub(super) fn available() -> Vec<String> { Vec::new() }
-    pub(super) fn preferred() -> Vec<String> { Vec::new() }
-    pub(super) fn english_name(tag: &str) -> String { tag.to_owned() }
-    pub(super) fn name_in(_: &str, _: &str) -> Option<String> { None }
-    pub(super) fn sort_in<T>(_: &mut [(String, T)], _: &str) -> bool { false }
+    pub(super) fn available() -> Vec<String> {
+        Vec::new()
+    }
+    pub(super) fn preferred() -> Vec<String> {
+        Vec::new()
+    }
+    pub(super) fn english_name(tag: &str) -> String {
+        tag.to_owned()
+    }
+    pub(super) fn name_in(_: &str, _: &str) -> Option<String> {
+        None
+    }
+    pub(super) fn sort_in<T>(_: &mut [(String, T)], _: &str) -> bool {
+        false
+    }
 }
 
 /// The most suggestions a field's menu offers, as Chromium's.
@@ -62,7 +76,11 @@ pub fn available_languages() -> Vec<String> {
 pub fn languages() -> Vec<String> {
     let available = platform::available();
     let chosen = CHOSEN.lock().map(|c| c.clone()).unwrap_or_default();
-    let chosen: Vec<String> = available.iter().filter(|tag| chosen.contains(tag)).cloned().collect();
+    let chosen: Vec<String> = available
+        .iter()
+        .filter(|tag| chosen.contains(tag))
+        .cloned()
+        .collect();
     if !chosen.is_empty() {
         return chosen;
     }
@@ -83,7 +101,13 @@ pub fn set_languages(tags: &[String]) {
 /// A language tag's English name as a browser's `Intl.DisplayNames` gives it: `en-US` is
 /// "American English", `fr-FR` "French (France)".
 pub fn language_name(tag: &str) -> String {
-    DIALECTS.iter().find(|(t, _)| t.eq_ignore_ascii_case(tag)).map_or_else(|| platform::english_name(tag), |(_, name)| (*name).to_owned())
+    DIALECTS
+        .iter()
+        .find(|(t, _)| t.eq_ignore_ascii_case(tag))
+        .map_or_else(
+            || platform::english_name(tag),
+            |(_, name)| (*name).to_owned(),
+        )
 }
 
 /// A language tag's name in `locale`'s language as a browser's `Intl.DisplayNames(locale)`
@@ -130,7 +154,12 @@ const DIALECTS: &[(&str, &str)] = &[
 /// code terms.
 fn default_languages(available: &[String], preferred: &[String]) -> Vec<String> {
     let base = |tag: &str| tag.split('-').next().unwrap_or(tag).to_ascii_lowercase();
-    let find = |tag: &str| available.iter().find(|a| a.eq_ignore_ascii_case(tag)).cloned();
+    let find = |tag: &str| {
+        available
+            .iter()
+            .find(|a| a.eq_ignore_ascii_case(tag))
+            .cloned()
+    };
     let mut found: Vec<String> = Vec::new();
     for tag in preferred {
         if let Some(language) = find(tag).or_else(|| find(&base(tag)))
@@ -147,7 +176,9 @@ fn default_languages(available: &[String], preferred: &[String]) -> Vec<String> 
 }
 
 /// The current generation, for a thread's checkers to know when to start over.
-pub(crate) fn generation() -> u64 { GENERATION.load(Ordering::Relaxed) }
+pub(crate) fn generation() -> u64 {
+    GENERATION.load(Ordering::Relaxed)
+}
 
 /// The byte ranges of `text`'s misspelled words, checked once per text.
 pub(crate) fn misspelled(text: &str) -> Ranges {
@@ -180,7 +211,10 @@ pub(crate) fn misspelled(text: &str) -> Ranges {
 
 /// The misspelled word of `text` at byte `at` (in it or at its end).
 pub(crate) fn misspelled_at(text: &str, at: usize) -> Option<(usize, usize)> {
-    misspelled(text).iter().copied().find(|&(a, b)| a <= at && at <= b)
+    misspelled(text)
+        .iter()
+        .copied()
+        .find(|&(a, b)| a <= at && at <= b)
 }
 
 /// The checker's suggestions for misspelled `word`, best first.

@@ -28,8 +28,14 @@ struct State {
 fn view(s: &State, _: &mut Cx<State>) -> El {
     let mut out = col().w_full().h_full().padding(16.0).gap(8.0);
     for (name, image) in &s.images {
-        out = out.child(el().key(*name).w(120.0).h(60.0).pixels(image.pixels())
-            .cursor(Cursor::Image(CURSOR)).on_press(|_: &mut State| {}));
+        out = out.child(
+            el().key(*name)
+                .w(120.0)
+                .h(60.0)
+                .pixels(image.pixels())
+                .cursor(Cursor::Image(CURSOR))
+                .on_press(|_: &mut State| {}),
+        );
     }
     out
 }
@@ -39,7 +45,10 @@ pub fn run() {
     spec.setup = Some(|s, waker| {
         let cache = s.cache.insert(ImageCache::new(waker));
         s.images = vec![
-            ("jpeg", cache.load(&include_bytes!("../assets/proof.jpg")[..])),
+            (
+                "jpeg",
+                cache.load(&include_bytes!("../assets/proof.jpg")[..]),
+            ),
             ("png", cache.load(PNG)),
         ];
     });

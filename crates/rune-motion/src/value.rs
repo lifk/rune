@@ -24,7 +24,10 @@ pub trait Animatable: Copy {
     /// Euclidean distance in lane space.
     fn distance(self, other: Self) -> f32 {
         let (a, b) = (lanes(&self), lanes(&other));
-        (0..Self::LANES).map(|i| (a[i] - b[i]) * (a[i] - b[i])).sum::<f32>().sqrt()
+        (0..Self::LANES)
+            .map(|i| (a[i] - b[i]) * (a[i] - b[i]))
+            .sum::<f32>()
+            .sqrt()
     }
     /// `self + (other − self) · t` in lane space.
     fn lerp(self, other: Self, t: f32) -> Self {
@@ -96,12 +99,22 @@ pub struct Rect {
 }
 
 impl Rect {
-    pub const ZERO: Rect = Rect { x: 0.0, y: 0.0, w: 0.0, h: 0.0 };
+    pub const ZERO: Rect = Rect {
+        x: 0.0,
+        y: 0.0,
+        w: 0.0,
+        h: 0.0,
+    };
     pub const fn new(x: f32, y: f32, w: f32, h: f32) -> Rect {
         Rect { x, y, w, h }
     }
     pub fn from_edges(left: f32, top: f32, right: f32, bottom: f32) -> Rect {
-        Rect { x: left, y: top, w: right - left, h: bottom - top }
+        Rect {
+            x: left,
+            y: top,
+            w: right - left,
+            h: bottom - top,
+        }
     }
     pub fn right(&self) -> f32 {
         self.x + self.w
@@ -122,22 +135,41 @@ impl Rect {
         Vec2::new(self.x + self.w * 0.5, self.y + self.h * 0.5)
     }
     pub fn translated(&self, d: Vec2) -> Rect {
-        Rect { x: self.x + d.x, y: self.y + d.y, ..*self }
+        Rect {
+            x: self.x + d.x,
+            y: self.y + d.y,
+            ..*self
+        }
     }
     pub fn inflate(self, m: f32) -> Rect {
-        Rect { x: self.x - m, y: self.y - m, w: self.w + 2.0 * m, h: self.h + 2.0 * m }
+        Rect {
+            x: self.x - m,
+            y: self.y - m,
+            w: self.w + 2.0 * m,
+            h: self.h + 2.0 * m,
+        }
     }
     pub fn union(self, o: Rect) -> Rect {
         let x0 = self.x.min(o.x);
         let y0 = self.y.min(o.y);
         let x1 = (self.x + self.w).max(o.x + o.w);
         let y1 = (self.y + self.h).max(o.y + o.h);
-        Rect { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+        Rect {
+            x: x0,
+            y: y0,
+            w: x1 - x0,
+            h: y1 - y0,
+        }
     }
     pub fn from_points(a: [f32; 2], b: [f32; 2]) -> Rect {
         let x0 = a[0].min(b[0]);
         let y0 = a[1].min(b[1]);
-        Rect { x: x0, y: y0, w: (a[0] - b[0]).abs(), h: (a[1] - b[1]).abs() }
+        Rect {
+            x: x0,
+            y: y0,
+            w: (a[0] - b[0]).abs(),
+            h: (a[1] - b[1]).abs(),
+        }
     }
     pub fn xywh(self) -> [f32; 4] {
         [self.x, self.y, self.w, self.h]
@@ -231,8 +263,11 @@ impl Default for Transform {
 }
 
 impl Transform {
-    pub const IDENTITY: Transform =
-        Transform { translate: Vec2::ZERO, scale: Vec2 { x: 1.0, y: 1.0 }, rotate: 0.0 };
+    pub const IDENTITY: Transform = Transform {
+        translate: Vec2::ZERO,
+        scale: Vec2 { x: 1.0, y: 1.0 },
+        rotate: 0.0,
+    };
 
     /// The 2×3 affine matrix `[a, b, c, d, tx, ty]` (column-major like CGAffineTransform) that
     /// applies this transform about `anchor` (in the same space as the translate).
@@ -250,10 +285,20 @@ impl Transform {
 impl Animatable for Transform {
     const LANES: usize = 5;
     fn write_lanes(&self, out: &mut [f32]) {
-        out[..5].copy_from_slice(&[self.translate.x, self.translate.y, self.scale.x, self.scale.y, self.rotate]);
+        out[..5].copy_from_slice(&[
+            self.translate.x,
+            self.translate.y,
+            self.scale.x,
+            self.scale.y,
+            self.rotate,
+        ]);
     }
     fn read_lanes(l: &[f32]) -> Self {
-        Transform { translate: Vec2::new(l[0], l[1]), scale: Vec2::new(l[2], l[3]), rotate: l[4] }
+        Transform {
+            translate: Vec2::new(l[0], l[1]),
+            scale: Vec2::new(l[2], l[3]),
+            rotate: l[4],
+        }
     }
 }
 
@@ -271,9 +316,24 @@ pub struct Color {
 }
 
 impl Color {
-    pub const TRANSPARENT: Color = Color { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
-    pub const BLACK: Color = Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
-    pub const WHITE: Color = Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
+    pub const TRANSPARENT: Color = Color {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 0.0,
+    };
+    pub const BLACK: Color = Color {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 1.0,
+    };
+    pub const WHITE: Color = Color {
+        r: 1.0,
+        g: 1.0,
+        b: 1.0,
+        a: 1.0,
+    };
 
     pub const fn rgba(r: f32, g: f32, b: f32, a: f32) -> Color {
         Color { r, g, b, a }
@@ -295,7 +355,11 @@ impl Color {
 
     /// `[L, a, b]` in OKLab (Björn Ottosson's matrices).
     pub fn to_oklab(self) -> [f32; 3] {
-        linear_to_oklab(srgb_decode(self.r), srgb_decode(self.g), srgb_decode(self.b))
+        linear_to_oklab(
+            srgb_decode(self.r),
+            srgb_decode(self.g),
+            srgb_decode(self.b),
+        )
     }
 
     pub fn from_oklab(lab: [f32; 3], alpha: f32) -> Color {
@@ -330,11 +394,19 @@ pub fn oklab_to_linear([ll, a, b]: [f32; 3]) -> [f32; 3] {
 }
 
 pub fn srgb_decode(c: f32) -> f32 {
-    if c <= 0.040_45 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+    if c <= 0.040_45 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
 }
 
 pub fn srgb_encode(c: f32) -> f32 {
-    if c <= 0.003_130_8 { c * 12.92 } else { 1.055 * c.powf(1.0 / 2.4) - 0.055 }
+    if c <= 0.003_130_8 {
+        c * 12.92
+    } else {
+        1.055 * c.powf(1.0 / 2.4) - 0.055
+    }
 }
 
 impl Animatable for Color {
@@ -360,7 +432,10 @@ impl<A: Animatable, B: Animatable> Animatable for (A, B) {
         self.1.write_lanes(&mut out[A::LANES..A::LANES + B::LANES]);
     }
     fn read_lanes(l: &[f32]) -> Self {
-        (A::read_lanes(&l[..A::LANES]), B::read_lanes(&l[A::LANES..A::LANES + B::LANES]))
+        (
+            A::read_lanes(&l[..A::LANES]),
+            B::read_lanes(&l[A::LANES..A::LANES + B::LANES]),
+        )
     }
 }
 
@@ -374,7 +449,11 @@ impl<A: Animatable, B: Animatable, C: Animatable> Animatable for (A, B, C) {
     }
     fn read_lanes(l: &[f32]) -> Self {
         let (a, b) = (A::LANES, A::LANES + B::LANES);
-        (A::read_lanes(&l[..a]), B::read_lanes(&l[a..b]), C::read_lanes(&l[b..b + C::LANES]))
+        (
+            A::read_lanes(&l[..a]),
+            B::read_lanes(&l[a..b]),
+            C::read_lanes(&l[b..b + C::LANES]),
+        )
     }
 }
 
@@ -396,7 +475,12 @@ mod tests {
 
     #[test]
     fn oklab_round_trips() {
-        for c in [Color::hex(0xff3b30), Color::hex(0x34c759), Color::hex(0x007aff), Color::WHITE] {
+        for c in [
+            Color::hex(0xff3b30),
+            Color::hex(0x34c759),
+            Color::hex(0x007aff),
+            Color::WHITE,
+        ] {
             let back = Color::read_lanes(&lanes(&c)[..4]);
             for (x, y) in [(c.r, back.r), (c.g, back.g), (c.b, back.b), (c.a, back.a)] {
                 assert!((x - y).abs() < 1e-3, "{c:?} → {back:?}");
@@ -423,7 +507,10 @@ mod tests {
 
     #[test]
     fn affine_rotates_about_anchor() {
-        let t = Transform { rotate: core::f32::consts::FRAC_PI_2, ..Transform::IDENTITY };
+        let t = Transform {
+            rotate: core::f32::consts::FRAC_PI_2,
+            ..Transform::IDENTITY
+        };
         let [a, b, c, d, tx, ty] = t.to_affine(Vec2::new(10.0, 10.0));
         // The anchor stays put.
         let (x, y) = (a * 10.0 + c * 10.0 + tx, b * 10.0 + d * 10.0 + ty);

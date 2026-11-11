@@ -3,19 +3,30 @@ use super::*;
 
 /// Each inline icon (a bare pill) in `layout` (device px, at `origin`): its pill's index, its
 /// square's top-left corner and its side in px, centred on the letters of the word after it.
-pub(crate) fn bare_icons(layout: &Layout<Ink>, pills: &[PillChip], scale: f32, origin: [f32; 2], out: &mut Vec<(usize, [f32; 2], f32)>) {
+pub(crate) fn bare_icons(
+    layout: &Layout<Ink>,
+    pills: &[PillChip],
+    scale: f32,
+    origin: [f32; 2],
+    out: &mut Vec<(usize, [f32; 2], f32)>,
+) {
     if pills.iter().all(|p| p.bare.is_none()) {
         return;
     }
     for line in layout.lines() {
         let m = line.metrics();
         for item in line.items() {
-            let PositionedLayoutItem::InlineBox(b) = item else { continue };
+            let PositionedLayoutItem::InlineBox(b) = item else {
+                continue;
+            };
             if b.id & PILL_BOX == 0 || b.id & 1 == 1 {
                 continue;
             }
             let i = ((b.id & !PILL_BOX) >> 1) as usize;
-            let Some((pill, bare)) = pills.get(i).and_then(|p| Some((p, p.bare.as_deref()?))) else { continue };
+            let Some((pill, bare)) = pills.get(i).and_then(|p| Some((p, p.bare.as_deref()?)))
+            else {
+                continue;
+            };
             let (mut asc, mut desc) = (0.0f32, 0.0f32);
             for it in line.items() {
                 if let PositionedLayoutItem::GlyphRun(gr) = it {
@@ -64,8 +75,11 @@ pub(crate) fn pill_chips(
             })
             .collect();
         // Pills whose chip starts on this line, then those whose label wrapped onto it.
-        let mut starts: Vec<(usize, Option<&parley::PositionedInlineBox>)> =
-            boxes.iter().filter(|b| b.id & 1 == 0).map(|b| (((b.id & !PILL_BOX) >> 1) as usize, Some(b))).collect();
+        let mut starts: Vec<(usize, Option<&parley::PositionedInlineBox>)> = boxes
+            .iter()
+            .filter(|b| b.id & 1 == 0)
+            .map(|b| (((b.id & !PILL_BOX) >> 1) as usize, Some(b)))
+            .collect();
         let text = line.text_range();
         for (i, p) in pills.iter().enumerate() {
             let inside = (p.start as usize) < text.start && text.start < p.end as usize;
@@ -75,10 +89,13 @@ pub(crate) fn pill_chips(
         }
         let line_end = m.inline_min_coord + m.offset + m.advance - m.hanging_advance;
         for (i, lead) in starts {
-            let Some(pill) = pills.get(i).filter(|p| p.bare.is_none()) else { continue };
+            let Some(pill) = pills.get(i).filter(|p| p.bare.is_none()) else {
+                continue;
+            };
             let id = PILL_BOX | (i as u64) << 1;
             let trail = boxes.iter().find(|b| b.id == id | 1);
-            let (mut asc, mut desc, mut gr_x0, mut gr_x1) = (0.0f32, 0.0f32, f32::INFINITY, f32::NEG_INFINITY);
+            let (mut asc, mut desc, mut gr_x0, mut gr_x1) =
+                (0.0f32, 0.0f32, f32::INFINITY, f32::NEG_INFINITY);
             for item in line.items() {
                 if let PositionedLayoutItem::GlyphRun(gr) = item {
                     let r = gr.run().text_range();
@@ -99,13 +116,31 @@ pub(crate) fn pill_chips(
                 if gr_x0 > gr_x1 {
                     continue;
                 }
-                let x1 = trail.filter(|t| (t.x - gr_x1).abs() < 1.0).map_or(gr_x1 + pad, |t| t.x + t.width - margin);
+                let x1 = trail
+                    .filter(|t| (t.x - gr_x1).abs() < 1.0)
+                    .map_or(gr_x1 + pad, |t| t.x + t.width - margin);
                 let x1 = if trail.is_none() { line_end } else { x1 };
                 let base = origin[1] + m.baseline;
-                let (top, bot) = ((base - asc - 1.0 * scale).round(), (base + desc + 1.0 * scale).round());
+                let (top, bot) = (
+                    (base - asc - 1.0 * scale).round(),
+                    (base + desc + 1.0 * scale).round(),
+                );
                 let x0 = gr_x0.min(m.inline_min_coord + m.offset);
-                let rect = [(origin[0] + x0).round(), top, (x1 - x0).max(0.0).round(), bot - top];
-                out.push(PaintedDeco::new(Deco { rect, color: pill.bg.unwrap_or(bg), radius: (5.0 * scale).min(rect[3] * 0.5) }, None, 0));
+                let rect = [
+                    (origin[0] + x0).round(),
+                    top,
+                    (x1 - x0).max(0.0).round(),
+                    bot - top,
+                ];
+                out.push(PaintedDeco::new(
+                    Deco {
+                        rect,
+                        color: pill.bg.unwrap_or(bg),
+                        radius: (5.0 * scale).min(rect[3] * 0.5),
+                    },
+                    None,
+                    0,
+                ));
                 continue;
             };
             let rtl_lead = gr_x0 <= gr_x1 && (lead.x - gr_x1).abs() < 1.0;
@@ -137,12 +172,34 @@ pub(crate) fn pill_chips(
             let base = origin[1] + m.baseline;
             let top = (base - asc - 1.0 * scale).round();
             let bot = (base + desc + 1.0 * scale).round();
-            let rect = [(origin[0] + x0).round(), top, (x1 - x0).max(0.0).round(), bot - top];
-            out.push(PaintedDeco::new(Deco { rect, color: pill.bg.unwrap_or(bg), radius: (5.0 * scale).min(rect[3] * 0.5) }, None, 0));
+            let rect = [
+                (origin[0] + x0).round(),
+                top,
+                (x1 - x0).max(0.0).round(),
+                bot - top,
+            ];
+            out.push(PaintedDeco::new(
+                Deco {
+                    rect,
+                    color: pill.bg.unwrap_or(bg),
+                    radius: (5.0 * scale).min(rect[3] * 0.5),
+                },
+                None,
+                0,
+            ));
             if let Some(icon) = pill.icon {
                 let px = (pm.icon * scale).round().max(1.0);
-                let ix = if rtl_lead { rect[0] + rect[2] - pm.pad * scale - px } else { rect[0] + pm.pad * scale };
-                icons.push((icon, px as u32, [ix.round(), ((top + bot - px) * 0.5).round()], pill.fg));
+                let ix = if rtl_lead {
+                    rect[0] + rect[2] - pm.pad * scale - px
+                } else {
+                    rect[0] + pm.pad * scale
+                };
+                icons.push((
+                    icon,
+                    px as u32,
+                    [ix.round(), ((top + bot - px) * 0.5).round()],
+                    pill.fg,
+                ));
             }
         }
     }

@@ -136,9 +136,15 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
     }
     let ends = |i: usize| {
         let e = &g.edges[i];
-        if reversed[i] { (e.to, e.from) } else { (e.from, e.to) }
+        if reversed[i] {
+            (e.to, e.from)
+        } else {
+            (e.from, e.to)
+        }
     };
-    let live: Vec<usize> = (0..g.edges.len()).filter(|&i| g.edges[i].from != g.edges[i].to).collect();
+    let live: Vec<usize> = (0..g.edges.len())
+        .filter(|&i| g.edges[i].from != g.edges[i].to)
+        .collect();
 
     // 2. Ranks, doubled: every edge spans at least two, so its label has a rank to itself.
     let span = |i: usize| 2 * g.edges[i].minlen.clamp(1, MAX_MINLEN);
@@ -177,13 +183,20 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
     // Pull sources down next to their first successor, so a late root doesn't trail a long edge.
     for &v in topo.iter().rev() {
         if pred[v].is_empty() && !succ[v].is_empty() {
-            rank[v] = succ[v].iter().map(|&i| rank[ends(i).1] - span(i)).min().unwrap_or(rank[v]);
+            rank[v] = succ[v]
+                .iter()
+                .map(|&i| rank[ends(i).1] - span(i))
+                .min()
+                .unwrap_or(rank[v]);
         }
     }
     if let Some(m) = held {
         for &v in &topo {
             let floor = rank[v].max(m.rank.get(v).copied().unwrap_or(0));
-            rank[v] = pred[v].iter().map(|&i| rank[ends(i).0] + span(i)).fold(floor, usize::max);
+            rank[v] = pred[v]
+                .iter()
+                .map(|&i| rank[ends(i).0] + span(i))
+                .fold(floor, usize::max);
         }
     }
 
@@ -199,7 +212,14 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
         return None;
     }
     let mut nodes: Vec<LNode> = (0..n)
-        .map(|v| LNode { kind: Kind::Real(v), rank: rank[v], size: g.sizes[v], cluster: g.node_cluster[v], preds: Vec::new(), succs: Vec::new() })
+        .map(|v| LNode {
+            kind: Kind::Real(v),
+            rank: rank[v],
+            size: g.sizes[v],
+            cluster: g.node_cluster[v],
+            preds: Vec::new(),
+            succs: Vec::new(),
+        })
         .collect();
     let mut edge_chain: Vec<Vec<usize>> = vec![Vec::new(); g.edges.len()];
     for &i in &live {
@@ -262,7 +282,11 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
             break;
         }
         let down = it % 2 == 0;
-        let order: Vec<usize> = if down { (1..ranks).collect() } else { (0..ranks.saturating_sub(1)).rev().collect() };
+        let order: Vec<usize> = if down {
+            (1..ranks).collect()
+        } else {
+            (0..ranks.saturating_sub(1)).rev().collect()
+        };
         let mut pos = positions(&layers, nodes.len());
         for r in order {
             let layer = &layers[r];
@@ -270,8 +294,16 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
                 .iter()
                 .enumerate()
                 .map(|(i, &v)| {
-                    let nb = if down { &nodes[v].preds } else { &nodes[v].succs };
-                    if nb.is_empty() { i as f32 } else { nb.iter().map(|&u| pos[u] as f32).sum::<f32>() / nb.len() as f32 }
+                    let nb = if down {
+                        &nodes[v].preds
+                    } else {
+                        &nodes[v].succs
+                    };
+                    if nb.is_empty() {
+                        i as f32
+                    } else {
+                        nb.iter().map(|&u| pos[u] as f32).sum::<f32>() / nb.len() as f32
+                    }
                 })
                 .collect();
             layers[r] = grouped_order(layer, &keys, &node_chains);
@@ -299,11 +331,18 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
                 .map(|w| {
                     let (a, b) = (&nodes[w[0]], &nodes[w[1]]);
                     let real = |v: &LNode| matches!(v.kind, Kind::Real(_) | Kind::Dummy(_, true));
-                    let gap = if real(a) && real(b) { sp.node } else { sp.node / 2.0 };
+                    let gap = if real(a) && real(b) {
+                        sp.node
+                    } else {
+                        sp.node / 2.0
+                    };
                     let (ca, cb) = (node_chains[w[0]], node_chains[w[1]]);
                     let common = ca.iter().zip(cb).take_while(|(x, y)| x == y).count();
                     let closing = (ca.len() - common) as f32 * sp.cluster;
-                    let opening: f32 = cb[common..].iter().map(|&c| sp.cluster + g.clusters[c].lead[0]).sum();
+                    let opening: f32 = cb[common..]
+                        .iter()
+                        .map(|&c| sp.cluster + g.clusters[c].lead[0])
+                        .sum();
                     (a.size[0] + b.size[0]) / 2.0 + gap + closing + opening
                 })
                 .collect()
@@ -321,7 +360,10 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
     }
     // Streaming in, a node laid out last time stays there unless new ones need the room, and
     // then only moves on (see [`steady`]).
-    let floor = |v: usize| held.filter(|_| v < n).and_then(|m| m.along.get(v)?.as_ref());
+    let floor = |v: usize| {
+        held.filter(|_| v < n)
+            .and_then(|m| m.along.get(v)?.as_ref())
+    };
     let weight = |v: &LNode| match v.kind {
         Kind::Real(_) => 1.0,
         Kind::Dummy(..) => 4.0,
@@ -332,7 +374,11 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
             1 => (false, true),
             _ => (true, true),
         };
-        let order: Vec<usize> = if it % 2 == 0 { (0..ranks).collect() } else { (0..ranks).rev().collect() };
+        let order: Vec<usize> = if it % 2 == 0 {
+            (0..ranks).collect()
+        } else {
+            (0..ranks).rev().collect()
+        };
         for r in order {
             let layer = &layers[r];
             let mut want = Vec::with_capacity(layer.len());
@@ -349,12 +395,16 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
                 let (aim, pull) = match floor(v) {
                     Some(&at) => (at, HOLD),
                     None if nb.is_empty() => (x[v], 0.1),
-                    None => (nb.iter().map(|&u| x[u]).sum::<f32>() / nb.len() as f32, weight(node) * nb.len() as f32),
+                    None => (
+                        nb.iter().map(|&u| x[u]).sum::<f32>() / nb.len() as f32,
+                        weight(node) * nb.len() as f32,
+                    ),
                 };
                 want.push(aim);
                 w.push(pull);
             }
-            let placed = isotonic_above(want, w, &seps[r], layer.iter().map(|&v| floor(v).copied()));
+            let placed =
+                isotonic_above(want, w, &seps[r], layer.iter().map(|&v| floor(v).copied()));
             for (&v, p) in layer.iter().zip(placed) {
                 x[v] = p;
             }
@@ -370,13 +420,22 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
             last[c] = last[c].max(node.rank);
         }
     }
-    let heights: Vec<f32> = layers.iter().map(|l| l.iter().map(|&v| nodes[v].size[1]).fold(0.0, f32::max)).collect();
+    let heights: Vec<f32> = layers
+        .iter()
+        .map(|l| l.iter().map(|&v| nodes[v].size[1]).fold(0.0, f32::max))
+        .collect();
     let mut y = vec![0.0f32; ranks];
     let mut at = 0.0;
     for r in 0..ranks {
-        let opening: f32 = (0..g.clusters.len()).filter(|&c| first[c] == r).map(|c| sp.cluster + g.clusters[c].lead[1]).sum();
+        let opening: f32 = (0..g.clusters.len())
+            .filter(|&c| first[c] == r)
+            .map(|c| sp.cluster + g.clusters[c].lead[1])
+            .sum();
         if r > 0 {
-            let closing = (0..g.clusters.len()).filter(|&c| last[c] == r - 1 && first[c] != usize::MAX).count() as f32 * sp.cluster;
+            let closing = (0..g.clusters.len())
+                .filter(|&c| last[c] == r - 1 && first[c] != usize::MAX)
+                .count() as f32
+                * sp.cluster;
             at += heights[r - 1] / 2.0 + sp.rank / 2.0 + closing;
         }
         at += opening;
@@ -393,7 +452,13 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
     // steeply instead of squeezed.
     let drawn = |v: usize| matches!(nodes[v].kind, Kind::Real(_) | Kind::Dummy(_, true));
     // How far a port can slide toward the other end: a node's ports spread across its middle.
-    let slide = |v: usize| if matches!(nodes[v].kind, Kind::Real(_)) { nodes[v].size[0] / 4.0 } else { 0.0 };
+    let slide = |v: usize| {
+        if matches!(nodes[v].kind, Kind::Real(_)) {
+            nodes[v].size[0] / 4.0
+        } else {
+            0.0
+        }
+    };
     let base = y.clone();
     let mut grown = 0.0;
     for r in 1..ranks {
@@ -401,7 +466,8 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
         for &v in layers[r].iter().filter(|&&v| drawn(v)) {
             for &u in nodes[v].preds.iter().filter(|&&u| drawn(u)) {
                 let dx = (x[u] - x[v]).abs() - slide(u) - slide(v);
-                let dy = (base[r] - nodes[v].size[1] / 2.0) - (base[r - 1] + nodes[u].size[1] / 2.0);
+                let dy =
+                    (base[r] - nodes[v].size[1] / 2.0) - (base[r - 1] + nodes[u].size[1] / 2.0);
                 need = need.max(2.0 * dx - dy);
             }
         }
@@ -411,7 +477,11 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
     if let Some(m) = held {
         let fresh = y.clone();
         for r in 1..ranks {
-            let was = m.depth.get(r).zip(m.depth.get(r - 1)).map_or(0.0, |(b, a)| b - a);
+            let was = m
+                .depth
+                .get(r)
+                .zip(m.depth.get(r - 1))
+                .map_or(0.0, |(b, a)| b - a);
             y[r] = y[r - 1] + (fresh[r] - fresh[r - 1]).max(was);
         }
     }
@@ -422,14 +492,24 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
     let rect = |x: &[f32], v: usize| {
         let (node, cx) = (&nodes[v], x[v]);
         let cy = y[node.rank];
-        [cx - node.size[0] / 2.0, cy - node.size[1] / 2.0, cx + node.size[0] / 2.0, cy + node.size[1] / 2.0]
+        [
+            cx - node.size[0] / 2.0,
+            cy - node.size[1] / 2.0,
+            cx + node.size[0] / 2.0,
+            cy + node.size[1] / 2.0,
+        ]
     };
     let boxes_of = |x: &[f32]| {
         let mut boxes = vec![[f32::MAX, f32::MAX, f32::MIN, f32::MIN]; g.clusters.len()];
         for (v, node) in nodes.iter().enumerate() {
             if let (Kind::Real(_) | Kind::Dummy(_, true), Some(c)) = (node.kind, node.cluster) {
                 let (r, b) = (rect(x, v), &mut boxes[c]);
-                *b = [b[0].min(r[0]), b[1].min(r[1]), b[2].max(r[2]), b[3].max(r[3])];
+                *b = [
+                    b[0].min(r[0]),
+                    b[1].min(r[1]),
+                    b[2].max(r[2]),
+                    b[3].max(r[3]),
+                ];
             }
         }
         for &c in &depth_order {
@@ -439,7 +519,12 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
             }
             let lead = g.clusters[c].lead;
             let min_span = g.clusters[c].min_span;
-            let mut padded = [b[0] - sp.cluster - lead[0], b[1] - sp.cluster - lead[1], b[2] + sp.cluster, b[3] + sp.cluster];
+            let mut padded = [
+                b[0] - sp.cluster - lead[0],
+                b[1] - sp.cluster - lead[1],
+                b[2] + sp.cluster,
+                b[3] + sp.cluster,
+            ];
             for axis in [0, 1] {
                 let cur = padded[axis + 2] - padded[axis];
                 if cur < min_span[axis] {
@@ -451,14 +536,25 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
             boxes[c] = padded;
             if let Some(p) = g.clusters[c].parent {
                 let pb = &mut boxes[p];
-                *pb = [pb[0].min(padded[0]), pb[1].min(padded[1]), pb[2].max(padded[2]), pb[3].max(padded[3])];
+                *pb = [
+                    pb[0].min(padded[0]),
+                    pb[1].min(padded[1]),
+                    pb[2].max(padded[2]),
+                    pb[3].max(padded[3]),
+                ];
             }
         }
         boxes
     };
 
     // 8. Push overlapping sibling clusters and loose nodes apart across layers.
-    let members: Vec<Vec<usize>> = (0..g.clusters.len()).map(|c| (0..nodes.len()).filter(|&v| node_chains[v].contains(&c)).collect()).collect();
+    let members: Vec<Vec<usize>> = (0..g.clusters.len())
+        .map(|c| {
+            (0..nodes.len())
+                .filter(|&v| node_chains[v].contains(&c))
+                .collect()
+        })
+        .collect();
     let pos = positions(&layers, nodes.len());
     #[derive(Clone, Copy)]
     enum Item {
@@ -503,14 +599,26 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
         for i in 0..items.len() {
             for j in i + 1..items.len() {
                 let ((pa, a, ba), (pb, b, bb)) = (items[i], items[j]);
-                if pa != pb || matches!((a, b), (Item::Node(_), Item::Node(_))) || ba[1] >= bb[3] || bb[1] >= ba[3] {
+                if pa != pb
+                    || matches!((a, b), (Item::Node(_), Item::Node(_)))
+                    || ba[1] >= bb[3]
+                    || bb[1] >= ba[3]
+                {
                     continue;
                 }
-                let ((l, bl), (r, br)) = if left_of(a, b, ba, bb) { ((a, ba), (b, bb)) } else { ((b, bb), (a, ba)) };
+                let ((l, bl), (r, br)) = if left_of(a, b, ba, bb) {
+                    ((a, ba), (b, bb))
+                } else {
+                    ((b, bb), (a, ba))
+                };
                 let d = bl[2] + sp.node / 2.0 - br[0];
                 if d > 0.5 {
                     // Streaming in, nodes only move on along their ranks, so the right one makes the room.
-                    let (back, on) = if held.is_some() { (0.0, d) } else { (d / 2.0, d / 2.0) };
+                    let (back, on) = if held.is_some() {
+                        (0.0, d)
+                    } else {
+                        (d / 2.0, d / 2.0)
+                    };
                     item_nodes(l).iter().for_each(|&v| shift[v] -= back);
                     item_nodes(r).iter().for_each(|&v| shift[v] += on);
                     moved = true;
@@ -525,7 +633,12 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
         }
         for (layer, sep) in layers.iter().zip(&seps) {
             let want: Vec<f32> = layer.iter().map(|&v| x[v]).collect();
-            let placed = isotonic_above(want, vec![1.0; layer.len()], sep, layer.iter().map(|&v| floor(v).copied()));
+            let placed = isotonic_above(
+                want,
+                vec![1.0; layer.len()],
+                sep,
+                layer.iter().map(|&v| floor(v).copied()),
+            );
             for (&v, p) in layer.iter().zip(placed) {
                 x[v] = p;
             }
@@ -536,7 +649,10 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
     // 9. Normalise to the origin.
     let mut lo = [f32::MAX, f32::MAX];
     for (v, node) in nodes.iter().enumerate() {
-        lo = [lo[0].min(x[v] - node.size[0] / 2.0), lo[1].min(y[node.rank] - node.size[1] / 2.0)];
+        lo = [
+            lo[0].min(x[v] - node.size[0] / 2.0),
+            lo[1].min(y[node.rank] - node.size[1] / 2.0),
+        ];
     }
     for b in boxes.iter().filter(|b| b[0] <= b[2]) {
         lo = [lo[0].min(b[0]), lo[1].min(b[1])];
@@ -560,7 +676,12 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
             continue;
         }
         let mut pts: Vec<[f32; 2]> = edge_chain[i].iter().map(|&v| at(v)).collect();
-        labels.push(edge_chain[i].iter().find(|&&v| matches!(nodes[v].kind, Kind::Dummy(_, true))).map(|&v| at(v)));
+        labels.push(
+            edge_chain[i]
+                .iter()
+                .find(|&&v| matches!(nodes[v].kind, Kind::Dummy(_, true)))
+                .map(|&v| at(v)),
+        );
         if reversed[i] {
             pts.reverse();
         }
@@ -568,10 +689,29 @@ fn place(g: &Graph, sp: &Spacing, held: Option<&Memo>) -> Option<(Placed, Memo)>
     }
     let clusters = boxes
         .iter()
-        .map(|b| if b[0] <= b[2] { [b[0] - lo[0], b[1] - lo[1], b[2] - lo[0], b[3] - lo[1]] } else { [0.0; 4] })
+        .map(|b| {
+            if b[0] <= b[2] {
+                [b[0] - lo[0], b[1] - lo[1], b[2] - lo[0], b[3] - lo[1]]
+            } else {
+                [0.0; 4]
+            }
+        })
         .collect();
-    let memo = Memo { rank, along: (0..n).map(|v| Some(x[v] - lo[0])).collect(), depth: y.iter().map(|d| d - lo[1]).collect(), ..Memo::default() };
-    Some((Placed { centers, paths, labels, clusters }, memo))
+    let memo = Memo {
+        rank,
+        along: (0..n).map(|v| Some(x[v] - lo[0])).collect(),
+        depth: y.iter().map(|d| d - lo[1]).collect(),
+        ..Memo::default()
+    };
+    Some((
+        Placed {
+            centers,
+            paths,
+            labels,
+            clusters,
+        },
+        memo,
+    ))
 }
 
 /// How hard a node streaming in holds its place along its rank against its neighbours' pull
@@ -583,7 +723,9 @@ const HOLD: f32 = 1000.0;
 fn hold_order(layers: &mut [Vec<usize>], m: &Memo, n: usize, chains: &[&[usize]]) {
     let along = |v: usize| m.along.get(v).copied().flatten().filter(|_| v < n);
     for layer in layers {
-        let slots: Vec<usize> = (0..layer.len()).filter(|&i| along(layer[i]).is_some()).collect();
+        let slots: Vec<usize> = (0..layer.len())
+            .filter(|&i| along(layer[i]).is_some())
+            .collect();
         let mut kept: Vec<usize> = slots.iter().map(|&i| layer[i]).collect();
         kept.sort_by(|&a, &b| along(a).unwrap_or(0.0).total_cmp(&along(b).unwrap_or(0.0)));
         for (&i, v) in slots.iter().zip(kept) {
@@ -621,7 +763,11 @@ fn grouped_order(layer: &[usize], keys: &[f32], chains: &[&[usize]]) -> Vec<usiz
             .into_iter()
             .map(|(c, members)| {
                 let key = members.iter().map(|m| m.1).sum::<f32>() / members.len() as f32;
-                let members = if c.is_some() { go(members, depth + 1, chains) } else { members };
+                let members = if c.is_some() {
+                    go(members, depth + 1, chains)
+                } else {
+                    members
+                };
                 (key, members)
             })
             .collect();
@@ -655,7 +801,12 @@ fn crossings(layers: &[Vec<usize>], nodes: &[LNode]) -> usize {
 
 /// [`isotonic`], with places some nodes never go below: those that end up below theirs are
 /// pinned there, the rest solved again around them.
-fn isotonic_above(mut want: Vec<f32>, mut w: Vec<f32>, sep: &[f32], floors: impl Iterator<Item = Option<f32>>) -> Vec<f32> {
+fn isotonic_above(
+    mut want: Vec<f32>,
+    mut w: Vec<f32>,
+    sep: &[f32],
+    floors: impl Iterator<Item = Option<f32>>,
+) -> Vec<f32> {
     // A floor also lifts the floors after it by the room between them.
     let (mut gap, mut lift) = (0.0, f32::MIN);
     let floors: Vec<Option<f32>> = floors

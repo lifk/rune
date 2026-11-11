@@ -41,7 +41,9 @@ impl<S: 'static> Runtime<S> {
     /// The document's height in points: the root's laid-out height.
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     pub(crate) fn page_height(&self) -> f32 {
-        self.nodes.first().map_or(self.viewport.1, |root| root.local.h.max(0.0))
+        self.nodes
+            .first()
+            .map_or(self.viewport.1, |root| root.local.h.max(0.0))
     }
 
     /// The band's size in points: the canvas covers `band` points of the document, of which
@@ -49,9 +51,13 @@ impl<S: 'static> Runtime<S> {
     /// the band moved (the next frame draws it).
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     pub(crate) fn set_band(&mut self, band: f32, view: f32) -> bool {
-        if !self.page.on { return false; }
+        if !self.page.on {
+            return false;
+        }
         let (band, view) = (band.max(0.0), view.max(0.0));
-        if self.page.band == band && self.page.view == view { return false; }
+        if self.page.band == band && self.page.view == view {
+            return false;
+        }
         self.page.band = band;
         self.page.view = view;
         let top = self.band_top_for(self.page.scroll).unwrap_or(self.page.top);
@@ -67,12 +73,24 @@ impl<S: 'static> Runtime<S> {
     /// browser's compositor scrolls the canvas it already has and nothing is drawn.
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     pub(crate) fn set_page_scroll(&mut self, y: f32) -> bool {
-        if !self.page.on { return false; }
-        let y = if y.is_finite() { self.snap_band(y) } else { 0.0 };
-        if y == self.page.scroll { return false; }
+        if !self.page.on {
+            return false;
+        }
+        let y = if y.is_finite() {
+            self.snap_band(y)
+        } else {
+            0.0
+        };
+        if y == self.page.scroll {
+            return false;
+        }
         self.page.scroll = y;
-        let Some(top) = self.band_top_for(y) else { return false };
-        if top == self.page.top { return false; }
+        let Some(top) = self.band_top_for(y) else {
+            return false;
+        };
+        if top == self.page.top {
+            return false;
+        }
         self.page.top = top;
         true
     }
@@ -82,9 +100,13 @@ impl<S: 'static> Runtime<S> {
     /// the canvas follows the page every frame, as a fixed viewport-sized one did.
     fn band_top_for(&self, scroll: f32) -> Option<f32> {
         let (view, band) = (self.page.view, self.page.band);
-        if band <= view + 2.0 * MARGIN { return Some(self.snap_band(scroll)); }
+        if band <= view + 2.0 * MARGIN {
+            return Some(self.snap_band(scroll));
+        }
         let top = self.page.top;
-        if scroll >= top + MARGIN && scroll + view <= top + band - MARGIN { return None; }
+        if scroll >= top + MARGIN && scroll + view <= top + band - MARGIN {
+            return None;
+        }
         let want = scroll - (band - view) * 0.5;
         Some(self.snap_band(want.clamp(0.0, (self.page_height() - band).max(0.0))))
     }
@@ -103,8 +125,14 @@ impl<S: 'static> Runtime<S> {
     /// The part of the band that is on screen: where it starts in the band's points, and how tall
     /// it is. `(0, viewport)` outside a page.
     pub(crate) fn page_window(&self) -> (f32, f32) {
-        if !self.page.on { return (0.0, self.viewport.1); }
-        let view = if self.page.view > 0.0 { self.page.view } else { self.viewport.1 };
+        if !self.page.on {
+            return (0.0, self.viewport.1);
+        }
+        let view = if self.page.view > 0.0 {
+            self.page.view
+        } else {
+            self.viewport.1
+        };
         (self.page.scroll - self.page.top, view)
     }
 
@@ -113,11 +141,19 @@ impl<S: 'static> Runtime<S> {
     /// tells Rune where it went. Returns whether the content moved (the next frame draws it).
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     pub(crate) fn set_page_scroll_x(&mut self, path: &str, x: f32) -> bool {
-        if !self.page.on || !x.is_finite() { return false; }
-        let Some(i) = self.live(path) else { return false };
-        let Some(st) = self.scrolls.get_mut(&self.nodes[i].id) else { return false };
+        if !self.page.on || !x.is_finite() {
+            return false;
+        }
+        let Some(i) = self.live(path) else {
+            return false;
+        };
+        let Some(st) = self.scrolls.get_mut(&self.nodes[i].id) else {
+            return false;
+        };
         let offset = f64::from(x.max(0.0)).min(st.x.max.max(0.0));
-        if (st.x.offset - offset).abs() < 0.01 { return false; }
+        if (st.x.offset - offset).abs() < 0.01 {
+            return false;
+        }
         st.x.offset = offset;
         st.x.v = 0.0;
         st.x.glide = None;

@@ -47,19 +47,44 @@ impl Hud {
     pub fn view(&self) -> El {
         let mut graph = el().size(GRAPH_W, GRAPH_H).absolute(0.0, 0.0);
         for (rect, fill) in &self.bars {
-            graph = graph.child(el().absolute(0.0, 0.0).size(0.0, 0.0).fill(c(color::GOOD)).live_fill(fill).live_rect(rect));
+            graph = graph.child(
+                el().absolute(0.0, 0.0)
+                    .size(0.0, 0.0)
+                    .fill(c(color::GOOD))
+                    .live_fill(fill)
+                    .live_rect(rect),
+            );
         }
-        let line = |ms: f32, col: Lch| el().size(GRAPH_W, 1.0).absolute(0.0, GRAPH_H - ms / GRAPH_MAX * GRAPH_H).fill(c(col));
-        let label = |ms: f32, s: &str| text(s.to_owned()).font(nums(10.0, 560.0)).color(c(color::TEXT_2)).absolute(GRAPH_W + 6.0, GRAPH_H - ms / GRAPH_MAX * GRAPH_H - 7.0);
+        let line = |ms: f32, col: Lch| {
+            el().size(GRAPH_W, 1.0)
+                .absolute(0.0, GRAPH_H - ms / GRAPH_MAX * GRAPH_H)
+                .fill(c(col))
+        };
+        let label = |ms: f32, s: &str| {
+            text(s.to_owned())
+                .font(nums(10.0, 560.0))
+                .color(c(color::TEXT_2))
+                .absolute(GRAPH_W + 6.0, GRAPH_H - ms / GRAPH_MAX * GRAPH_H - 7.0)
+        };
         let graph = el()
             .size(GRAPH_W + 40.0, GRAPH_H)
-            .child(el().size(GRAPH_W, GRAPH_H).absolute(0.0, 0.0).radius(4.0).fill(c(color::WELL)))
+            .child(
+                el().size(GRAPH_W, GRAPH_H)
+                    .absolute(0.0, 0.0)
+                    .radius(4.0)
+                    .fill(c(color::WELL)),
+            )
             .child(graph)
             .child(line(BUDGET_120, color::ACCENT))
             .child(line(BUDGET_60, OVER))
             .child(label(BUDGET_120, "120 Hz"))
             .child(label(BUDGET_60, "60 Hz"));
-        let small = |placeholder: &str, live: &LiveText| text(placeholder.to_owned()).font(nums(11.0, 500.0)).color(c(color::TEXT_2)).live_text(live);
+        let small = |placeholder: &str, live: &LiveText| {
+            text(placeholder.to_owned())
+                .font(nums(11.0, 500.0))
+                .color(c(color::TEXT_2))
+                .live_text(live)
+        };
         row()
             .key("hud")
             .absolute(grid::WIDTH - grid::PAD - HUD_W, grid::PAD - 8.0)
@@ -75,7 +100,13 @@ impl Hud {
                     .w(HUD_W - GRAPH_W - 40.0 - 14.0 - 24.0)
                     .gap(1.0)
                     .child(caption(format!("Rune · {}", self.source)))
-                    .child(text("00.0 ms").font(nums(36.0, 700.0)).color(c(color::GOOD)).live_text_color(&self.big_color).live_text(&self.big))
+                    .child(
+                        text("00.0 ms")
+                            .font(nums(36.0, 700.0))
+                            .color(c(color::GOOD))
+                            .live_text_color(&self.big_color)
+                            .live_text(&self.big),
+                    )
                     .child(small("build + layout + paint · p95 00.0", &self.detail))
                     .child(small("≈ 000 fps at 120 Hz · 000 missed / s", &self.rate)),
             )

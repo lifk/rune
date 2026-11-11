@@ -18,9 +18,19 @@ mod tis {
     unsafe extern "C" {
         static kCFTypeDictionaryKeyCallBacks: c_void;
         static kCFTypeDictionaryValueCallBacks: c_void;
-        fn CFStringCreateWithCString(alloc: *const c_void, s: *const i8, encoding: u32) -> *const c_void;
-        fn CFDictionaryCreate(alloc: *const c_void, keys: *const *const c_void, values: *const *const c_void,
-            count: isize, key_callbacks: *const c_void, value_callbacks: *const c_void) -> *const c_void;
+        fn CFStringCreateWithCString(
+            alloc: *const c_void,
+            s: *const i8,
+            encoding: u32,
+        ) -> *const c_void;
+        fn CFDictionaryCreate(
+            alloc: *const c_void,
+            keys: *const *const c_void,
+            values: *const *const c_void,
+            count: isize,
+            key_callbacks: *const c_void,
+            value_callbacks: *const c_void,
+        ) -> *const c_void;
         fn CFArrayGetCount(array: *const c_void) -> isize;
         fn CFArrayGetValueAtIndex(array: *const c_void, index: isize) -> *const c_void;
         fn CFDataGetBytePtr(data: *const c_void) -> *const u8;
@@ -33,14 +43,25 @@ mod tis {
         unsafe {
             let value = CFStringCreateWithCString(std::ptr::null(), id.as_ptr(), 0x0800_0100);
             let key = kTISPropertyInputSourceID;
-            let filter = CFDictionaryCreate(std::ptr::null(), &key, &value, 1,
-                &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+            let filter = CFDictionaryCreate(
+                std::ptr::null(),
+                &key,
+                &value,
+                1,
+                &kCFTypeDictionaryKeyCallBacks,
+                &kCFTypeDictionaryValueCallBacks,
+            );
             let list = TISCreateInputSourceList(filter, 1);
             CFRelease(filter);
             CFRelease(value);
-            if list.is_null() { return None; }
+            if list.is_null() {
+                return None;
+            }
             let found = (CFArrayGetCount(list) > 0).then(|| {
-                let data = TISGetInputSourceProperty(CFArrayGetValueAtIndex(list, 0), kTISPropertyUnicodeKeyLayoutData);
+                let data = TISGetInputSourceProperty(
+                    CFArrayGetValueAtIndex(list, 0),
+                    kTISPropertyUnicodeKeyLayoutData,
+                );
                 assert!(!data.is_null(), "{id:?} has no Unicode layout data");
                 f(CFDataGetBytePtr(data).cast())
             });
@@ -85,7 +106,10 @@ fn main() {
     check("com.apple.keylayout.DVORAK-QWERTYCMD", &|layout| {
         assert_eq!(label(layout, K, 0).as_deref(), Some("t"));
         assert_eq!(label(layout, K, CMD).as_deref(), Some("k"));
-        assert_eq!(label(layout, K, CMD | SHIFT | OPTION | CONTROL).as_deref(), Some("k"));
+        assert_eq!(
+            label(layout, K, CMD | SHIFT | OPTION | CONTROL).as_deref(),
+            Some("k")
+        );
         assert_eq!(label(layout, K, OPTION).as_deref(), Some("t"));
     });
     assert_eq!(shortcut.physical_key(), rune::PhysicalKeyCode::KeyQ);

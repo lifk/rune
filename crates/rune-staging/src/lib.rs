@@ -74,7 +74,12 @@ struct Chunk {
 enum Dst {
     Buffer(wgpu::Buffer, u64),
     /// Full-width texture rows from `y`, `rows` of them, `bytes_per_row` apart in the chunk.
-    Rows { texture: wgpu::Texture, y: u32, rows: u32, bytes_per_row: u32 },
+    Rows {
+        texture: wgpu::Texture,
+        y: u32,
+        rows: u32,
+        bytes_per_row: u32,
+    },
 }
 
 struct Pending {
@@ -107,17 +112,30 @@ struct Return {
 
 impl Drop for Return {
     fn drop(&mut self) {
-        if self.chunk.is_some() { self.lost.fetch_add(1, Ordering::Relaxed); }
+        if self.chunk.is_some() {
+            self.lost.fetch_add(1, Ordering::Relaxed);
+        }
     }
 }
 
 impl Staging {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Staging {
         let (recycle, returned) = mpsc::channel();
-        Staging(Arc::new(Mutex::new(Inner {
-            device: device.clone(), queue: queue.clone(), active: Vec::new(), free: Vec::new(), recycle, returned,
-            pending: Vec::new(), pending_bytes: 0, stats: Stats::default(),
-        })), Arc::default(), Arc::default())
+        Staging(
+            Arc::new(Mutex::new(Inner {
+                device: device.clone(),
+                queue: queue.clone(),
+                active: Vec::new(),
+                free: Vec::new(),
+                recycle,
+                returned,
+                pending: Vec::new(),
+                pending_bytes: 0,
+                stats: Stats::default(),
+            })),
+            Arc::default(),
+            Arc::default(),
+        )
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
@@ -126,8 +144,12 @@ impl Staging {
 
     /// Stages a write of `data` to `buffer` at `offset`. Both are multiples of 4.
     pub fn write_buffer(&self, buffer: &wgpu::Buffer, offset: u64, data: &[u8]) {
-        if data.is_empty() { return; }
-        if let Some(direct) = DIRECT.get() && direct(buffer, offset, data) {
+        if data.is_empty() {
+            return;
+        }
+        if let Some(direct) = DIRECT.get()
+            && direct(buffer, offset, data)
+        {
             let mut s = self.lock();
             s.stats.direct += 1;
             s.stats.writes += 1;
@@ -135,46 +157,89 @@ impl Staging {
             return;
         }
         let mut s = self.lock();
-        if cfg!(target_arch = "wasm32") { return s.queue.write_buffer(buffer, offset, data); }
+        if cfg!(target_arch = "wasm32") {
+            return s.queue.write_buffer(buffer, offset, data);
+        }
         let size = data.len() as u64;
-        let (src, at) = s.stage(size, wgpu::MAP_ALIGNMENT, self, |view| view.slice(..data.len()).copy_from_slice(data));
-        s.pending.push(Pending { src, offset: at, size, dst: Dst::Buffer(buffer.clone(), offset) });
+        let (src, at) = s.stage(size, wgpu::MAP_ALIGNMENT, self, |view| {
+            view.slice(..data.len()).copy_from_slice(data)
+        });
+        s.pending.push(Pending {
+            src,
+            offset: at,
+            size,
+            dst: Dst::Buffer(buffer.clone(), offset),
+        });
     }
 
     /// Stages a write of full-width rows of `texture` from row `y`. `rows` holds them tightly
     /// packed; its length is a whole number of rows.
     pub fn write_texture_rows(&self, texture: &wgpu::Texture, y: u32, rows: &[u8]) {
-        let row = texture.width() * texture.format().block_copy_size(None).expect("a color format");
+        let row = texture.width()
+            * texture
+                .format()
+                .block_copy_size(None)
+                .expect("a color format");
         let count = (rows.len() / row as usize) as u32;
-        if count == 0 { return; }
+        if count == 0 {
+            return;
+        }
         let mut s = self.lock();
         if cfg!(target_arch = "wasm32") {
             return s.queue.write_texture(
-                wgpu::TexelCopyTextureInfo { texture, mip_level: 0, origin: wgpu::Origin3d { x: 0, y, z: 0 }, aspect: wgpu::TextureAspect::All },
+                wgpu::TexelCopyTextureInfo {
+                    texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d { x: 0, y, z: 0 },
+                    aspect: wgpu::TextureAspect::All,
+                },
                 rows,
-                wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(row), rows_per_image: None },
-                wgpu::Extent3d { width: texture.width(), height: count, depth_or_array_layers: 1 },
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(row),
+                    rows_per_image: None,
+                },
+                wgpu::Extent3d {
+                    width: texture.width(),
+                    height: count,
+                    depth_or_array_layers: 1,
+                },
             );
         }
         let padded = u64::from(row).next_multiple_of(ROW_ALIGN);
         let size = padded * u64::from(count);
         let (src, at) = s.stage(size, ROW_ALIGN, self, |view| {
-            if padded == u64::from(row) { return view.copy_from_slice(&rows[..size as usize]); }
+            if padded == u64::from(row) {
+                return view.copy_from_slice(&rows[..size as usize]);
+            }
             for (r, line) in rows.chunks_exact(row as usize).enumerate() {
                 let start = r * padded as usize;
                 view.slice(start..start + line.len()).copy_from_slice(line);
             }
         });
-        s.pending.push(Pending { src, offset: at, size,
-            dst: Dst::Rows { texture: texture.clone(), y, rows: count, bytes_per_row: padded as u32 } });
+        s.pending.push(Pending {
+            src,
+            offset: at,
+            size,
+            dst: Dst::Rows {
+                texture: texture.clone(),
+                y,
+                rows: count,
+                bytes_per_row: padded as u32,
+            },
+        });
     }
 
     /// Records the pending writes into `encoder` here, ahead of what is recorded after them.
     /// `encoder` must be submitted: dropped, the writes never land (`lost` counts it).
     pub fn flush(&self, encoder: &mut wgpu::CommandEncoder) {
-        if !self.busy() { return; }
+        if !self.busy() {
+            return;
+        }
         let mut s = self.lock();
-        if s.pending.is_empty() && s.active.is_empty() { return; }
+        if s.pending.is_empty() && s.active.is_empty() {
+            return;
+        }
         s.encode(encoder, self);
         s.stats.flushes += 1;
     }
@@ -184,16 +249,22 @@ impl Staging {
     /// `flush` unmaps them and must be into the same encoder (or one submitted after it); a
     /// `submit` before then would remap them before `encoder` copies out of them.
     pub fn record(&self, encoder: &mut wgpu::CommandEncoder) {
-        if !self.busy() { return; }
+        if !self.busy() {
+            return;
+        }
         let mut s = self.lock();
-        if s.pending.is_empty() { return; }
+        if s.pending.is_empty() {
+            return;
+        }
         s.copy(encoder);
         s.stats.flushes += 1;
     }
 
     /// Submits the pending writes now, ahead of anything submitted later.
     pub fn submit(&self) {
-        if !self.busy() { return; }
+        if !self.busy() {
+            return;
+        }
         self.lock().submit(self);
     }
 
@@ -220,9 +291,17 @@ impl Staging {
 
 impl Inner {
     /// Reserves `size` bytes (rounded up to 4) at `align` in a mapped chunk and fills them.
-    fn stage(&mut self, size: u64, align: u64, staging: &Staging, fill: impl FnOnce(&mut wgpu::WriteOnly<'_, [u8]>)) -> (wgpu::Buffer, u64) {
+    fn stage(
+        &mut self,
+        size: u64,
+        align: u64,
+        staging: &Staging,
+        fill: impl FnOnce(&mut wgpu::WriteOnly<'_, [u8]>),
+    ) -> (wgpu::Buffer, u64) {
         let size = size.next_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT);
-        if self.pending_bytes + size > MAX_PENDING { self.submit(staging); }
+        if self.pending_bytes + size > MAX_PENDING {
+            self.submit(staging);
+        }
         let fits = |c: &Chunk| c.used.next_multiple_of(align) + size <= c.buffer.size();
         let index = match self.active.iter().position(fits) {
             Some(i) => i,
@@ -238,7 +317,11 @@ impl Inner {
                             usage: wgpu::BufferUsages::MAP_WRITE | wgpu::BufferUsages::COPY_SRC,
                             mapped_at_creation: true,
                         });
-                        Chunk { buffer, used: 0, view: None }
+                        Chunk {
+                            buffer,
+                            used: 0,
+                            view: None,
+                        }
                     }
                 };
                 self.active.push(chunk);
@@ -248,7 +331,12 @@ impl Inner {
         let chunk = &mut self.active[index];
         let at = chunk.used.next_multiple_of(align);
         chunk.used = at + size;
-        let view = chunk.view.get_or_insert_with(|| chunk.buffer.get_mapped_range_mut(..).expect("a mapped staging chunk"));
+        let view = chunk.view.get_or_insert_with(|| {
+            chunk
+                .buffer
+                .get_mapped_range_mut(..)
+                .expect("a mapped staging chunk")
+        });
         fill(&mut view.slice(at as usize..(at + size) as usize));
         self.pending_bytes += size;
         self.stats.writes += 1;
@@ -263,7 +351,8 @@ impl Inner {
             chunk.used = 0;
             let kept: u64 = self.free.iter().map(|c| c.buffer.size()).sum();
             let size = chunk.buffer.size();
-            if size <= KEEP_CHUNK_MAX && self.free.len() < KEEP_CHUNKS && kept + size <= KEEP_BYTES {
+            if size <= KEEP_CHUNK_MAX && self.free.len() < KEEP_CHUNKS && kept + size <= KEEP_BYTES
+            {
                 self.free.push(chunk);
             }
         }
@@ -275,9 +364,17 @@ impl Inner {
             chunk.view = None;
             chunk.buffer.unmap();
             let buffer = chunk.buffer.clone();
-            let mut back = Return { chunk: Some(chunk), recycle: self.recycle.clone(), lost: staging.1.clone() };
+            let mut back = Return {
+                chunk: Some(chunk),
+                recycle: self.recycle.clone(),
+                lost: staging.1.clone(),
+            };
             encoder.map_buffer_on_submit(&buffer, wgpu::MapMode::Write, .., move |mapped| {
-                if mapped.is_ok() && let Some(chunk) = back.chunk.take() { let _ = back.recycle.send(chunk); }
+                if mapped.is_ok()
+                    && let Some(chunk) = back.chunk.take()
+                {
+                    let _ = back.recycle.send(chunk);
+                }
             });
         }
         staging.2.store(false, Ordering::Release);
@@ -287,12 +384,34 @@ impl Inner {
     fn copy(&mut self, encoder: &mut wgpu::CommandEncoder) {
         for p in self.pending.drain(..) {
             match p.dst {
-                Dst::Buffer(buffer, offset) => encoder.copy_buffer_to_buffer(&p.src, p.offset, &buffer, offset, p.size),
-                Dst::Rows { texture, y, rows, bytes_per_row } => encoder.copy_buffer_to_texture(
-                    wgpu::TexelCopyBufferInfo { buffer: &p.src, layout: wgpu::TexelCopyBufferLayout {
-                        offset: p.offset, bytes_per_row: Some(bytes_per_row), rows_per_image: None } },
-                    wgpu::TexelCopyTextureInfo { texture: &texture, mip_level: 0, origin: wgpu::Origin3d { x: 0, y, z: 0 }, aspect: wgpu::TextureAspect::All },
-                    wgpu::Extent3d { width: texture.width(), height: rows, depth_or_array_layers: 1 },
+                Dst::Buffer(buffer, offset) => {
+                    encoder.copy_buffer_to_buffer(&p.src, p.offset, &buffer, offset, p.size)
+                }
+                Dst::Rows {
+                    texture,
+                    y,
+                    rows,
+                    bytes_per_row,
+                } => encoder.copy_buffer_to_texture(
+                    wgpu::TexelCopyBufferInfo {
+                        buffer: &p.src,
+                        layout: wgpu::TexelCopyBufferLayout {
+                            offset: p.offset,
+                            bytes_per_row: Some(bytes_per_row),
+                            rows_per_image: None,
+                        },
+                    },
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d { x: 0, y, z: 0 },
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    wgpu::Extent3d {
+                        width: texture.width(),
+                        height: rows,
+                        depth_or_array_layers: 1,
+                    },
                 ),
             }
         }
@@ -300,8 +419,14 @@ impl Inner {
     }
 
     fn submit(&mut self, staging: &Staging) {
-        if self.pending.is_empty() { return; }
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("rune uploads") });
+        if self.pending.is_empty() {
+            return;
+        }
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("rune uploads"),
+            });
         self.encode(&mut encoder, staging);
         self.queue.submit([encoder.finish()]);
         self.stats.submits += 1;

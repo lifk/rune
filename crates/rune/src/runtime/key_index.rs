@@ -37,7 +37,11 @@ struct NodesId {
 
 impl NodesId {
     fn of(nodes: &[Node], commit: u64) -> Self {
-        NodesId { commit, len: nodes.len(), at: nodes.as_ptr() }
+        NodesId {
+            commit,
+            len: nodes.len(),
+            at: nodes.as_ptr(),
+        }
     }
 }
 
@@ -47,7 +51,11 @@ fn hash(key: &str) -> u64 {
 
 /// `selector` and each tail of it after a `/`: the keys a node or highlight it picks can have.
 fn tails(selector: &str) -> impl Iterator<Item = &str> {
-    std::iter::once(selector).chain(selector.match_indices('/').map(|(at, _)| &selector[at + 1..]))
+    std::iter::once(selector).chain(
+        selector
+            .match_indices('/')
+            .map(|(at, _)| &selector[at + 1..]),
+    )
 }
 
 impl KeyIndex {
@@ -92,10 +100,14 @@ impl KeyIndex {
             if let Some(key) = &n.key {
                 self.next_key[i] = self.keys.insert(hash(key), i as u32).unwrap_or(NONE);
             }
-            let Some(text) = n.text.as_ref() else { continue };
+            let Some(text) = n.text.as_ref() else {
+                continue;
+            };
             for key in text.highlights.iter().filter_map(|h| h.key.as_deref()) {
                 let first = self.marks.entry(hash(key)).or_insert(NONE);
-                if *first != NONE && self.mark_chain[*first as usize].0 == i as u32 { continue; }
+                if *first != NONE && self.mark_chain[*first as usize].0 == i as u32 {
+                    continue;
+                }
                 self.mark_chain.push((i as u32, *first));
                 *first = (self.mark_chain.len() - 1) as u32;
             }
@@ -104,22 +116,28 @@ impl KeyIndex {
 
     /// The first node `selector` picks (see [`crate::flight::selects`]).
     pub(super) fn first(&self, nodes: &[Node], selector: &str) -> Option<usize> {
-        tails(selector).filter_map(|key| {
-            let mut i = *self.keys.get(&hash(key))?;
-            while i != NONE {
-                let n = &nodes[i as usize];
-                if crate::flight::selects(selector, &n.path, n.key.as_deref()) { return Some(i as usize); }
-                i = self.next_key[i as usize];
-            }
-            None
-        }).min()
+        tails(selector)
+            .filter_map(|key| {
+                let mut i = *self.keys.get(&hash(key))?;
+                while i != NONE {
+                    let n = &nodes[i as usize];
+                    if crate::flight::selects(selector, &n.path, n.key.as_deref()) {
+                        return Some(i as usize);
+                    }
+                    i = self.next_key[i as usize];
+                }
+                None
+            })
+            .min()
     }
 
     /// The nodes holding a highlight `selector` may pick, in order. Each still needs checking.
     pub(super) fn marked(&self, selector: &str) -> Vec<usize> {
         let mut out = Vec::new();
         for key in tails(selector) {
-            let Some(&first) = self.marks.get(&hash(key)) else { continue };
+            let Some(&first) = self.marks.get(&hash(key)) else {
+                continue;
+            };
             let mut e = first;
             while e != NONE {
                 let (node, next) = self.mark_chain[e as usize];
@@ -135,8 +153,12 @@ impl KeyIndex {
 
 /// The first node `selector` picks, by scanning `nodes`.
 pub(super) fn scan_first(nodes: &[Node], selector: &str) -> Option<usize> {
-    nodes.iter().position(|n| n.key.as_deref().is_some_and(|key| tails(selector).any(|t| t == key))
-        && crate::flight::selects(selector, &n.path, n.key.as_deref()))
+    nodes.iter().position(|n| {
+        n.key
+            .as_deref()
+            .is_some_and(|key| tails(selector).any(|t| t == key))
+            && crate::flight::selects(selector, &n.path, n.key.as_deref())
+    })
 }
 
 impl<S: 'static> Runtime<S> {

@@ -9,7 +9,9 @@
 pub(crate) fn now_ns() -> u64 {
     #[cfg(windows)]
     {
-        use windows_sys::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
+        use windows_sys::Win32::System::Performance::{
+            QueryPerformanceCounter, QueryPerformanceFrequency,
+        };
         static FREQ: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
         let freq = *FREQ.get_or_init(|| {
             let mut f = 0i64;
@@ -25,7 +27,10 @@ pub(crate) fn now_ns() -> u64 {
     #[cfg(target_vendor = "apple")]
     {
         #[repr(C)]
-        struct Timebase { numer: u32, denom: u32 }
+        struct Timebase {
+            numer: u32,
+            denom: u32,
+        }
         unsafe extern "C" {
             fn mach_timebase_info(info: *mut Timebase) -> i32;
             fn mach_absolute_time() -> u64;
@@ -43,7 +48,10 @@ pub(crate) fn now_ns() -> u64 {
     }
     #[cfg(all(unix, not(target_vendor = "apple")))]
     {
-        let mut t = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+        let mut t = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
         // SAFETY: `t` is a live, writable timespec.
         unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut t) };
         t.tv_sec as u64 * 1_000_000_000 + t.tv_nsec as u64
@@ -56,7 +64,9 @@ pub(crate) fn now_ns() -> u64 {
 pub(crate) fn thread_cpu() -> u64 {
     #[cfg(windows)]
     {
-        use windows_sys::Win32::System::{Threading::GetCurrentThread, WindowsProgramming::QueryThreadCycleTime};
+        use windows_sys::Win32::System::{
+            Threading::GetCurrentThread, WindowsProgramming::QueryThreadCycleTime,
+        };
         let mut cycles = 0u64;
         // SAFETY: the pseudo-handle is valid for the calling thread; `cycles` is live and writable.
         unsafe { QueryThreadCycleTime(GetCurrentThread(), &mut cycles) };
@@ -64,7 +74,10 @@ pub(crate) fn thread_cpu() -> u64 {
     }
     #[cfg(unix)]
     {
-        let mut t = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+        let mut t = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
         // SAFETY: `t` is a live, writable timespec and the clock needs no handle.
         let ok = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut t) };
         assert_eq!(ok, 0, "thread CPU clock unavailable");
@@ -103,7 +116,9 @@ pub(crate) fn cycles_per_ns() -> f64 {
         let rate = {
             let round = || {
                 let (t0, c0) = (now_ns(), thread_cpu());
-                while now_ns() - t0 < 20_000_000 { std::hint::spin_loop(); }
+                while now_ns() - t0 < 20_000_000 {
+                    std::hint::spin_loop();
+                }
                 (thread_cpu() - c0) as f64 / (now_ns() - t0) as f64
             };
             (0..3).map(|_| round()).fold(0.0, f64::max)

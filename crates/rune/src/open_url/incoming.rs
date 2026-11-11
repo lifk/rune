@@ -58,14 +58,23 @@ pub(crate) struct Inbox {
 
 impl Inbox {
     pub(crate) const fn new() -> Self {
-        Inbox { state: Mutex::new(State { listeners: Vec::new(), next: 0, pending: Some(Vec::new()), installed: false }) }
+        Inbox {
+            state: Mutex::new(State {
+                listeners: Vec::new(),
+                next: 0,
+                pending: Some(Vec::new()),
+                installed: false,
+            }),
+        }
     }
 
     /// Before the event loop: install the handler and keep links until a window listens,
     /// unless something else handles them already.
     pub(crate) fn prepare(&self, glue: &dyn Glue) {
         let mut state = self.state.lock().unwrap();
-        if state.installed || glue.handled_elsewhere() || !glue.install() { return; }
+        if state.installed || glue.handled_elsewhere() || !glue.install() {
+            return;
+        }
         state.installed = true;
         state.pending.get_or_insert_with(Vec::new);
     }
@@ -73,18 +82,28 @@ impl Inbox {
     /// The links the app was launched with, ahead of any that arrived since.
     #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     pub(crate) fn launched(&self, urls: Vec<String>) {
-        if urls.is_empty() { return; }
+        if urls.is_empty() {
+            return;
+        }
         let mut state = self.state.lock().unwrap();
-        if let Some(pending) = &mut state.pending { pending.splice(0..0, urls); }
+        if let Some(pending) = &mut state.pending {
+            pending.splice(0..0, urls);
+        }
     }
 
     /// Sends links to `app`'s hook while the returned guard lives, after the links kept so far,
     /// if the app has the hook. Installs the handler if `prepare` didn't.
-    pub(crate) fn listen<S: 'static>(&'static self, app: &App<S>, glue: &dyn Glue) -> Option<Listening> {
+    pub(crate) fn listen<S: 'static>(
+        &'static self,
+        app: &App<S>,
+        glue: &dyn Glue,
+    ) -> Option<Listening> {
         let hook = app.on_open_url?;
         let mut state = self.state.lock().unwrap();
         if !state.installed {
-            if !glue.install() { return None; }
+            if !glue.install() {
+                return None;
+            }
             state.installed = true;
         }
         let handle: AppHandle<S> = app.handle();
@@ -94,7 +113,9 @@ impl Inbox {
         state.listeners.push((id, sink.clone()));
         let kept = state.pending.take().unwrap_or_default();
         drop(state);
-        for url in kept { sink(url); }
+        for url in kept {
+            sink(url);
+        }
         Some(Listening { inbox: self, id })
     }
 
@@ -109,14 +130,19 @@ impl Inbox {
     }
 
     /// A link arrived: to the first listener, kept before one exists, else dropped.
-    #[cfg_attr(not(any(test, target_os = "macos", target_os = "windows")), allow(dead_code))]
+    #[cfg_attr(
+        not(any(test, target_os = "macos", target_os = "windows")),
+        allow(dead_code)
+    )]
     pub(crate) fn receive(&self, url: String) {
         let sink = {
             let mut state = self.state.lock().unwrap();
             match state.listeners.first() {
                 Some((_, sink)) => sink.clone(),
                 None => {
-                    if let Some(pending) = &mut state.pending { pending.push(url); }
+                    if let Some(pending) = &mut state.pending {
+                        pending.push(url);
+                    }
                     return;
                 }
             }
@@ -133,7 +159,9 @@ pub(crate) struct Listening {
 
 impl Drop for Listening {
     fn drop(&mut self) {
-        if let Ok(mut state) = self.inbox.state.lock() { state.listeners.retain(|(id, _)| *id != self.id); }
+        if let Ok(mut state) = self.inbox.state.lock() {
+            state.listeners.retain(|(id, _)| *id != self.id);
+        }
     }
 }
 
@@ -142,9 +170,15 @@ static INBOX: Inbox = Inbox::new();
 struct Native;
 
 impl Glue for Native {
-    fn handled_elsewhere(&self) -> bool { platform::handled_elsewhere() }
-    fn install(&self) -> bool { platform::install() }
-    fn remove(&self) { platform::remove() }
+    fn handled_elsewhere(&self) -> bool {
+        platform::handled_elsewhere()
+    }
+    fn install(&self) -> bool {
+        platform::install()
+    }
+    fn remove(&self) {
+        platform::remove()
+    }
 }
 
 /// Before the event loop starts (see the module docs).
@@ -156,13 +190,19 @@ pub(crate) fn prepare() {
 
 /// A link from a later launch of the app (Windows, `single_instance`).
 #[cfg(target_os = "windows")]
-pub(crate) fn receive(url: String) { INBOX.receive(url); }
+pub(crate) fn receive(url: String) {
+    INBOX.receive(url);
+}
 
 /// For a starting window: its app's links, while the guard lives.
-pub(crate) fn listen<S: 'static>(app: &App<S>) -> Option<Listening> { INBOX.listen(app, &Native) }
+pub(crate) fn listen<S: 'static>(app: &App<S>) -> Option<Listening> {
+    INBOX.listen(app, &Native)
+}
 
 /// After every window at launch has started.
-pub(crate) fn settle() { INBOX.settle(&Native); }
+pub(crate) fn settle() {
+    INBOX.settle(&Native);
+}
 
 #[cfg(target_os = "macos")]
 use mac as platform;
@@ -171,26 +211,34 @@ use mac as platform;
 /// handler to install, and nothing else can have taken it.
 #[cfg(target_os = "windows")]
 mod platform {
-    pub(super) fn handled_elsewhere() -> bool { false }
-    pub(super) fn install() -> bool { true }
+    pub(super) fn handled_elsewhere() -> bool {
+        false
+    }
+    pub(super) fn install() -> bool {
+        true
+    }
     pub(super) fn remove() {}
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod platform {
-    pub(super) fn handled_elsewhere() -> bool { false }
-    pub(super) fn install() -> bool { false }
+    pub(super) fn handled_elsewhere() -> bool {
+        false
+    }
+    pub(super) fn install() -> bool {
+        false
+    }
     pub(super) fn remove() {}
 }
 
 #[cfg(target_os = "macos")]
 mod mac {
-    use std::ffi::c_void;
-    use std::sync::OnceLock;
     use objc2::rc::autoreleasepool;
     use objc2::runtime::{AnyClass, AnyObject, ClassBuilder, NSObject, Sel};
     use objc2::{ClassType, class, msg_send, sel};
     use objc2_foundation::{MainThreadMarker, NSString};
+    use std::ffi::c_void;
+    use std::sync::OnceLock;
 
     /// `'GURL'`: `kInternetEventClass` and `kAEGetURL`.
     const GET_URL: u32 = u32::from_be_bytes(*b"GURL");
@@ -199,7 +247,13 @@ mod mac {
 
     #[link(name = "CoreServices", kind = "framework")]
     unsafe extern "C" {
-        fn AEGetEventHandler(class: u32, id: u32, handler: *mut *const c_void, refcon: *mut *mut c_void, system: u8) -> i16;
+        fn AEGetEventHandler(
+            class: u32,
+            id: u32,
+            handler: *mut *const c_void,
+            refcon: *mut *mut c_void,
+            system: u8,
+        ) -> i16;
     }
 
     /// The URL string of a get-URL event.
@@ -216,9 +270,13 @@ mod mac {
     extern "C" fn get_url(_: &AnyObject, _: Sel, event: *mut AnyObject, _reply: *mut AnyObject) {
         let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             // SAFETY: AppKit passes the event, or nil.
-            if let Some(url) = unsafe { event.as_ref() }.and_then(url_of) { super::INBOX.receive(url); }
+            if let Some(url) = unsafe { event.as_ref() }.and_then(url_of) {
+                super::INBOX.receive(url);
+            }
         }));
-        if caught.is_err() { eprintln!("rune: open-url handler panicked"); }
+        if caught.is_err() {
+            eprintln!("rune: open-url handler panicked");
+        }
     }
 
     pub(super) fn handled_elsewhere() -> bool {
@@ -235,7 +293,12 @@ mod mac {
             let class = AnyClass::get(NAME).or_else(|| {
                 let mut builder = ClassBuilder::new(NAME, NSObject::class())?;
                 // SAFETY: the function matches `handleGetURLEvent:withReplyEvent:` (two objects, void).
-                unsafe { builder.add_method(sel!(handleGetURLEvent:withReplyEvent:), get_url as extern "C" fn(_, _, _, _)); }
+                unsafe {
+                    builder.add_method(
+                        sel!(handleGetURLEvent:withReplyEvent:),
+                        get_url as extern "C" fn(_, _, _, _),
+                    );
+                }
                 Some(builder.register())
             });
             let Some(class) = class else { return 0 };
@@ -253,11 +316,17 @@ mod mac {
 
     /// Makes Rune's object the handler of get-URL Apple events. Main thread only.
     pub(super) fn install() -> bool {
-        if MainThreadMarker::new().is_none() { return false; }
-        let Some(handler) = handler() else { return false };
+        if MainThreadMarker::new().is_none() {
+            return false;
+        }
+        let Some(handler) = handler() else {
+            return false;
+        };
         // SAFETY: Foundation calls on the main thread, with the handler alive for the process.
         autoreleasepool(|_| unsafe {
-            let Some(manager) = manager().as_ref() else { return false };
+            let Some(manager) = manager().as_ref() else {
+                return false;
+            };
             let _: () = msg_send![manager, setEventHandler: handler, andSelector: sel!(handleGetURLEvent:withReplyEvent:),
                 forEventClass: GET_URL, andEventID: GET_URL];
             true
@@ -265,7 +334,9 @@ mod mac {
     }
 
     pub(super) fn remove() {
-        if MainThreadMarker::new().is_none() { return; }
+        if MainThreadMarker::new().is_none() {
+            return;
+        }
         // SAFETY: Foundation calls on the main thread.
         autoreleasepool(|_| unsafe {
             if let Some(manager) = manager().as_ref() {

@@ -7,10 +7,22 @@ pub(super) struct Tex {
     pub(super) view: wgpu::TextureView,
 }
 
-fn tex(device: &wgpu::Device, label: &str, w: u32, h: u32, mips: u32, format: wgpu::TextureFormat, usage: wgpu::TextureUsages) -> Tex {
+fn tex(
+    device: &wgpu::Device,
+    label: &str,
+    w: u32,
+    h: u32,
+    mips: u32,
+    format: wgpu::TextureFormat,
+    usage: wgpu::TextureUsages,
+) -> Tex {
     let tex = device.create_texture(&wgpu::TextureDescriptor {
         label: Some(label),
-        size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: mips,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -109,25 +121,61 @@ pub(super) struct Ctx {
     pub(super) gpu: String,
 }
 
-fn bgl_entry(binding: u32, vis: wgpu::ShaderStages, ty: wgpu::BindingType) -> wgpu::BindGroupLayoutEntry {
-    wgpu::BindGroupLayoutEntry { binding, visibility: vis, ty, count: None }
+fn bgl_entry(
+    binding: u32,
+    vis: wgpu::ShaderStages,
+    ty: wgpu::BindingType,
+) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: vis,
+        ty,
+        count: None,
+    }
 }
 
 fn ftex() -> wgpu::BindingType {
-    wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }
+    wgpu::BindingType::Texture {
+        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+        view_dimension: wgpu::TextureViewDimension::D2,
+        multisampled: false,
+    }
 }
 
 fn ubuf() -> wgpu::BindingType {
-    wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }
+    wgpu::BindingType::Buffer {
+        ty: wgpu::BufferBindingType::Uniform,
+        has_dynamic_offset: false,
+        min_binding_size: None,
+    }
 }
 
 fn sbuf(read_only: bool) -> wgpu::BindingType {
-    wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only }, has_dynamic_offset: false, min_binding_size: None }
+    wgpu::BindingType::Buffer {
+        ty: wgpu::BufferBindingType::Storage { read_only },
+        has_dynamic_offset: false,
+        min_binding_size: None,
+    }
 }
 
-fn bind(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, entries: &[wgpu::BindingResource<'_>]) -> wgpu::BindGroup {
-    let e: Vec<wgpu::BindGroupEntry> = entries.iter().enumerate().map(|(i, r)| wgpu::BindGroupEntry { binding: i as u32, resource: r.clone() }).collect();
-    device.create_bind_group(&wgpu::BindGroupDescriptor { label: None, layout, entries: &e })
+fn bind(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    entries: &[wgpu::BindingResource<'_>],
+) -> wgpu::BindGroup {
+    let e: Vec<wgpu::BindGroupEntry> = entries
+        .iter()
+        .enumerate()
+        .map(|(i, r)| wgpu::BindGroupEntry {
+            binding: i as u32,
+            resource: r.clone(),
+        })
+        .collect();
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: None,
+        layout,
+        entries: &e,
+    })
 }
 
 fn tv(v: &wgpu::TextureView) -> wgpu::BindingResource<'_> {
@@ -137,7 +185,9 @@ fn tv(v: &wgpu::TextureView) -> wgpu::BindingResource<'_> {
 fn wgsl_part(name: &str) -> String {
     let src = include_str!("reel.wgsl");
     let (viz, rest) = src.split_once("// ---- bloom ----").unwrap();
-    let (bloom, rest) = rest.split_once("// ---- per-probe mean of a cascade level ----").unwrap();
+    let (bloom, rest) = rest
+        .split_once("// ---- per-probe mean of a cascade level ----")
+        .unwrap();
     let (mean, enc) = rest.split_once("// ---- final encode ----").unwrap();
     match name {
         "viz" => viz.to_string(),
@@ -191,8 +241,18 @@ fn blue_noise() -> Vec<u8> {
                 placed += 1;
             }
         }
-        let tightest = |on: &Vec<bool>, energy: &Vec<f32>| (0..N * N).filter(|&i| on[i]).max_by(|&a, &b| energy[a].total_cmp(&energy[b])).unwrap();
-        let voidest = |on: &Vec<bool>, energy: &Vec<f32>| (0..N * N).filter(|&i| !on[i]).min_by(|&a, &b| energy[a].total_cmp(&energy[b])).unwrap();
+        let tightest = |on: &Vec<bool>, energy: &Vec<f32>| {
+            (0..N * N)
+                .filter(|&i| on[i])
+                .max_by(|&a, &b| energy[a].total_cmp(&energy[b]))
+                .unwrap()
+        };
+        let voidest = |on: &Vec<bool>, energy: &Vec<f32>| {
+            (0..N * N)
+                .filter(|&i| !on[i])
+                .min_by(|&a, &b| energy[a].total_cmp(&energy[b]))
+                .unwrap()
+        };
         loop {
             let c = tightest(&on, &energy);
             toggle(&mut on, &mut energy, c, false);
@@ -225,9 +285,18 @@ fn blue_noise() -> Vec<u8> {
 
 impl Ctx {
     pub(super) fn new() -> Ctx {
-        let rune::render::Gpu { adapter, device, queue, .. } = rune::render::Gpu::headless();
+        let rune::render::Gpu {
+            adapter,
+            device,
+            queue,
+            ..
+        } = rune::render::Gpu::headless();
         let ts_feat = device.features() & wgpu::Features::TIMESTAMP_QUERY;
-        eprintln!("adapter: {:?}, timestamps: {}", adapter.get_info().name, !ts_feat.is_empty());
+        eprintln!(
+            "adapter: {:?}, timestamps: {}",
+            adapter.get_info().name,
+            !ts_feat.is_empty()
+        );
         use wgpu::TextureUsages as U;
         let rt = U::RENDER_ATTACHMENT | U::TEXTURE_BINDING;
         let full = |label: &str| tex(&device, label, W, H, 1, F16, rt | U::COPY_SRC | U::COPY_DST);
@@ -243,9 +312,23 @@ impl Ctx {
         let bloom = Bloom::new(&device);
         let layers = (0..10)
             .map(|i| {
-                let t = tex(&device, &format!("layer {i}"), W, H, MIPS, F16, rt | U::COPY_DST);
+                let t = tex(
+                    &device,
+                    &format!("layer {i}"),
+                    W,
+                    H,
+                    MIPS,
+                    F16,
+                    rt | U::COPY_DST,
+                );
                 let mips = (0..MIPS)
-                    .map(|m| t.tex.create_view(&wgpu::TextureViewDescriptor { base_mip_level: m, mip_level_count: Some(1), ..Default::default() }))
+                    .map(|m| {
+                        t.tex.create_view(&wgpu::TextureViewDescriptor {
+                            base_mip_level: m,
+                            mip_level_count: Some(1),
+                            ..Default::default()
+                        })
+                    })
                     .collect();
                 Layer { t, mips }
             })
@@ -257,13 +340,30 @@ impl Ctx {
         let viz = Self::viz(&device, light.inspect().gi_size);
         let enc = Self::enc(&device, &queue);
         let query = (!ts_feat.is_empty()).then(|| {
-            let qs = device.create_query_set(&wgpu::QuerySetDescriptor { label: Some("reel ts"), ty: wgpu::QueryType::Timestamp, count: 4 });
-            let resolve = device.create_buffer(&wgpu::BufferDescriptor { label: None, size: 32, usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC, mapped_at_creation: false });
-            let read = device.create_buffer(&wgpu::BufferDescriptor { label: None, size: 32, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
+            let qs = device.create_query_set(&wgpu::QuerySetDescriptor {
+                label: Some("reel ts"),
+                ty: wgpu::QueryType::Timestamp,
+                count: 4,
+            });
+            let resolve = device.create_buffer(&wgpu::BufferDescriptor {
+                label: None,
+                size: 32,
+                usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
+                mapped_at_creation: false,
+            });
+            let read = device.create_buffer(&wgpu::BufferDescriptor {
+                label: None,
+                size: 32,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            });
             (qs, resolve, read)
         });
         let period = queue.get_timestamp_period();
-        let nm = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: None, source: wgpu::ShaderSource::Wgsl("@compute @workgroup_size(1) fn noop() {}".into()) });
+        let nm = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: None,
+            source: wgpu::ShaderSource::Wgsl("@compute @workgroup_size(1) fn noop() {}".into()),
+        });
         let noop = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("noop"),
             layout: None,
@@ -297,17 +397,30 @@ impl Ctx {
             query,
             period,
             noop,
-            gpu: adapter.get_info().name.trim_start_matches("Apple ").to_string(),
+            gpu: adapter
+                .get_info()
+                .name
+                .trim_start_matches("Apple ")
+                .to_string(),
         }
     }
 
     /// An empty compute pass that writes a timestamp at its start or end (render-pass timestamps aren't ordered on
     /// tile GPUs, so render work is timed between two of these).
-    pub(super) fn marker(&self, enc: &mut wgpu::CommandEncoder, begin: Option<u32>, end: Option<u32>) {
+    pub(super) fn marker(
+        &self,
+        enc: &mut wgpu::CommandEncoder,
+        begin: Option<u32>,
+        end: Option<u32>,
+    ) {
         if let Some((qs, _, _)) = &self.query {
             let mut p = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("ts marker"),
-                timestamp_writes: Some(wgpu::ComputePassTimestampWrites { query_set: qs, beginning_of_pass_write_index: begin, end_of_pass_write_index: end }),
+                timestamp_writes: Some(wgpu::ComputePassTimestampWrites {
+                    query_set: qs,
+                    beginning_of_pass_write_index: begin,
+                    end_of_pass_write_index: end,
+                }),
             });
             p.set_pipeline(&self.noop);
             p.dispatch_workgroups(1, 1, 1);
@@ -331,20 +444,44 @@ impl Ctx {
                 bgl_entry(7, f, ftex()),
                 bgl_entry(8, f, ftex()),
                 bgl_entry(9, f, ftex()),
-                bgl_entry(10, f, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)),
+                bgl_entry(
+                    10,
+                    f,
+                    wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                ),
                 bgl_entry(11, f, ftex()),
-                bgl_entry(12, f, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)),
+                bgl_entry(
+                    12,
+                    f,
+                    wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                ),
             ],
         });
-        let m = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("reel viz"), source: wgpu::ShaderSource::Wgsl(wgsl_part("viz").into()) });
-        let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[Some(&bgl)], immediate_size: 0 });
+        let m = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("reel viz"),
+            source: wgpu::ShaderSource::Wgsl(wgsl_part("viz").into()),
+        });
+        let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: None,
+            bind_group_layouts: &[Some(&bgl)],
+            immediate_size: 0,
+        });
         let pipe = |vs: &str, fs: &str, blend: Option<wgpu::BlendState>, strip: bool| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(fs),
                 layout: Some(&pl),
-                vertex: wgpu::VertexState { module: &m, entry_point: Some(vs), compilation_options: Default::default(), buffers: &[] },
+                vertex: wgpu::VertexState {
+                    module: &m,
+                    entry_point: Some(vs),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
                 primitive: wgpu::PrimitiveState {
-                    topology: if strip { wgpu::PrimitiveTopology::TriangleStrip } else { wgpu::PrimitiveTopology::TriangleList },
+                    topology: if strip {
+                        wgpu::PrimitiveTopology::TriangleStrip
+                    } else {
+                        wgpu::PrimitiveTopology::TriangleList
+                    },
                     ..Default::default()
                 },
                 depth_stencil: None,
@@ -353,7 +490,11 @@ impl Ctx {
                     module: &m,
                     entry_point: Some(fs),
                     compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState { format: F16, blend, write_mask: wgpu::ColorWrites::ALL })],
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: F16,
+                        blend,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
                 }),
                 multiview_mask: None,
                 cache: None,
@@ -364,9 +505,26 @@ impl Ctx {
         let cascade = pipe("vs_full", "fs_cascade", None, false);
         let fluence = pipe("vs_full", "fs_fluence", None, false);
         let mip = pipe("vs_full", "fs_mip", None, false);
-        let layer = pipe("vs_layer", "fs_layer", Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING), true);
-        let add = wgpu::BlendComponent { src_factor: wgpu::BlendFactor::One, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add };
-        let accum = pipe("vs_full", "fs_accum", Some(wgpu::BlendState { color: add, alpha: add }), false);
+        let layer = pipe(
+            "vs_layer",
+            "fs_layer",
+            Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+            true,
+        );
+        let add = wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::One,
+            dst_factor: wgpu::BlendFactor::One,
+            operation: wgpu::BlendOperation::Add,
+        };
+        let accum = pipe(
+            "vs_full",
+            "fs_accum",
+            Some(wgpu::BlendState {
+                color: add,
+                alpha: add,
+            }),
+            false,
+        );
         let mean_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("mean"),
             entries: &[
@@ -375,12 +533,23 @@ impl Ctx {
                 bgl_entry(
                     2,
                     Ss::COMPUTE,
-                    wgpu::BindingType::StorageTexture { access: wgpu::StorageTextureAccess::WriteOnly, format: F16, view_dimension: wgpu::TextureViewDimension::D2 },
+                    wgpu::BindingType::StorageTexture {
+                        access: wgpu::StorageTextureAccess::WriteOnly,
+                        format: F16,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
                 ),
             ],
         });
-        let mm = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("reel mean"), source: wgpu::ShaderSource::Wgsl(wgsl_part("mean").into()) });
-        let mpl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[Some(&mean_bgl)], immediate_size: 0 });
+        let mm = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("reel mean"),
+            source: wgpu::ShaderSource::Wgsl(wgsl_part("mean").into()),
+        });
+        let mpl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: None,
+            bind_group_layouts: &[Some(&mean_bgl)],
+            immediate_size: 0,
+        });
         let mean = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("mean"),
             layout: Some(&mpl),
@@ -392,11 +561,25 @@ impl Ctx {
         let mean_u = (0..CASCADES)
             .map(|n| {
                 use wgpu::util::DeviceExt;
-                device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: None, contents: bytemuck::cast_slice(&[n, 0, 0, 0]), usage: wgpu::BufferUsages::UNIFORM })
+                device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: None,
+                    contents: bytemuck::cast_slice(&[n, 0, 0, 0]),
+                    usage: wgpu::BufferUsages::UNIFORM,
+                })
             })
             .collect();
         use wgpu::TextureUsages as U;
-        let mk = |n: u32| tex(device, "mean", gs.0 >> n, gs.1 >> n, 1, F16, U::STORAGE_BINDING | U::TEXTURE_BINDING);
+        let mk = |n: u32| {
+            tex(
+                device,
+                "mean",
+                gs.0 >> n,
+                gs.1 >> n,
+                1,
+                F16,
+                U::STORAGE_BINDING | U::TEXTURE_BINDING,
+            )
+        };
         let means_own = (0..CASCADES).map(mk).collect();
         let means_mrg = (0..CASCADES).map(mk).collect();
         let lin = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -413,7 +596,12 @@ impl Ctx {
             anisotropy_clamp: 16,
             ..Default::default()
         });
-        let g = device.create_buffer(&wgpu::BufferDescriptor { label: Some("viz g"), size: std::mem::size_of::<GU>() as u64, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+        let g = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("viz g"),
+            size: std::mem::size_of::<GU>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         let vp = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("viz vp"),
             size: (MAX_VP * std::mem::size_of::<VP>()) as u64,
@@ -421,7 +609,26 @@ impl Ctx {
             mapped_at_creation: false,
         });
         let dummy = tex(device, "dummy", 1, 1, 1, F16, U::TEXTURE_BINDING);
-        Viz { g, vp, bgl, field, scene, cascade, fluence, mip, layer, accum, mean_bgl, mean, mean_u, means_own, means_mrg, lin, aniso, dummy }
+        Viz {
+            g,
+            vp,
+            bgl,
+            field,
+            scene,
+            cascade,
+            fluence,
+            mip,
+            layer,
+            accum,
+            mean_bgl,
+            mean,
+            mean_u,
+            means_own,
+            means_mrg,
+            lin,
+            aniso,
+            dummy,
+        }
     }
 
     pub(super) fn enc(device: &wgpu::Device, queue: &wgpu::Queue) -> Enc {
@@ -438,25 +645,71 @@ impl Ctx {
                 bgl_entry(5, c, sbuf(false)),
                 bgl_entry(6, c, sbuf(false)),
                 bgl_entry(7, c, ftex()),
-                bgl_entry(8, c, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)),
+                bgl_entry(
+                    8,
+                    c,
+                    wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                ),
             ],
         });
-        let m = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("reel enc"), source: wgpu::ShaderSource::Wgsl(wgsl_part("enc").into()) });
-        let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[Some(&bgl)], immediate_size: 0 });
+        let m = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("reel enc"),
+            source: wgpu::ShaderSource::Wgsl(wgsl_part("enc").into()),
+        });
+        let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: None,
+            bind_group_layouts: &[Some(&bgl)],
+            immediate_size: 0,
+        });
         let cp = |e: &str| {
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor { label: Some(e), layout: Some(&pl), module: &m, entry_point: Some(e), compilation_options: Default::default(), cache: None })
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some(e),
+                layout: Some(&pl),
+                module: &m,
+                entry_point: Some(e),
+                compilation_options: Default::default(),
+                cache: None,
+            })
         };
         let yuv = cp("cs_yuv");
         let rgba = cp("cs_rgba");
-        let noise = tex(device, "blue noise", 64, 64, 1, wgpu::TextureFormat::Rgba8Unorm, wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST);
+        let noise = tex(
+            device,
+            "blue noise",
+            64,
+            64,
+            1,
+            wgpu::TextureFormat::Rgba8Unorm,
+            wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        );
         queue.write_texture(
-            wgpu::TexelCopyTextureInfo { texture: &noise.tex, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+            wgpu::TexelCopyTextureInfo {
+                texture: &noise.tex,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
             &blue_noise(),
-            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(256), rows_per_image: Some(64) },
-            wgpu::Extent3d { width: 64, height: 64, depth_or_array_layers: 1 },
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(256),
+                rows_per_image: Some(64),
+            },
+            wgpu::Extent3d {
+                width: 64,
+                height: 64,
+                depth_or_array_layers: 1,
+            },
         );
         let n = (W * H) as u64;
-        let buf = |label: &str, size: u64, usage: wgpu::BufferUsages| device.create_buffer(&wgpu::BufferDescriptor { label: Some(label), size, usage, mapped_at_creation: false });
+        let buf = |label: &str, size: u64, usage: wgpu::BufferUsages| {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size,
+                usage,
+                mapped_at_creation: false,
+            })
+        };
         use wgpu::BufferUsages as B;
         let y8 = buf("y8", n * 3 / 2, B::STORAGE | B::COPY_SRC);
         let y10 = buf("y10", n * 3, B::STORAGE | B::COPY_SRC);
@@ -465,24 +718,59 @@ impl Ctx {
         let read10 = buf("read10", n * 3, B::COPY_DST | B::MAP_READ);
         let read_rgba = buf("read rgba", n * 4, B::COPY_DST | B::MAP_READ);
         let u = buf("enc u", 32, B::UNIFORM | B::COPY_DST);
-        Enc { u, bgl, yuv, rgba, noise, y8, y10, rgba_buf, read8, read10, read_rgba }
+        Enc {
+            u,
+            bgl,
+            yuv,
+            rgba,
+            noise,
+            y8,
+            y10,
+            rgba_buf,
+            read8,
+            read10,
+            read_rgba,
+        }
     }
 
-    pub(super) fn draw_rune(&mut self, insts: &[Instance], target: &wgpu::TextureView, clear: [f32; 4]) {
-        self.rune.prepare(&self.device, &self.queue, &mut self.ts.atlas, insts, (W, H));
+    pub(super) fn draw_rune(
+        &mut self,
+        insts: &[Instance],
+        target: &wgpu::TextureView,
+        clear: [f32; 4],
+    ) {
+        self.rune
+            .prepare(&self.device, &self.queue, &mut self.ts.atlas, insts, (W, H));
         let mut enc = self.device.create_command_encoder(&Default::default());
         self.rune.draw(&mut enc, target, clear);
         self.queue.submit([enc.finish()]);
     }
 
-    pub(super) fn pass<'a>(enc: &'a mut wgpu::CommandEncoder, view: &'a wgpu::TextureView, load: Option<[f32; 4]>) -> wgpu::RenderPass<'a> {
+    pub(super) fn pass<'a>(
+        enc: &'a mut wgpu::CommandEncoder,
+        view: &'a wgpu::TextureView,
+        load: Option<[f32; 4]>,
+    ) -> wgpu::RenderPass<'a> {
         let ops = match load {
-            Some(c) => wgpu::LoadOp::Clear(wgpu::Color { r: c[0] as f64, g: c[1] as f64, b: c[2] as f64, a: c[3] as f64 }),
+            Some(c) => wgpu::LoadOp::Clear(wgpu::Color {
+                r: c[0] as f64,
+                g: c[1] as f64,
+                b: c[2] as f64,
+                a: c[3] as f64,
+            }),
             None => wgpu::LoadOp::Load,
         };
         enc.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: None,
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment { view, depth_slice: None, resolve_target: None, ops: wgpu::Operations { load: ops, store: wgpu::StoreOp::Store } })],
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: ops,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
             depth_stencil_attachment: None,
             timestamp_writes: None,
             occlusion_query_set: None,
@@ -490,16 +778,39 @@ impl Ctx {
         })
     }
 
-    pub(super) fn copy(&self, enc: &mut wgpu::CommandEncoder, src: &wgpu::Texture, dst: &wgpu::Texture) {
+    pub(super) fn copy(
+        &self,
+        enc: &mut wgpu::CommandEncoder,
+        src: &wgpu::Texture,
+        dst: &wgpu::Texture,
+    ) {
         enc.copy_texture_to_texture(
-            wgpu::TexelCopyTextureInfo { texture: src, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
-            wgpu::TexelCopyTextureInfo { texture: dst, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
-            wgpu::Extent3d { width: W, height: H, depth_or_array_layers: 1 },
+            wgpu::TexelCopyTextureInfo {
+                texture: src,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyTextureInfo {
+                texture: dst,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::Extent3d {
+                width: W,
+                height: H,
+                depth_or_array_layers: 1,
+            },
         );
     }
 
     /// Viz bind group with the GI buffers of `level` (or level 0) and `layer` as the sampled layer texture.
-    pub(super) fn viz_bg(&self, level: usize, layer: Option<&wgpu::TextureView>) -> wgpu::BindGroup {
+    pub(super) fn viz_bg(
+        &self,
+        level: usize,
+        layer: Option<&wgpu::TextureView>,
+    ) -> wgpu::BindGroup {
         let ins = self.light.inspect();
         let v = &self.viz;
         bind(
@@ -525,13 +836,31 @@ impl Ctx {
 
     pub(super) fn means(&self, enc: &mut wgpu::CommandEncoder) {
         let ins = self.light.inspect();
-        let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("means"), timestamp_writes: None });
+        let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("means"),
+            timestamp_writes: None,
+        });
         pass.set_pipeline(&self.viz.mean);
         for n in 0..CASCADES as usize {
-            for (src, dst) in [(&ins.own[n], &self.viz.means_own[n]), (&ins.merged[n], &self.viz.means_mrg[n])] {
-                let bg = bind(&self.device, &self.viz.mean_bgl, &[self.viz.mean_u[n].as_entire_binding(), tv(src), tv(&dst.view)]);
+            for (src, dst) in [
+                (&ins.own[n], &self.viz.means_own[n]),
+                (&ins.merged[n], &self.viz.means_mrg[n]),
+            ] {
+                let bg = bind(
+                    &self.device,
+                    &self.viz.mean_bgl,
+                    &[
+                        self.viz.mean_u[n].as_entire_binding(),
+                        tv(src),
+                        tv(&dst.view),
+                    ],
+                );
                 pass.set_bind_group(0, &bg, &[]);
-                pass.dispatch_workgroups((ins.gi_size.0 >> n).div_ceil(8), (ins.gi_size.1 >> n).div_ceil(8), 1);
+                pass.dispatch_workgroups(
+                    (ins.gi_size.0 >> n).div_ceil(8),
+                    (ins.gi_size.1 >> n).div_ceil(8),
+                    1,
+                );
             }
         }
     }
@@ -547,10 +876,28 @@ impl Ctx {
     }
 
     /// Encode the final image (+ overlay) to yuv420p (8-bit) and yuv420p10le, and optionally RGBA8.
-    pub(super) fn encode(&mut self, frame: &wgpu::TextureView, rgba: bool, yuv: bool) -> (Option<Vec<u8>>, Option<Vec<u8>>, Option<Vec<u8>>) {
+    pub(super) fn encode(
+        &mut self,
+        frame: &wgpu::TextureView,
+        rgba: bool,
+        yuv: bool,
+    ) -> (Option<Vec<u8>>, Option<Vec<u8>>, Option<Vec<u8>>) {
         let e = &self.enc;
         let bloom_mix = 0.045;
-        self.queue.write_buffer(&e.u, 0, bytemuck::cast_slice(&[W as f32, H as f32, 1.0, 1.0, bloom_mix, 1.0 / BLOOM_LEVELS as f32, 0.0, 0.0]));
+        self.queue.write_buffer(
+            &e.u,
+            0,
+            bytemuck::cast_slice(&[
+                W as f32,
+                H as f32,
+                1.0,
+                1.0,
+                bloom_mix,
+                1.0 / BLOOM_LEVELS as f32,
+                0.0,
+                0.0,
+            ]),
+        );
         let bg = bind(
             &self.device,
             &e.bgl,
@@ -568,7 +915,10 @@ impl Ctx {
         );
         let mut enc = self.device.create_command_encoder(&Default::default());
         {
-            let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("encode"), timestamp_writes: None });
+            let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("encode"),
+                timestamp_writes: None,
+            });
             pass.set_bind_group(0, &bg, &[]);
             if yuv {
                 pass.set_pipeline(&e.yuv);
@@ -591,12 +941,18 @@ impl Ctx {
         let read = |b: &wgpu::Buffer| {
             let s = b.slice(..);
             s.map_async(wgpu::MapMode::Read, |r| r.expect("map"));
-            self.device.poll(wgpu::PollType::wait_indefinitely()).expect("poll");
+            self.device
+                .poll(wgpu::PollType::wait_indefinitely())
+                .expect("poll");
             let v = s.get_mapped_range().expect("range").to_vec();
             b.unmap();
             v
         };
-        let (a, b) = if yuv { (Some(read(&e.read8)), Some(read(&e.read10))) } else { (None, None) };
+        let (a, b) = if yuv {
+            (Some(read(&e.read8)), Some(read(&e.read10)))
+        } else {
+            (None, None)
+        };
         let c = if rgba { Some(read(&e.read_rgba)) } else { None };
         (a, b, c)
     }
@@ -620,15 +976,35 @@ impl Bloom {
         let f = wgpu::ShaderStages::FRAGMENT;
         let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("bloom"),
-            entries: &[bgl_entry(0, f, ubuf()), bgl_entry(1, f, ftex()), bgl_entry(2, f, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering))],
+            entries: &[
+                bgl_entry(0, f, ubuf()),
+                bgl_entry(1, f, ftex()),
+                bgl_entry(
+                    2,
+                    f,
+                    wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                ),
+            ],
         });
-        let m = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("bloom"), source: wgpu::ShaderSource::Wgsl(wgsl_part("bloom").into()) });
-        let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[Some(&bgl)], immediate_size: 0 });
+        let m = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("bloom"),
+            source: wgpu::ShaderSource::Wgsl(wgsl_part("bloom").into()),
+        });
+        let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: None,
+            bind_group_layouts: &[Some(&bgl)],
+            immediate_size: 0,
+        });
         let pipe = |fs: &str, blend: Option<wgpu::BlendState>| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(fs),
                 layout: Some(&pl),
-                vertex: wgpu::VertexState { module: &m, entry_point: Some("vs_b"), compilation_options: Default::default(), buffers: &[] },
+                vertex: wgpu::VertexState {
+                    module: &m,
+                    entry_point: Some("vs_b"),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
                 primitive: wgpu::PrimitiveState::default(),
                 depth_stencil: None,
                 multisample: Default::default(),
@@ -636,18 +1012,36 @@ impl Bloom {
                     module: &m,
                     entry_point: Some(fs),
                     compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState { format: F16, blend, write_mask: wgpu::ColorWrites::ALL })],
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: F16,
+                        blend,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
                 }),
                 multiview_mask: None,
                 cache: None,
             })
         };
-        let add = wgpu::BlendComponent { src_factor: wgpu::BlendFactor::One, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add };
+        let add = wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::One,
+            dst_factor: wgpu::BlendFactor::One,
+            operation: wgpu::BlendOperation::Add,
+        };
         let down = pipe("fs_bdown", None);
-        let up = pipe("fs_bup", Some(wgpu::BlendState { color: add, alpha: add }));
+        let up = pipe(
+            "fs_bup",
+            Some(wgpu::BlendState {
+                color: add,
+                alpha: add,
+            }),
+        );
         let t = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("bloom"),
-            size: wgpu::Extent3d { width: W / 2, height: H / 2, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: W / 2,
+                height: H / 2,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: BLOOM_LEVELS,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -656,10 +1050,24 @@ impl Bloom {
             view_formats: &[],
         });
         let levels = (0..BLOOM_LEVELS)
-            .map(|k| t.create_view(&wgpu::TextureViewDescriptor { base_mip_level: k, mip_level_count: Some(1), ..Default::default() }))
+            .map(|k| {
+                t.create_view(&wgpu::TextureViewDescriptor {
+                    base_mip_level: k,
+                    mip_level_count: Some(1),
+                    ..Default::default()
+                })
+            })
             .collect();
-        let karis = device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: None, contents: bytemuck::cast_slice(&[1.0f32, 1.0, 0.0, 0.0]), usage: wgpu::BufferUsages::UNIFORM });
-        let plain = device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: None, contents: bytemuck::cast_slice(&[0.0f32, 1.0, 0.0, 0.0]), usage: wgpu::BufferUsages::UNIFORM });
+        let karis = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(&[1.0f32, 1.0, 0.0, 0.0]),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+        let plain = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(&[0.0f32, 1.0, 0.0, 0.0]),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("bloom"),
             mag_filter: wgpu::FilterMode::Linear,
@@ -668,7 +1076,15 @@ impl Bloom {
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             ..Default::default()
         });
-        Bloom { levels, bgl, down, up, karis, plain, sampler }
+        Bloom {
+            levels,
+            bgl,
+            down,
+            up,
+            karis,
+            plain,
+            sampler,
+        }
     }
 }
 
@@ -676,9 +1092,23 @@ impl Ctx {
     pub(super) fn bloom(&self, src: &wgpu::TextureView) {
         let b = &self.bloom;
         let mut enc = self.device.create_command_encoder(&Default::default());
-        let bg = |u: &wgpu::Buffer, v: &wgpu::TextureView| bind(&self.device, &b.bgl, &[u.as_entire_binding(), tv(v), wgpu::BindingResource::Sampler(&b.sampler)]);
+        let bg = |u: &wgpu::Buffer, v: &wgpu::TextureView| {
+            bind(
+                &self.device,
+                &b.bgl,
+                &[
+                    u.as_entire_binding(),
+                    tv(v),
+                    wgpu::BindingResource::Sampler(&b.sampler),
+                ],
+            )
+        };
         for k in 0..BLOOM_LEVELS as usize {
-            let g = if k == 0 { bg(&b.karis, src) } else { bg(&b.plain, &b.levels[k - 1]) };
+            let g = if k == 0 {
+                bg(&b.karis, src)
+            } else {
+                bg(&b.plain, &b.levels[k - 1])
+            };
             let mut pass = Self::pass(&mut enc, &b.levels[k], Some([0.0; 4]));
             pass.set_pipeline(&b.down);
             pass.set_bind_group(0, &g, &[]);

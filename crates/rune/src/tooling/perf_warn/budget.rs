@@ -11,11 +11,20 @@ use crate::time::Instant;
 /// The budget in ms, when `RUNE_COMMIT_BUDGET_MS` sets one.
 fn budget() -> Option<f64> {
     static BUDGET: OnceLock<Option<f64>> = OnceLock::new();
-    *BUDGET.get_or_init(|| std::env::var("RUNE_COMMIT_BUDGET_MS").ok()?.trim().parse::<f64>().ok().filter(|ms| *ms > 0.0))
+    *BUDGET.get_or_init(|| {
+        std::env::var("RUNE_COMMIT_BUDGET_MS")
+            .ok()?
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .filter(|ms| *ms > 0.0)
+    })
 }
 
 #[inline(always)]
-pub(crate) fn on() -> bool { budget().is_some() }
+pub(crate) fn on() -> bool {
+    budget().is_some()
+}
 
 thread_local! {
     static TIMES: Cell<[f64; PHASES]> = const { Cell::new([0.0; PHASES]) };
@@ -40,9 +49,13 @@ pub(crate) struct Commit(Option<(Instant, bool)>);
 impl Commit {
     #[inline(always)]
     pub(crate) fn start() -> Commit {
-        if !on() { return Commit(None); }
+        if !on() {
+            return Commit(None);
+        }
         let outer = DEPTH.replace(DEPTH.get() + 1) == 0;
-        if outer { TIMES.set([0.0; PHASES]); }
+        if outer {
+            TIMES.set([0.0; PHASES]);
+        }
         Commit(Some((Instant::now(), outer)))
     }
 
@@ -51,9 +64,13 @@ impl Commit {
     pub(crate) fn end(self, why: u16) {
         let Some((start, outer)) = self.0 else { return };
         DEPTH.set(DEPTH.get() - 1);
-        let Some(budget) = budget().filter(|_| outer) else { return };
+        let Some(budget) = budget().filter(|_| outer) else {
+            return;
+        };
         let total = start.elapsed().as_secs_f64() * 1000.0;
-        if total <= budget { return; }
+        if total <= budget {
+            return;
+        }
         let now = Instant::now();
         let left_out = match PRINTED.get() {
             Some((at, n)) if now.duration_since(at).as_secs_f64() < 1.0 => {
@@ -69,16 +86,37 @@ impl Commit {
 }
 
 /// The line for a commit that took `total` ms against `budget`, its phases timed in `times`.
-pub(crate) fn report(total: f64, budget: f64, times: [f64; PHASES], why: u16, left_out: u32) -> String {
+pub(crate) fn report(
+    total: f64,
+    budget: f64,
+    times: [f64; PHASES],
+    why: u16,
+    left_out: u32,
+) -> String {
     let [view, _, layout, text, _, apply] = times;
-    let parts = [("the view", view), ("layout", (layout - text).max(0.0)), ("text", text), ("apply", apply)];
-    let top = parts.iter().copied().max_by(|a, b| a.1.total_cmp(&b.1)).filter(|p| p.1 > 0.0);
+    let parts = [
+        ("the view", view),
+        ("layout", (layout - text).max(0.0)),
+        ("text", text),
+        ("apply", apply),
+    ];
+    let top = parts
+        .iter()
+        .copied()
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .filter(|p| p.1 > 0.0);
     let why = crate::runtime::CommitWhy::names(why);
     let mut line = format!(
         "rune: commit took {total:.1} ms, over RUNE_COMMIT_BUDGET_MS={budget}: view {view:.1}, layout {layout:.1} (text {text:.1}), apply {apply:.1} ms"
     );
-    if let Some((name, ms)) = top { line += &format!("; most in {name} ({:.0}%)", 100.0 * ms / total); }
-    if !why.is_empty() { line += &format!("; committed for {}", why.join(", ")); }
-    if left_out > 0 { line += &format!(" ({left_out} more over budget since the last line)"); }
+    if let Some((name, ms)) = top {
+        line += &format!("; most in {name} ({:.0}%)", 100.0 * ms / total);
+    }
+    if !why.is_empty() {
+        line += &format!("; committed for {}", why.join(", "));
+    }
+    if left_out > 0 {
+        line += &format!(" ({left_out} more over budget since the last line)");
+    }
     line
 }

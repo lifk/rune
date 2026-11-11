@@ -34,12 +34,15 @@ impl<D> FileNode<D> {
 pub fn file_icon(name: &str) -> &'static Icon {
     let ext = name.rsplit_once('.').map_or("", |(_, e)| e).to_ascii_lowercase();
     match ext.as_str() {
-        "rs" | "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "py" | "go" | "swift" | "c" | "h" | "cc" | "cpp" | "hpp" | "m" | "mm"
-        | "java" | "kt" | "rb" | "php" | "cs" | "zig" | "lua" | "sh" | "bash" | "zsh" | "fish" | "wgsl" | "glsl" | "metal" | "html"
-        | "css" | "scss" | "vue" | "svelte" | "sql" | "ex" | "exs" | "hs" | "ml" | "scala" | "dart" => &crate::glyphs::FILE_CODE,
-        "md" | "mdx" | "txt" | "rst" | "adoc" | "json" | "jsonc" | "toml" | "yaml" | "yml" | "lock" | "xml" | "csv" | "ini" | "cfg"
-        | "conf" | "env" => &crate::glyphs::FILE_TEXT,
-        "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "ico" | "bmp" | "tiff" | "avif" | "heic" => &crate::glyphs::FILE_IMAGE,
+        "rs" | "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "py" | "go" | "swift" | "c" | "h" | "cc" | "cpp"
+        | "hpp" | "m" | "mm" | "java" | "kt" | "rb" | "php" | "cs" | "zig" | "lua" | "sh" | "bash" | "zsh" | "fish"
+        | "wgsl" | "glsl" | "metal" | "html" | "css" | "scss" | "vue" | "svelte" | "sql" | "ex" | "exs" | "hs"
+        | "ml" | "scala" | "dart" => &crate::glyphs::FILE_CODE,
+        "md" | "mdx" | "txt" | "rst" | "adoc" | "json" | "jsonc" | "toml" | "yaml" | "yml" | "lock" | "xml" | "csv"
+        | "ini" | "cfg" | "conf" | "env" => &crate::glyphs::FILE_TEXT,
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "ico" | "bmp" | "tiff" | "avif" | "heic" => {
+            &crate::glyphs::FILE_IMAGE
+        }
         _ => &crate::glyphs::FILE,
     }
 }

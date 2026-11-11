@@ -20,9 +20,9 @@ use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, TRUE, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, EndMenu, MSG, MsgWaitForMultipleObjects, PM_REMOVE, PeekMessageW,
-    PostQuitMessage, QS_ALLINPUT, RegisterClassW, TranslateMessage, WM_ENDSESSION, WM_QUERYENDSESSION, WM_QUIT, WNDCLASSW,
-    WS_EX_TOOLWINDOW,
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, EndMenu, MSG, MsgWaitForMultipleObjects,
+    PM_REMOVE, PeekMessageW, PostQuitMessage, QS_ALLINPUT, RegisterClassW, TranslateMessage,
+    WM_ENDSESSION, WM_QUERYENDSESSION, WM_QUIT, WNDCLASSW, WS_EX_TOOLWINDOW,
 };
 
 use super::{Event, Hooks, Loop, State};
@@ -49,11 +49,29 @@ pub(super) fn install(deliver: impl Fn(bool) -> bool + 'static) {
     // long as the process, on this (the UI) thread, and keeps no pointer to Rust state.
     let window = unsafe {
         let instance = GetModuleHandleW(std::ptr::null());
-        let wc = WNDCLASSW { lpfnWndProc: Some(procedure), hInstance: instance, lpszClassName: class.as_ptr(), ..std::mem::zeroed() };
+        let wc = WNDCLASSW {
+            lpfnWndProc: Some(procedure),
+            hInstance: instance,
+            lpszClassName: class.as_ptr(),
+            ..std::mem::zeroed()
+        };
         RegisterClassW(&wc);
         // Never shown, and a tool window, so nothing lists it: not the taskbar, Alt+Tab or a
         // relaunch looking for the app's front window.
-        CreateWindowExW(WS_EX_TOOLWINDOW, class.as_ptr(), std::ptr::null(), 0, 0, 0, 0, 0, std::ptr::null_mut(), std::ptr::null_mut(), instance, std::ptr::null())
+        CreateWindowExW(
+            WS_EX_TOOLWINDOW,
+            class.as_ptr(),
+            std::ptr::null(),
+            0,
+            0,
+            0,
+            0,
+            0,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            instance,
+            std::ptr::null(),
+        )
     };
     if window.is_null() {
         eprintln!("rune: could not create the session window; a logoff won't run App::on_quit");
@@ -85,13 +103,21 @@ unsafe extern "system" fn procedure(hwnd: HWND, message: u32, w: WPARAM, l: LPAR
 fn answer(ending: bool) {
     // The loop carries out the effects when the quit reaches it.
     let _ = super::send(Event::Start { ending });
-    let sent = DELIVER.with(|d| d.try_borrow().ok().and_then(|d| d.as_ref().map(|d| d(ending)))).unwrap_or(false);
+    let sent = DELIVER
+        .with(|d| {
+            d.try_borrow()
+                .ok()
+                .and_then(|d| d.as_ref().map(|d| d(ending)))
+        })
+        .unwrap_or(false);
     match super::loop_state() {
         Loop::Handling => {
             // SAFETY: ends whatever menu this thread tracks; nothing when none does.
             unsafe { EndMenu() };
             if ending && !answered(ending) {
-                eprintln!("rune: the session ended inside a loop handler, before the windows' App::on_quit ran");
+                eprintln!(
+                    "rune: the session ended inside a loop handler, before the windows' App::on_quit ran"
+                );
             }
         }
         Loop::Idle if sent => run_loop(ending),
@@ -124,7 +150,13 @@ fn run_loop(ending: bool) {
             unsafe {
                 let mut msg: MSG = std::mem::zeroed();
                 if PeekMessageW(&mut msg, std::ptr::null_mut(), 0, 0, PM_REMOVE) == 0 {
-                    MsgWaitForMultipleObjects(0, std::ptr::null(), 0, left.as_millis() as u32, QS_ALLINPUT);
+                    MsgWaitForMultipleObjects(
+                        0,
+                        std::ptr::null(),
+                        0,
+                        left.as_millis() as u32,
+                        QS_ALLINPUT,
+                    );
                     continue;
                 }
                 if msg.message == WM_QUIT {

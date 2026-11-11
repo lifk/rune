@@ -17,13 +17,23 @@ impl Primitive {
             fill: p.fill,
             // A layer has no border paint; preserve its signed per-corner rounded-clip radii here,
             // and its turn in `turn`.
-            border: if p.params[1] == 8.0 { rune::render::unpack_clip_radii(p.fade[3]) } else { p.border },
+            border: if p.params[1] == 8.0 {
+                rune::render::unpack_clip_radii(p.fade[3])
+            } else {
+                p.border
+            },
             params: p.params,
             uv: p.uv,
             clip: p.clip,
             fade,
-            fade_origin: Some(std::array::from_fn(|e| p.clip[e] + offset[e] * fade[e] * if e < 2 { -1.0 } else { 1.0 })),
-            turn: (p.params[1] == 8.0 && p.border[1] != 0.0).then_some([p.border[1], p.border[2], p.border[3]]),
+            fade_origin: Some(std::array::from_fn(|e| {
+                p.clip[e] + offset[e] * fade[e] * if e < 2 { -1.0 } else { 1.0 }
+            })),
+            turn: (p.params[1] == 8.0 && p.border[1] != 0.0).then_some([
+                p.border[1],
+                p.border[2],
+                p.border[3],
+            ]),
         }
     }
 }

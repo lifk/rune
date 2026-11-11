@@ -15,18 +15,31 @@ pub(crate) struct Presence {
 }
 
 impl Presence {
-    pub(crate) fn new(requested: bool) -> Self { Self { requested, ..Self::default() } }
+    pub(crate) fn new(requested: bool) -> Self {
+        Self {
+            requested,
+            ..Self::default()
+        }
+    }
 
     /// What the app asked for, shown or not.
-    pub(crate) fn requested(self) -> bool { self.requested }
+    pub(crate) fn requested(self) -> bool {
+        self.requested
+    }
 
     /// Whether `sharingType` should be none now; read-only otherwise.
-    pub(crate) fn excluded(self) -> bool { self.requested && self.shown }
+    pub(crate) fn excluded(self) -> bool {
+        self.requested && self.shown
+    }
 
     /// Outside a scoped prewarm acquisition, only a shown or fading-out panel is ordered in.
-    pub(crate) fn ordered(self) -> bool { self.shown }
+    pub(crate) fn ordered(self) -> bool {
+        self.shown
+    }
 
-    pub(crate) fn request(&mut self, exclude: bool) { self.requested = exclude; }
+    pub(crate) fn request(&mut self, exclude: bool) {
+        self.requested = exclude;
+    }
 
     /// A show starts. Returns its fade's generation.
     pub(crate) fn show(&mut self) -> u64 {
@@ -36,14 +49,20 @@ impl Presence {
 
     /// A hide starts. Without a fade it has finished; with one, `fade_done` finishes it.
     pub(crate) fn hide(&mut self, fading: bool) -> u64 {
-        if !fading { self.shown = false; }
+        if !fading {
+            self.shown = false;
+        }
         self.bump()
     }
 
     /// The fade started as `generation` finished. False if a later show or hide replaced it.
     pub(crate) fn fade_done(&mut self, generation: u64, hiding: bool) -> bool {
-        if generation != self.generation { return false; }
-        if hiding { self.shown = false; }
+        if generation != self.generation {
+            return false;
+        }
+        if hiding {
+            self.shown = false;
+        }
         true
     }
 

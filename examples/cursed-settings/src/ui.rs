@@ -3,8 +3,14 @@
 //! except the marks that tell the compositor which element is which.
 
 use rune::tok::motion;
-use rune::{Align, Color, Cx, Drag, El, Phase, Shape, Spring, TextStyle, Transition, Tx, canvas, col, el, icon, row, spacer, text};
-use rune_kit::{Badge, BadgeVariant, Button, ButtonVariant, ControlSize, Kit, SegmentedControl, Select, Switch, TextInput, Toast, ToastRegion};
+use rune::{
+    Align, Color, Cx, Drag, El, Phase, Shape, Spring, TextStyle, Transition, Tx, canvas, col, el,
+    icon, row, spacer, text,
+};
+use rune_kit::{
+    Badge, BadgeVariant, Button, ButtonVariant, ControlSize, Kit, SegmentedControl, Select, Switch,
+    TextInput, Toast, ToastRegion,
+};
 use rune_theme_opencode::icons as oc;
 
 use crate::{APPEARANCES, Cursed, HAPTICS, PAGES, Page, icons};
@@ -81,7 +87,12 @@ pub fn view(s: &Cursed, cx: &mut Cx<Cursed>) -> El {
             .description("The fire department has been notified.")
             .icon(k, &oc::CIRCLE_CHECK)
             .build(k);
-        overlays.push(ToastRegion::new().toast(toast).build(k).mark(mk(mat::NONE, node::TOAST)));
+        overlays.push(
+            ToastRegion::new()
+                .toast(toast)
+                .build(k)
+                .mark(mk(mat::NONE, node::TOAST)),
+        );
     }
     if s.show_cursor
         && let Some(p) = s.cursor
@@ -92,7 +103,12 @@ pub fn view(s: &Cursed, cx: &mut Cx<Cursed>) -> El {
         .key("window")
         .fill(c.bg_base)
         .child(sidebar(s, k))
-        .child(el().key("sidebar-edge").w(hair).h_full().fill(c.border_base))
+        .child(
+            el().key("sidebar-edge")
+                .w(hair)
+                .h_full()
+                .fill(c.border_base),
+        )
         .child(content(s, k, hair));
     rune_kit::root(base, overlays)
 }
@@ -138,10 +154,23 @@ fn sidebar(s: &Cursed, k: &Kit) -> El {
                 .gap(8.0)
                 .center_y()
                 .radius(6.0)
-                .hover(if selected { Color::TRANSPARENT } else { c.hover })
+                .hover(if selected {
+                    Color::TRANSPARENT
+                } else {
+                    c.hover
+                })
                 .on_press(tap(move |s: &mut Cursed| s.page = p))
-                .child(icon(glyph, 16.0).key("icon").color(if selected { c.icon_base } else { c.icon_muted }))
-                .child(text(p.title()).key("label").font(k.ty.ui).color(if selected { c.text_base } else { c.text_muted })),
+                .child(icon(glyph, 16.0).key("icon").color(if selected {
+                    c.icon_base
+                } else {
+                    c.icon_muted
+                }))
+                .child(
+                    text(p.title())
+                        .key("label")
+                        .font(k.ty.ui)
+                        .color(if selected { c.text_base } else { c.text_muted }),
+                ),
         );
     }
     col()
@@ -186,15 +215,23 @@ fn content(s: &Cursed, k: &Kit, hair: f32) -> El {
         Page::Accessibility => accessibility(s, k, hair),
         Page::Developer => developer(s, k, hair),
     };
-    col().key("content").grow(1.0).h_full().fill(k.c.bg_base).child(
-        page.key(format!("page-{}", s.page.id()))
-            .w_full()
-            .px(40.0)
-            .pt(32.0)
-            .gap(24.0)
-            .transition(Transition::asymmetric(Transition::opacity(), Transition::identity()))
-            .opacity_motion(Spring::new(0.18, 0.0)),
-    )
+    col()
+        .key("content")
+        .grow(1.0)
+        .h_full()
+        .fill(k.c.bg_base)
+        .child(
+            page.key(format!("page-{}", s.page.id()))
+                .w_full()
+                .px(40.0)
+                .pt(32.0)
+                .gap(24.0)
+                .transition(Transition::asymmetric(
+                    Transition::opacity(),
+                    Transition::identity(),
+                ))
+                .opacity_motion(Spring::new(0.18, 0.0)),
+        )
 }
 
 fn header(k: &Kit, title: &str, desc: &str) -> El {
@@ -206,17 +243,36 @@ fn header(k: &Kit, title: &str, desc: &str) -> El {
 }
 
 /// A titled list of rows with hairlines between them. `node` anchors effects to the card.
-fn section(k: &Kit, hair: f32, key: &str, title: &str, trailing: Option<El>, node: u16, rows: Vec<El>) -> El {
+fn section(
+    k: &Kit,
+    hair: f32,
+    key: &str,
+    title: &str,
+    trailing: Option<El>,
+    node: u16,
+    rows: Vec<El>,
+) -> El {
     let c = &k.c;
     let mut inner = col().key("rows").w_full().mark(mk(mat::NONE, node));
     let n = rows.len();
     for (i, r) in rows.into_iter().enumerate() {
         inner = inner.child(r);
         if i + 1 < n {
-            inner = inner.child(el().key(format!("sep{i}")).h(hair).w_full().fill(c.border_base));
+            inner = inner.child(
+                el().key(format!("sep{i}"))
+                    .h(hair)
+                    .w_full()
+                    .fill(c.border_base),
+            );
         }
     }
-    let mut head = row().key("head").w_full().h(24.0).center_y().justify_between().child(text(title).key("title").font(SECTION).color(c.text_base));
+    let mut head = row()
+        .key("head")
+        .w_full()
+        .h(24.0)
+        .center_y()
+        .justify_between()
+        .child(text(title).key("title").font(SECTION).color(c.text_base));
     if let Some(t) = trailing {
         head = head.child(t);
     }
@@ -246,18 +302,42 @@ fn setting(k: &Kit, key: &str, title: &str, desc: &str, control: El) -> El {
                 .grow(1.0)
                 .shrink()
                 .gap(1.0)
-                .child(text(title).key("title").font(k.ty.ui_medium).color(k.c.text_base))
+                .child(
+                    text(title)
+                        .key("title")
+                        .font(k.ty.ui_medium)
+                        .color(k.c.text_base),
+                )
                 .child(text(desc).key("desc").font(k.ty.ui).color(k.c.text_muted)),
         )
         .child(control)
 }
 
 fn switch(k: &Kit, key: &str, on: bool, label: &str, flip: impl Fn(&mut Cursed) + 'static) -> El {
-    Switch::new(on).label(label).hide_label().on_toggle(tap(flip)).build(k).key(key).mark(mk(mat::CONTROL, 0))
+    Switch::new(on)
+        .label(label)
+        .hide_label()
+        .on_toggle(tap(flip))
+        .build(k)
+        .key(key)
+        .mark(mk(mat::CONTROL, 0))
 }
 
-fn toggle_row(k: &Kit, key: &str, title: &str, desc: &str, on: bool, flip: impl Fn(&mut Cursed) + 'static) -> El {
-    setting(k, key, title, desc, switch(k, &format!("{key}-switch"), on, title, flip))
+fn toggle_row(
+    k: &Kit,
+    key: &str,
+    title: &str,
+    desc: &str,
+    on: bool,
+    flip: impl Fn(&mut Cursed) + 'static,
+) -> El {
+    setting(
+        k,
+        key,
+        title,
+        desc,
+        switch(k, &format!("{key}-switch"), on, title, flip),
+    )
 }
 
 /// A plain row: a name with a trailing value.
@@ -269,7 +349,13 @@ fn item(k: &Kit, key: &str, lead: El, name: &str, trailing: El) -> El {
         .gap(10.0)
         .center_y()
         .child(lead)
-        .child(text(name).key("name").font(k.ty.ui_medium).color(k.c.text_base).grow(1.0))
+        .child(
+            text(name)
+                .key("name")
+                .font(k.ty.ui_medium)
+                .color(k.c.text_base)
+                .grow(1.0),
+        )
         .child(trailing)
 }
 
@@ -280,7 +366,12 @@ fn app_tile(key: &str, letter: &str, color: Color) -> El {
         .radius(5.5)
         .fill(color)
         .center()
-        .child(text(letter).key("letter").font(TextStyle::new(11.0, 640.0)).color(Color::WHITE))
+        .child(
+            text(letter)
+                .key("letter")
+                .font(TextStyle::new(11.0, 640.0))
+                .color(Color::WHITE),
+        )
 }
 
 fn muted(k: &Kit, key: &str, s: &str) -> El {
@@ -306,12 +397,22 @@ fn general(s: &Cursed, k: &Kit, hair: f32) -> El {
             None,
             0,
             vec![
-                toggle_row(k, "login", "Launch at login", "Open OpenCode when you log in.", p.launch_at_login, |s| {
-                    s.p.launch_at_login = !s.p.launch_at_login
-                }),
-                toggle_row(k, "fast", "Lightning-fast startup", "Skip the splash screen and open instantly.", p.fast_startup, |s| {
-                    s.p.fast_startup = !s.p.fast_startup
-                }),
+                toggle_row(
+                    k,
+                    "login",
+                    "Launch at login",
+                    "Open OpenCode when you log in.",
+                    p.launch_at_login,
+                    |s| s.p.launch_at_login = !s.p.launch_at_login,
+                ),
+                toggle_row(
+                    k,
+                    "fast",
+                    "Lightning-fast startup",
+                    "Skip the splash screen and open instantly.",
+                    p.fast_startup,
+                    |s| s.p.fast_startup = !s.p.fast_startup,
+                ),
             ],
         ))
         .child(section(
@@ -322,15 +423,22 @@ fn general(s: &Cursed, k: &Kit, hair: f32) -> El {
             None,
             0,
             vec![
-                toggle_row(k, "spotlight", "Show in Spotlight", "Let Spotlight find your sessions and settings.", p.spotlight, |s| {
-                    s.p.spotlight = !s.p.spotlight
-                }),
+                toggle_row(
+                    k,
+                    "spotlight",
+                    "Show in Spotlight",
+                    "Let Spotlight find your sessions and settings.",
+                    p.spotlight,
+                    |s| s.p.spotlight = !s.p.spotlight,
+                ),
                 setting(
                     k,
                     "language",
                     "Language",
                     "Used for menus and messages.",
-                    Select::new("lang", &["English"]).current(Some("English")).build(k, &mut layer),
+                    Select::new("lang", &["English"])
+                        .current(Some("English"))
+                        .build(k, &mut layer),
                 ),
             ],
         ))
@@ -341,9 +449,14 @@ fn general(s: &Cursed, k: &Kit, hair: f32) -> El {
             "Updates",
             None,
             0,
-            vec![toggle_row(k, "updates", "Automatic updates", "Download and install updates in the background.", p.auto_update, |s| {
-                s.p.auto_update = !s.p.auto_update
-            })],
+            vec![toggle_row(
+                k,
+                "updates",
+                "Automatic updates",
+                "Download and install updates in the background.",
+                p.auto_update,
+                |s| s.p.auto_update = !s.p.auto_update,
+            )],
         ))
 }
 
@@ -375,7 +488,13 @@ fn appearance(s: &Cursed, k: &Kit, hair: f32) -> El {
                         .key("mode-control")
                         .mark(mk(mat::CONTROL, 0)),
                 ),
-                setting(k, "brightness", "Brightness", "How bright the window is.", slider(k, p.brightness)),
+                setting(
+                    k,
+                    "brightness",
+                    "Brightness",
+                    "How bright the window is.",
+                    slider(k, p.brightness),
+                ),
             ],
         ))
         .child(section(
@@ -386,8 +505,24 @@ fn appearance(s: &Cursed, k: &Kit, hair: f32) -> El {
             None,
             0,
             vec![
-                setting(k, "size", "Text size", "Used across the app.", Select::new("size", &["13 pt"]).current(Some("13 pt")).build(k, &mut Vec::new())),
-                setting(k, "font", "Code font", "Used in diffs and the terminal.", Select::new("font", &["IBM Plex Mono"]).current(Some("IBM Plex Mono")).build(k, &mut Vec::new())),
+                setting(
+                    k,
+                    "size",
+                    "Text size",
+                    "Used across the app.",
+                    Select::new("size", &["13 pt"])
+                        .current(Some("13 pt"))
+                        .build(k, &mut Vec::new()),
+                ),
+                setting(
+                    k,
+                    "font",
+                    "Code font",
+                    "Used in diffs and the terminal.",
+                    Select::new("font", &["IBM Plex Mono"])
+                        .current(Some("IBM Plex Mono"))
+                        .build(k, &mut Vec::new()),
+                ),
             ],
         ))
 }
@@ -395,7 +530,13 @@ fn appearance(s: &Cursed, k: &Kit, hair: f32) -> El {
 fn network(s: &Cursed, k: &Kit, hair: f32) -> El {
     let p = &s.p;
     let allow = |key: &str, letter: &str, col_: u32, name: &str| {
-        item(k, key, app_tile("tile", letter, hx(col_)), name, muted(k, "state", "Allow incoming connections"))
+        item(
+            k,
+            key,
+            app_tile("tile", letter, hx(col_)),
+            name,
+            muted(k, "state", "Allow incoming connections"),
+        )
     };
     col()
         .child(header(k, "Network", "Firewall and addresses."))
@@ -406,9 +547,14 @@ fn network(s: &Cursed, k: &Kit, hair: f32) -> El {
             "Firewall",
             None,
             0,
-            vec![toggle_row(k, "firewall", "Firewall", "Block incoming connections from unknown apps.", p.firewall, |s| {
-                s.p.firewall = !s.p.firewall
-            })],
+            vec![toggle_row(
+                k,
+                "firewall",
+                "Firewall",
+                "Block incoming connections from unknown apps.",
+                p.firewall,
+                |s| s.p.firewall = !s.p.firewall,
+            )],
         ))
         .child(section(
             k,
@@ -431,7 +577,14 @@ fn network(s: &Cursed, k: &Kit, hair: f32) -> El {
             None,
             0,
             vec![
-                toggle_row(k, "static", "Static IP", "Use a fixed address instead of DHCP.", p.static_ip, |s| s.p.static_ip = !s.p.static_ip),
+                toggle_row(
+                    k,
+                    "static",
+                    "Static IP",
+                    "Use a fixed address instead of DHCP.",
+                    p.static_ip,
+                    |s| s.p.static_ip = !s.p.static_ip,
+                ),
                 setting(
                     k,
                     "ip",
@@ -455,7 +608,12 @@ fn security(s: &Cursed, k: &Kit, hair: f32) -> El {
         item(
             k,
             key,
-            el().key("dot").size(8.0, 8.0).radius(4.0).fill(k.c.success.icon).ml(7.0).mr(7.0),
+            el().key("dot")
+                .size(8.0, 8.0)
+                .radius(4.0)
+                .fill(k.c.success.icon)
+                .ml(7.0)
+                .mr(7.0),
             name,
             Badge::new(state).variant(BadgeVariant::Subtle).build(k),
         )
@@ -470,10 +628,22 @@ fn security(s: &Cursed, k: &Kit, hair: f32) -> El {
             None,
             0,
             vec![
-                toggle_row(k, "fence", "Electric fence", "Protect the perimeter of your network.", p.fence, |s| s.p.fence = !s.p.fence),
-                toggle_row(k, "sleep", "Require password after sleep", "Ask for your password when the display wakes.", p.lock_on_sleep, |s| {
-                    s.p.lock_on_sleep = !s.p.lock_on_sleep
-                }),
+                toggle_row(
+                    k,
+                    "fence",
+                    "Electric fence",
+                    "Protect the perimeter of your network.",
+                    p.fence,
+                    |s| s.p.fence = !s.p.fence,
+                ),
+                toggle_row(
+                    k,
+                    "sleep",
+                    "Require password after sleep",
+                    "Ask for your password when the display wakes.",
+                    p.lock_on_sleep,
+                    |s| s.p.lock_on_sleep = !s.p.lock_on_sleep,
+                ),
             ],
         ))
         .child(section(
@@ -504,10 +674,22 @@ fn accessibility(s: &Cursed, k: &Kit, hair: f32) -> El {
             None,
             0,
             vec![
-                toggle_row(k, "contrast", "Increase contrast", "Make edges and text stand out more.", p.contrast, |s| s.p.contrast = !s.p.contrast),
-                toggle_row(k, "transparency", "Reduce transparency", "Make glass surfaces solid.", p.reduce_transparency, |s| {
-                    s.p.reduce_transparency = !s.p.reduce_transparency
-                }),
+                toggle_row(
+                    k,
+                    "contrast",
+                    "Increase contrast",
+                    "Make edges and text stand out more.",
+                    p.contrast,
+                    |s| s.p.contrast = !s.p.contrast,
+                ),
+                toggle_row(
+                    k,
+                    "transparency",
+                    "Reduce transparency",
+                    "Make glass surfaces solid.",
+                    p.reduce_transparency,
+                    |s| s.p.reduce_transparency = !s.p.reduce_transparency,
+                ),
             ],
         ))
         .child(section(
@@ -517,9 +699,14 @@ fn accessibility(s: &Cursed, k: &Kit, hair: f32) -> El {
             "Motion",
             None,
             0,
-            vec![toggle_row(k, "reduce", "Reduce motion", "Calmer, shorter animations.", p.reduce_motion, |s| {
-                s.p.reduce_motion = !s.p.reduce_motion
-            })],
+            vec![toggle_row(
+                k,
+                "reduce",
+                "Reduce motion",
+                "Calmer, shorter animations.",
+                p.reduce_motion,
+                |s| s.p.reduce_motion = !s.p.reduce_motion,
+            )],
         ))
         .child(section(
             k,
@@ -549,15 +736,35 @@ fn accessibility(s: &Cursed, k: &Kit, hair: f32) -> El {
 fn developer(s: &Cursed, k: &Kit, hair: f32) -> El {
     let p = &s.p;
     let c = &k.c;
-    let mut reload = Button::new("Reload now").on_press(tap(|_: &mut Cursed| {})).build(k).key("reload-btn").mark(mk(mat::CONTROL, node::RELOAD));
+    let mut reload = Button::new("Reload now")
+        .on_press(tap(|_: &mut Cursed| {}))
+        .build(k)
+        .key("reload-btn")
+        .mark(mk(mat::CONTROL, node::RELOAD));
     if p.hot_reload {
         reload = reload.fill(hx(0xd8401a)).motion(Spring::new(1.6, 0.0));
     } else {
         reload = reload.motion(Spring::new(2.0, 0.0));
     }
-    let size = |key: &str, name: &str, v: &str| item(k, key, icon(&oc::FOLDER, 16.0).key("icon").color(c.icon_muted).ml(3.0).mr(3.0), name, muted(k, "size", v));
+    let size = |key: &str, name: &str, v: &str| {
+        item(
+            k,
+            key,
+            icon(&oc::FOLDER, 16.0)
+                .key("icon")
+                .color(c.icon_muted)
+                .ml(3.0)
+                .mr(3.0),
+            name,
+            muted(k, "size", v),
+        )
+    };
     let rows = if p.flushed {
-        vec![row().key("empty").w_full().h(44.0).center_y().child(muted(k, "label", "Nothing cached."))]
+        vec![row().key("empty").w_full().h(44.0).center_y().child(muted(
+            k,
+            "label",
+            "Nothing cached.",
+        ))]
     } else {
         vec![
             size("shaders", "Shader cache", "1.2 GB"),
@@ -582,15 +789,32 @@ fn developer(s: &Cursed, k: &Kit, hair: f32) -> El {
             None,
             0,
             vec![
-                toggle_row(k, "hot", "Hot reload", "Reload the app when files change.", p.hot_reload, |s| s.p.hot_reload = !s.p.hot_reload),
-                setting(k, "reload", "Reload renderer", "Rebuild shaders and reload the window.", reload),
+                toggle_row(
+                    k,
+                    "hot",
+                    "Hot reload",
+                    "Reload the app when files change.",
+                    p.hot_reload,
+                    |s| s.p.hot_reload = !s.p.hot_reload,
+                ),
+                setting(
+                    k,
+                    "reload",
+                    "Reload renderer",
+                    "Rebuild shaders and reload the window.",
+                    reload,
+                ),
             ],
         ))
         .child(section(
             k,
             hair,
             "cache",
-            if p.flushed { "Cache · Zero KB" } else { "Cache · 2.4 GB" },
+            if p.flushed {
+                "Cache · Zero KB"
+            } else {
+                "Cache · 2.4 GB"
+            },
             Some(flush),
             node::CACHE,
             rows,
@@ -626,15 +850,35 @@ fn slider(k: &Kit, v: f32) -> El {
                         }
                         Phase::Move => {
                             let knob = kd / 2.0 + d.data * travel;
-                            let grab = if (d.start_x - knob).abs() <= kd / 2.0 + 3.0 { d.start_x - knob } else { 0.0 };
+                            let grab = if (d.start_x - knob).abs() <= kd / 2.0 + 3.0 {
+                                d.start_x - knob
+                            } else {
+                                0.0
+                            };
                             s.p.brightness = to_value(d.x - grab);
                             tx.instant();
                         }
-                        Phase::Up => { if d.cancelled() { s.p.brightness = d.data; } }
+                        Phase::Up => {
+                            if d.cancelled() {
+                                s.p.brightness = d.data;
+                            }
+                        }
                     }
                 })
-                .child(el().key("track").size(w, bar).absolute(0.0, (h - bar) / 2.0).radius(bar / 2.0).fill(c.layer_04))
-                .child(el().key("fill").size(kd / 2.0 + v * travel, bar).absolute(0.0, (h - bar) / 2.0).radius(bar / 2.0).fill(c.icon_base))
+                .child(
+                    el().key("track")
+                        .size(w, bar)
+                        .absolute(0.0, (h - bar) / 2.0)
+                        .radius(bar / 2.0)
+                        .fill(c.layer_04),
+                )
+                .child(
+                    el().key("fill")
+                        .size(kd / 2.0 + v * travel, bar)
+                        .absolute(0.0, (h - bar) / 2.0)
+                        .radius(bar / 2.0)
+                        .fill(c.icon_base),
+                )
                 .child(
                     el().key("knob")
                         .size(kd, kd)
@@ -647,17 +891,36 @@ fn slider(k: &Kit, v: f32) -> El {
                 ),
         )
         .child(icon(&icons::SUN, 18.0).key("bright").color(c.icon_muted))
-        .child(text(format!("{:.0}%", v * 100.0)).key("value").w(36.0).font(k.ty.ui).color(c.text_muted).align(Align::End))
+        .child(
+            text(format!("{:.0}%", v * 100.0))
+                .key("value")
+                .w(36.0)
+                .font(k.ty.ui)
+                .color(c.text_muted)
+                .align(Align::End),
+        )
 }
 
 /// The demo pointer: a black arrow with a white keyline, tip at `p`.
 fn pointer(p: [f32; 2]) -> El {
-    let arrow = [[0.0, 0.0], [0.0, 16.5], [4.1, 12.7], [6.9, 19.2], [9.4, 18.1], [6.7, 11.8], [12.2, 11.8]];
+    let arrow = [
+        [0.0, 0.0],
+        [0.0, 16.5],
+        [4.1, 12.7],
+        [6.9, 19.2],
+        [9.4, 18.1],
+        [6.7, 11.8],
+        [12.2, 11.8],
+    ];
     let mut ring = arrow.to_vec();
     ring.push(arrow[0]);
-    canvas(Shape::new().fill(arrow.to_vec(), Color::BLACK).stroke(ring, 1.3, Color::WHITE))
-        .key("demo-pointer")
-        .size(14.0, 21.0)
-        .absolute(p[0], p[1])
-        .mark(mk(mat::NONE, node::CURSOR))
+    canvas(
+        Shape::new()
+            .fill(arrow.to_vec(), Color::BLACK)
+            .stroke(ring, 1.3, Color::WHITE),
+    )
+    .key("demo-pointer")
+    .size(14.0, 21.0)
+    .absolute(p[0], p[1])
+    .mark(mk(mat::NONE, node::CURSOR))
 }

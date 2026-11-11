@@ -18,21 +18,27 @@ use parley::Layout;
 use parley::editing::Cursor;
 use parley::layout::Affinity;
 use rune_motion::{
-    Anim, Corners, LayoutAnim, Mount, NodeId, NodeSpec, Phase as PresencePhase, Prop, PropClass, Rect as MRect, Scene,
-    Spring, Transition, prop, snap::grid,
+    Anim, Corners, LayoutAnim, Mount, NodeId, NodeSpec, Phase as PresencePhase, Prop, PropClass,
+    Rect as MRect, Scene, Spring, Transition, prop, snap::grid,
 };
 use rune_taffy::prelude::*;
 
 use crate::color::{Color, over, srgb_encode};
 use crate::edit::{EditOutcome, Ime, KeyEvent};
-use crate::el::{Align, Drag, El, GrowthSpec, InputSpec, Phase, PointerEvent, ScrollSpec, Shell, TextSpec, Tx, Visual};
+use crate::el::{
+    Align, Drag, El, GrowthSpec, InputSpec, Phase, PointerEvent, ScrollSpec, Shell, TextSpec, Tx,
+    Visual,
+};
 use crate::growth::{GrowTrack, SUBSTEP};
 // Half-open, like overlays, NSPointInRect and PtInRect: a shared edge belongs to one side.
-use crate::overlay::options::contains;
 use crate::flight::{TextFlight, transformed};
-use crate::render::{Instance, KIND_DASHED, KIND_EFFECT, KIND_GLYPH, KIND_GRADIENT, KIND_IMAGE, KIND_INSET, KIND_RADIAL, KIND_RECT, KIND_SEGMENT, KIND_SHADOW, KIND_TRIANGLE, NO_CLIP};
+use crate::overlay::options::contains;
+use crate::render::{
+    Instance, KIND_DASHED, KIND_EFFECT, KIND_GLYPH, KIND_GRADIENT, KIND_IMAGE, KIND_INSET,
+    KIND_RADIAL, KIND_RECT, KIND_SEGMENT, KIND_SHADOW, KIND_TRIANGLE, NO_CLIP,
+};
 use crate::shape::{LineCap, Op, Shape};
-use crate::text::{Deco, PaintedDeco, GlyphQuad, Ink, TextSystem};
+use crate::text::{Deco, GlyphQuad, Ink, PaintedDeco, TextSystem};
 use crate::tok::motion;
 use event_log::log_event;
 
@@ -48,7 +54,11 @@ macro_rules! states {
 pub(crate) fn handler_state<S: 'static>(state: &mut S) -> &mut dyn Any {
     #[cfg(feature = "hot")]
     if std::any::TypeId::of::<S>() == std::any::TypeId::of::<crate::hot::HostState>() {
-        return (state as &mut dyn Any).downcast_mut::<crate::hot::HostState>().unwrap().value.as_mut();
+        return (state as &mut dyn Any)
+            .downcast_mut::<crate::hot::HostState>()
+            .unwrap()
+            .value
+            .as_mut();
     }
     state
 }
@@ -70,93 +80,100 @@ macro_rules! app_call {
 pub(crate) fn handler_state_ref<S: 'static>(state: &S) -> &dyn Any {
     #[cfg(feature = "hot")]
     if std::any::TypeId::of::<S>() == std::any::TypeId::of::<crate::hot::HostState>() {
-        return (state as &dyn Any).downcast_ref::<crate::hot::HostState>().unwrap().value.as_ref();
+        return (state as &dyn Any)
+            .downcast_ref::<crate::hot::HostState>()
+            .unwrap()
+            .value
+            .as_ref();
     }
     state
 }
 
-#[cfg(debug_assertions)]
-#[path = "runtime/commit/layout_diagnostics.rs"]
-mod layout_diagnostics;
 #[path = "runtime/paint/blend.rs"]
 mod blend;
 #[path = "runtime/commit/watch.rs"]
 mod commit_watch;
 #[path = "runtime/commit/why.rs"]
 mod commit_why;
-#[path = "runtime/interaction.rs"]
-mod interaction_timing;
 #[path = "runtime/drag_out_host.rs"]
 mod drag_out_host;
 #[path = "runtime/paint/exit_mask.rs"]
 mod exit_mask;
 #[path = "runtime/font_families.rs"]
 mod font_families;
+#[path = "runtime/interaction.rs"]
+mod interaction_timing;
 #[path = "runtime/key_index.rs"]
 mod key_index;
-#[path = "runtime/system_settings.rs"]
-mod system_settings;
+#[cfg(debug_assertions)]
+#[path = "runtime/commit/layout_diagnostics.rs"]
+mod layout_diagnostics;
 #[path = "runtime/commit/prune.rs"]
 mod prune;
+#[path = "runtime/system_settings.rs"]
+mod system_settings;
 pub(crate) use blend::{apron_key, glyph, icon_inst, premul};
 
-#[path = "runtime/input/focus.rs"]
-mod focus;
 #[path = "runtime/input/capture.rs"]
 mod capture;
+#[path = "runtime/input/focus.rs"]
+mod focus;
 #[path = "runtime/input/focus_machine.rs"]
 mod focus_machine;
 #[path = "runtime/input/modal_focus.rs"]
 mod modal_focus;
 #[path = "runtime/input/physical.rs"]
 mod physical_dispatch;
-#[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(unused_imports))]
+#[cfg_attr(
+    not(any(target_os = "macos", target_os = "windows")),
+    allow(unused_imports)
+)]
 pub(crate) use physical_dispatch::Unhandled;
-#[path = "runtime/input/modifier_keys.rs"]
-mod modifier_keys;
-#[path = "runtime/input/popup.rs"]
-mod popup_dispatch;
-#[path = "runtime/input/file_dialog.rs"]
-mod file_dialog_dispatch;
-#[path = "runtime/input/drop.rs"]
-mod drop_dispatch;
-#[path = "runtime/playground.rs"]
-mod playground_host;
-#[path = "runtime/scroll/bottom.rs"]
-mod scroll_bottom;
 #[path = "runtime/selection/caret.rs"]
 mod caret;
+#[path = "runtime/input/drop.rs"]
+mod drop_dispatch;
 #[path = "runtime/event_log.rs"]
 pub(crate) mod event_log;
-#[path = "runtime/layout_read.rs"]
-pub(crate) mod layout_read;
-#[path = "runtime/visible.rs"]
-mod visible;
-#[path = "runtime/selection/links.rs"]
-mod links;
-#[path = "runtime/selection/selectable.rs"]
-pub(crate) mod selectable;
-#[path = "runtime/selection/click.rs"]
-mod input_click;
+#[path = "runtime/input/file_dialog.rs"]
+mod file_dialog_dispatch;
 #[path = "runtime/input/help.rs"]
 mod help;
 #[path = "runtime/input/help_look.rs"]
 mod help_look;
+#[path = "runtime/selection/click.rs"]
+mod input_click;
+#[path = "runtime/layout_read.rs"]
+pub(crate) mod layout_read;
+#[path = "runtime/selection/links.rs"]
+mod links;
+#[path = "runtime/input/modifier_keys.rs"]
+mod modifier_keys;
+#[path = "runtime/playground.rs"]
+mod playground_host;
+#[path = "runtime/input/popup.rs"]
+mod popup_dispatch;
+#[path = "runtime/scroll/bottom.rs"]
+mod scroll_bottom;
+#[path = "runtime/selection/selectable.rs"]
+pub(crate) mod selectable;
+#[path = "runtime/visible.rs"]
+mod visible;
 pub use help_look::HelpLook;
-#[path = "runtime/scroll/edge.rs"]
-mod scroll_edge;
-#[path = "runtime/scroll/x.rs"]
-mod scroll_x;
-#[path = "runtime/scroll/offset.rs"]
-mod scroll_offset;
+#[path = "runtime/anchor.rs"]
+mod anchor;
 #[path = "runtime/scroll/reveal.rs"]
 mod reveal;
 #[path = "runtime/scroll/anchor.rs"]
 mod scroll_anchor;
+#[path = "runtime/scroll/edge.rs"]
+mod scroll_edge;
+#[path = "runtime/scroll/offset.rs"]
+mod scroll_offset;
+#[path = "runtime/scroll/x.rs"]
+mod scroll_x;
 #[path = "runtime/scroll/sticky.rs"]
 mod sticky;
-#[path = "runtime/anchor.rs"]
-mod anchor;
 pub(crate) use anchor::anchor_position;
 use anchor::{anchor_index, step_up};
 #[path = "runtime/motion/motion_elements.rs"]
@@ -177,42 +194,42 @@ mod gesture_dispatch;
 #[path = "runtime/input/touch.rs"]
 mod touch_input;
 pub use touch_input::TouchPhase;
-#[path = "runtime/scroll/touch.rs"]
-mod scroll_touch;
+#[path = "runtime/input/app_ime.rs"]
+mod app_ime;
+#[path = "runtime/input/field_menu.rs"]
+pub(crate) mod field_menu;
 #[path = "runtime/motion/flights.rs"]
 mod flights;
-#[path = "runtime/paint/text_flights.rs"]
-mod text_flights;
-#[path = "runtime/input/hover.rs"]
-mod hover;
-#[path = "runtime/motion/timer_wake.rs"]
-mod timer_wake;
-#[path = "runtime/motion/idle_meter.rs"]
-mod idle_meter;
 #[cfg(feature = "hot")]
 #[path = "runtime/hot_state.rs"]
 mod hot_state;
-#[path = "runtime/motion/props.rs"]
-mod props;
-#[path = "runtime/input/secondary.rs"]
-mod secondary;
-#[path = "runtime/input/field_menu.rs"]
-pub(crate) mod field_menu;
-#[path = "runtime/input/app_ime.rs"]
-mod app_ime;
+#[path = "runtime/input/hover.rs"]
+mod hover;
+#[path = "runtime/motion/idle_meter.rs"]
+mod idle_meter;
 #[path = "runtime/input/press_clicks.rs"]
 mod press_clicks;
 #[path = "runtime/input/press_repeat.rs"]
 mod press_repeat;
+#[path = "runtime/motion/props.rs"]
+mod props;
+#[path = "runtime/scroll/touch.rs"]
+mod scroll_touch;
+#[path = "runtime/input/secondary.rs"]
+mod secondary;
+#[path = "runtime/paint/text_flights.rs"]
+mod text_flights;
+#[path = "runtime/motion/timer_wake.rs"]
+mod timer_wake;
 #[path = "runtime/input/titlebar.rs"]
 mod titlebar;
 pub(crate) use titlebar::WindowMenu;
-#[path = "runtime/window_requests.rs"]
-mod window_requests;
-#[path = "runtime/paint/tracks.rs"]
-mod paint_tracks;
 #[path = "runtime/input/action.rs"]
 mod action;
+#[path = "runtime/paint/tracks.rs"]
+mod paint_tracks;
+#[path = "runtime/window_requests.rs"]
+mod window_requests;
 use action::*;
 #[path = "runtime/paint/bands.rs"]
 mod bands;
@@ -229,42 +246,38 @@ use soft_edges::{in_fade, inherit_fade};
 mod shadow_paint;
 #[path = "runtime/paint/shape.rs"]
 mod shape_paint;
-use shape_paint::push_shape;
 use props::*;
-pub(crate) use scroll_x::{SHIFT_TURNS_WHEEL, wheel_delta};
-pub(crate) use scroll_offset::ScrollRequest;
 pub(crate) use reveal::ScrollReveal;
+pub(crate) use scroll_offset::ScrollRequest;
+pub(crate) use scroll_x::{SHIFT_TURNS_WHEEL, wheel_delta};
 pub use selectable::{SelectedText, SelectionChange, TextSelection};
-#[cfg(test)]
-#[path = "runtime/timer_wake_tests.rs"]
-mod timer_wake_tests;
-#[cfg(test)]
-#[path = "runtime/truncate_tests.rs"]
-mod truncate_tests;
-#[cfg(test)]
-#[path = "runtime/truncate_fade_tests.rs"]
-mod truncate_fade_tests;
-#[cfg(test)]
-#[path = "runtime/line_clamp_tests.rs"]
-mod line_clamp_tests;
-#[cfg(test)]
-#[path = "runtime/aspect_fit_tests.rs"]
-mod aspect_fit_tests;
+use shape_paint::push_shape;
 #[cfg(test)]
 #[path = "runtime/anchor_fit_tests.rs"]
 mod anchor_fit_tests;
 #[cfg(test)]
+#[path = "runtime/anchored_grow_tests.rs"]
+mod anchored_grow_tests;
+#[cfg(test)]
+#[path = "runtime/aspect_fit_tests.rs"]
+mod aspect_fit_tests;
+#[cfg(test)]
 #[path = "drop_tests.rs"]
 mod drop_tests;
 #[cfg(test)]
-#[path = "runtime/on_key_tests.rs"]
-mod on_key_tests;
+#[path = "runtime/line_clamp_tests.rs"]
+mod line_clamp_tests;
+#[cfg(test)]
+#[path = "runtime/live_check_tests.rs"]
+mod live_check_tests;
 #[cfg(test)]
 #[path = "live_only_tests.rs"]
 mod live_only_tests;
 #[cfg(test)]
-#[path = "runtime/live_check_tests.rs"]
-mod live_check_tests;
+#[path = "runtime/on_key_tests.rs"]
+mod on_key_tests;
+#[cfg(test)]
+mod pixel_snap_tests;
 #[path = "runtime/selection/select_all.rs"]
 mod select_all;
 #[cfg(test)]
@@ -274,22 +287,26 @@ mod select_all_tests;
 #[path = "runtime/selection_api_tests.rs"]
 mod selection_api_tests;
 #[cfg(test)]
-#[path = "runtime/anchored_grow_tests.rs"]
-mod anchored_grow_tests;
-#[cfg(test)]
-mod pixel_snap_tests;
-#[cfg(test)]
 mod size_tests;
+#[cfg(test)]
+#[path = "runtime/timer_wake_tests.rs"]
+mod timer_wake_tests;
+#[cfg(test)]
+#[path = "runtime/truncate_fade_tests.rs"]
+mod truncate_fade_tests;
+#[cfg(test)]
+#[path = "runtime/truncate_tests.rs"]
+mod truncate_tests;
 
+#[path = "runtime/web/a11y.rs"]
+pub(crate) mod web_a11y;
+#[path = "runtime/web/export.rs"]
+pub(crate) mod web_export;
+#[path = "runtime/web/page.rs"]
+pub(crate) mod web_page;
 #[cfg(any(test, target_arch = "wasm32"))]
 #[path = "runtime/web/runtime.rs"]
 pub(crate) mod web_runtime;
-#[path = "runtime/web/a11y.rs"]
-pub(crate) mod web_a11y;
-#[path = "runtime/web/page.rs"]
-pub(crate) mod web_page;
-#[path = "runtime/web/export.rs"]
-pub(crate) mod web_export;
 
 #[path = "runtime/commit/text_layout.rs"]
 mod text_layout;
@@ -297,41 +314,41 @@ use text_layout::*;
 #[path = "runtime/commit/flatten.rs"]
 mod flatten;
 use flatten::*;
-#[path = "runtime/commit/memo_reuse.rs"]
-pub(crate) mod memo_reuse;
-#[path = "runtime/commit/measure.rs"]
-mod measure;
-#[path = "runtime/commit/apply.rs"]
-mod apply;
-#[path = "runtime/commit/apply_scratch.rs"]
-mod apply_scratch;
-#[path = "runtime/commit/relayout.rs"]
-mod relayout;
-#[path = "runtime/virtual/window.rs"]
-mod virtual_window;
-#[path = "runtime/motion/unseen_presence.rs"]
-mod unseen_presence;
-#[path = "runtime/virtual/row_reorder.rs"]
-mod row_reorder;
-#[path = "runtime/motion/growth_rows.rs"]
-mod growth_rows;
-#[path = "runtime/motion/growth_runs.rs"]
-mod growth_runs;
-#[path = "runtime/motion/fold_hold.rs"]
-mod fold_hold;
-#[path = "runtime/motion/landing_hold.rs"]
-mod landing_hold;
-#[path = "runtime/motion/content_slide.rs"]
-mod content_slide;
-mod elements;
-#[path = "a11y/tree.rs"]
-pub(crate) mod a11y_tree;
+#[path = "a11y/actions.rs"]
+mod a11y_actions;
 #[path = "a11y/node.rs"]
 mod a11y_node;
 #[path = "a11y/text.rs"]
 mod a11y_text;
-#[path = "a11y/actions.rs"]
-mod a11y_actions;
+#[path = "a11y/tree.rs"]
+pub(crate) mod a11y_tree;
+#[path = "runtime/commit/apply.rs"]
+mod apply;
+#[path = "runtime/commit/apply_scratch.rs"]
+mod apply_scratch;
+#[path = "runtime/motion/content_slide.rs"]
+mod content_slide;
+mod elements;
+#[path = "runtime/motion/fold_hold.rs"]
+mod fold_hold;
+#[path = "runtime/motion/growth_rows.rs"]
+mod growth_rows;
+#[path = "runtime/motion/growth_runs.rs"]
+mod growth_runs;
+#[path = "runtime/motion/landing_hold.rs"]
+mod landing_hold;
+#[path = "runtime/commit/measure.rs"]
+mod measure;
+#[path = "runtime/commit/memo_reuse.rs"]
+pub(crate) mod memo_reuse;
+#[path = "runtime/commit/relayout.rs"]
+mod relayout;
+#[path = "runtime/virtual/row_reorder.rs"]
+mod row_reorder;
+#[path = "runtime/motion/unseen_presence.rs"]
+mod unseen_presence;
+#[path = "runtime/virtual/window.rs"]
+mod virtual_window;
 use a11y_actions::A11yAct;
 #[cfg(test)]
 #[path = "a11y/tests.rs"]
@@ -345,35 +362,38 @@ use cache_layer::{ActiveCache, NodeCache};
 #[path = "runtime/paint/helpers.rs"]
 mod paint_helpers;
 use paint_helpers::*;
-#[path = "runtime/paint/content.rs"]
-mod paint_content;
-#[path = "runtime/input/hit.rs"]
-mod hit;
 #[path = "runtime/paint/build.rs"]
 mod build;
+#[path = "runtime/input/hit.rs"]
+mod hit;
 #[path = "runtime/input/keys.rs"]
 mod keys;
+#[path = "runtime/paint/content.rs"]
+mod paint_content;
 #[path = "runtime/input/pointer.rs"]
 mod pointer;
 use pointer::CLICK_SLOP;
 #[path = "runtime/motion/live_check.rs"]
 mod live_check;
 pub(crate) use live_check::fold_live;
-mod frame;
 mod cx;
-pub use cx::{Cx, Env, Waker, commit_generation};
-pub(crate) use cx::caret_of;
+mod frame;
 use cx::COMMITS;
+pub(crate) use cx::caret_of;
+pub use cx::{Cx, Env, Waker, commit_generation};
 mod turn;
 pub(crate) use turn::intersect;
 use turn::{Turn, compose_turn, open_turned_layer, screen_clip_of};
 mod types;
-pub use types::{FrameStats, TitlebarAction};
 pub(crate) use commit_why::CommitWhy;
 #[cfg(debug_assertions)]
 pub(crate) use layout_read::window_read_key;
 pub(crate) use types::{AnimSource, Node};
-use types::{AxisScroll, GlideTo, Inh, NodeCold, RevealState, RowLayout, ScaleMotion, ScrollMode, ScrollState, Stack};
+use types::{
+    AxisScroll, GlideTo, Inh, NodeCold, RevealState, RowLayout, ScaleMotion, ScrollMode,
+    ScrollState, Stack,
+};
+pub use types::{FrameStats, TitlebarAction};
 #[path = "runtime/motion/tracks.rs"]
 mod tracks;
 use tracks::{SCROLL_DECAY, mark_ancestors, scroll_offsets, word_starts};
@@ -690,7 +710,10 @@ pub struct Runtime<S: 'static> {
     clipboard_reads: Vec<(u64, crate::el::ReadFn)>,
     /// The plain text and pill ranges of this runtime's last copy that held pills, for web
     /// clipboard pastes where the OS worker does not own the pasteboard.
-    pill_copy: Option<(zeroize::Zeroizing<String>, Vec<(std::ops::Range<usize>, String)>)>,
+    pill_copy: Option<(
+        zeroize::Zeroizing<String>,
+        Vec<(std::ops::Range<usize>, String)>,
+    )>,
     next_clipboard_read: u64,
     pub(crate) clear_secret_request: bool,
     /// `Runtime::use_clipboard`: a test clipboard that replaces the OS one.
@@ -820,7 +843,13 @@ impl<S: 'static> Runtime<S> {
         Self::with_text(state, view, viewport, env, TextSystem::default())
     }
 
-    pub fn with_text(state: S, view: fn(&S, &mut Cx<S>) -> El, viewport: (f32, f32), env: Env, text: TextSystem) -> Self {
+    pub fn with_text(
+        state: S,
+        view: fn(&S, &mut Cx<S>) -> El,
+        viewport: (f32, f32),
+        env: Env,
+        text: TextSystem,
+    ) -> Self {
         let mut scene = Scene::new();
         scene.set_pixel_scale(env.scale);
         crate::recorder::headless_reset();

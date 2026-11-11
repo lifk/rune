@@ -19,17 +19,22 @@ pub(super) fn fetch(wake: impl FnOnce() + 'static) {
         return;
     }
     let base = MODULE_URL.with(String::clone);
-    let files: Vec<_> = crate::text::full_faces::FILES.iter().map(|file| {
-        let url = super::platform::resolve_url(file, &base);
-        (url.clone(), super::platform::fetch_bytes(&url))
-    }).collect();
+    let files: Vec<_> = crate::text::full_faces::FILES
+        .iter()
+        .map(|file| {
+            let url = super::platform::resolve_url(file, &base);
+            (url.clone(), super::platform::fetch_bytes(&url))
+        })
+        .collect();
     wasm_bindgen_futures::spawn_local(async move {
         let mut faces = Vec::new();
         for (url, bytes) in files {
             match wasm_bindgen_futures::JsFuture::from(bytes).await {
                 Ok(bytes) => faces.push(js_sys::Uint8Array::new(&bytes).to_vec()),
                 Err(e) => {
-                    let note = format!("rune: {url} did not load, so text outside Latin, Greek and Cyrillic draws in fallback fonts:");
+                    let note = format!(
+                        "rune: {url} did not load, so text outside Latin, Greek and Cyrillic draws in fallback fonts:"
+                    );
                     web_sys::console::warn_2(&note.into(), &e);
                     return;
                 }

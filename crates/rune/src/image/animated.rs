@@ -30,7 +30,9 @@ impl Motion {
         let last = self.ends.len() - 1;
         let period = self.ends[last];
         let play = (t.max(0.0) / period).floor();
-        if self.plays.is_some_and(|n| play >= f64::from(n)) { return (last, None); }
+        if self.plays.is_some_and(|n| play >= f64::from(n)) {
+            return (last, None);
+        }
         let within = t.max(0.0) - play * period;
         let i = self.ends.partition_point(|&end| end <= within).min(last);
         (i, Some(play * period + self.ends[i]))
@@ -55,9 +57,13 @@ enum Kind {
 
 fn sniff(bytes: &[u8]) -> Option<Kind> {
     #[cfg(not(target_arch = "wasm32"))]
-    if bytes.starts_with(b"GIF8") { return Some(Kind::Gif); }
+    if bytes.starts_with(b"GIF8") {
+        return Some(Kind::Gif);
+    }
     #[cfg(not(target_arch = "wasm32"))]
-    if bytes.len() > 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" { return Some(Kind::WebP); }
+    if bytes.len() > 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        return Some(Kind::WebP);
+    }
     bytes.starts_with(b"\x89PNG\r\n\x1a\n").then_some(Kind::Png)
 }
 
@@ -79,15 +85,21 @@ pub(super) fn decode(bytes: &[u8]) -> Option<Result<Decoded, ImageError>> {
         #[cfg(not(target_arch = "wasm32"))]
         Kind::WebP => {
             let mut decoder = image::codecs::webp::WebPDecoder::new(cursor).ok()?;
-            if !decoder.has_animation() { return None; }
+            if !decoder.has_animation() {
+                return None;
+            }
             // Browsers composite on transparency, whatever background the file names.
-            decoder.set_background_color(image::Rgba([0, 0, 0, 0])).ok()?;
+            decoder
+                .set_background_color(image::Rgba([0, 0, 0, 0]))
+                .ok()?;
             let plays = finite(decoder.loop_count());
             (decoder.dimensions(), decoder.into_frames(), plays)
         }
         Kind::Png => {
             let decoder = image::codecs::png::PngDecoder::new(cursor).ok()?;
-            if !decoder.is_apng().ok()? { return None; }
+            if !decoder.is_apng().ok()? {
+                return None;
+            }
             let size = decoder.dimensions();
             let decoder = decoder.apng().ok()?;
             let plays = finite(decoder.loop_count());
@@ -95,7 +107,9 @@ pub(super) fn decode(bytes: &[u8]) -> Option<Result<Decoded, ImageError>> {
         }
     };
     let (w, h) = size;
-    if w == 0 || h == 0 || w > 8192 || h > 8192 { return Some(Err(ImageError("animation is too large".into()))); }
+    if w == 0 || h == 0 || w > 8192 || h > 8192 {
+        return Some(Err(ImageError("animation is too large".into())));
+    }
     let per_frame = w as usize * h as usize * 16 / 3;
     let mut chains = Vec::new();
     let mut ends = Vec::new();
@@ -107,7 +121,9 @@ pub(super) fn decode(bytes: &[u8]) -> Option<Result<Decoded, ImageError>> {
             Err(_) if !chains.is_empty() => break,
             Err(e) => return Some(Err(error(e))),
         };
-        if !chains.is_empty() && (chains.len() + 1) * per_frame > BUDGET { return Some(still(chains)); }
+        if !chains.is_empty() && (chains.len() + 1) * per_frame > BUDGET {
+            return Some(still(chains));
+        }
         let (numer, denom) = frame.delay().numer_denom_ms();
         let ms = f64::from(numer) / f64::from(denom.max(1));
         // Browsers show a frame of 10 ms or less for 100 ms: such files mean "as fast as you
@@ -120,16 +136,31 @@ pub(super) fn decode(bytes: &[u8]) -> Option<Result<Decoded, ImageError>> {
         }
         ends.push(elapsed);
     }
-    if chains.len() < 2 { return (!chains.is_empty()).then(|| still(chains)); }
+    if chains.len() < 2 {
+        return (!chains.is_empty()).then(|| still(chains));
+    }
     let mut chains = chains.into_iter();
     let first = chains.next().expect("two frames or more");
-    Some(Ok(Decoded { mips: first, motion: Some(Box::new(Motion { frames: chains.collect(), ends, plays })) }))
+    Some(Ok(Decoded {
+        mips: first,
+        motion: Some(Box::new(Motion {
+            frames: chains.collect(),
+            ends,
+            plays,
+        })),
+    }))
 }
 
 /// The first frame alone, for an animation too large to hold.
 fn still(chains: Vec<Vec<Mip>>) -> Result<Decoded, ImageError> {
-    let first = chains.into_iter().next().ok_or_else(|| ImageError("animation has no frames".into()))?;
-    Ok(Decoded { mips: first, motion: None })
+    let first = chains
+        .into_iter()
+        .next()
+        .ok_or_else(|| ImageError("animation has no frames".into()))?;
+    Ok(Decoded {
+        mips: first,
+        motion: None,
+    })
 }
 
 fn finite(count: image::metadata::LoopCount) -> Option<u32> {

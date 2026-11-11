@@ -1,5 +1,5 @@
 //! `El::hover_motion_within` sets the hover curves kit controls' inner elements use.
-use rune::{Anim, Color, Cx, Curve, Easing, El, Env, Runtime, col, el, row, text};
+use rune::{Anim, Color, Curve, Cx, Easing, El, Env, Runtime, col, el, row, text};
 use rune_kit::{Kit, Popover, SegmentedControl, Switch, root};
 
 #[derive(Clone, Copy, PartialEq)]

@@ -48,7 +48,8 @@ impl El {
     /// [`El::aspect_ratio`] in place.
     #[inline]
     pub fn set_aspect_ratio(&mut self, ratio: f32) -> &mut Self {
-        self.style.set_aspect_ratio((ratio.is_finite() && ratio > 0.0).then_some(ratio));
+        self.style
+            .set_aspect_ratio((ratio.is_finite() && ratio > 0.0).then_some(ratio));
         self
     }
     /// The largest box at `ratio` (width over height) that fits the room the element is given,
@@ -60,7 +61,11 @@ impl El {
     /// In a column with no bounded height, bound it with `max_h`. It sets both sides, so `w`
     /// and `h` don't apply; anything not positive removes it.
     pub fn aspect_fit(mut self, ratio: f32) -> Self {
-        let ratio = if ratio.is_finite() && ratio > 0.0 { ratio } else { 0.0 };
+        let ratio = if ratio.is_finite() && ratio > 0.0 {
+            ratio
+        } else {
+            0.0
+        };
         if ratio > 0.0 || !self.cold.is_empty() {
             self.cold_mut().aspect_fit = ratio;
         }
@@ -253,7 +258,8 @@ impl El {
     /// [`El::justify_between`] in place.
     #[inline]
     pub fn set_justify_between(&mut self) -> &mut Self {
-        self.style.set_justify_content(JustifyContent::SPACE_BETWEEN);
+        self.style
+            .set_justify_content(JustifyContent::SPACE_BETWEEN);
         self
     }
     #[inline]
@@ -566,21 +572,43 @@ impl El {
     /// [`El::absolute`] in place.
     #[inline]
     pub fn set_absolute(&mut self, left: f32, top: f32) -> &mut Self {
-        self.style.set_absolute_inset(Rect { left: length(left), top: length(top), right: auto(), bottom: auto() });
+        self.style.set_absolute_inset(Rect {
+            left: length(left),
+            top: length(top),
+            right: auto(),
+            bottom: auto(),
+        });
         self
     }
     /// Out of flow, pinned to the given edges of the parent's padding box (`None` leaves an
     /// edge free); pinning both opposite edges stretches the element between them.
     #[inline]
-    pub fn pin(mut self, left: Option<f32>, top: Option<f32>, right: Option<f32>, bottom: Option<f32>) -> Self {
+    pub fn pin(
+        mut self,
+        left: Option<f32>,
+        top: Option<f32>,
+        right: Option<f32>,
+        bottom: Option<f32>,
+    ) -> Self {
         self.set_pin(left, top, right, bottom);
         self
     }
     /// [`El::pin`] in place.
     #[inline]
-    pub fn set_pin(&mut self, left: Option<f32>, top: Option<f32>, right: Option<f32>, bottom: Option<f32>) -> &mut Self {
+    pub fn set_pin(
+        &mut self,
+        left: Option<f32>,
+        top: Option<f32>,
+        right: Option<f32>,
+        bottom: Option<f32>,
+    ) -> &mut Self {
         let edge = |v: Option<f32>| v.map_or(auto(), length);
-        self.style.set_absolute_inset(Rect { left: edge(left), top: edge(top), right: edge(right), bottom: edge(bottom) });
+        self.style.set_absolute_inset(Rect {
+            left: edge(left),
+            top: edge(top),
+            right: edge(right),
+            bottom: edge(bottom),
+        });
         self
     }
     /// The pointer's shape while it is over this element or a descendant that sets none.
@@ -625,10 +653,16 @@ impl El {
     /// Observe the pointer moving over this element, in window points, without making a native
     /// overlay input region. [`El::on_pointer_move_local`] gives the element's own points.
     #[track_caller]
-    pub fn on_pointer_move<S: 'static>(mut self, f: impl Fn(&mut S, PointerPress) + 'static) -> Self {
-        self.handlers.on_pointer_move = Some(Rc::new(move |s, p, _| f(downcast::<S>(s), p.window())));
+    pub fn on_pointer_move<S: 'static>(
+        mut self,
+        f: impl Fn(&mut S, PointerPress) + 'static,
+    ) -> Self {
+        self.handlers.on_pointer_move =
+            Some(Rc::new(move |s, p, _| f(downcast::<S>(s), p.window())));
         #[cfg(debug_assertions)]
-        { self.handlers.sites.pointer_move = Some(std::panic::Location::caller()); }
+        {
+            self.handlers.sites.pointer_move = Some(std::panic::Location::caller());
+        }
         self
     }
     /// [`El::on_pointer_move`] with the point in this element's own layout points as well as
@@ -643,10 +677,15 @@ impl El {
     /// })
     /// ```
     #[track_caller]
-    pub fn on_pointer_move_local<S: 'static>(mut self, f: impl Fn(&mut S, PointerEvent, &mut Tx) + 'static) -> Self {
+    pub fn on_pointer_move_local<S: 'static>(
+        mut self,
+        f: impl Fn(&mut S, PointerEvent, &mut Tx) + 'static,
+    ) -> Self {
         self.handlers.on_pointer_move = Some(Rc::new(move |s, p, tx| f(downcast::<S>(s), p, tx)));
         #[cfg(debug_assertions)]
-        { self.handlers.sites.pointer_move = Some(std::panic::Location::caller()); }
+        {
+            self.handlers.sites.pointer_move = Some(std::panic::Location::caller());
+        }
         self
     }
     /// [`El::on_pointer_move_local`] for a component that doesn't read the app's state (a scroll
@@ -655,7 +694,9 @@ impl El {
     pub fn on_pointer_move_any(mut self, f: impl Fn(PointerEvent, &mut Tx) + 'static) -> Self {
         self.handlers.on_pointer_move = Some(Rc::new(move |_, p, tx| f(p, tx)));
         #[cfg(debug_assertions)]
-        { self.handlers.sites.pointer_move = Some(std::panic::Location::caller()); }
+        {
+            self.handlers.sites.pointer_move = Some(std::panic::Location::caller());
+        }
         self
     }
 
@@ -664,7 +705,9 @@ impl El {
     pub fn on_hover<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.handlers.on_hover = Some(Rc::new(move |s, _| f(downcast::<S>(s))));
         #[cfg(debug_assertions)]
-        { self.handlers.sites.hover = Some(std::panic::Location::caller()); }
+        {
+            self.handlers.sites.hover = Some(std::panic::Location::caller());
+        }
         self
     }
 
@@ -673,10 +716,17 @@ impl El {
     /// hit target, so it never takes presses or hover from its children. A held press keeps the
     /// pointer inside until it releases.
     #[track_caller]
-    pub fn on_hover_change<S: 'static>(mut self, f: impl Fn(&mut S, bool, &mut Tx) + 'static) -> Self {
-        self.handlers.on_hover_change = Some(Rc::new(move |s, inside, tx| f(downcast::<S>(s), inside, tx)));
+    pub fn on_hover_change<S: 'static>(
+        mut self,
+        f: impl Fn(&mut S, bool, &mut Tx) + 'static,
+    ) -> Self {
+        self.handlers.on_hover_change = Some(Rc::new(move |s, inside, tx| {
+            f(downcast::<S>(s), inside, tx)
+        }));
         #[cfg(debug_assertions)]
-        { self.handlers.sites.hover_change = Some(std::panic::Location::caller()); }
+        {
+            self.handlers.sites.hover_change = Some(std::panic::Location::caller());
+        }
         self
     }
     /// [`El::on_hover_change`] for a component that doesn't read the app's state.
@@ -684,7 +734,9 @@ impl El {
     pub fn on_hover_change_any(mut self, f: impl Fn(bool, &mut Tx) + 'static) -> Self {
         self.handlers.on_hover_change = Some(Rc::new(move |_, inside, tx| f(inside, tx)));
         #[cfg(debug_assertions)]
-        { self.handlers.sites.hover_change = Some(std::panic::Location::caller()); }
+        {
+            self.handlers.sites.hover_change = Some(std::panic::Location::caller());
+        }
         self
     }
     /// [`El::on_hover_change_any`] after any hover handler the element already has, which keeps
@@ -692,15 +744,21 @@ impl El {
     /// live-only when both handlers say so.
     #[doc(hidden)]
     pub fn chain_hover_change_any(mut self, f: impl Fn(bool, &mut Tx) + 'static) -> Self {
-        self.handlers.on_hover_change = Some(match self.handlers.get_mut_if_some().and_then(|h| h.on_hover_change.take()) {
-            Some(prev) => Rc::new(move |s, inside, tx| {
-                prev(s, inside, tx);
-                let prev_live = std::mem::take(&mut tx.live_only);
-                f(inside, tx);
-                tx.live_only &= prev_live;
-            }),
-            None => Rc::new(move |_, inside, tx| f(inside, tx)),
-        });
+        self.handlers.on_hover_change = Some(
+            match self
+                .handlers
+                .get_mut_if_some()
+                .and_then(|h| h.on_hover_change.take())
+            {
+                Some(prev) => Rc::new(move |s, inside, tx| {
+                    prev(s, inside, tx);
+                    let prev_live = std::mem::take(&mut tx.live_only);
+                    f(inside, tx);
+                    tx.live_only &= prev_live;
+                }),
+                None => Rc::new(move |_, inside, tx| f(inside, tx)),
+            },
+        );
         self
     }
 
@@ -720,7 +778,10 @@ impl El {
     }
 
     #[doc(hidden)]
-    pub fn wrap_scroll_area(mut self, fallback_site: (&'static str, u32, u32)) -> (String, String, Self, Self) {
+    pub fn wrap_scroll_area(
+        mut self,
+        fallback_site: (&'static str, u32, u32),
+    ) -> (String, String, Self, Self) {
         let key = self.key.clone().unwrap_or_else(|| {
             use std::hash::{Hash, Hasher};
             let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -734,7 +795,11 @@ impl El {
         let mut outer = col().key(area.clone());
         outer.style = self.style.take_box_placement();
         if let Some(c) = self.cold.get_mut_if_some() {
-            let (fit, above, transition) = (std::mem::replace(&mut c.aspect_fit, 0.0), c.above.take(), c.transition.take());
+            let (fit, above, transition) = (
+                std::mem::replace(&mut c.aspect_fit, 0.0),
+                c.above.take(),
+                c.transition.take(),
+            );
             if fit > 0.0 || above.is_some() || transition.is_some() {
                 let o = outer.cold_mut();
                 (o.aspect_fit, o.above, o.transition) = (fit, above, transition);

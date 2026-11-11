@@ -64,7 +64,8 @@ impl Store {
         if self.labels.len() <= MAX_LABELS && self.bytes <= MAX_BYTES {
             return;
         }
-        let mut order: Vec<(u64, String)> = self.labels.iter().filter(|(k, _)| k.as_str() != keep).map(|(k, m)| (m.used, k.clone())).collect();
+        let mut order: Vec<(u64, String)> =
+            self.labels.iter().filter(|(k, _)| k.as_str() != keep).map(|(k, m)| (m.used, k.clone())).collect();
         order.sort_unstable();
         // Down to three quarters, so the sort isn't paid on every new label.
         let (labels, bytes) = (MAX_LABELS * 3 / 4, MAX_BYTES * 3 / 4);
@@ -173,20 +174,22 @@ impl RollingText {
         // hold their columns, whatever springs the rows around them slide on.
         let side = (font.size * 0.3).max(2.0);
         let lead = |e: El| if self.trailing { e.ride_trailing() } else { e.width_leads() };
-        let mut e = lead(row()
-            .key(self.key.clone())
-            .role("text")
-            .label(self.text.clone())
-            .h(font.line_px() + 2.0 * edge)
-            .px(side)
-            .py(edge)
-            .ml(-side)
-            .mr(-side)
-            .mt(-edge)
-            .mb(-edge)
-            .motion(self.spring))
-            .clip_fade(side, edge, side, edge)
-            .child_exit(exit);
+        let mut e = lead(
+            row()
+                .key(self.key.clone())
+                .role("text")
+                .label(self.text.clone())
+                .h(font.line_px() + 2.0 * edge)
+                .px(side)
+                .py(edge)
+                .ml(-side)
+                .mr(-side)
+                .mt(-edge)
+                .mb(-edge)
+                .motion(self.spring),
+        )
+        .clip_fade(side, edge, side, edge)
+        .child_exit(exit);
         // Every cell measures as its slice of the whole label shaped once, so the row keeps the
         // run's kerned, fractional advances and the width of the same string set as one text.
         let run = Run::new(self.text.as_str());
@@ -204,17 +207,19 @@ impl RollingText {
             } else {
                 Transition::asymmetric(Transition::identity(), push)
             };
-            e = e.child(lead(
-                text(g.cluster)
-                    .key(format!("{}.{}", self.key, g.id))
-                    .font(font)
-                    .advance_in(&run, at)
-                    .color(color)
-                    .motion(spring)
-                    // The row's label reads the whole text; a reader never hears it a glyph at a time.
-                    .a11y_hidden(),
-            )
-            .transition(tr));
+            e = e.child(
+                lead(
+                    text(g.cluster)
+                        .key(format!("{}.{}", self.key, g.id))
+                        .font(font)
+                        .advance_in(&run, at)
+                        .color(color)
+                        .motion(spring)
+                        // The row's label reads the whole text; a reader never hears it a glyph at a time.
+                        .a11y_hidden(),
+                )
+                .transition(tr),
+            );
         }
         e
     }
@@ -446,7 +451,10 @@ mod tests {
         assert!(falls("8s", Some(8.0)), "falling");
         assert!(!falls("8 s", Some(8.0)), "new text with the same value rolls by the text rule");
         assert!(!falls("8s", None), "so does a build without a value");
-        assert!(!falls("-", Some(f64::NAN)) && !falls("∞", Some(f64::NEG_INFINITY)), "no direction for NaN or infinity");
+        assert!(
+            !falls("-", Some(f64::NAN)) && !falls("∞", Some(f64::NEG_INFINITY)),
+            "no direction for NaN or infinity"
+        );
         assert!(falls("7s", Some(7.0)), "and they don't replace the last value");
         assert!(!falls("12s", Some(12.0)), "rising again");
     }

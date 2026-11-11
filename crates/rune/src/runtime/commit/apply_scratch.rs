@@ -34,7 +34,12 @@ pub(super) fn clear_old_nodes(
         return old_nodes;
     }
     spans_scratch.clear();
-    spans_scratch.extend(reused.iter().filter(|s| s.moved && s.len > 0).map(|s| (s.old_start, s.len)));
+    spans_scratch.extend(
+        reused
+            .iter()
+            .filter(|s| s.moved && s.len > 0)
+            .map(|s| (s.old_start, s.len)),
+    );
     if spans_scratch.is_empty() {
         old_nodes.clear();
         return old_nodes;
