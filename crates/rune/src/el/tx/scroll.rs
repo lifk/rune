@@ -18,6 +18,17 @@ impl Tx {
     pub fn scroll_into_view(&mut self, key: impl Into<String>) {
         self.scroll_to.push(crate::runtime::ScrollReveal::into_view(None, key.into()));
     }
+    /// [`Tx::scroll_into_view`] that glides on the scroll spring rather than jumping: a router
+    /// that focuses a control without Rune's own reveal (see `Tx::focus_key_quiet`) animates
+    /// the reveal itself.
+    pub fn scroll_into_view_animated(&mut self, key: impl Into<String>) {
+        self.scroll_to
+            .push(crate::runtime::ScrollReveal::into_view_animated(
+                None,
+                key.into(),
+            ));
+    }
+
     /// [`Tx::scroll_into_view`] for row `key` inside the element keyed `scope` only, so lists
     /// that key their rows alike (a file tree and a diff, both by path) don't reveal each
     /// other's rows.
