@@ -777,7 +777,8 @@ pub fn check(rec: &Recording) -> Vec<Finding> {
                     return false;
                 }
                 if seen(a, size) {
-                    return (shown_edge(b, axis, size) - shown_edge(a, axis, size) - d).abs() < 0.25;
+                    return (shown_edge(b, axis, size) - shown_edge(a, axis, size) - d).abs()
+                        < 0.25;
                 }
                 entering
                     && b.op >= rule("faint")

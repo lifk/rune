@@ -57,6 +57,9 @@ pub struct Tx {
     pub(crate) keep_on_screen: Vec<String>,
     /// Keys to focus by name (`Tx::focus_key`), for a launch or a route change.
     pub(crate) focus_keys: Vec<String>,
+    /// Keys to focus without Rune's own instant reveal (`Tx::focus_key_quiet`). A router that
+    /// animates its scroll requests this and places the viewport itself.
+    pub(crate) focus_keys_quiet: Vec<String>,
     pub(crate) wakes: Vec<std::time::Duration>,
     pub(crate) shell: Option<Shell>,
     pub(crate) minimize: bool,
@@ -137,6 +140,13 @@ impl Tx {
     /// element must be in the tree built this frame; a missing key is ignored.
     pub fn focus_key(&mut self, key: impl Into<String>) {
         self.focus_keys.push(key.into());
+    }
+
+    /// [`Tx::focus_key`] without the instant scroll-into-view Rune adds for it. Use this when
+    /// the caller queues its own animated scroll (see [`Tx::scroll_center`]); the two together
+    /// glide to the newly focused control instead of jumping to it first.
+    pub fn focus_key_quiet(&mut self, key: impl Into<String>) {
+        self.focus_keys_quiet.push(key.into());
     }
 
     /// Pick from the last presented frame, with the geometry and visibility rules of
@@ -228,6 +238,7 @@ impl Tx {
     pub(crate) fn frame_work(&self) -> bool {
         !self.pick_reads.is_empty()
             || !self.focus_keys.is_empty()
+            || !self.focus_keys_quiet.is_empty()
             || !self.scroll_to.is_empty()
             || !self.scroll_bottom.is_empty()
             || !self.scroll_pages.is_empty()

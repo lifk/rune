@@ -807,6 +807,10 @@ impl<S: 'static> Runtime<S> {
                 scroll_to.push(ScrollReveal::into_view(None, path));
             }
         }
+        // Quiet focus: the app placed the viewport itself, so no instant reveal here.
+        for key in std::mem::take(&mut tx.focus_keys_quiet) {
+            self.focus_by_key(&key);
+        }
         for (path, v) in &mut self.virtuals {
             if let Some(key) = v.reveal_selected.take()
                 && !pointer_hover

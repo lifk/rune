@@ -272,6 +272,7 @@ pub(super) fn merge(tx: &mut Tx, one: Tx) {
     // dropping it here leaves a launched 10-foot screen with nothing focused, and arrows and
     // Space then do nothing.
     tx.focus_keys.extend(one.focus_keys);
+    tx.focus_keys_quiet.extend(one.focus_keys_quiet);
     if one.title.is_some() {
         tx.title = one.title;
     }
