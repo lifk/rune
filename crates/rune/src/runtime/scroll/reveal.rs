@@ -18,6 +18,16 @@ impl ScrollReveal {
         ScrollReveal { scope, key, center: false, animated: false }
     }
 
+    /// Reveal just enough, on the glide spring rather than at once.
+    pub fn into_view_animated(scope: Option<String>, key: String) -> Self {
+        ScrollReveal {
+            scope,
+            key,
+            center: false,
+            animated: true,
+        }
+    }
+
     pub fn center(scope: Option<String>, key: String, animated: bool) -> Self {
         ScrollReveal { scope, key, center: true, animated }
     }
