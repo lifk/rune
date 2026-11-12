@@ -35,35 +35,24 @@ struct ListPlan {
 }
 
 impl<S: 'static> Runtime<S> {
-    /// Whether this commit only shifts or fills `virtual_rows` windows, so `view` and already
-    /// mounted subtrees need not rebuild.
-    pub(in crate::runtime) fn virtual_only(&self, tx: &Tx) -> bool {
+    /// Whether a commit that resized nothing and changed nothing the view reads
+    /// ([`Runtime::commit_kind`]) only shifts or fills `virtual_rows` windows, so `view` and
+    /// already mounted subtrees need not rebuild.
+    pub(in crate::runtime) fn virtual_only(&self) -> bool {
         #[cfg(feature = "hot")]
         if self.hot.is_some() {
             return false;
         }
-        if self.relayout
-            || !self.state_unchanged
-            || tx.settle
-            || self.checking_live_only()
-            || self.reuse.read_moved
-            || self.reuse.scale != self.env.scale
-            || self.reuse.srgb != Some(self.srgb_blend)
-            || self.playground.is_some()
-            || self.patch_pending()
-            || self.virtuals.is_empty()
-            || self.nodes.is_empty()
-            || self.layout.live_count() != self.nodes.len()
-        {
+        if self.checking_live_only() || self.virtuals.is_empty() || self.nodes.is_empty() {
             return false;
         }
         if !self.nodes.iter().all(|n| {
-            relayout::reusable(n) && n.text.as_ref().is_none_or(|t| !t.redacted && t.live.is_none())
+            relayout::reusable(n) && n.text.as_ref().is_none_or(|t| !t.redacted && t.cold.live.is_none())
         }) {
             return false;
         }
         for (path, v) in &self.virtuals {
-            if !v.indexed || !v.selection.source.as_ref().is_some_and(|s| s.count == v.keys.len()) {
+            if !v.indexed || !v.selection.pins.source().and_then(|s| s.rebuild()).is_some_and(|s| s.count == v.keys.len()) {
                 return false;
             }
             let Some(&list_id) = self.path_ids.get(path) else { return false };
@@ -210,12 +199,12 @@ impl<S: 'static> Measurement<'_, S> {
             }
             v.shown = shown;
 
-            let list_group = v.selection.group_path.clone();
-            let inert = v.selection.inert;
-            v.selection.texts.clear();
-            v.selection.copy_providers.clear();
-            v.selection.unmounted.clear();
-            let rows = v.selection.source.as_ref().unwrap().clone();
+            let list_group = v.selection.scope.group_path.clone();
+            let inert = v.selection.scope.inert;
+            // Cleared in place: a later plan that falls back keeps this list's buffers too.
+            v.selection.pins.clear_texts();
+            let rows = v.selection.pins.source().and_then(|s| s.rebuild())
+                .expect("an index-built list keeps its row builder").clone();
 
             let under = |f: &str| f.strip_prefix(path.as_str()).is_some_and(|rest| rest.starts_with('/'));
             let focused = v
@@ -225,7 +214,9 @@ impl<S: 'static> Measurement<'_, S> {
                 .and_then(|key| v.index_of(key))
                 .filter(|i| !v.range.contains(i));
             let pinned_rows: Vec<usize> = v
-                .pinned_rows
+                .selection
+                .pins
+                .rows()
                 .iter()
                 .filter_map(|key| v.index_of(key))
                 .filter(|i| !v.range.contains(i))
@@ -281,15 +272,14 @@ impl<S: 'static> Measurement<'_, S> {
                 let row = build_indexed_row(&plan.rows, state, &plan.path, &v.keys[i], i, self.key_warnings);
                 measure::collect_virtual_inputs(&row, &plan.path, i, plan.inert, self.virtual_inputs);
                 if plan.pinned.contains(&i) {
-                    selectable::virtual_selection::collect_virtual_row_selection(
+                    selectable::virtual_selection::collect_row_into_pins(
+                        &mut v.selection.pins,
                         &row,
                         &plan.path,
                         &v.keys[i],
                         i,
                         plan.list_group.as_deref(),
                         plan.inert,
-                        &mut v.selection.texts,
-                        &mut v.selection.copy_providers,
                     );
                 }
             }
@@ -298,15 +288,14 @@ impl<S: 'static> Measurement<'_, S> {
                     continue;
                 }
                 let row = build_indexed_row(&plan.rows, state, &plan.path, &v.keys[i], i, self.key_warnings);
-                selectable::virtual_selection::collect_virtual_row_selection(
+                selectable::virtual_selection::collect_row_into_pins(
+                    &mut v.selection.pins,
                     &row,
                     &plan.path,
                     &v.keys[i],
                     i,
                     plan.list_group.as_deref(),
                     plan.inert,
-                    &mut v.selection.texts,
-                    &mut v.selection.copy_providers,
                 );
             }
             for (pos, row_i) in plan.range.clone().enumerate() {
@@ -543,7 +532,8 @@ impl<S: 'static> Measurement<'_, S> {
             nodes,
             reduced_motion: self.reduced_motion,
             time_scale: self.time_scale,
-            defaults: self.defaults,
+            zoom: self.zoom,
+            defaults: self.defaults.clone(),
             titlebar: self.titlebar,
             caret_read: self.caret_read,
             layout_reads: self.layout_reads,
@@ -552,5 +542,14 @@ impl<S: 'static> Measurement<'_, S> {
             taken_paths: Vec::new(),
             selection: Vec::new(),
         })
+    }
+}
+
+#[cfg(test)]
+impl<S: 'static> Runtime<S> {
+    /// Runs one remount pass on its own and says whether it fell back, so a test can read what
+    /// the fallback left in the lists before the full rebuild that follows it fills them again.
+    pub(in crate::runtime) fn remount_falls_back(&mut self) -> bool {
+        matches!(self.measurement(true).remount_virtuals(), RemountOutcome::Fallback)
     }
 }

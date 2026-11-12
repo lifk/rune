@@ -15,9 +15,18 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 
 mod cloak;
 pub(crate) mod dark_mode;
+pub(crate) mod dcomp_handover;
+pub(crate) mod dib;
 mod dpi_drag;
+pub(crate) mod drop_target;
 mod frame;
+pub(crate) mod jump_list;
+pub(crate) mod occlusion;
+mod placement;
+pub(crate) mod press_point;
 mod pointer;
+pub(crate) mod session_lock;
+pub(crate) mod taskbar;
 
 pub(crate) use cloak::Cloak;
 pub(crate) use dpi_drag::follow_suggested_rect;
@@ -26,10 +35,99 @@ pub(crate) use frame::CustomFrame;
 pub(crate) use frame::has_window_menu;
 pub(crate) use frame::request_inner_size;
 pub(crate) use frame::window_menu;
+pub(crate) use placement::restore_frame;
 
 pub(crate) fn hwnd(window: &winit::window::Window) -> Option<HWND> {
     let RawWindowHandle::Win32(h) = window.window_handle().ok()?.as_raw() else { return None };
     Some(h.hwnd.get() as HWND)
+}
+
+/// When the display shows its next refresh after `now`, from DWM's timing (`now` plus a 60 Hz
+/// frame when DWM won't say).
+pub(crate) fn next_vblank(now: std::time::Instant) -> std::time::Instant {
+    use windows_sys::Win32::Graphics::Dwm::{DWM_TIMING_INFO, DwmGetCompositionTimingInfo};
+    use windows_sys::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
+    // SAFETY: plain out-parameters.
+    unsafe {
+        let mut t: DWM_TIMING_INFO = std::mem::zeroed();
+        t.cbSize = size_of::<DWM_TIMING_INFO>() as u32;
+        let (mut qpc, mut freq) = (0i64, 0i64);
+        if DwmGetCompositionTimingInfo(std::ptr::null_mut(), &mut t) < 0 || t.qpcRefreshPeriod == 0
+            || QueryPerformanceCounter(&mut qpc) == 0 || QueryPerformanceFrequency(&mut freq) == 0 || freq <= 0 {
+            return now + std::time::Duration::from_micros(16_667);
+        }
+        let (period, last) = (t.qpcRefreshPeriod as i64, t.qpcVBlank as i64);
+        let next = last + ((qpc - last) / period + 1) * period;
+        now + std::time::Duration::from_nanos(((next - qpc).max(0) as i128 * 1_000_000_000 / freq as i128) as u64)
+    }
+}
+
+/// Whether a screen reader is running (`SPI_GETSCREENREADER`).
+pub(crate) fn screen_reader() -> bool {
+    let mut on = 0i32;
+    // SAFETY: SPI_GETSCREENREADER writes one BOOL.
+    unsafe { SystemParametersInfoW(SPI_GETSCREENREADER, 0, (&raw mut on).cast(), 0) != 0 && on != 0 }
+}
+
+/// Whether the system asks `window` to paint part of itself again (an update region): it threw
+/// away what the window showed, as when a window covered whole comes back.
+pub(crate) fn repaint_owed(window: &winit::window::Window) -> bool {
+    use windows_sys::Win32::Graphics::Gdi::GetUpdateRect;
+    let Some(hwnd) = hwnd(window) else { return false };
+    // SAFETY: a live window this thread owns; no rectangle asked for.
+    unsafe { GetUpdateRect(hwnd, std::ptr::null_mut(), 0) != 0 }
+}
+
+/// Raises D3D12's "D3D Background Thread"s, once, from idle priority to below normal, on a thread of
+/// its own. D3D12 starts them at idle priority (base 1) for the driver's shader work, and a thread
+/// has to run to end: on a busy machine they sat Ready, never scheduled, after the process was
+/// ended (a kill, the uninstaller closing running copies), keeping it alive for seconds, once
+/// 106 s. Called once a first GPU frame is done; a second pass 2 s later takes any D3D12 started
+/// since. Returns how many it raised.
+pub(crate) fn unidle_d3d_threads_soon() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| { let _ = std::thread::Builder::new().name("rune-unidle".into()).spawn(|| { unidle_d3d_threads(); std::thread::sleep(std::time::Duration::from_secs(2)); unidle_d3d_threads(); }); });
+}
+
+fn unidle_d3d_threads() -> usize {
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE, LocalFree};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{CreateToolhelp32Snapshot, TH32CS_SNAPTHREAD, THREADENTRY32, Thread32First, Thread32Next};
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentProcessId, GetThreadDescription, GetThreadPriority, OpenThread, SetThreadPriority, THREAD_PRIORITY_BELOW_NORMAL, THREAD_QUERY_LIMITED_INFORMATION,
+        THREAD_SET_INFORMATION,
+    };
+    // SAFETY: a thread snapshot read into a THREADENTRY32 this frame owns; each thread handle is
+    // this process's own and closed after use; a thread's description is freed with LocalFree.
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+        if snapshot == INVALID_HANDLE_VALUE { return 0; }
+        let mut raised = 0;
+        let pid = GetCurrentProcessId();
+        let mut entry: THREADENTRY32 = std::mem::zeroed();
+        entry.dwSize = size_of::<THREADENTRY32>() as u32;
+        let mut more = Thread32First(snapshot, &mut entry) != 0;
+        while more {
+            if entry.th32OwnerProcessID == pid {
+                let thread = OpenThread(THREAD_QUERY_LIMITED_INFORMATION | THREAD_SET_INFORMATION, 0, entry.th32ThreadID);
+                if !thread.is_null() {
+                    let mut desc = std::ptr::null_mut();
+                    if GetThreadDescription(thread, &mut desc) >= 0 && !desc.is_null() {
+                        let len = (0..).take_while(|&i| *desc.add(i) != 0).count();
+                        let name = String::from_utf16_lossy(std::slice::from_raw_parts(desc, len));
+                        LocalFree(desc.cast());
+                        if name.starts_with("D3D Background Thread") && GetThreadPriority(thread) < THREAD_PRIORITY_BELOW_NORMAL {
+                            SetThreadPriority(thread, THREAD_PRIORITY_BELOW_NORMAL);
+                            raised += 1;
+                        }
+                    }
+                    CloseHandle(thread);
+                }
+            }
+            more = Thread32Next(snapshot, &mut entry) != 0;
+        }
+        CloseHandle(snapshot);
+        raised
+    }
 }
 
 /// Drops the paint the system still owes `window`, which the loop just painted itself.

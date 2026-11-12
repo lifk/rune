@@ -1,19 +1,70 @@
 //! `El::cache` offscreen raster caching: subtree eligibility and state hashing before paint,
 //! and bounds/signature sealing when a cached layer closes.
 use super::*;
+use crate::machine::Effects;
+
+#[cfg(test)]
+#[path = "cache_layer_tests.rs"]
+mod tests;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum ScaleSettle {
+    Still(f32),
+    Settling { scale: f32, since: f64 },
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct AnotherFrame;
+
+impl ScaleSettle {
+    /// Paint samples the animation clock, not a wall-clock deadline. Continue to
+    /// request frames during the interval, including when the clock is slowed.
+    #[inline]
+    pub(super) fn step(&mut self, scale: f32, now: f64, reset: bool, epsilon: f32, poll: bool) -> Effects<AnotherFrame> {
+        let (seen, since) = match *self {
+            Self::Still(seen) => (seen, f64::NEG_INFINITY),
+            Self::Settling { scale, since } => (scale, since),
+        };
+        // A real change is a strict comparison, as dev's was: a NaN or infinite scale
+        // equals neither, so it never restarts the window.
+        let changed = !reset && (scale - seen).abs() > epsilon;
+        let since = if reset {
+            *self = Self::Still(scale);
+            f64::NEG_INFINITY
+        } else if changed {
+            *self = Self::Settling { scale, since: now };
+            now
+        } else {
+            since
+        };
+        // Frames follow elapsed time since that change, so nothing compared per frame can
+        // extend the window past `STATIC_SCALE_SETTLE`.
+        if poll && now - since < STATIC_SCALE_SETTLE { Effects::One(AnotherFrame) } else { Effects::None }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(super) enum RasterPhase {
+    Live,
+    Raster { paint_hash: u64 },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum RasterPass {
+    Paint { glyph_start: usize },
+    Elide { glyphs: usize },
+}
 
 #[derive(Clone, Debug)]
 pub(super) struct NodeCache {
     pub(super) signature: u64,
     pub(super) raster_scale: f32,
-    pub(super) seen_scale: f32,
-    pub(super) scale_changed_at: f64,
+    pub(super) scale: ScaleSettle,
     pub(super) env_scale: f32,
-    pub(super) was_live: bool,
+    pub(super) phase: RasterPhase,
     pub(super) rel_bounds: [f32; 4],
     pub(super) glyphs: usize,
     pub(super) commit_gen: u64,
-    pub(super) paint_state_hash: u64,
 }
 
 #[derive(Clone, Copy)]
@@ -24,20 +75,51 @@ pub(super) struct ActiveCache {
     pub(super) origin: [f32; 2],
     pub(super) size: [f32; 2],
     pub(super) cur_scale: f32,
-    pub(super) raster_scale: f32,
-    pub(super) seen_scale: f32,
-    pub(super) scale_changed_at: f64,
+    pub(super) scale: ScaleSettle,
     pub(super) env_scale: f32,
     /// Everything outside commits that paints the subtree: hover, press, links, an outside
     /// hover group and the window-wide state in `build`'s paint hash.
     pub(super) paint_hash: u64,
-    pub(super) glyph_start: usize,
-    pub(super) cached_glyphs: usize,
-    pub(super) elided: bool,
+    pub(super) pass: RasterPass,
+}
+
+impl NodeCache {
+    #[inline]
+    pub(super) fn committed_scale(&mut self, scale: f32, now: f64) -> Option<AnotherFrame> {
+        if (scale - self.raster_scale).abs() > 1e-4
+            && matches!(self.scale.step(scale, now, false, 1e-4, true), Effects::One(_))
+        {
+            self.phase = RasterPhase::Live;
+            Some(AnotherFrame)
+        } else { None }
+    }
+
+    #[inline]
+    pub(super) fn open(&self, eff_scale: f32, s: f32, settled: bool, now: f64, commit_gen: u64,
+        is_resident: bool, scale_motion: ScaleMotion, paint_hash: u64, check: impl FnOnce() -> bool,
+        glyph_start: usize) -> (ScaleSettle, RasterPass, Option<AnotherFrame>) {
+        let env_same = (s - self.env_scale).abs() <= 1e-4 && !settled;
+        let mut scale = self.scale;
+        let scale_diff = (eff_scale - self.raster_scale).abs() > 1e-4;
+        let same_commit = commit_gen == self.commit_gen;
+        let eligible = same_commit && scale_diff && env_same && is_resident && matches!(self.phase, RasterPhase::Raster { .. });
+        let pending = scale.step(eff_scale, now, !env_same, 1e-4, eligible);
+        let scale_settling = eligible && (matches!(pending, Effects::One(_)) || scale_motion == ScaleMotion::Moving);
+        // A commit can change any paint property. Never use a partial
+        // model hash to skip checking the actual emitted draw output.
+        let content_same = same_commit && (!scale_diff || scale_settling);
+        let can_elide = is_resident
+            && matches!(self.phase, RasterPhase::Raster { .. })
+            && content_same
+            && matches!(self.phase, RasterPhase::Raster { paint_hash: hash } if hash == paint_hash)
+            && !check();
+        let pass = if can_elide { RasterPass::Elide { glyphs: self.glyphs } } else { RasterPass::Paint { glyph_start } };
+        (scale, pass, scale_settling.then_some(AnotherFrame))
+    }
 }
 
 impl<S: 'static> Runtime<S> {
-    pub(super) fn prepare_cache_layers(&mut self, sel_ranges: &[(usize, usize, usize)]) -> u64 {
+    pub(super) fn prepare_cache_layers(&mut self, sel_ranges: &[(usize, usize, usize)], mark_ranges: &[(usize, usize, usize)]) -> u64 {
         let (s, n_nodes) = (self.env.scale, self.nodes.len());
         self.cache_live_scratch.clear();
         self.cache_check_scratch.clear();
@@ -52,6 +134,7 @@ impl<S: 'static> Runtime<S> {
             self.focus.path().hash(&mut h);
             self.focus.keyboard().hash(&mut h);
             self.focus.hovered().hash(&mut h);
+            self.defaults.force_focus_rings.hash(&mut h);
             if let Some(ring) = self.defaults.focus_ring {
                 let c = ring.color;
                 [ring.width, ring.offset, c.r, c.g, c.b, c.a].map(f32::to_bits).hash(&mut h);
@@ -59,6 +142,11 @@ impl<S: 'static> Runtime<S> {
             (self.srgb_blend, self.text.smoothing, self.text.families(), crate::text::icon::swap_id()).hash(&mut h);
             h.write_u32(s.to_bits());
             sel_ranges.hash(&mut h);
+            // A selection's colours follow the window's focus (`El::selection_style`).
+            if !sel_ranges.is_empty() {
+                self.window_focused.hash(&mut h);
+            }
+            mark_ranges.hash(&mut h);
             let mut scroll_mix = 0u64;
             for (&id, st) in &self.scrolls {
                 let mut sh = rune_motion::Fx::default();
@@ -110,14 +198,14 @@ impl<S: 'static> Runtime<S> {
                     // Never retain a raster of a secret, even when the field is unfocused.
                     || n.text.as_ref().is_some_and(|t| t.redacted)
                     || n.input.as_ref().is_some_and(|inp| inp.edit.focused || inp.edit.is_secure())
-                    || n.text.as_ref().is_some_and(|t| t.advance_in.is_some());
-                let check = n.text.as_ref().is_some_and(|t| t.live.is_some())
+                    || n.text.as_ref().is_some_and(|t| t.cold.advance_in.is_some());
+                let check = n.text.as_ref().is_some_and(|t| t.cold.live.is_some())
                     || n.live.iter().any(|b| !n.vis_flags.cache() || !matches!(b.property, crate::live::Property::Offset | crate::live::Property::Scale));
                 self.cache_live_scratch[i] |= live;
                 self.cache_check_scratch[i] |= check;
                 // Hover, press and link paint land without a commit (an instant track or a
                 // pointer move inside one text), so hash what this frame samples.
-                let links = n.text.as_ref().is_some_and(|t| !t.links.is_empty());
+                let links = n.text.as_ref().is_some_and(|t| !t.cold.links.is_empty());
                 if n.vis.hover().a > 0.0 || n.vis_flags.hover_group() || n.vis.press().a > 0.0 || n.handlers.get().is_some_and(|h| h.press_scale.is_some()) || links {
                     let mut ph = rune_motion::Fx::default();
                     ph.write_u64(n.id.0);
@@ -147,24 +235,26 @@ impl<S: 'static> Runtime<S> {
     ) {
         use std::hash::Hasher;
         let layer_grow = (3.0 * crate::render::layer_blur::sigma(self.instances[start].params[2])).ceil();
-        if ac.elided {
-            let entry = self.node_caches.get_mut(&ac.node_id).expect("elided cache entry");
-            entry.seen_scale = ac.seen_scale;
-            entry.scale_changed_at = ac.scale_changed_at;
-            let k = if (ac.cur_scale - entry.raster_scale).abs() <= 1e-4 {
-                1.0
-            } else {
-                ac.cur_scale / entry.raster_scale.max(1e-4)
-            };
-            let b0 = (ac.origin[0] + entry.rel_bounds[0] * k).floor();
-            let b1 = (ac.origin[1] + entry.rel_bounds[1] * k).floor();
-            let b2 = (ac.origin[0] + entry.rel_bounds[2] * k).ceil();
-            let b3 = (ac.origin[1] + entry.rel_bounds[3] * k).ceil();
-            let sig = entry.signature;
-            self.seal_cache_marker(start, [b0, b1, (b2 - b0).max(0.0), (b3 - b1).max(0.0)], ac.node_id, sig);
-            *glyph_count += ac.cached_glyphs;
-            return;
-        }
+        let glyph_start = match ac.pass {
+            RasterPass::Paint { glyph_start } => glyph_start,
+            RasterPass::Elide { glyphs } => {
+                let entry = self.node_caches.get_mut(&ac.node_id).expect("elided cache entry");
+                entry.scale = ac.scale;
+                let k = if (ac.cur_scale - entry.raster_scale).abs() <= 1e-4 {
+                    1.0
+                } else {
+                    ac.cur_scale / entry.raster_scale.max(1e-4)
+                };
+                let b0 = (ac.origin[0] + entry.rel_bounds[0] * k).floor();
+                let b1 = (ac.origin[1] + entry.rel_bounds[1] * k).floor();
+                let b2 = (ac.origin[0] + entry.rel_bounds[2] * k).ceil();
+                let b3 = (ac.origin[1] + entry.rel_bounds[3] * k).ceil();
+                let sig = entry.signature;
+                self.seal_cache_marker(start, [b0, b1, (b2 - b0).max(0.0), (b3 - b1).max(0.0)], ac.node_id, sig);
+                *glyph_count += glyphs;
+                return;
+            }
+        };
 
         if self.instances.len() == start + 1 && self.surfaces.len() == surface_start {
             self.instances.pop();
@@ -181,7 +271,7 @@ impl<S: 'static> Runtime<S> {
         // Blur is baked into the target, unlike opacity and clipping on the composite.
         h.write_u32(self.instances[start].params[2].to_bits());
         h.write_u8(self.srgb_blend as u8 | (self.text.smoothing as u8) << 1);
-        h.write_u32(ac.raster_scale.to_bits());
+        h.write_u32(ac.cur_scale.to_bits());
         h.write_u32(ac.size[0].to_bits());
         h.write_u32(ac.size[1].to_bits());
         if let Some(key) = self.nodes[ac.node_index].vis.cache_key {
@@ -281,19 +371,17 @@ impl<S: 'static> Runtime<S> {
         let mut sig = h.finish();
         if sig == 0 { sig = 1; }
         let rel_bounds = [b0 - ac.origin[0], b1 - ac.origin[1], b2 - ac.origin[0], b3 - ac.origin[1]];
-        let glyphs = *glyph_count - ac.glyph_start;
+        let glyphs = *glyph_count - glyph_start;
         let is_resident = self.text.atlas.resident_caches.get(&ac.node_id.0) == Some(&sig);
         self.node_caches.insert(ac.node_id, NodeCache {
             signature: sig,
-            raster_scale: ac.raster_scale,
-            seen_scale: ac.seen_scale,
-            scale_changed_at: ac.scale_changed_at,
+            raster_scale: ac.cur_scale,
+            scale: ac.scale,
             env_scale: ac.env_scale,
-            was_live: false,
+            phase: RasterPhase::Raster { paint_hash: ac.paint_hash },
             rel_bounds,
             glyphs,
             commit_gen: self.commit_gen,
-            paint_state_hash: ac.paint_hash,
         });
         if is_resident && self.surfaces.len() == surface_start {
             self.instances.truncate(start + 1);

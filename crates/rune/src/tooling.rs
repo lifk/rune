@@ -133,10 +133,13 @@ pub fn extra_args() -> &'static [String] {
 }
 
 pub(crate) fn runtime_for<S: 'static>(spec: &AppSpec<S>, state: S, size: (f32, f32), env: Env, waker: Waker) -> Runtime<S> {
+    crate::marks::mark("text.begin");
     let text = TextSystem::for_window(spec.fonts, spec.families);
+    crate::marks::mark("text.fonts");
     let mut rt = Runtime::with_text(state, spec.view, size, env, text);
     rt.poll = spec.poll;
     rt.on_key = spec.on_key;
+    rt.motion_needs_cause = true;
     rt.window_title.start(spec.title);
     rt.set_live_waker(waker.clone());
     #[cfg(feature = "hot")]
@@ -144,7 +147,9 @@ pub(crate) fn runtime_for<S: 'static>(spec: &AppSpec<S>, state: S, size: (f32, f
         rt.hot = Some(crate::hot::Session::connect(waker.clone()));
     }
     if let Some(f) = spec.setup {
+        crate::marks::mark("app.setup");
         f(&mut rt.state, waker);
+        crate::marks::mark("app.setup.done");
     }
     rt
 }
@@ -329,6 +334,8 @@ pub(crate) enum Kind {
     /// A key press with its physical code (`{"type": "key", "code": …}`), as a native host sends it.
     PhysicalKey(crate::PhysicalInput, KeyEvent, Option<char>),
     Paste(crate::ClipboardContent),
+    /// An input method's composition or commit.
+    Ime(crate::Ime),
     /// A wheel delta (dx, dy) in points.
     Wheel(f32, f32),
     /// A release velocity (vx, vy) in points per second.
@@ -439,6 +446,7 @@ impl Ev {
             },
             Kind::Paste(content) if content.is_rich() => ScriptEvent::PasteContent(content.clone()),
             Kind::Paste(content) => ScriptEvent::Paste(content.text().to_owned()),
+            Kind::Ime(ime) => ScriptEvent::Ime(ime.clone()),
             Kind::Wheel(0.0, dy) => pointer(PointerAction::Scroll(*dy)),
             Kind::Wheel(dx, dy) => pointer(PointerAction::ScrollXy(*dx, *dy)),
             Kind::Fling(0.0, v) => pointer(PointerAction::Fling(*v)),
@@ -502,6 +510,7 @@ pub(crate) mod headless_run;
 pub(crate) mod interaction;
 pub(crate) mod perf_warn;
 pub(crate) mod record;
+pub(crate) mod virtual_desktop;
 #[cfg(test)]
 pub(crate) mod test_alloc;
 #[cfg(test)]

@@ -27,9 +27,9 @@ pub enum Direction {
     Rtl,
     /// From the first strong character of the element's text (or, on a container, of the text
     /// inside it, skipping subtrees that set their own direction), as `dir="auto"` and `<bdi>`
-    /// resolve it: right to left when that's Arabic or Hebrew, else left to right, and left to
-    /// right when there's none. An empty text field takes its placeholder's. For user strings
-    /// such as titles, names, messages and a prompt.
+    /// resolve it: right to left when that's Arabic or Hebrew, else left to right, and its
+    /// parent's direction when there's none (a number, a path alone). An empty text field takes
+    /// its placeholder's. For user strings such as titles, names, messages and a prompt.
     Auto,
 }
 
@@ -37,20 +37,7 @@ impl Direction {
     /// The direction of `text` as [`Direction::Auto`] resolves it: its first strong character's,
     /// outside isolates (UAX #9 rules P2 and P3), or `None` when it has none.
     pub fn of(text: &str) -> Option<Direction> {
-        use icu_properties::{CodePointMapData, props::BidiClass};
-        let classes = CodePointMapData::<BidiClass>::new();
-        let mut isolates = 0u32;
-        for c in text.chars() {
-            match classes.get(c) {
-                BidiClass::LeftToRightIsolate | BidiClass::RightToLeftIsolate | BidiClass::FirstStrongIsolate => isolates += 1,
-                BidiClass::PopDirectionalIsolate => isolates = isolates.saturating_sub(1),
-                BidiClass::ParagraphSeparator if isolates == 0 => return None,
-                BidiClass::LeftToRight if isolates == 0 => return Some(Direction::Ltr),
-                BidiClass::RightToLeft | BidiClass::ArabicLetter if isolates == 0 => return Some(Direction::Rtl),
-                _ => {}
-            }
-        }
-        None
+        first_strong_char(text, false)
     }
 
     /// Whether this is [`Direction::Rtl`].
@@ -137,7 +124,7 @@ pub(crate) enum DirEvent<'a> {
     Inherit,
     /// `El::dir(Ltr)` or `El::dir(Rtl)`.
     Set(Flow),
-    /// `El::dir(Auto)`: its first strong character decides, left to right when none does.
+    /// `El::dir(Auto)`: its first strong character decides, its parent's flow when none does.
     Auto(&'a El),
 }
 
@@ -168,7 +155,13 @@ pub(crate) fn step(parent: Flow, event: DirEvent<'_>) -> (Flow, DirEffect) {
     let flow = match event {
         DirEvent::Inherit => parent,
         DirEvent::Set(flow) => flow,
-        DirEvent::Auto(el) => if first_strong(el) == Some(Direction::Rtl) { Flow::Rtl } else { Flow::Ltr },
+        // With no strong character (empty, digits, a path alone) it reads the way its parent
+        // does: an empty field in an Arabic window starts at the right.
+        DirEvent::Auto(el) => match first_strong(el) {
+            Some(Direction::Rtl) => Flow::Rtl,
+            Some(_) => Flow::Ltr,
+            None => parent,
+        },
     };
     let effect = match flow {
         Flow::Ltr => DirEffect::Keep,
@@ -177,9 +170,45 @@ pub(crate) fn step(parent: Flow, event: DirEvent<'_>) -> (Flow, DirEffect) {
     (flow, effect)
 }
 
+/// The direction of `text`'s first strong character outside isolates, or `None` when it has
+/// none: in its first paragraph, or `across` its paragraphs as HTML's `dir="auto"` reads an
+/// element's text.
+fn first_strong_char(text: &str, across: bool) -> Option<Direction> {
+    use icu_properties::{CodePointMapData, props::BidiClass};
+    let classes = CodePointMapData::<BidiClass>::new();
+    let mut isolates = 0u32;
+    for c in text.chars() {
+        match classes.get(c) {
+            BidiClass::LeftToRightIsolate | BidiClass::RightToLeftIsolate | BidiClass::FirstStrongIsolate => isolates += 1,
+            BidiClass::PopDirectionalIsolate => isolates = isolates.saturating_sub(1),
+            BidiClass::ParagraphSeparator if across => isolates = 0,
+            BidiClass::ParagraphSeparator if isolates == 0 => return None,
+            BidiClass::LeftToRight if isolates == 0 => return Some(Direction::Ltr),
+            BidiClass::RightToLeft | BidiClass::ArabicLetter if isolates == 0 => return Some(Direction::Rtl),
+            _ => {}
+        }
+    }
+    None
+}
+
 /// The first strong direction in `el`'s text, then its children's in order, skipping children
 /// that set their own direction.
 fn first_strong(el: &El) -> Option<Direction> {
+    // A by-paragraph field reads as a `contenteditable` with `dir="auto"`: its text across its
+    // lines, each mention pill (a `dir="auto"` span) skipped, and none while it's empty (its
+    // placeholder is another element).
+    if let (Some(t), Some(_)) = (&el.text, el.cold.input.as_ref())
+        && matches!(t.dir, TextDir::Plaintext(_))
+    {
+        let mut at = 0;
+        for p in t.cold.pills.iter().map(|p| (p.start as usize, p.end as usize)).chain([(t.content.len(), t.content.len())]) {
+            if let Some(d) = t.content.get(at..p.0).and_then(|s| first_strong_char(s, true)) {
+                return Some(d);
+            }
+            at = at.max(p.1);
+        }
+        return None;
+    }
     if let Some(t) = &el.text
         && let Some(d) = Direction::of(&t.content)
     {

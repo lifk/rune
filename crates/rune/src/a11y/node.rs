@@ -22,6 +22,7 @@ impl<S: 'static> Runtime<S> {
         let text = n.text.as_deref().filter(|_| input.is_none());
         let cx = RoleCtx {
             pressable: handlers.is_some_and(|h| h.has_primary()),
+            focusable: self.takes_focus(n),
             input: input.is_some(),
             multiline: input.is_some_and(|i| !i.single_line),
             secure: n.is_secure(),
@@ -53,7 +54,8 @@ impl<S: 'static> Runtime<S> {
         n.a11y.disabled.hash(&mut h);
         n.a11y.live.hash(&mut h);
         if let Some(m) = n.a11y.more.as_deref() {
-            (&m.description, &m.value, &m.set, &m.shortcut, m.invalid, m.read_only, m.sorted).hash(&mut h);
+            (&m.description, &m.value, &m.set, &m.shortcut, m.invalid, m.read_only, m.sorted, m.busy).hash(&mut h);
+            [m.labelled_by.as_deref(), m.described_by.as_deref()].map(|k| k.and_then(|k| self.a11y_keyed(i, k)).map(|j| self.a11y_words(j))).hash(&mut h);
             if let Some(r) = m.range { [r.value, r.min, r.max, r.step.unwrap_or(f64::NAN)].map(f64::to_bits).hash(&mut h); }
             self.a11y_active_descendant(i).map(|j| self.nodes[j].id.0).hash(&mut h);
         }
@@ -62,11 +64,11 @@ impl<S: 'static> Runtime<S> {
         secure.hash(&mut h);
         if let Some(t) = n.text.as_deref() {
             if !secure { t.content.hash(&mut h); }
-            (t.redacted, t.selectable, t.on_link.is_some(), t.on_link_secondary.is_some(), t.links.len()).hash(&mut h);
-            for l in &t.links { (l.start, l.end, &l.id, l.role, &l.label).hash(&mut h); }
+            (t.redacted, t.selectable, t.cold.on_link.is_some(), t.cold.on_link_secondary.is_some(), t.cold.links.len()).hash(&mut h);
+            for l in &t.cold.links { (l.start, l.end, &l.id, l.role, &l.label).hash(&mut h); }
         }
         // A text's lines come from its layout and where it scrolled.
-        n.text_layout.as_ref().map(|l| std::rc::Rc::as_ptr(l) as usize).hash(&mut h);
+        n.text_layout.as_ref().map(crate::text::TextLayout::address).hash(&mut h);
         n.elided.map(|e| (e.head, e.tail)).hash(&mut h);
         if let Some(input) = n.input.as_deref() {
             let e = &input.edit;
@@ -81,7 +83,7 @@ impl<S: 'static> Runtime<S> {
         (self.allowed(i), self.can_focus(i), n.inert).hash(&mut h);
         if let Some(st) = self.scrolls.get(&n.id).filter(|_| n.scroll.is_some()) {
             [st.offset.to_bits(), st.max.to_bits(), st.x.offset.to_bits(), st.x.max.to_bits()].hash(&mut h);
-            st.drawn.map(f32::to_bits).hash(&mut h);
+            [st.drawn_x, st.drawn.y()].map(f32::to_bits).hash(&mut h);
         }
         // Its box in its viewport's content space, which scrolling leaves alone.
         let r = rect(self.drawn[i], w.shift);
@@ -125,7 +127,12 @@ impl<S: 'static> Runtime<S> {
         let enabled = !n.a11y.disabled && !n.inert;
         let actionable = enabled && self.allowed(i);
         if let Some(key) = &n.key { node.set_author_id(key.as_str()); }
-        let label = n.label.as_deref().filter(|l| !l.trim().is_empty());
+        let more = n.a11y.more.as_deref();
+        // `El::labelled_by` and `El::described_by` read the words of the element they name, so
+        // the relation holds wherever that element is, in or out of the tree sent.
+        let related = |k: Option<&str>| k.and_then(|k| self.a11y_keyed(i, k)).map(|j| self.a11y_words(j)).filter(|w| !w.is_empty());
+        let labelled = related(more.and_then(|m| m.labelled_by.as_deref()));
+        let label = n.label.as_deref().filter(|l| !l.trim().is_empty()).or(labelled.as_deref());
         if let Some(label) = label { node.set_label(label); }
         // A secret's text never reaches the tree; its label must describe it instead.
         match (text, role) {
@@ -138,7 +145,7 @@ impl<S: 'static> Runtime<S> {
             let named = self.a11y_content_name(i);
             if !named.is_empty() { node.set_label(named); }
         }
-        let more = n.a11y.more.as_deref();
+        let described = related(more.and_then(|m| m.described_by.as_deref()));
         // A tooltip describes the element unless it only repeats its name, or shows only while
         // the text is cut short and it isn't.
         let name = label.or(text.filter(|_| !secure).map(|t| t.source_text()));
@@ -146,7 +153,7 @@ impl<S: 'static> Runtime<S> {
             .filter(|_| !n.help_cut || n.text_cut(self.env.scale))
             .filter(|h| name.is_none_or(|name| !h.trim().starts_with(name.trim())))
             .map(crate::el::help_words);
-        match more.and_then(|m| m.description.as_deref()).or(help.as_deref()) {
+        match more.and_then(|m| m.description.as_deref()).or(described.as_deref()).or(help.as_deref()) {
             Some(d) if !d.is_empty() => node.set_description(d),
             _ => {}
         }
@@ -159,6 +166,7 @@ impl<S: 'static> Runtime<S> {
                 None => {}
             }
             if let Some(j) = self.a11y_active_descendant(i) { node.set_active_descendant(super::a11y_tree::element_id(self.nodes[j].id)); }
+            if m.busy { node.set_busy(); }
         }
         if let Some(v) = more.and_then(|m| m.value.as_deref()) { node.set_value(v); }
         if let Some(r) = more.and_then(|m| m.range) {
@@ -189,7 +197,7 @@ impl<S: 'static> Runtime<S> {
         // Bounds: a scroll viewport's own box sits in the space its offset moves.
         let mut shift = w.shift;
         if let Some(st) = scroll {
-            let [x, y] = self.content_to_window(i, st.drawn);
+            let [x, y] = self.content_to_window(i, [st.drawn_x, st.drawn.y()]);
             shift = [shift[0] + x, shift[1] + y];
             node.set_transform(Affine::translate((-f64::from(x), -f64::from(y))));
             node.set_clips_children();
@@ -243,6 +251,30 @@ impl<S: 'static> Runtime<S> {
         let inside = |j: &usize| std::iter::successors(self.nodes[*j].parent, |&p| self.nodes[p].parent).any(|p| p == i);
         let own = (i + 1..self.nodes.len()).take_while(inside).find(|&j| self.nodes[j].named(key));
         own.or_else(|| self.nodes.iter().position(|n| n.named(key))).filter(|&j| !self.subtree_exiting(j))
+    }
+
+    /// The element keyed `key` nearest node `i`, which isn't leaving: the first inside its
+    /// parent, else inside its grandparent, and so on out, as a component's own `"title"` is
+    /// the one a control inside it means. What `El::labelled_by` and `El::described_by` name.
+    fn a11y_keyed(&self, i: usize, key: &str) -> Option<usize> {
+        let mut scope = self.nodes[i].parent;
+        while let Some(s) = scope {
+            let inside = |j: &usize| std::iter::successors(self.nodes[*j].parent, |&p| self.nodes[p].parent).any(|p| p == s);
+            if let Some(j) = (s + 1..self.nodes.len()).take_while(inside).find(|&j| j != i && self.nodes[j].named(key)) {
+                return (!self.subtree_exiting(j)).then_some(j);
+            }
+            scope = self.nodes[s].parent;
+        }
+        None
+    }
+
+    /// Node `j`'s words as a name: its label, else its text, else the text inside it.
+    fn a11y_words(&self, j: usize) -> String {
+        let n = &self.nodes[j];
+        if n.is_secure() { return String::new(); }
+        n.label.as_deref().filter(|l| !l.trim().is_empty()).map(str::to_owned)
+            .or_else(|| n.text.as_deref().filter(|_| n.input.is_none()).map(|t| t.source_text().trim().to_owned()))
+            .unwrap_or_else(|| self.a11y_content_name(j))
     }
 
     /// Whether node `i` is an item of a focus group: a list, tabs, a radio group.

@@ -24,7 +24,7 @@ impl<S: 'static> Runtime<S> {
         self.clear_help_hits();
         self.clear_drop_hits();
         self.loops_active = false;
-        self.static_scale_settling = false;
+        self.scale_frame = None;
         self.videos_active = false;
         let now = crate::time::Instant::now();
         let video_clock = match self.wall_start {
@@ -53,6 +53,7 @@ impl<S: 'static> Runtime<S> {
             self.sticky_frame.resize(n_nodes, sticky::UNBOUNDED);
         }
         let sel_ranges = self.selection_ranges();
+        let mark_ranges = self.mark_ranges();
         self.ime_area = None;
         let now = self.t;
         let vp = [0.0, 0.0, self.viewport.0 * s, self.viewport.1 * s];
@@ -85,7 +86,7 @@ impl<S: 'static> Runtime<S> {
             self.dissolve_scratch[parent] |= opacity > 0.001 && opacity < 1.0;
         }
 
-        let paint_state_hash = self.prepare_cache_layers(&sel_ranges);
+        let paint_state_hash = self.prepare_cache_layers(&sel_ranges, &mark_ranges);
 
         self.place_growth_rows();
 
@@ -314,15 +315,10 @@ impl<S: 'static> Runtime<S> {
             let tracked_scale = if has_live_scale { static_k * p.transform.scale.x } else { static_k };
             let scale_settling = if tracked_scale != 1.0 || has_live_scale || self.static_scales.contains_key(&n.id) {
                 let t = self.t;
-                let seen = self.static_scales.entry(n.id).or_insert((tracked_scale, f64::NEG_INFINITY, false));
-                if self.settled {
-                    *seen = (tracked_scale, f64::NEG_INFINITY, seen.2);
-                } else if (seen.0 - tracked_scale).abs() > 1e-5 {
-                    *seen = (tracked_scale, t, true);
-                }
-                let moving = t - seen.1 < STATIC_SCALE_SETTLE;
-                if !has_live_scale {
-                    self.static_scale_settling |= moving;
+                let seen = self.static_scales.entry(n.id).or_insert(ScaleSettle::Still(tracked_scale));
+                let moving = matches!(seen.step(tracked_scale, t, self.settled, 1e-5, true), crate::machine::Effects::One(_));
+                if !has_live_scale && moving {
+                    self.scale_frame = Some(AnotherFrame);
                 }
                 moving
             } else { false };
@@ -532,7 +528,7 @@ impl<S: 'static> Runtime<S> {
                         && sh[3] > oc[1].max(vp[1] - filter_margin) && sh[1] < oc[3].min(vp[3] + filter_margin)
                 }
             };
-            if self.surface_visible && base_opacity >= 1.0 / 255.0 && !self.reduced_motion
+            if self.live.visible() && base_opacity >= 1.0 / 255.0 && !self.reduced_motion
                 && loop_vis
                 && let Some(track) = self.loops.get(&n.id)
             {
@@ -554,7 +550,7 @@ impl<S: 'static> Runtime<S> {
             }
             if n.vis_flags.cache() && self.cache_live_scratch[i] {
                 if let Some(entry) = self.node_caches.get_mut(&n.id) {
-                    entry.was_live = true;
+                    entry.phase = RasterPhase::Live;
                 }
             }
             let mut skip_paint = pinh.skip_paint;
@@ -566,17 +562,10 @@ impl<S: 'static> Runtime<S> {
             let mut committed_scale_moving = false;
             if n.vis_flags.cache() && let Some(entry) = self.node_caches.get_mut(&n.id)
                 && entry.commit_gen != self.commit_gen
-                && (sc * s - entry.raster_scale).abs() > 1e-4
+                && let Some(frame) = entry.committed_scale(sc * s, now)
             {
-                if (sc * s - entry.seen_scale).abs() > 1e-4 {
-                    entry.seen_scale = sc * s;
-                    entry.scale_changed_at = now;
-                }
-                committed_scale_moving = now - entry.scale_changed_at < STATIC_SCALE_SETTLE;
-                if committed_scale_moving {
-                    entry.was_live = true;
-                    self.static_scale_settling = true;
-                }
+                committed_scale_moving = true;
+                self.scale_frame = Some(frame);
             }
             if n.vis_flags.cache() && active_cache.is_none() && !lift && !skip_paint && !self.cache_live_scratch[i]
                 && !committed_scale_moving && own_turn.is_none()
@@ -710,7 +699,7 @@ impl<S: 'static> Runtime<S> {
             let glyphs_clear = rounded.is_some_and(|(mask, radii)| {
                 self.text_clip(i, (r, r_exact), sc, clip).is_some_and(|(text, ..)| inside_rounded(text, mask, radii))
             });
-            isolate |= open_cache || (rounded.is_some() && (n.text.as_ref().is_some_and(|t| (t.truncate_fade || t.live.is_some()) && !glyphs_clear)
+            isolate |= open_cache || (rounded.is_some() && (n.text.as_ref().is_some_and(|t| (t.truncate_fade || t.cold.live.is_some()) && !glyphs_clear)
                 || n.input.as_ref().is_some_and(|i| i.single_line)));
             // A soft clip fades each primitive on its own, so where one paints over another (an
             // image over its placeholder fill, a label over its bubble) the one beneath shows
@@ -747,36 +736,16 @@ impl<S: 'static> Runtime<S> {
                         h.write_u32(pinh.group.to_bits());
                         h.finish()
                     };
-                    let (raster_scale, seen_scale, scale_changed_at, elided, cached_glyphs) =
+                    let (scale, pass, frame) =
                         if let Some(entry) = self.node_caches.get(&n.id) {
                             let is_resident = self.text.atlas.resident_caches.get(&n.id.0) == Some(&entry.signature);
-                            let env_same = (s - entry.env_scale).abs() <= 1e-4 && !self.settled;
-                            let (seen_scale, scale_changed_at) = if !env_same {
-                                (eff_scale, f64::NEG_INFINITY)
-                            } else if (eff_scale - entry.seen_scale).abs() > 1e-4 {
-                                (eff_scale, now)
-                            } else {
-                                (entry.seen_scale, entry.scale_changed_at)
-                            };
-                            let scale_diff = (eff_scale - entry.raster_scale).abs() > 1e-4;
-                            let same_commit = self.commit_gen == entry.commit_gen;
-                            let scale_settling = same_commit && scale_diff && env_same && is_resident && !entry.was_live
-                                && (now - scale_changed_at < STATIC_SCALE_SETTLE || scale_motion == ScaleMotion::Moving);
-                            self.static_scale_settling |= scale_settling;
-                            // A commit can change any paint property. Never use a partial
-                            // model hash to skip checking the actual emitted draw output.
-                            let content_same = same_commit && (!scale_diff || scale_settling);
-                            let can_elide = is_resident
-                                && !entry.was_live
-                                && content_same
-                                && paint_hash == entry.paint_state_hash
-                                && !self.cache_check_scratch[i];
-                            let raster_scale = if can_elide && scale_settling { entry.raster_scale } else { eff_scale };
-                            (raster_scale, seen_scale, scale_changed_at, can_elide, entry.glyphs)
+                            entry.open(eff_scale, s, self.settled, now, self.commit_gen, is_resident,
+                                scale_motion, paint_hash, || self.cache_check_scratch[i], glyph_count)
                         } else {
-                            (eff_scale, eff_scale, f64::NEG_INFINITY, false, 0)
+                            (ScaleSettle::Still(eff_scale), RasterPass::Paint { glyph_start: glyph_count }, None)
                         };
-                    if elided {
+                    if frame.is_some() { self.scale_frame = frame; }
+                    if matches!(pass, RasterPass::Elide { .. }) {
                         skip_paint = true;
                     }
                     active_cache = Some(ActiveCache {
@@ -786,14 +755,10 @@ impl<S: 'static> Runtime<S> {
                         origin: [r[0], r[1]],
                         size: [w, h],
                         cur_scale: eff_scale,
-                        raster_scale,
-                        seen_scale,
-                        scale_changed_at,
+                        scale,
                         env_scale: s,
                         paint_hash,
-                        glyph_start: glyph_count,
-                        cached_glyphs,
-                        elided,
+                        pass,
                     });
                 }
             }
@@ -860,12 +825,16 @@ impl<S: 'static> Runtime<S> {
                 };
                 // `El::focus_within_flat`: focus inside drops its own shadows and hover fill.
                 let focus_flat = n.focus.flat_within && self.focus_within(i);
-                let solid = !n.vis.shadows.is_empty() && native_material.is_none() && blur_hole.is_none() && n.material.is_none()
-                    && self.color(n.id, P_FILL, n.vis.fill).a >= 1.0;
+                let casts = !n.vis.shadows.is_empty() && native_material.is_none() && blur_hole.is_none() && n.material.is_none();
+                let fill_a = if casts { self.color(n.id, P_FILL, n.vis.fill).a } else { 0.0 };
+                let solid = casts && fill_a >= 1.0;
                 // A box that paints itself solid hides the middle of its shadows (bands.rs). Dimmed
-                // (`El::dim`), it leaves that middle clear, as CSS clips box-shadow to outside the box.
+                // (`El::dim`), or filled with a translucent colour, it leaves that middle clear, as
+                // CSS clips box-shadow to outside the box: a 6% white button shows the surface
+                // under it, not its own shadows.
                 let opaque = solid && o >= 1.0 && n.vis.gradient.is_none() && n.vis.radial.is_none() && n.vis.surface.is_none();
-                let dim_hole = (solid && o < 1.0).then(|| crate::system_material::clamp_radius(radii, w, h) * if n.vis_flags.continuous_corners() { -1.0 } else { 1.0 });
+                let see_through = casts && fill_a > 0.0 && fill_a < 1.0;
+                let dim_hole = ((solid && o < 1.0) || see_through).then(|| crate::system_material::clamp_radius(radii, w, h) * if n.vis_flags.continuous_corners() { -1.0 } else { 1.0 });
                 let cast = shadow_paint::Caster {
                     rect: [r[0], r[1], w, h], radii, shape: if n.vis_flags.continuous_corners() { radii.map(|v| -v) } else { radii },
                     k_px, scale: s, opacity: o, srgb, clip, fade, hole: native_material.or(blur_hole).or(dim_hole), opaque,
@@ -1056,8 +1025,19 @@ impl<S: 'static> Runtime<S> {
                         }
                     }
                     if let Some((surface, fit)) = &n.vis.surface {
-                        if let Some(pulled) = surface.pull_video(video_clock, &self.live_wake) {
-                            self.videos_active |= pulled.active;
+                        if let Some(pulled) = surface.pull_video(video_clock, self.live.waker()) {
+                            // A clip whose next picture isn't due for a while wakes the window
+                            // then, instead of drawing every refresh in between.
+                            let wait = pulled.due.map(|due| due.saturating_duration_since(crate::time::Instant::now()).as_secs_f64());
+                            match wait {
+                                Some(wait) if pulled.active && wait > crate::video::WAKE_MIN => {
+                                    let wake = self.clock + wait;
+                                    if self.loop_wake.is_none_or(|w| wake < w.0) {
+                                        self.loop_wake = Some((wake, now + wait * self.time_scale as f64));
+                                    }
+                                }
+                                _ => self.videos_active |= pulled.active,
+                            }
                             video_signature = crate::video::fold(video_signature, pulled.generation, surface.key());
                         }
                         self.surfaces.push(crate::native_surface::SurfaceDraw {
@@ -1102,7 +1082,7 @@ impl<S: 'static> Runtime<S> {
                     let fade = crate::render::pack_fade(fade, clip, clip);
                     faded_slot = paint_slots::push_effect(&mut self.instances, (effect, mark), ([r[0], r[1], w, h], radii, clip, fade), k_px, o);
                 }
-                let focus_ring = if default_ring == Some(i) { Some(self.default_focus_ring()) }
+                let focus_ring = if default_ring == Some(i) || self.forced_default_ring(i) { Some(self.default_focus_ring()) }
                     else if n.focus.within { n.focus.ring.filter(|_| self.focus_within(i)) }
                     else { self.focus_ring_visible(i).then_some(n.focus.ring).flatten() };
                 if let Some(ol) = focus_ring.or(n.vis.outline) {
@@ -1143,6 +1123,7 @@ impl<S: 'static> Runtime<S> {
                         caret: input_caret.map(|(caret, _)| caret),
                     },
                     &sel_ranges,
+                    &mark_ranges,
                     &mut glyph_count,
                 );
             }
@@ -1189,22 +1170,16 @@ impl<S: 'static> Runtime<S> {
                 let offset = self.stuck_offset(i, p.rect.edges()[3]).unwrap_or(st.offset);
                 let held = self.bottom_offset(i, p.rect.edges()[3]).is_some_and(|b| (offset - b).abs() < 0.5);
                 let exact = offset as f32 + st.slack.height();
-                // Hold a reversal across a rounding boundary, not a full pixel of real travel:
-                // `grid` rounds to 1/64 of a device pixel. Always land at the layout offset.
-                let rounded = grid(exact, s);
-                let step = (rounded - st.drawn[1]).signum() as i8;
-                let back = st.pinned() && rounded != grid(st.offset as f32, s) && step == -st.drawn_step && ((exact - st.drawn[1]) * s).abs() < 1.0 / 64.0;
-                let drawn = if back { st.drawn[1] } else { rounded };
-                let moved = if drawn == st.drawn[1] { st.drawn_step } else { step };
+                let (drawn, hold) = st.drawn.draw(exact, st.offset as f32, st.pinned(), s);
                 dy -= drawn;
                 snap_rigid[1] -= drawn;
-                if let Some(st) = self.scrolls.get_mut(&self.nodes[i].id) { (st.held, st.drawn[1], st.drawn_step) = (held, drawn, moved); }
+                if let Some(st) = self.scrolls.get_mut(&self.nodes[i].id) { (st.held, st.drawn) = (held, hold); }
             }
             let (mut scale, mut anchor, mut anchor_to, mut dx) = (sc, anchor, anchor_to, pinh.dx);
             if n.scroll_axes.x() && let Some(st) = self.scrolls.get_mut(&self.nodes[i].id) {
-                st.drawn[0] = grid(st.x.shift() as f32, s);
-                dx -= st.drawn[0];
-                snap_rigid[0] -= st.drawn[0];
+                st.drawn_x = grid(st.x.shift() as f32, s);
+                dx -= st.drawn_x;
+                snap_rigid[0] -= st.drawn_x;
             }
             if open_cache && sc > 1e-4 {
                 dx += (r_exact[0] / s - rect_pt[0]) / sc;
@@ -1279,7 +1254,7 @@ impl<S: 'static> Runtime<S> {
         self.ambient = ambient;
         // A live transform can change hover paint with no handler and no running spring.
         // Retarget from the new geometry and schedule the frame that samples that paint. A
-        // commit that moved the indices left keyboard focus hover (`El::hover_group_focus`) to
+        // commit that moved the indices left keyboard focus hover (`El::hover_group`) to
         // this pass too.
         let interaction = (self.pointer.is_some() || self.focus.keyboard()) && self.update_interaction(held);
         self.queue.len() > queued || interaction

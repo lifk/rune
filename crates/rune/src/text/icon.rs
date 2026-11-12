@@ -142,14 +142,17 @@ pub(crate) enum Facing {
     Mirrored,
 }
 
-pub(super) fn rasterize_icon(icon: &Icon, px: u32, facing: Facing, atlas: &mut Atlas) -> Rasterized {
+/// `icon` drawn `size` device pixels across (its viewBox's scale) on a `px` × `px` canvas,
+/// `px` the size rounded up, so an icon at a fractional size keeps its exact scale and its canvas
+/// lands 1:1 on the device grid, as Chromium paints an SVG at its scale from a snapped origin.
+pub(super) fn rasterize_icon(icon: &Icon, (px, size): (u32, f32), facing: Facing, atlas: &mut Atlas) -> Rasterized {
     if px == 0 {
         return Rasterized::Empty;
     }
     if px + 4 > super::ATLAS_SIZE {
         return Rasterized::Unplaced;
     }
-    let mut cov = icon_coverage(icon, px);
+    let mut cov = icon_coverage_at(icon, px, size);
     if facing == Facing::Mirrored {
         cov.chunks_exact_mut(px as usize).for_each(<[u8]>::reverse);
     }
@@ -187,7 +190,13 @@ const INHERITED: [&str; 8] =
 
 /// `icon`'s coverage at `px` × `px` device pixels, row-major, as the glyph atlas stores it.
 pub fn icon_coverage(icon: &Icon, px: u32) -> Vec<u8> {
-    let s = px as f32 / icon.view;
+    icon_coverage_at(icon, px, px as f32)
+}
+
+/// `icon`'s coverage drawn `size` device pixels across, from the top-left of a `px` × `px`
+/// canvas.
+pub fn icon_coverage_at(icon: &Icon, px: u32, size: f32) -> Vec<u8> {
+    let s = size / icon.view;
     let mut acc = vec![0u8; (px * px) as usize];
     // Each open group with an `opacity`: what it holds so far, and that opacity.
     let mut layers: Vec<(Vec<u8>, f32)> = Vec::new();
@@ -241,14 +250,20 @@ pub fn icon_coverage(icon: &Icon, px: u32) -> Vec<u8> {
         let fill = get("fill").map_or(!stroke, |v| v != "none");
         let whole = opacity(attr(el, "opacity"));
         let into = layers.last_mut().map_or(&mut acc, |l| &mut l.0);
-        let mut paint = |style: swash::zeno::Style<'_>, alpha: f32| {
-            buf.iter_mut().for_each(|b| *b = 0);
-            Mask::new(d.as_slice()).style(style).transform(Some(ctm)).size(px, px).render_into(&mut buf, None);
+        // `hair`: a stroke this many device pixels wide, at most one, drawn as Chromium draws it.
+        let mut paint = |style: swash::zeno::Style<'_>, alpha: f32, hair: Option<f32>| {
+            match hair {
+                Some(width) => super::hairline::render(d.as_slice(), ctm, width, px, &mut buf),
+                None => {
+                    buf.iter_mut().for_each(|b| *b = 0);
+                    Mask::new(d.as_slice()).style(style).transform(Some(ctm)).size(px, px).render_into(&mut buf, None);
+                }
+            }
             union(into, &buf, alpha);
         };
         if fill {
             let rule = if get("fill-rule") == Some("evenodd") { Fill::EvenOdd } else { Fill::NonZero };
-            paint(rule.into(), whole * opacity(get("fill-opacity")));
+            paint(rule.into(), whole * opacity(get("fill-opacity")), None);
         }
         if stroke {
             let w = get("stroke-width").and_then(|v| v.trim_end_matches("px").parse().ok()).unwrap_or(1.0f32);
@@ -264,7 +279,11 @@ pub fn icon_coverage(icon: &Icon, px: u32) -> Vec<u8> {
                 Some("bevel") => Join::Bevel,
                 _ => Join::Miter,
             });
-            paint(st.into(), whole * opacity(get("stroke-opacity")));
+            // No wider than a device pixel, Chromium (Skia) draws a stroke as a hairline, unless
+            // the path is a rectangle, which it draws as one.
+            let device = w * (ctm.xx * ctm.yy - ctm.xy * ctm.yx).abs().sqrt();
+            let hair = (device <= 1.0 + 1.0 / 256.0 && !super::hairline::draws_as_rect(d.as_slice(), ctm)).then_some(device);
+            paint(st.into(), whole * opacity(get("stroke-opacity")), hair);
         }
     }
     // A group left open still ends at the body's end.

@@ -31,10 +31,10 @@ impl<S: 'static> Runtime<S> {
             return;
         }
         if let Some(held) = self.press.held_mut() {
-            held.moved |= (x - at.0).abs() > CLICK_SLOP || (y - at.1).abs() > CLICK_SLOP;
+            held.moved |= !press_run::within_slop(at, (x, y));
         }
         self.selection_drag(x, y);
-        if self.input_click.captured {
+        if self.input_click.captured() {
             self.input_drag(x, y, drag_move);
             return;
         }
@@ -104,9 +104,11 @@ impl<S: 'static> Runtime<S> {
     }
 
     pub(crate) fn cancel_pointer(&mut self) {
+        // differs from dev: a cancelled press cannot pair with a click after refocusing.
+        self.titlebar.clear();
         self.cancel_drag();
         self.drop_drag_out_request();
-        self.text_sel.dragging = false;
+        self.select_step(selectable::phase::Event::Release);
         self.input_click.clear();
         self.press.drop_held();
         self.secondary = capture::Secondary::Up;
@@ -116,13 +118,16 @@ impl<S: 'static> Runtime<S> {
 
     /// End a held drag without a drop: its handler hears `Phase::Up` with [`Drag::cancelled`]
     /// and the release that follows does nothing. False when no drag is held.
-    pub(super) fn cancel_drag(&mut self) -> bool {
-        if self.input_click.captured { return false; }
+    pub(super) fn cancel_drag(&mut self) -> bool { self.cancel_drag_at(self.pointer) }
+
+    /// [`Self::cancel_drag`], its last report at `point`, or where the press began.
+    fn cancel_drag_at(&mut self, point: Option<(f32, f32)>) -> bool {
+        if self.input_click.captured() { return false; }
         let Some(held) = self.press.held() else { return false };
         let Some(i) = self.live_index(&held.path) else { return false };
         if self.nodes[i].handlers.on_drag.is_none() || self.drags_out(&self.nodes[i]) { return false; }
         let at = held.at;
-        let (x, y) = self.pointer.unwrap_or(at);
+        let (x, y) = point.unwrap_or(at);
         let [lx, ly] = self.to_local(i, x, y);
         let (dx, dy) = (x - at.0, y - at.1);
         let screen = self.screen_at(x, y);
@@ -130,8 +135,14 @@ impl<S: 'static> Runtime<S> {
         let d = Drag { phase: Phase::Up, x: lx, y: ly, dx, dy, cancelled: true, window: [x, y], screen, ..held.drag };
         self.queue.push(Action::Drag(held.path, d, held.button));
         self.end_press_repeat();
-        self.text_sel.dragging = false;
+        self.select_step(selectable::phase::Event::Release);
         true
+    }
+
+    /// The button is up, so the held press can no longer start a drag-out; it stays a press.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub(crate) fn disarm_drag_out(&mut self) {
+        if let Some(held) = self.press.held_mut() { held.drag_out = None; }
     }
 
     /// The held press crossed the drag threshold on a `drag_out` element: ask the host for an
@@ -188,7 +199,7 @@ impl<S: 'static> Runtime<S> {
         self.focus.step(focus_machine::FocusEvent::Pointed);
         self.press_help(x, y);
         // A press cancels the waits to report an enter; the next move after it starts them again.
-        self.hover_pending.retain(|p| !p.1);
+        self.press_hover_delays();
         self.hover_paused = true;
         let target = self.primary_target(x, y);
         if target.and_then(|t| self.textbox_input(t)).is_none() {
@@ -206,7 +217,7 @@ impl<S: 'static> Runtime<S> {
         self.press_selection(target, x, y);
         // Inside a draggable row, dragging drags the row; clicks still select words and lines.
         if target.is_some_and(|t| self.nodes[t].handlers.on_drag.is_some() || self.nodes[t].handlers.drag_out.is_some()) {
-            self.text_sel.dragging = false;
+            self.select_step(selectable::phase::Event::Release);
         }
         let Some(ti) = target else {
             let now = self.now_clock();
@@ -216,7 +227,8 @@ impl<S: 'static> Runtime<S> {
             }
             return;
         };
-        let on_link = self.link_down(ti, x, y);
+        let link = self.link_at(ti, x, y);
+        let on_link = link.is_some();
         // Any press breaks a pending pair unless it's the second press of it.
         let pending = self.press.take_first();
         let now = self.now_clock();
@@ -230,8 +242,7 @@ impl<S: 'static> Runtime<S> {
         let n = &self.nodes[ti];
         let clicks = self.press_clicks.press(&n.path, now, (x, y), self.double_click_interval);
         let second = n.handlers.on_double_press.is_some() && pending.is_some_and(|first| {
-            first.path == n.path && now - first.at <= self.double_click_interval
-                && (x - first.point.0).abs() <= CLICK_SLOP && (y - first.point.1).abs() <= CLICK_SLOP
+            first.path == n.path && press_run::follows(first.at, first.point, now, (x, y), self.double_click_interval)
         });
         if let Some(ji) = self.textbox_input(ti) {
             self.input_down(ji, x, y, now, second);
@@ -243,17 +254,29 @@ impl<S: 'static> Runtime<S> {
         // focuses it, as a click on a table view's row focuses the table.
         // A `Cx::web_focus` control that keeps the field's focus on a press (`preserve_focus_on_press`)
         // doesn't take it, as a button whose mousedown is prevented.
+        // So does a click on plain content in a focusable scroll region, as a web page focuses a
+        // `tabIndex` scroller (a `ScrollView`) clicked where nothing inside takes focus; and a
+        // press on a layer that hands focus below it (`El::press_focuses_below`) focuses the one
+        // under the pointer.
+        if n.focus.below && !on_link {
+            match self.scroll_region_below(ti, x, y) {
+                Some(r) => self.queue.push(Action::FocusControl(self.nodes[r].path.clone())),
+                None if self.focus.path().is_some() => self.queue.push(Action::Blur),
+                None => {}
+            }
+        }
         let takes_focus = n.focus.enabled || (self.takes_focus(n) && !self.press_keeps_focus(ti));
         let keyed = (!takes_focus && !self.is_selectable(ti)).then(|| std::iter::successors(n.parent, |&p| self.nodes[p].parent)
             .take_while(|&p| self.allowed(p))
-            .find(|&p| self.nodes[p].focus.key.is_some() && self.can_focus(p))).flatten();
+            .find(|&p| (self.nodes[p].focus.key.is_some() || self.focuses_on_click(p)) && self.can_focus(p))).flatten();
         let in_textbox = std::iter::successors(n.parent, |&p| self.nodes[p].parent).any(|p| self.textbox_input(p).is_some());
         let (preserve_focus, keeps) = (self.press_keeps_focus(ti), self.press_keeps_selection(ti));
-        if !on_link && !keeps && takes_focus && !self.is_selectable(ti) {
+        let below = n.focus.below;
+        if !below && !on_link && !keeps && takes_focus && !self.is_selectable(ti) {
             self.queue.push(Action::FocusControl(n.path.clone()));
-        } else if !on_link && !keeps && let Some(p) = keyed {
+        } else if !below && !on_link && !keeps && let Some(p) = keyed {
             self.queue.push(Action::FocusControl(self.nodes[p].path.clone()));
-        } else if !on_link && !in_textbox && !preserve_focus {
+        } else if !below && !on_link && !in_textbox && !preserve_focus {
             // Tab goes on from here, as from a browser's click on plain content.
             if self.defaults.web_focus { self.focus.step(focus_machine::FocusEvent::StartAt(n.path.clone())); }
             if self.focus.path().is_some() { self.queue.push(Action::Blur); }
@@ -281,7 +304,7 @@ impl<S: 'static> Runtime<S> {
         if n.handlers.on_drag.is_some() && drag_out.is_none() {
             self.queue.push(Action::Drag(path.clone(), d, crate::PointerButton::Primary));
         }
-        self.press.hold(capture::Held::new(path, d, crate::PointerButton::Primary, (x, y), now, second, drag_out));
+        self.press.hold(capture::Held::new(path, d, crate::PointerButton::Primary, (x, y), now, second, drag_out).on_link(link));
     }
 
     pub fn pointer_up(&mut self, x: f32, y: f32) {
@@ -290,6 +313,40 @@ impl<S: 'static> Runtime<S> {
             return;
         }
         self.release_capture(x, y);
+    }
+
+    /// The platform lost the release of a held press, so nothing was dropped: a held drag ends
+    /// cancelled at (x, y), and any other press is released there.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub(crate) fn pointer_release_lost(&mut self, x: f32, y: f32) {
+        let held = self.press.held().filter(|h| h.button == crate::PointerButton::Primary)
+            .map(|h| (h.left, h.moved || !press_run::within_slop(h.at, (x, y))));
+        if let Some((left, moved)) = held && self.cancel_drag_at(Some((x, y))) {
+            // As a normal release: a press that dragged ends the run of clicks.
+            if moved { self.press_clicks.clear(); }
+            self.move_pointer(x, y, false);
+            self.leave_after_release(left);
+        } else {
+            self.pointer_up(x, y);
+        }
+    }
+
+    /// What input has queued for handlers, emptied: each drag event, `None` for a press.
+    #[cfg(test)]
+    pub(crate) fn take_queued_pointer(&mut self) -> Vec<Option<Drag>> {
+        let heard = self.queue.iter().filter_map(|action| match action {
+            Action::Drag(_, drag, _) => Some(Some(*drag)),
+            Action::Press(..) => Some(None),
+            _ => None,
+        }).collect();
+        self.queue.retain(|_| false);
+        heard
+    }
+
+    #[cfg(test)]
+    pub(crate) fn end_click_run(&mut self) {
+        self.press_clicks.clear();
+        self.press.take_first();
     }
 
     pub(super) fn release_capture(&mut self, x: f32, y: f32) {
@@ -306,7 +363,7 @@ impl<S: 'static> Runtime<S> {
         self.move_pointer(x, y, moved);
         // A drag that selected text is a selection, not a press.
         let selected = self.selected_by_drag();
-        self.text_sel.dragging = false;
+        self.select_step(selectable::phase::Event::Release);
         let input_capture = self.input_click.end_press();
         self.end_press_repeat();
         let now = self.now_clock();
@@ -319,7 +376,7 @@ impl<S: 'static> Runtime<S> {
             .then(|| capture::FirstClick { path: h.path.clone(), at: h.down_at, point: h.at });
         let Some(held) = self.press.release(first) else { return };
         let inside = held.inside();
-        let capture::Held { path, drag: d, button, at, down_at, moved, second: double, .. } = *held;
+        let capture::Held { path, drag: d, button, at, down_at, moved, second: double, link, .. } = *held;
         self.refresh_hover_within();
         if moved { self.press_clicks.clear(); }
         if input_capture { return; }
@@ -331,7 +388,7 @@ impl<S: 'static> Runtime<S> {
             let [lx, ly] = self.to_local(i, x, y);
             self.queue.push(Action::Drag(path.clone(), Drag { phase: Phase::Up, x: lx, y: ly, dx, dy, window: [x, y], screen: self.screen_at(x, y), ..d }, button));
         }
-        self.link_up(&path, x, y, inside);
+        if let Some(k) = link.filter(|_| inside) { self.link_up(&path, k, x, y); }
         if has_press && inside && !selected {
             self.queue.push(Action::Press(path.clone(), button));
         }
@@ -371,7 +428,7 @@ impl<S: 'static> Runtime<S> {
         // An element on its way out has no cursor: `Cursor::Hidden` ends when it's removed.
         // Selectable text shows its I-beam even where its presses go to a row around it.
         let target = match self.press.path() {
-            Some(_) if self.text_sel.dragging => self.selection_holder(),
+            Some(_) if self.selectable.phase.dragging() => self.selection_holder(),
             Some(p) => self.live_index(p).filter(|&i| self.allowed(i)),
             // Moving layout holds hover: the cursor stays with what the pointer was over.
             None => self.held_hover().flatten().or_else(|| self.selectable_at(x, y).or_else(|| self.primary_target(x, y))),
@@ -382,7 +439,7 @@ impl<S: 'static> Runtime<S> {
         if self.nodes[i].handlers.cursor.is_none() && (self.nodes[i].input.is_some() || self.nodes[i].role == "textbox") {
             return crate::el::Cursor::Text;
         }
-        if self.is_selectable(i) && !self.text_sel.dragging && self.link_at(i, x, y).is_some() {
+        if self.is_selectable(i) && !self.selectable.phase.dragging() && self.link_at(i, x, y).is_some() {
             return crate::el::Cursor::Pointer;
         }
         loop {
@@ -421,7 +478,7 @@ impl<S: 'static> Runtime<S> {
         if let Some(st) = self.scrolls.get_mut(&id) {
             let before = st.offset;
             st.offset = (st.offset - f64::from(dy)).clamp(0.0, st.max);
-            st.direct = true;
+            st.moved();
             st.land(stick);
             log_event!(self, "wheel {dy:.1}");
             if st.offset != before { self.scroll_cancels_press(id); }
@@ -436,7 +493,7 @@ impl<S: 'static> Runtime<S> {
         self.dismiss_help();
         let Some(id) = self.scroll_at(x, y) else { return };
         if let Some(st) = self.scrolls.get_mut(&id) {
-            st.mode = ScrollMode::Momentum { v: -velocity };
+            st.mode = st.mode.to_momentum(-velocity);
             log_event!(self, "fling {velocity:.0}");
             if velocity != 0.0 { self.scroll_cancels_press(id); }
         }

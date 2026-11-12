@@ -57,14 +57,17 @@ pub struct TraySpec {
     pub(crate) id: String,
     pub(crate) title: String,
     pub(crate) tooltip: String,
+    pub(crate) icon_name: String,
     pub(crate) icon: TrayIcon,
     pub(crate) menu: Vec<TrayItem>,
 }
 impl TraySpec {
     pub fn new(id: impl Into<String>, title: impl Into<String>, icon: TrayIcon) -> Self {
-        Self { id: id.into(), title: title.into(), tooltip: String::new(), icon, menu: Vec::new() }
+        Self { id: id.into(), title: title.into(), tooltip: String::new(), icon_name: String::new(), icon, menu: Vec::new() }
     }
     pub fn tooltip(mut self, tooltip: impl Into<String>) -> Self { self.tooltip = tooltip.into(); self }
+    /// A freedesktop icon theme name (Linux `IconName`) a host may draw instead of the pixels.
+    pub fn icon_name(mut self, name: impl Into<String>) -> Self { self.icon_name = name.into(); self }
     pub fn menu(mut self, menu: Vec<TrayItem>) -> Self { self.menu = menu; self }
 }
 
@@ -85,6 +88,15 @@ pub(crate) type Handler = Arc<dyn Fn(TrayEvent) + Send + Sync>;
 pub struct Tray {
     #[cfg(any(all(target_os = "linux", feature = "dbus"), target_os = "windows"))]
     native: native::Native,
+}
+
+/// Takes every tray icon off the notification area now, before a fast exit ends the process
+/// (`crate::fast_exit`). Elsewhere the icon goes with the process: its D-Bus name (Linux) or
+/// status item (macOS) ends when the connection does.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn remove_all() {
+    #[cfg(target_os = "windows")]
+    native::remove_all();
 }
 
 impl Tray {

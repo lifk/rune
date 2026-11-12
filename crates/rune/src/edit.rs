@@ -15,6 +15,7 @@ use crate::color::Color;
 use crate::text::Link;
 
 mod caret_motion;
+use caret_motion::Column;
 mod display;
 mod history;
 mod html;
@@ -26,22 +27,13 @@ pub use keys::{Key, KeyEvent, KeySide, Modifier, Mods};
 mod marks;
 mod model;
 pub use model::{Block, MAX_LIST_LEVEL, Mark, MarkRange, ParagraphInfo, RichStyle};
+mod secure;
+pub(crate) use secure::{MULTILINE_SECURE_MASK, Masking};
+use secure::LineMode;
+mod typing;
+use typing::Typing;
 pub(crate) use history::History;
-use history::{ActiveGroup, EditKind, EditedTag};
-
-/// Fixed mask shown by a hidden multi-line secure field when non-empty, hiding both byte length
-/// and line count.
-pub(crate) const MULTILINE_SECURE_MASK: &str = "••••••••••••";
-
-/// Mirrors whether the bound [`text_input`](crate::text_input) has [`El::single_line`](crate::El::single_line).
-/// Before a field mounts, standalone [`TextEdit::secure`] defaults to single-line.
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
-enum LineMode {
-    #[default]
-    Default,
-    Single,
-    Multi,
-}
+use history::{EditKind, EditedTag, Group};
 
 #[derive(Clone, Default, PartialEq)]
 pub struct TextEdit {
@@ -57,11 +49,11 @@ pub struct TextEdit {
     /// Line indices (`> 0`) created by `Shift+Return` (`<br>`): indented with their block,
     /// without starting a new list marker or incrementing list numbering.
     pub(crate) soft_breaks: Vec<u32>,
-    /// Pending typing style armed at `(anchor, focus)` when toggling marks on an empty selection.
-    pending: Option<((usize, usize), Vec<Mark>)>,
+    /// The style the next typed text takes: a mark toggled on an empty selection arms it.
+    typing: Typing,
     history: Arc<History>,
     /// Set inside [`TextEdit::undo_group`]: edits record nothing until the outermost group ends.
-    group: ActiveGroup,
+    group: Group,
     secure: bool,
     revealed: bool,
     /// Mirrors the field's `El::single_line()`; the runtime sets it before each edit.
@@ -74,6 +66,12 @@ pub struct TextEdit {
     allowed_blocks: Option<u8>,
     /// Whether a user has edited the value since `replace_text`.
     edited_tag: EditedTag,
+    /// The column a run of Up and Down keeps.
+    column: Column,
+    /// Which side of `focus` the caret is drawn on where two runs of different direction meet:
+    /// a byte there has a place at the end of one run and at the start of the other. Arrows
+    /// and presses set it; anything else puts it before the byte that follows.
+    pub(crate) affinity: parley::Affinity,
 }
 
 impl std::fmt::Debug for TextEdit {
@@ -91,17 +89,21 @@ impl std::fmt::Debug for TextEdit {
 /// length (single-line) or non-empty state (multi-line), not its text.
 impl std::hash::Hash for TextEdit {
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        if self.is_hidden_multiline() {
-            (!self.text.is_empty()).hash(h);
-            (self.anchor != self.focus).hash(h);
-        } else if self.secure && !self.revealed {
-            self.text.chars().count().hash(h);
-            self.anchor.hash(h);
-            self.focus.hash(h);
-        } else {
-            self.text.hash(h);
-            self.anchor.hash(h);
-            self.focus.hash(h);
+        match self.masking() {
+            Masking::Hidden { multiline: true } => {
+                (!self.text.is_empty()).hash(h);
+                (self.anchor != self.focus).hash(h);
+            }
+            Masking::Hidden { multiline: false } => {
+                self.text.chars().count().hash(h);
+                self.anchor.hash(h);
+                self.focus.hash(h);
+            }
+            Masking::Plain | Masking::Shown => {
+                self.text.hash(h);
+                self.anchor.hash(h);
+                self.focus.hash(h);
+            }
         }
         self.composition.hash(h);
         self.focused.hash(h);
@@ -110,7 +112,7 @@ impl std::hash::Hash for TextEdit {
             self.blocks.hash(h);
         }
         self.soft_breaks.hash(h);
-        self.pending.hash(h);
+        self.typing.hash(h);
         self.secure.hash(h);
         self.revealed.hash(h);
         self.is_single_line().hash(h);
@@ -139,6 +141,22 @@ fn prev_char(s: &str, i: usize) -> usize {
     s[..i].grapheme_indices(true).next_back().map_or(0, |(j, _)| j)
 }
 
+/// Where Backspace deletes back to from `i`, as Chromium's `BackspaceStateMachine` and native
+/// fields do: one code point (a combining accent, a Thai or Indic vowel sign, the last jamo of
+/// a decomposed syllable), so a typist fixes the last thing they typed without retyping the
+/// cluster; but a CR LF and an emoji sequence (a variation selector, a skin tone, a keycap, a
+/// flag's pair, a tag sequence, a ZWJ sequence of emoji) go whole.
+fn prev_backspace(s: &str, i: usize) -> usize {
+    let start = prev_char(s, i);
+    let cluster = &s[start..i];
+    let emoji = cluster.chars().any(|c| matches!(c as u32, 0xFE0F | 0x20E3 | 0x1F3FB..=0x1F3FF | 0x1F1E6..=0x1F1FF | 0xE0020..=0xE007F))
+        || (cluster.contains('\u{200D}') && cluster.chars().any(crate::text::is_pictographic));
+    if cluster == "\r\n" || emoji {
+        return start;
+    }
+    s[..i].char_indices().next_back().map_or(0, |(j, _)| j)
+}
+
 fn next_char(s: &str, i: usize) -> usize {
     use unicode_segmentation::UnicodeSegmentation;
     s[i..].graphemes(true).next().map_or(i, |g| i + g.len())
@@ -158,9 +176,9 @@ impl TextEdit {
             marks: Vec::new(),
             blocks: vec![Block::Paragraph; line_count],
             soft_breaks: Vec::new(),
-            pending: None,
+            typing: Typing::Inherited,
             history: Arc::default(),
-            group: ActiveGroup::default(),
+            group: Group::Closed,
             secure: false,
             revealed: false,
             line_mode: LineMode::Default,
@@ -168,6 +186,8 @@ impl TextEdit {
             allowed_marks: None,
             allowed_blocks: None,
             edited_tag: EditedTag::default(),
+            column: Column::Free,
+            affinity: parley::Affinity::Downstream,
         }
     }
 
@@ -267,7 +287,7 @@ impl TextEdit {
 
     /// No marks, pending style or non-paragraph blocks: draws exactly as plain text.
     pub(crate) fn is_plain(&self) -> bool {
-        self.marks.is_empty() && self.pending.is_none() && self.blocks.iter().all(|&b| b == Block::Paragraph)
+        self.marks.is_empty() && self.typing == Typing::Inherited && self.blocks.iter().all(|&b| b == Block::Paragraph)
     }
 
     /// Parse an HTML fragment (`<b>`, `<strong>`, `<i>`, `<em>`, `<u>`, `<s>`, `<del>`, `<strike>`,
@@ -374,41 +394,6 @@ impl TextEdit {
         out
     }
 
-    /// Password editing: masked display, no undo, copy, cut or IME. All model buffers are
-    /// wiped on drop; secure replacements also wipe the previous allocation before freeing it.
-    pub fn secure(mut self) -> Self { self.set_secure(true); self }
-
-    pub fn is_secure(&self) -> bool { self.secure }
-
-    pub fn set_secure(&mut self, secure: bool) {
-        self.secure = secure;
-        if secure {
-            self.history = Arc::default();
-            if self.group.0.is_some() {
-                self.group.0 = Some(None);
-            }
-            self.marks.clear();
-            self.blocks.clear();
-            self.soft_breaks.clear();
-            self.pending = None;
-            self.cancel_composition();
-        } else if self.group.0 == Some(None) {
-            self.sync_invariants();
-            self.group.0 = Some(Some(self.snapshot_now()));
-        }
-    }
-
-    /// Show the plain characters of a [`secure`](Self::secure) field while keeping all other
-    /// secure protections: no undo, copy, cut, IME or accessibility text, redacted [`Debug`],
-    /// and zeroized buffers.
-    /// Rune-owned source buffers are wiped; third-party shaping scratch used while revealed
-    /// is released after shaping but is not guaranteed zeroized.
-    pub fn revealed(mut self, revealed: bool) -> Self { self.set_revealed(revealed); self }
-
-    pub fn is_revealed(&self) -> bool { self.revealed }
-
-    pub fn set_revealed(&mut self, revealed: bool) { self.revealed = revealed; }
-
     /// The input method's composition, drawn at the caret and not yet part of `text`, with the
     /// byte range of its cursor or selection in it.
     pub fn preedit(&self) -> Option<(&str, Option<(usize, usize)>)> {
@@ -420,13 +405,36 @@ impl TextEdit {
         self.composition != ime::Composition::Idle
     }
 
-    /// Ends the input method's composition without committing it, as a blur does.
-    pub fn cancel_composition(&mut self) {
-        self.composition.cancel();
+    /// The clause the input method is converting, a byte range of the preedit, when it marks
+    /// one.
+    pub fn preedit_target(&self) -> Option<(usize, usize)> {
+        self.composition.target()
     }
 
-    pub(crate) fn clear_pending(&mut self) {
-        self.pending = None;
+    /// Ends the input method's composition without writing it, as an edit replacing the text
+    /// under it does.
+    pub fn cancel_composition(&mut self) {
+        let _ = ime::step(&mut self.composition, ime::Event::Cancel);
+    }
+
+    /// Writes what the composition shows into the text and ends it, as a field that loses
+    /// focus or the window mid-composition keeps it (a browser's field and an `NSTextView`
+    /// do). True when there was one. The runtime tells the platform's input method to drop its
+    /// own copy.
+    pub fn finish_composition(&mut self) -> bool {
+        if self.secure { self.cancel_composition(); return false; }
+        let mut finished = false;
+        for effect in ime::step(&mut self.composition, ime::Event::Finish) {
+            let ime::Effect::Commit(mut s) = effect;
+            self.commit_composed(&s);
+            s.zeroize();
+            finished = true;
+        }
+        finished
+    }
+
+    pub(crate) fn clear_typing_style(&mut self) {
+        self.typing = Typing::Inherited;
     }
 
     /// Replace the whole draft and discard its history, preserving focus and password mode.
@@ -440,12 +448,12 @@ impl TextEdit {
         self.marks.clear();
         self.blocks = vec![Block::Paragraph; line_count];
         self.soft_breaks.clear();
-        self.pending = None;
+        self.typing = Typing::Inherited;
         self.cancel_composition();
         self.edited_tag = EditedTag(false);
         self.history = Arc::default();
-        if self.group.0.is_some() {
-            self.group.0 = Some((!self.secure).then(|| self.snapshot_now()));
+        if self.group.is_open() {
+            self.group = self.group_from_here();
         }
     }
 
@@ -481,74 +489,6 @@ impl TextEdit {
         weak.ptr_eq(&Arc::downgrade(&self.history))
     }
 
-    pub(crate) fn is_single_line(&self) -> bool {
-        match self.line_mode {
-            LineMode::Default => self.secure,
-            LineMode::Single => true,
-            LineMode::Multi => false,
-        }
-    }
-
-    /// Whether this is a multi-line secure field in hidden mode (`secure && !revealed && !single_line`).
-    pub(crate) fn is_hidden_multiline(&self) -> bool {
-        self.secure && !self.revealed && !self.is_single_line()
-    }
-
-    /// For a secure field that has started exiting: wipe the secret and keep only its mask, so
-    /// the field paints the same dots (no placeholder) through the exit with no plaintext.
-    pub(crate) fn conceal(&mut self) {
-        if !self.secure { return; }
-        self.revealed = false;
-        let mask = if self.text.is_empty() {
-            String::new()
-        } else if self.is_single_line() {
-            "•".repeat(self.text.chars().count())
-        } else {
-            MULTILINE_SECURE_MASK.to_owned()
-        };
-        self.replace_text(mask);
-    }
-
-    /// Map model bytes to the bullet layout's bytes and back. Each Unicode scalar gets one
-    /// bullet in single-line mode so UTF-8 length never changes caret/selection alignment;
-    /// hidden multi-line fields pin the visual caret to the end of the fixed mask and map
-    /// pointer hits to the end of the model.
-    pub(crate) fn display_index(&self, byte: usize) -> usize {
-        if self.is_hidden_multiline() {
-            if self.text.is_empty() { 0 } else { MULTILINE_SECURE_MASK.len() }
-        } else if self.secure && !self.revealed {
-            self.text[..byte.min(self.text.len())].chars().count() * '•'.len_utf8()
-        } else {
-            byte.min(self.text.len())
-        }
-    }
-    pub(crate) fn model_index(&self, byte: usize) -> usize {
-        if self.is_hidden_multiline() {
-            self.text.len()
-        } else if self.secure && !self.revealed {
-            self.text.char_indices().nth(byte / '•'.len_utf8()).map_or(self.text.len(), |(i, _)| i)
-        } else {
-            byte.min(self.text.len())
-        }
-    }
-    pub(crate) fn display_selection_range(&self, a: usize, b: usize) -> (usize, usize) {
-        if self.is_hidden_multiline() {
-            if a == b || self.text.is_empty() { (0, 0) } else { (0, MULTILINE_SECURE_MASK.len()) }
-        } else {
-            (self.display_index(a), self.display_index(b))
-        }
-    }
-
-    // A fixed mask has no visible interior positions. Preserve the revealed selection until
-    // an edit occurs, then treat it as either the whole secret or an insertion at its end.
-    fn normalize_hidden_selection(&mut self) {
-        if self.is_hidden_multiline() {
-            let selected = self.anchor != self.focus;
-            self.focus = self.text.len();
-            self.anchor = if selected { 0 } else { self.focus };
-        }
-    }
-
     /// Clears the draft and its history after submission, preserving keyboard focus.
     pub fn clear(&mut self) {
         self.replace_text("");
@@ -568,7 +508,9 @@ impl TextEdit {
         self.anchor = b;
         self.focus = b;
         self.snap_to_pills();
-        self.pending = None;
+        self.typing = Typing::Inherited;
+        self.column = Column::Free;
+        self.affinity = parley::Affinity::Downstream;
     }
 
     /// Set the selection `anchor` and `focus` byte indices (clamped to character boundaries of
@@ -578,7 +520,9 @@ impl TextEdit {
         self.anchor = Self::clamp_char_boundary(&self.text, anchor);
         self.focus = Self::clamp_char_boundary(&self.text, focus);
         self.snap_to_pills();
-        self.pending = None;
+        self.typing = Typing::Inherited;
+        self.column = Column::Free;
+        self.affinity = parley::Affinity::Downstream;
     }
 
     /// The [`Mark::Pill`]s in `self.text`, in order, with their byte ranges and ids.
@@ -599,56 +543,6 @@ impl TextEdit {
     /// The end of the pill that starts at or contains `j`, when `j` is before its end.
     fn pill_after(&self, j: usize) -> Option<usize> {
         self.marks.iter().find(|m| m.mark.is_pill() && m.start <= j && j < m.end).map(|m| m.end)
-    }
-
-    fn prev_word(&self, i: usize) -> usize {
-        if self.secure && !self.revealed {
-            return 0;
-        }
-        let s = &self.text;
-        let b = s.as_bytes();
-        let mut j = i.min(b.len());
-        loop {
-            if let Some(start) = self.pill_before(j) {
-                return start;
-            }
-            if j == 0 || !b[j - 1].is_ascii_whitespace() {
-                break;
-            }
-            j -= 1;
-        }
-        while j > 0 && !b[j - 1].is_ascii_whitespace() {
-            if self.marks.iter().any(|m| m.mark.is_pill() && m.end == j) {
-                break;
-            }
-            j = prev_char(s, j);
-        }
-        j
-    }
-
-    fn next_word(&self, i: usize) -> usize {
-        if self.secure && !self.revealed {
-            return self.text.len();
-        }
-        let s = &self.text;
-        let b = s.as_bytes();
-        let mut j = i.min(b.len());
-        loop {
-            if let Some(end) = self.pill_after(j) {
-                return end;
-            }
-            if j >= b.len() || !b[j].is_ascii_whitespace() {
-                break;
-            }
-            j += 1;
-        }
-        while j < b.len() && !b[j].is_ascii_whitespace() {
-            if self.marks.iter().any(|m| m.mark.is_pill() && m.start == j) {
-                break;
-            }
-            j = next_char(s, j);
-        }
-        j
     }
 
     /// Replace the selection with `label` as one [`Mark::Pill`] carrying `id`, and put the
@@ -673,7 +567,7 @@ impl TextEdit {
         let a = Self::clamp_char_boundary(&self.text, range.start.min(range.end));
         let b = Self::clamp_char_boundary(&self.text, range.end.max(range.start));
         let (a, b) = self.cover_pills(a, b);
-        self.pending = None;
+        self.typing = Typing::Inherited;
         self.apply_text_and_attr_replace((a, b), &label, &[], None, false);
         // Code blocks keep no inline marks: there the label stays plain text.
         self.marks.push(MarkRange { start: a, end: a + label.len(), mark: Mark::Pill(id.into()) });
@@ -726,10 +620,6 @@ impl TextEdit {
 
     pub fn insert(&mut self, s: &str) {
         self.replace(self.range(), s, EditKind::Other);
-    }
-
-    pub(crate) fn set_single_line(&mut self, single_line: bool) {
-        self.line_mode = if single_line { LineMode::Single } else { LineMode::Multi };
     }
 
     /// Line index (`0..line_count`) containing `byte`.
@@ -804,6 +694,8 @@ impl TextEdit {
         mark_new_lines_soft: bool,
     ) {
         // Callers sync first; a second whole-text pass here would show on every keystroke.
+        self.column = Column::Free;
+        self.affinity = parley::Affinity::Downstream;
         let del_len = b - a;
         let ins_len = s.len();
         if self.marks.is_empty()
@@ -968,7 +860,7 @@ impl TextEdit {
         let (a, b) = self.cover_pills(a, b);
         if kind == EditKind::Other { self.break_history_group(); }
         if &self.text[a..b] == s
-            && self.pending.is_none()
+            && self.typing == Typing::Inherited
             && !self.marks.iter().any(|m| m.mark.is_pill() && m.start < b && a < m.end)
         {
             self.anchor = a + s.len();
@@ -979,11 +871,9 @@ impl TextEdit {
         }
         let before = self.snapshot();
         let inserted_marks: Vec<Mark> = if s.is_empty() {
-            self.pending = None;
+            self.typing = Typing::Inherited;
             Vec::new()
-        } else if let Some((armed, p)) = self.pending.take()
-            && armed == (self.anchor, self.focus)
-        {
+        } else if let Some(p) = self.typing.take_at((self.anchor, self.focus)) {
             p
         } else if a < b {
             // Replacing a selection inherits marks that covered the first character of the selection.

@@ -62,15 +62,13 @@ pub(super) fn line_alignment(spec: &TextSpec) -> parley::Alignment {
 /// The rectangle a text node's laid-out lines cover inside its drawn box `r` (logical points),
 /// and the layout origin its glyphs are placed from. Lines aligned inside a wrap width count
 /// from their own offsets, so the rect hugs the text rather than the box.
-pub(super) fn text_extent(n: &Node, spec: &TextSpec, layout: &Layout<Ink>, r: [f32; 4], scale: f32) -> (MRect, [f32; 2]) {
+pub(super) fn text_extent(n: &Node, spec: &TextSpec, layout: TextFlow<'_>, r: [f32; 4], scale: f32) -> (MRect, [f32; 2]) {
     let (x0, x1) = (r[0] + n.inset[0], r[0] + r[2] - n.inset[2]);
-    let (lo, hi) = layout.lines().map(|l| (l.metrics().offset, l.metrics().advance))
-        .fold((f32::MAX, 0.0f32), |(lo, hi), (offset, advance)| (lo.min(offset), hi.max(offset + advance)));
-    let (lo, hi) = if lo > hi { (0.0, layout.full_width()) } else { (lo, hi) };
-    let origin = [text_x(spec, x0, x1, layout.full_width() / scale, crate::el::Flow::of_layout(layout)), r[1] + n.inset[1]];
+    let (lo, hi) = layout.extent().unwrap_or((0.0, layout.full_width()));
+    let origin = [text_x(spec, x0, x1, layout.full_width() / scale, layout.flow()), r[1] + n.inset[1]];
     let x = origin[0] + lo / scale;
     (MRect::new(x, origin[1], ((hi - lo) / scale).min(x1 - x).max(0.0),
-        (crate::text::spec_height(layout, spec.style, scale, spec.exact_lines) / scale).min(r[3] - n.inset[1] - n.inset[3])), origin)
+        (layout.spec_height(spec.style, scale, spec.exact_lines) / scale).min(r[3] - n.inset[1] - n.inset[3])), origin)
 }
 
 /// Where a `width`-wide text line starts between `x0` and `x1`. Wrapped text aligns each line
@@ -95,7 +93,7 @@ impl Node {
     pub(crate) fn text_cut(&self, scale: f32) -> bool {
         self.elided.is_some()
             || self.text.as_ref().is_some_and(|t| t.truncate_fade) && self.run_layout.is_none()
-                && self.text_layout.as_ref().is_some_and(|l| l.full_width() > (self.local.w - self.inset[0] - self.inset[2]).max(0.0) * scale + 0.5)
+                && self.text_layout.as_ref().is_some_and(|l| l.view().full_width() > (self.local.w - self.inset[0] - self.inset[2]).max(0.0) * scale + 0.5)
     }
 }
 
@@ -195,7 +193,7 @@ fn spec_elide_keys(spec: &TextSpec, scale: f32, mode: u8, param: usize, max_w: f
         return None;
     }
     let shape = spec.shape_key(scale).unwrap_or_else(|| spec.fresh_shape_key(scale));
-    let blocks = spec.blocks.iter().any(|&b| b != crate::edit::Block::Paragraph).then_some(spec.blocks.as_slice());
+    let blocks = spec.cold.blocks.iter().any(|&b| b != crate::edit::Block::Paragraph).then_some(spec.cold.blocks.as_slice());
     Some((shape, crate::text::elide_key(shape, mode, param, max_w, align, blocks)))
 }
 
@@ -278,7 +276,7 @@ pub(super) fn truncated(text: &mut TextSystem, spec: &TextSpec, scale: f32, max_
 /// version's layouts are done; one replaced by unrelated text may be shown again.
 pub(super) fn release_kept_layouts(
     old: &mut [Node],
-    nodes: &[Node],
+    nodes: &mut [Node],
     taffy: &LayoutEngine,
     text: &mut TextSystem,
     reused: &[memo_reuse::ReusedSpan],
@@ -309,9 +307,14 @@ pub(super) fn release_kept_layouts(
         let o = &mut old[oi];
         oi += 1;
         let (Some(was), Some(now_idx)) = (o.text.as_deref(), taffy.mounted_node_index(o.id.0)) else { continue };
-        o.text_layout = None;
-        let now = nodes.get(now_idx).filter(|n| n.id == o.id).and_then(|n| n.text.as_deref());
-        if let (Some((_, shape)), Some(now)) = (was.shape, now) && now.shape != was.shape && edited(&was.content, &now.content) {
+        let laid = o.text_layout.take();
+        let Some(next) = nodes.get_mut(now_idx).filter(|n| n.id == o.id) else { continue };
+        // A by-paragraph field lays its next text out from this one, keeping the paragraphs
+        // they share; measuring reads it there, and laying the text out replaces it.
+        if next.text_layout.is_none() && next.input.is_some() && let Some(l @ TextLayout::Paragraphs(_)) = laid {
+            next.text_layout = Some(l);
+        }
+        if let (Some((_, shape)), Some(now)) = (was.shape, next.text.as_deref()) && now.shape != was.shape && edited(&was.content, &now.content) {
             text.supersede(shape);
         }
     }
@@ -332,7 +335,9 @@ pub(super) fn compute_layout(taffy: &mut LayoutEngine, root: SlotId, room: Size<
     taffy.compute_layout(root, room, |inputs, ctx, style| {
         taffy::compute_leaf_layout(inputs, style, |_, _| 0.0, |known, avail| {
             let Some(i) = ctx else { return Size::ZERO };
-            let spec = nodes[i].text.as_ref().unwrap();
+            let Some(spec) = nodes[i].text.as_ref() else {
+                return picture_size(known, avail, nodes[i].cold.get().and_then(|c| c.pixel_aspect).unwrap_or(0.0));
+            };
             // `known` is the border box; `avail` is already the content box (known or styled
             // size, clamped, less padding and border), which is what `lay_out_text` wraps at.
             let w = if spec.wrap {
@@ -344,7 +349,7 @@ pub(super) fn compute_layout(taffy: &mut LayoutEngine, root: SlotId, room: Size<
             } else {
                 None
             };
-            if let Some((run, at)) = &spec.advance_in {
+            if let Some((run, at)) = &spec.cold.advance_in {
                 let r = text.run_layout(run, spec.style, scale);
                 if let Some(w) = r.advance(*at, scale) {
                     return Size {
@@ -353,7 +358,8 @@ pub(super) fn compute_layout(taffy: &mut LayoutEngine, root: SlotId, room: Size<
                     };
                 }
             }
-            let l = text.layout_for_spec(spec, scale, w.map(|w| w * scale), parley::Alignment::Start);
+            let laid = text.layout_text(spec, nodes[i].input.is_some(), scale, w.map(|w| w * scale), parley::Alignment::Start, nodes[i].text_layout.as_ref());
+            let l = laid.view();
             // Spaces hanging past a wrapped line's end take no room, as in CSS.
             let mut lw = ((if w.is_some() { l.width() } else { l.full_width() }) / scale).ceil_to(scale);
             if (spec.truncate || spec.truncate_fade || spec.max_lines > 0)
@@ -363,10 +369,25 @@ pub(super) fn compute_layout(taffy: &mut LayoutEngine, root: SlotId, room: Size<
             }
             Size {
                 width: known.width.unwrap_or(lw),
-                height: known.height.unwrap_or(clamped_height(&l, spec, scale) / scale),
+                height: known.height.unwrap_or(match laid.single() {
+                    Some(l) => clamped_height(l, spec, scale),
+                    None => l.spec_height(spec.style, scale, spec.exact_lines),
+                } / scale),
             }
         })
     });
+}
+
+/// A measured picture's size (`flatten::Picture::Measured`): the side it's given, and the other
+/// from its image's `ratio`; with neither given, as wide as its room.
+fn picture_size(known: Size<Option<f32>>, avail: Size<AvailableSpace>, ratio: f32) -> Size<f32> {
+    if ratio <= 0.0 { return Size { width: known.width.unwrap_or(0.0), height: known.height.unwrap_or(0.0) }; }
+    let room = match avail.width {
+        AvailableSpace::Definite(w) => Some(w.max(0.0)),
+        _ => None,
+    };
+    let width = known.width.or(known.height.map(|h| h * ratio)).or(room).unwrap_or(0.0);
+    Size { width, height: known.height.unwrap_or(width / ratio) }
 }
 
 /// The height (device px) of `l` as `spec` shows it: its first `max_lines` lines when set.

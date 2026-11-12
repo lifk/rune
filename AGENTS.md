@@ -7,13 +7,16 @@ A Rust GPU UI framework (wgpu, winit) for apps that feel like SwiftUI on iOS at 
 
 - `crates/rune`: layout, runtime, renderer, windows, overlays, dev tooling. `crates/rune-kit`: components. `crates/rune-mermaid`: Mermaid diagrams (flowcharts, sequence and state diagrams). `crates/rune-i18n`: message catalogs generated from JSON, CLDR plurals and numbers, the system's languages. `crates/rune-motion`: springs and transitions. `crates/rune-fx`, `crates/rune-light`: effects. `crates/rune-ref`: reference renderer. `crates/procwatch`: an app's own memory and CPU (footprint, counting allocator, gauges, warnings, loopback JSON); libc only, no Rune dependency.
 - `examples/`: apps and labs. `themes/`: themes. `site/`: the docs site (see `site/README.md`).
+- `vendor/winit`: winit as published plus `vendor/winit.patch` (Windows: no TaskbarList COM call when a window is made), through `[patch.crates-io]`. When winit is bumped, run `scripts/vendor-winit.sh <new version>` (Git Bash on Windows) and update the `[patch.crates-io]` rev in apps that build Rune.
+- `vendor/wgpu-hal`: wgpu-hal as published plus `vendor/wgpu-hal.patch` (`dx12::Instance::expose_adapter`, and FXC loaded on first compile), through `[patch.crates-io]`. When wgpu is bumped, run `scripts/vendor-wgpu-hal.sh <new wgpu-hal version>` (Git Bash on Windows) and update the `[patch.crates-io]` rev in apps that build Rune.
 - `PLAN.md`: direction and milestones. `research/`: notes behind decisions. `demo/`: images the docs show.
 
 ## Commands
 
-- `cargo test -p rune -p rune-kit --features rune-kit/markdown`
+- `cargo test -p rune -p rune-mermaid -p rune-kit --features rune-kit/markdown,rune-kit/mermaid`
 - `cargo check --workspace --all-targets`
 - Tests run in debug. `--release` is incremental, for looking at an app. Benchmarks use `--profile perf`; the runtime bench scripts refuse other builds.
+- CI's macOS tests (`.github/workflows/macos-tests.yml`) run on a schedule and on `workflow_dispatch`, not per pull request or push: the owner's decision on 2026-11-12. Don't add those triggers back; run the workflow by hand when a change needs it.
 
 ## Changes
 
@@ -44,6 +47,9 @@ App-side rules live in "Launching fast" in `crates/rune/README.md` and the "Laun
 - Bound every cache in entries and in bytes, counting decoded pixels, not encoded size.
 - Take numbers from `--profile perf`. Compare paired, alternating runs by median, keep outliers, and say what a headless number leaves out (GPU upload, presentation).
 - A motion change passes `scripts/motion-audit` with its scenario added. Fix a finding in Rune rather than allowing it.
+- No file I/O in the frame loop: never read, stat, write, sync or rename a file on the UI thread during frames, input or animation. On Windows each open and `MoveFileExW` rename runs antivirus filter callbacks and can fail with a sharing violation.
+- No background rewrite churn: diagnostics and logs (`rune-perf`, traces) keep one open handle and write a summary on an incident or at shutdown, never on a repeating timer while idle.
+- Keep persistence APIs free of `std::fs` and `PathBuf` so `wasm32` targets can back them with browser storage.
 
 ## This repo is public
 

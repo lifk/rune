@@ -1,6 +1,7 @@
 //! The presented tree the render thread owns: presence (exits that stay mounted), layout animation
 //! by edges, screen-space travel, matched geometry, and the per-frame [`Presented`] output.
 
+use crate::carry::Carry;
 use crate::curve::{Anim, Curve};
 use crate::props::{NodeId, Prop, PropId, prop};
 use crate::snap::snap_rect;
@@ -10,10 +11,13 @@ use crate::trace::{Intent, MotionTrace, flags};
 use crate::transition::{Effect, Reveal, Transition};
 use crate::value::{Animatable, Color, Corners, MAX_LANES, Rect, Sides, Transform, Vec2, lanes};
 
+mod phase;
 mod presence;
 mod props;
 mod trailing;
 mod travel;
+
+use phase::{Act, Event as PhaseEvent, Presence, lerp_fx};
 
 const NONE: u32 = u32::MAX;
 const B: usize = prop::BUILTIN_COUNT;
@@ -225,16 +229,6 @@ struct Path {
     origin: Vec2,
 }
 
-// Effect state lanes: opacity, scale, offset x/y, size-fraction offset x/y, blur, hidden reveal,
-// drawn shape.
-type Fx = [f32; 9];
-const FX_ID: Fx = [1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0];
-
-fn fx_of(e: &Effect) -> Fx {
-    let hidden = if e.reveal.is_some() { 1.0 } else { 0.0 };
-    [e.opacity, e.scale, e.offset.x, e.offset.y, e.offset_fraction.x, e.offset_fraction.y, e.blur, hidden, e.draw]
-}
-
 #[derive(Clone)]
 struct Node {
     id: NodeId,
@@ -249,13 +243,13 @@ struct Node {
     radius: Corners,
     fill: Color,
     transition: Transition,
-    phase: Phase,
+    presence: Presence,
+    /// How many exits this node has been through, reported with an exiting phase.
     generation: u32,
-    /// Presence effect at p = 0 and p = 1 (normally the effect and identity; re-solved on a
-    /// mid-flight reversal so nothing jumps).
-    fx_a: Fx,
-    fx_b: Fx,
+    /// Pivot for the presented transform. Set by the effect each phase entered from, and kept:
+    /// a removal that scales moves it, and a static node still reports it.
     anchor: Vec2,
+    /// Soft clip a reveal hides behind, or none. Kept across phases for the same reason.
     reveal: Option<Reveal>,
     path: Option<Path>,
     /// `set_ride_trailing`: x is kept against the parent's trailing edge while its width moves.
@@ -266,6 +260,13 @@ struct Node {
     world: Rect,
     origin: Vec2,
     last: Option<Presented>,
+}
+
+impl Node {
+    /// Moves this node's presence one event on, and asks for what the scene should do about it.
+    fn phase_step(&mut self, event: PhaseEvent) -> phase::Acts {
+        phase::step(&mut self.presence, &mut self.generation, event)
+    }
 }
 
 /// Where a node comes to rest (see [`Scene::rest`]), beside `Scene::nodes` so the nodes the
@@ -316,9 +317,10 @@ pub struct Scene {
     out: Vec<Presented>,
     /// What [`Scene::present`] presented after the motion trace wrote its frame, for the next.
     late: Vec<Presented>,
-    exited: Vec<NodeId>,
-    exited_seen: usize,
+    exited: Carry<NodeId>,
     to_remove: Vec<u32>,
+    /// Who is on a screen path, in the order the paths started. It only says who travels and in
+    /// what order; the path itself is the node's.
     travelling: Vec<u32>,
     trace: Option<MotionTrace>,
     intents: Vec<(NodeId, u32, f32)>,
@@ -346,8 +348,7 @@ impl Scene {
             order_dirty: false,
             out: Vec::new(),
             late: Vec::new(),
-            exited: Vec::new(),
-            exited_seen: 0,
+            exited: Carry::new(),
             to_remove: Vec::new(),
             travelling: Vec::new(),
             trace: None,
@@ -435,7 +436,8 @@ impl Scene {
         self.index.contains_key(&id.0)
     }
     pub fn phase(&self, id: NodeId) -> Option<Phase> {
-        self.slot(id).map(|i| self.nodes[i].phase)
+        let i = self.slot(id)?;
+        Some(self.nodes[i].presence.public(self.nodes[i].generation))
     }
     /// The last presented snapshot (hit-test against what the user sees). Not tracked.
     pub fn presented(&self, id: NodeId) -> Option<Presented> {
@@ -657,7 +659,8 @@ impl Scene {
         let mut p = [D::c(1.0)];
         self.lanes_dual(i, prop::PRESENCE.id, &mut p);
         let n = &self.nodes[i];
-        let fx = |k: usize| D::c(n.fx_a[k]).mul(D::c(1.0).sub(p[0])).add(D::c(n.fx_b[k]).mul(p[0]));
+        let (at0, at1) = n.presence.pair();
+        let fx = |k: usize| D::c(at0[k]).mul(D::c(1.0).sub(p[0])).add(D::c(at1[k]).mul(p[0]));
         let size = [w[2].sub(w[0]), w[3].sub(w[1])];
         let reduced = self.store.reduced_motion();
         core::array::from_fn(|a| {
@@ -684,21 +687,22 @@ impl Scene {
     pub fn frame(&mut self) -> FrameOutput<'_> {
         self.store.tick();
         // Keep removals made since the last frame (matched geometry), drop last frame's.
-        self.exited.drain(..self.exited_seen);
+        self.exited.begin();
         self.to_remove.clear();
 
-        // Presence settles: finish entrances, retire exits whose generation is current.
+        // Presence settles: finish entrances, retire an exit that is still the node's own (a
+        // node that revived and left again is a different exit, and its settle retires it then).
         for ev in self.store.events() {
             if let MotionEvent::Settled { node, prop: p, .. } = *ev {
                 if p != prop::PRESENCE.id {
                     continue;
                 }
                 let Some(&i) = self.index.get(&node.0) else { continue };
-                let n = &mut self.nodes[i as usize];
-                match n.phase {
-                    Phase::Entering => n.phase = Phase::Present,
-                    Phase::Exiting { generation } if generation == n.generation => self.to_remove.push(i),
-                    _ => {}
+                let acts = self.nodes[i as usize].phase_step(PhaseEvent::Settle);
+                for act in acts {
+                    if let Act::Retire = act {
+                        self.to_remove.push(i);
+                    }
                 }
             }
         }
@@ -711,14 +715,15 @@ impl Scene {
                 continue;
             }
             let Some(&i) = self.index.get(&node.0) else { continue };
-            let n = &self.nodes[i as usize];
-            let Phase::Exiting { generation } = n.phase else { continue };
-            if generation != n.generation || retire.contains(&i) {
+            if !self.nodes[i as usize].presence.exiting() || retire.contains(&i) {
                 continue;
             }
             let Some(&[presence, ..]) = self.store.values_of(t) else { continue };
-            if n.fx_a[0] + (n.fx_b[0] - n.fx_a[0]) * presence < 1.0 / 255.0 {
-                retire.push(i);
+            let acts = self.nodes[i as usize].phase_step(PhaseEvent::Faded { p: presence });
+            for act in acts {
+                if let Act::Retire = act {
+                    retire.push(i);
+                }
             }
         }
         self.to_remove = retire;
@@ -733,6 +738,8 @@ impl Scene {
             }
         }
         // Screen travel ends once it has arrived and no ancestor is still moving or transitioning.
+        // `travelling` is the order the paths started in, not the tree's: a child whose path
+        // started first is checked before its parent, as dev checked it.
         let mut k = 0;
         while k < self.travelling.len() {
             let i = self.travelling[k] as usize;
@@ -763,15 +770,15 @@ impl Scene {
                 self.remove_now(i);
             }
         }
-        self.exited_seen = self.exited.len();
+        self.exited.end();
         // A node still travelling waits on an active track of its own or an ancestor's, so this
         // covers it, and a frozen one doesn't keep the frames coming.
         let animating = self.store.running();
         if let Some(trace) = self.trace.as_mut() {
-            trace.frame(self.store.now(), &self.out, &self.exited, self.store.events(), &self.intents);
+            trace.frame(self.store.now(), &self.out, self.exited.as_slice(), self.store.events(), &self.intents);
             self.intents.clear();
         }
-        FrameOutput { changed: &self.out, exited: &self.exited, events: self.store.events(), animating }
+        FrameOutput { changed: &self.out, exited: self.exited.as_slice(), events: self.store.events(), animating }
     }
 
     /// Presents what was set or animated since [`frame`](Self::frame), without stepping time,
@@ -859,7 +866,8 @@ impl Scene {
             }
         };
         let p = self.targets::<1>(i, prop::PRESENCE.id).map_or(1.0, |v| v[0]);
-        let s = lerp_fx(&n.fx_a, &n.fx_b, p);
+        let (at0, at1) = n.presence.pair();
+        let s = lerp_fx(at0, at1, p);
         let s = if reduced { [s[0], 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0] } else { s };
         let own = self.targets::<2>(i, prop::OFFSET.id).map_or(Vec2::ZERO, |v| Vec2::read_lanes(&v));
         world.translated(Vec2::new(own.x + s[2] + s[4] * world.w, own.y + s[3] + s[5] * world.h))
@@ -888,7 +896,8 @@ impl Scene {
             }
         };
         let p = self.values(i, prop::PRESENCE.id).map_or(1.0, |v| v[0]);
-        let s = lerp_fx(&n.fx_a, &n.fx_b, p);
+        let (at0, at1) = n.presence.pair();
+        let s = lerp_fx(at0, at1, p);
         let s = if reduced { [s[0], 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0] } else { s };
         let own_opacity = self.values(i, prop::OPACITY.id).map_or(n.opacity, |v| v[0]);
         let own_scale = self.values(i, prop::SCALE.id).map_or(1.0, |v| v[0]);
@@ -952,7 +961,7 @@ impl Scene {
         if blur > 0.0 {
             fl |= flags::FILTERED;
         }
-        let in_flow = !matches!(n.phase, Phase::Exiting { .. }) || !n.transition.pop_layout;
+        let in_flow = !n.presence.exiting() || !n.transition.pop_layout;
         let out = Presented {
             node: n.id,
             parent: (parent != NONE).then(|| self.nodes[parent as usize].id),
@@ -964,7 +973,7 @@ impl Scene {
             radius,
             fill,
             mask,
-            phase: n.phase,
+            phase: n.presence.public(n.generation),
             in_flow,
             flags: fl,
             draw: s[8].clamp(0.0, 1.0),
@@ -1047,7 +1056,3 @@ impl Scene {
     }
 }
 
-/// Exact at both ends: `a` at p = 0, `b` at p = 1.
-fn lerp_fx(a: &Fx, b: &Fx, p: f32) -> Fx {
-    core::array::from_fn(|k| a[k] * (1.0 - p) + b[k] * p)
-}

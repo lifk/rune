@@ -1,0 +1,1 @@
+- A playground story's `side_keys` view stays marked after a step's key blurs its slot and focus is put back.

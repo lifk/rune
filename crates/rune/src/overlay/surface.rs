@@ -2,6 +2,149 @@
 //! dropping it with the native window's owners.
 
 use super::*;
+use crate::machine::Effects;
+
+/// What the overlay holds of its native window. On macOS, and for a Wayland layer or XWayland
+/// surface, the window is made with its GPU surface; elsewhere it waits `Parked` for one, as it
+/// does on X11 once a hidden overlay gives its GPU back.
+///
+/// `announced`: `on_created` heard of the native window. Releasing the window's owners
+/// (`Overlay::release`) clears it, so the next window made is announced; a hide that destroys a
+/// Wayland surface without that release leaves it set.
+pub(super) enum Surface<L = Live, B = Backing> {
+    /// No native window: none made yet, or released or destroyed since.
+    None { announced: bool },
+    /// The native window without a GPU surface.
+    Parked { backing: B, announced: bool },
+    /// The native window and its GPU surface.
+    Live { live: L, announced: bool },
+}
+
+impl<L, B> Default for Surface<L, B> {
+    fn default() -> Self { Surface::None { announced: false } }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum SurfaceEvent<L = Live, B = Backing> {
+    /// A window was made with its GPU surface, or a parked one got its surface. It holds no
+    /// window then.
+    Made(L),
+    /// A window without a GPU surface waits: just made, given its GPU back, or its surface
+    /// failed. It holds no other window then.
+    Park(B),
+    /// The live window and surface go: parked again, or a Wayland surface destroyed on hide.
+    TakeLive,
+    /// The parked window goes to be given a surface.
+    TakeParked,
+    /// `on_created` hears of the native window.
+    Announce,
+    /// The window's owners are released: the next window made is announced again.
+    Release,
+}
+
+/// What leaves the overlay's hold, for the caller to keep or drop in its order.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum SurfaceEffect<L = Live, B = Backing> {
+    Live(L),
+    Parked(B),
+}
+
+impl<L, B> Surface<L, B> {
+    pub(super) fn step(&mut self, event: SurfaceEvent<L, B>) -> Effects<SurfaceEffect<L, B>> {
+        let announced = self.announced();
+        match event {
+            SurfaceEvent::Made(live) => {
+                debug_assert!(matches!(self, Surface::None { .. }), "an overlay makes a window only while it holds none");
+                *self = Surface::Live { live, announced };
+            }
+            SurfaceEvent::Park(backing) => {
+                debug_assert!(matches!(self, Surface::None { .. }), "an overlay parks a window only while it holds none");
+                *self = Surface::Parked { backing, announced };
+            }
+            SurfaceEvent::TakeLive if matches!(self, Surface::Live { .. }) => {
+                let Surface::Live { live, .. } = std::mem::replace(self, Surface::None { announced }) else { unreachable!() };
+                return Effects::one(SurfaceEffect::Live(live));
+            }
+            SurfaceEvent::TakeParked if matches!(self, Surface::Parked { .. }) => {
+                let Surface::Parked { backing, .. } = std::mem::replace(self, Surface::None { announced }) else { unreachable!() };
+                return Effects::one(SurfaceEffect::Parked(backing));
+            }
+            SurfaceEvent::TakeLive | SurfaceEvent::TakeParked => {}
+            SurfaceEvent::Announce => match self {
+                Surface::None { announced } | Surface::Parked { announced, .. } | Surface::Live { announced, .. } => *announced = true,
+            },
+            SurfaceEvent::Release => match std::mem::take(self) {
+                Surface::Live { live, .. } => return Effects::one(SurfaceEffect::Live(live)),
+                Surface::Parked { backing, .. } => return Effects::one(SurfaceEffect::Parked(backing)),
+                Surface::None { .. } => {}
+            },
+        }
+        Effects::none()
+    }
+
+    pub(super) fn live(&self) -> Option<&L> {
+        match self {
+            Surface::Live { live, .. } => Some(live),
+            _ => None,
+        }
+    }
+
+    pub(super) fn live_mut(&mut self) -> Option<&mut L> {
+        match self {
+            Surface::Live { live, .. } => Some(live),
+            _ => None,
+        }
+    }
+
+    pub(super) fn parked(&self) -> Option<&B> {
+        match self {
+            Surface::Parked { backing, .. } => Some(backing),
+            _ => None,
+        }
+    }
+
+    pub(super) fn announced(&self) -> bool {
+        match *self {
+            Surface::None { announced } | Surface::Parked { announced, .. } | Surface::Live { announced, .. } => announced,
+        }
+    }
+
+    pub(super) fn announce(&mut self) { self.step(SurfaceEvent::Announce); }
+
+    pub(super) fn made(&mut self, live: L) { self.step(SurfaceEvent::Made(live)); }
+
+    pub(super) fn park(&mut self, backing: B) { self.step(SurfaceEvent::Park(backing)); }
+
+    pub(super) fn take_live(&mut self) -> Option<L> {
+        match self.step(SurfaceEvent::TakeLive).into_iter().next() {
+            Some(SurfaceEffect::Live(live)) => Some(live),
+            _ => None,
+        }
+    }
+
+    pub(super) fn take_parked(&mut self) -> Option<B> {
+        match self.step(SurfaceEvent::TakeParked).into_iter().next() {
+            Some(SurfaceEffect::Parked(backing)) => Some(backing),
+            _ => None,
+        }
+    }
+
+    /// Everything it held: the next window made is announced again.
+    pub(super) fn release(&mut self) -> Option<SurfaceEffect<L, B>> {
+        self.step(SurfaceEvent::Release).into_iter().next()
+    }
+}
+
+impl Surface {
+    /// The native window's backing, with a surface or parked.
+    pub(super) fn backing(&self) -> Option<&Backing> {
+        match self {
+            Surface::Live { live, .. } => Some(&live.backing),
+            Surface::Parked { backing, .. } => Some(backing),
+            Surface::None { .. } => None,
+        }
+    }
+}
 
 impl<T: 'static> Overlay<T> {
     /// Creates the wgpu surface (and the GPU device, if this is the first surface).
@@ -60,10 +203,16 @@ impl<T: 'static> Overlay<T> {
             }
         };
         let features = self.compositor.as_ref().map_or(wgpu::Features::empty(), |c| c.features());
+        // A device that died while the overlay was hidden (a driver reset, a resume from
+        // Modern Standby) can configure nothing: the next surface gets a new one.
+        if self.gpu.as_ref().is_some_and(|gpu| gpu.is_lost()) {
+            self.gpu = None;
+            self.renderer = None;
+        }
         // The overlay's own device was already the best for its surface, translucent or not; a
         // device shared from another overlay must composite this one's translucent pixels.
         let pooled = self.gpu.clone().map(|gpu| (gpu, false)).or_else(|| self.gpu_pool.borrow().upgrade().filter(|gpu| {
-            gpu.device.features().contains(features & gpu.adapter.features())
+            !gpu.is_lost() && gpu.device.features().contains(features & gpu.adapter.features())
         }).map(|gpu| (gpu, true)));
         let reused = pooled.and_then(|(gpu, translucent)| make(&gpu.instance).filter(|s| crate::render::translucency::serves(&gpu, s, features, translucent)).map(|s| (gpu, s)));
         let mut prewarmed = None;
@@ -106,7 +255,7 @@ impl<T: 'static> Overlay<T> {
         *self.shared.surface.lock().unwrap() = Some(format!("{:?} on {} ({:?}), {:?}, {:?}", info.backend, info.name, info.device_type, config.alpha_mode, config.format));
         // A surface the driver refuses costs this overlay alone, never the app's other windows
         // (hex#979). The surface drops before its backing.
-        if let Err(error) = crate::window::configure(&surface, &gpu.device, &config) {
+        if let Err(error) = crate::window::configure(&surface, &gpu, &config) {
             self.fail(format!("could not configure its GPU surface on {:?} {}: {error}", info.backend, info.name));
             return None;
         }
@@ -152,7 +301,7 @@ impl<T: 'static> Overlay<T> {
     }
 
     pub(super) fn rescale(&mut self, gpu: &Gpu, scale: f32) {
-        let Some(live) = self.live.as_mut() else { return };
+        let Some(live) = self.surface.live_mut() else { return };
         if (live.scale - scale).abs() < f32::EPSILON {
             return;
         }
@@ -160,7 +309,7 @@ impl<T: 'static> Overlay<T> {
         live.config.width = (self.at.size.0 * scale).round().max(1.0) as u32;
         live.config.height = (self.at.size.1 * scale).round().max(1.0) as u32;
         live.settle();
-        if let Err(error) = crate::window::configure(&live.surface, &gpu.device, &live.config) {
+        if let Err(error) = crate::window::configure(&live.surface, &gpu, &live.config) {
             self.surface_refused(format!("could not resize its GPU surface: {error}"));
             return;
         }
@@ -193,16 +342,20 @@ impl<T: 'static> Overlay<T> {
     pub(super) fn release(&mut self) {
         // The surface must disappear before returning the adopted view or removing subclasses.
         // Keep winit's Window alive until after those native owners have unwound, too.
-        #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
-        let backing = self.live.take().map(|mut live| {
-            // The present worker joins, and the display link stops, before the surface goes.
-            #[cfg(target_os = "macos")]
-            { live.present.take(); live.pacing.take(); }
-            let Live { alpha, surface, backing, .. } = live;
-            drop(alpha);
-            drop(surface);
-            backing
-        }).or_else(|| self.parked.take());
+        let backing = match self.surface.release() {
+            #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
+            Some(SurfaceEffect::Live(mut live)) => {
+                // The present worker joins, and the display link stops, before the surface goes.
+                #[cfg(target_os = "macos")]
+                { live.present.take(); live.pacing.take(); }
+                let Live { alpha, surface, backing, .. } = live;
+                drop(alpha);
+                drop(surface);
+                Some(backing)
+            }
+            Some(SurfaceEffect::Parked(backing)) => Some(backing),
+            None => None,
+        };
         #[cfg(target_os = "macos")]
         self.panel.take();
         #[cfg(target_os = "windows")]
@@ -210,7 +363,6 @@ impl<T: 'static> Overlay<T> {
         #[cfg(all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android")))]
         self.x11.take();
         drop(backing);
-        self.announced = false;
         self.shared.native.lock().unwrap().0 = None;
     }
 }

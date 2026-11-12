@@ -42,9 +42,11 @@ pub(super) enum Action {
     KeyUp(KeyEvent),
     /// A wheel delta at window point (x, y) for the `on_wheel` handlers at the pointer,
     /// innermost first (`runtime/input/gesture.rs`).
-    Wheel(u64, Vec<String>, crate::WheelEvent),
+    Wheel(crate::machine::Attempt, Vec<String>, crate::WheelEvent),
     Gesture(Vec<String>, gesture_dispatch::Gesture),
     Ime(Ime),
+    /// The window went inactive: an open composition becomes text (`Runtime::finish_composition`).
+    FinishIme,
     Paste(crate::ClipboardContent, Option<Option<String>>),
     /// A `Tx::read_clipboard` callback's id and what the clipboard held.
     ClipboardRead(u64, crate::ClipboardContent),
@@ -158,7 +160,7 @@ fn handler_name(action: &Action) -> &'static str {
         Action::VisibleRows(..) => "on_visible_rows",
         Action::ScreenLayout(..) => "on_screen_layout",
         Action::Files(_) => "on_drop_files",
-        Action::Ime(_) => "a text input's edit",
+        Action::Ime(_) | Action::FinishIme => "a text input's edit",
         Action::Paste(..) => "on_paste",
         Action::ClipboardRead(..) => "a `read_clipboard` callback",
         Action::FileDialog(..) => "a file dialog callback",
@@ -175,7 +177,7 @@ fn stall_path(action: &Action) -> Option<&str> {
     }
 }
 
-pub(super) fn merge(tx: &mut Tx, one: Tx) {
+pub(crate) fn merge(tx: &mut Tx, one: Tx) {
     tx.pick_reads.extend(one.pick_reads);
     tx.paste |= one.paste;
     tx.clipboard_reads.extend(one.clipboard_reads);
@@ -211,6 +213,7 @@ pub(super) fn merge(tx: &mut Tx, one: Tx) {
     tx.focus_keys.extend(one.focus_keys);
     tx.focus_keys_quiet.extend(one.focus_keys_quiet);
     if one.title.is_some() { tx.title = one.title; }
+    if one.announce.is_some() { tx.announce = one.announce; }
     tx.playground.extend(one.playground);
     tx.open_urls.extend(one.open_urls);
     tx.srgb_blend = one.srgb_blend.or(tx.srgb_blend);
@@ -223,13 +226,10 @@ pub(super) fn merge(tx: &mut Tx, one: Tx) {
         tx.select = one.select;
         tx.select_from_change = one.select_from_change;
     }
-    tx.instant |= one.instant;
-    tx.settle |= one.settle;
+    tx.commit = tx.commit.merge(one.commit);
     tx.follow_edge |= one.follow_edge;
-    if one.motion.is_some() {
-        tx.motion = one.motion;
-        tx.motion_curve = one.motion_curve;
-    }
+    tx.asked_motion |= one.asked_motion;
+    tx.motion = one.motion.or(tx.motion);
     tx.color_motion = one.color_motion.or(tx.color_motion);
 }
 
@@ -329,7 +329,7 @@ impl<S: 'static> Runtime<S> {
                 Some(path) => {
                     self.set_focus(Some(path), false);
                     self.focus.step(focus_machine::FocusEvent::Hover(true));
-                    one.instant = true;
+                    one.commit = one.commit.instant();
                     true
                 }
                 None => {
@@ -355,7 +355,7 @@ impl<S: 'static> Runtime<S> {
                 true
             }
             Action::FarFromBottom(path, far) => {
-                let Some((_, f)) = self.node(&path).and_then(|n| n.handlers.on_far_from_bottom.clone()) else { return false };
+                let Some((_, _, f)) = self.node(&path).and_then(|n| n.handlers.on_far_from_bottom.clone()) else { return false };
                 f(states!(self), far);
                 true
             }
@@ -427,7 +427,7 @@ impl<S: 'static> Runtime<S> {
             Action::Drag(path, mut d, button) | Action::DragRepeat(path, mut d, button) => {
                 let Some(f) = self.node(&path).and_then(|n| n.handlers.on_drag.clone()) else { return false };
                 if d.phase == Phase::Move {
-                    one.instant = true;
+                    one.commit = one.commit.instant();
                 }
                 one.button = button;
                 one.drag_repeat = repeat;
@@ -463,6 +463,7 @@ impl<S: 'static> Runtime<S> {
             Action::Wheel(gesture, chain, ev) => self.run_wheel(gesture, chain, ev, &mut one),
             Action::Gesture(chain, gesture) => self.run_gesture(chain, gesture, &mut one),
             Action::Ime(ev) => self.run_ime(ev, &mut one),
+            Action::FinishIme => self.finish_ime(&mut one),
             Action::Paste(content, target) => {
                 if target.is_some_and(|target| target != self.paste_target()) { return false; }
                 let hook = self.focused_input().and_then(|i| i.paste.clone());
@@ -516,10 +517,8 @@ impl<S: 'static> Runtime<S> {
         let live_only = std::mem::take(&mut one.live_only);
         if live_only && live_label.is_some() {
             // A handler that asks for no commit cannot change another handler's animation.
-            one.instant = false;
-            one.settle = false;
+            one.commit = Commit::Animate;
             one.motion = None;
-            one.motion_curve = None;
             one.follow_edge = false;
             one.color_motion = None;
         }

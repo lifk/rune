@@ -43,8 +43,8 @@ impl<S: 'static> Runtime<S> {
     /// queue the press itself skips. A key press hides a tooltip.
     fn observe_mods(&mut self, event: &PhysicalInput) {
         match event {
-            PhysicalInput::Modifiers(m) => { self.text_sel.shift = m.shift; self.held_mods = *m; }
-            PhysicalInput::FocusLost => { self.text_sel.shift = false; self.held_mods = Default::default(); self.dismiss_help(); }
+            PhysicalInput::Modifiers(m) => { self.selectable.shift = m.shift; self.held_mods = *m; }
+            PhysicalInput::FocusLost => { self.selectable.shift = false; self.held_mods = Default::default(); self.dismiss_help(); }
             PhysicalInput::Key { pressed: true, mods, .. } => { self.held_mods = *mods; self.dismiss_help(); }
             PhysicalInput::Key { mods, .. } => self.held_mods = *mods,
         }
@@ -91,7 +91,7 @@ impl<S: 'static> Runtime<S> {
         merge(&mut self.pending, tx);
         if consumed && live_only {
             self.live_only_skips += 1;
-            self.live_dirty = true;
+            self.live.set();
         } else {
             self.dirty |= consumed;
         }
@@ -129,14 +129,11 @@ impl<S: 'static> Runtime<S> {
             PhysicalInput::Key { key, pressed: false, .. } => {
                 if matches!(&self.held, Activation::Held { physical, .. } if *physical == Some(key)) { self.held = Activation::Up; }
                 if fallback.is_none() && !is_mod(key) && self.composing() {
-                    self.ime_keys_down = self.ime_keys_down.saturating_sub(1);
+                    self.key_releases.composing_release();
                 }
             }
             PhysicalInput::FocusLost => {
-                self.key_focus = None;
-                self.keys_held = 0;
-                self.ime_keys_down = 0;
-                self.ime_eat_key_up = false;
+                self.key_releases.lost();
             }
             PhysicalInput::Modifiers(_) => {}
         }

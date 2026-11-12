@@ -5,7 +5,8 @@
 //!   post asks the person for permission, and posts are dropped until they allow it.
 //! - **Windows:** toast notifications (`Windows.UI.Notifications`) under the app's
 //!   `AppUserModelID`. `register` gives the process that identity, with a name and icon for its
-//!   toasts; nothing posts before it. With an activation scheme (`Identity::activation`) a click
+//!   toasts, or `adopt` takes one an installer registered without writing anything; nothing
+//!   posts before either. With an activation scheme (`Identity::activation`) a click
 //!   opens a link on that scheme, which reaches the app whether it runs or not, as long as the
 //!   toast is in the notification center; `click_from_url` turns the link back into the click.
 //! - **Elsewhere:** `available` is false and every call does nothing.
@@ -27,7 +28,23 @@ pub struct Notification {
     title: String,
     body: String,
     info: Vec<(String, String)>,
+    #[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
+    actions: Vec<Action>,
 }
+
+/// A button on a notification, or a text box with its send button.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
+enum Action {
+    Button { id: String, label: String },
+    Reply { id: String, placeholder: String, label: String },
+}
+
+/// The user-info key a click on a button carries its id under (`Click::action`).
+#[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
+const ACTION: &str = "rune.action";
+/// The prefix of the user-info keys a click carries a text box's words under (`Click::input`).
+const INPUT: &str = "rune.input.";
 
 impl Notification {
     /// Posting another notification with the same `id` replaces this one.
@@ -45,6 +62,21 @@ impl Notification {
         self.info.push((key.into(), value.into()));
         self
     }
+
+    /// A button: a click on it comes back with `Click::action` = `id`, without the app coming
+    /// forward (it acts where it is). Windows shows up to five, in order; macOS up to ten (its
+    /// banner shows two, the rest under Options). Elsewhere the notification posts without them.
+    pub fn action(mut self, id: impl Into<String>, label: impl Into<String>) -> Self {
+        self.actions.push(Action::Button { id: id.into(), label: label.into() });
+        self
+    }
+
+    /// A text box with a send button `label`: sending comes back with `Click::action` = `id`
+    /// and the words in `Click::input(id)`. Windows and macOS.
+    pub fn reply(mut self, id: impl Into<String>, placeholder: impl Into<String>, label: impl Into<String>) -> Self {
+        self.actions.push(Action::Reply { id: id.into(), placeholder: placeholder.into(), label: label.into() });
+        self
+    }
 }
 
 /// A click on one of the app's notifications, or on its default action.
@@ -58,6 +90,17 @@ impl Click {
     /// The user-info value posted under `key`.
     pub fn get(&self, key: &str) -> Option<&str> {
         self.info.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+    }
+
+    /// The button clicked (`Notification::action`, `Notification::reply`); None for a click on
+    /// the notification itself.
+    pub fn action(&self) -> Option<&str> {
+        self.get(ACTION)
+    }
+
+    /// What was typed in text box `id` (`Notification::reply`).
+    pub fn input(&self, id: &str) -> Option<&str> {
+        self.info.iter().find(|(k, _)| k.strip_prefix(INPUT) == Some(id)).map(|(_, v)| v.as_str())
     }
 }
 
@@ -109,6 +152,23 @@ pub fn register(identity: &Identity) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         windows::register(identity)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = identity;
+        Ok(())
+    }
+}
+
+/// Gives this process the app's identity without writing anything, for an app whose installer
+/// registered it (the `AppUserModelId\<id>` key and the activation scheme): toasts post under
+/// `identity.id` and, with an activation scheme, open links on it. Its name and icon are ignored;
+/// the registration names the toasts. Call it where `register` would go; calling it again with
+/// the same id only changes the activation scheme. Windows only; elsewhere it does nothing.
+pub fn adopt(identity: &Identity) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        windows::adopt(identity)
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -207,6 +267,41 @@ pub fn on_click(f: impl Fn(Click) + Send + Sync + 'static) {
     #[cfg(target_os = "macos")]
     if available() {
         mac::install_delegate();
+    }
+}
+
+/// Windows: serves the app's toast activator, COM class `clsid` (`{xxxxxxxx-…}`), in this
+/// process from now on, so a click on a toast's button reaches it straight away (no process
+/// starts, nothing comes forward). Clicks go to `on_click`'s handler. It takes effect only where
+/// the install registered that class for the app (`AppUserModelId\<id>\CustomActivator` and
+/// `CLSID\<clsid>\LocalServer32`), which is also what lets a click start the app after it quit
+/// (`wait_activation`); without that registration buttons act through the toast's own event,
+/// while the app runs. Runs its own thread; call it once, after the first frame. Elsewhere it
+/// does nothing.
+pub fn serve_activations(clsid: &str) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        windows::serve(clsid, None)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = clsid;
+        Ok(())
+    }
+}
+
+/// Windows: for a process COM started to take a toast's activation (`-ToastActivated` or
+/// `-Embedding` on its command line, from the registered `LocalServer32`): serves `clsid` and
+/// waits up to `timeout` for the activation, which it returns. Elsewhere None.
+pub fn wait_activation(clsid: &str, timeout: std::time::Duration) -> Option<Click> {
+    #[cfg(target_os = "windows")]
+    {
+        windows::wait(clsid, timeout)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (clsid, timeout);
+        None
     }
 }
 

@@ -4,6 +4,7 @@
 use super::{Backing, Live};
 use crate::compose::{Compositor, Frame};
 use crate::frame::clock::FrameClock;
+use crate::machine::Effects;
 use crate::render::{Gpu, Renderer};
 use crate::runtime::Runtime;
 use crate::time::Instant;
@@ -31,18 +32,110 @@ pub(super) fn step<T: 'static>(rt: &mut Runtime<T>, clock: &mut FrameClock, comp
 /// for the next. That frame builds before it takes a drawable or starts the display link, and
 /// draws nothing when it would draw the same pixels: a poll that wakes on a timer and changes
 /// nothing on screen presents nothing.
-#[derive(Default)]
-pub(super) struct Quiet {
-    pub(super) timer: bool,
-    pub(super) presented: Option<Presented>,
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum Quiet<P = Presented> {
+    /// What it presented isn't known: nothing drawn yet, or motion, a compositor or a prewarm
+    /// frame drew it, or it was covered or hidden since.
+    Unknown,
+    /// It rests on `presented`. `timer`: only a due timer asked for the next frame, which is
+    /// that frame's alone.
+    Rests { presented: P, timer: bool },
 }
 
-impl Quiet {
-    /// After a frame presents: it rests on that frame, or its pixels are no longer known (a
-    /// prewarm frame, motion, a compositor).
-    pub(super) fn presented<T: 'static>(&mut self, rt: &Runtime<T>, config: &wgpu::SurfaceConfiguration, rests: bool) {
-        if rests { Presented::record(&mut self.presented, rt, config, false) } else { self.presented = None }
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum QuietEvent<P = Presented> {
+    /// A due timer asks for a frame; `resting`: nothing else does (idle, nothing dirty).
+    TimerDue { resting: bool },
+    /// `draw_frame` begins.
+    FrameStarts,
+    /// A frame presented: it rests on `Some` (recorded into what `slot` took), or its pixels
+    /// are no longer known.
+    Presented(Option<P>),
+    /// Covered or hidden: what it last presented may not be what shows next.
+    Forget,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum QuietEffect {
+    /// The frame starting is a resting overlay's timer frame: it builds first, and draws
+    /// nothing when it would draw `presented` again.
+    TimerFrame,
+}
+
+impl<P> Default for Quiet<P> {
+    fn default() -> Self { Quiet::Unknown }
+}
+
+impl<P> Quiet<P> {
+    pub(super) fn step(&mut self, event: QuietEvent<P>) -> Effects<QuietEffect> {
+        match (self, event) {
+            (Quiet::Rests { timer, .. }, QuietEvent::TimerDue { resting: true }) => *timer = true,
+            (_, QuietEvent::TimerDue { .. }) => {}
+            (Quiet::Rests { timer, .. }, QuietEvent::FrameStarts) => if std::mem::take(timer) { return Effects::one(QuietEffect::TimerFrame) },
+            (Quiet::Unknown, QuietEvent::FrameStarts) => {}
+            (this, QuietEvent::Presented(Some(presented))) => *this = Quiet::Rests { presented, timer: false },
+            (this, QuietEvent::Presented(None) | QuietEvent::Forget) => *this = Quiet::Unknown,
+        }
+        Effects::none()
     }
+
+    /// The frame it rests on.
+    pub(super) fn presented(&self) -> Option<&P> {
+        match self {
+            Quiet::Rests { presented, .. } => Some(presented),
+            Quiet::Unknown => None,
+        }
+    }
+
+    /// After a frame presents: it rests on that frame (`record` writes it over the last one's
+    /// buffers), or its pixels are no longer known (a prewarm frame, motion, a compositor).
+    pub(super) fn presented_frame(&mut self, rests: bool, record: impl FnOnce(&mut Option<P>)) {
+        let presented = rests.then(|| {
+            let mut slot = match std::mem::take(self) {
+                Quiet::Rests { presented, .. } => Some(presented),
+                Quiet::Unknown => None,
+            };
+            record(&mut slot);
+            slot
+        }).flatten();
+        self.step(QuietEvent::Presented(presented));
+    }
+}
+
+/// What a turn's frame does once the surface can draw, before it takes a drawable.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Turn {
+    /// Shown but none of it on screen (macOS): it draws nothing. `recheck`: its retry is due,
+    /// or it has none, so a miss runs what the frame would have and waits again.
+    Occluded { recheck: bool },
+    /// Nothing changed and nothing moves.
+    Rest,
+    /// Waiting out a missed frame's retry, or the timer pacing unpaced motion.
+    BackedOff,
+    /// A frame is due. A timer frame may still find nothing new to present (`Quiet`).
+    Draw,
+}
+
+/// What `turn` decides from. `occluded` is the panel's reading this turn (macOS).
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Gate {
+    pub(super) prewarm: bool,
+    pub(super) occluded: bool,
+    pub(super) dirty: bool,
+    pub(super) idle: bool,
+    pub(super) retry: Option<Instant>,
+}
+
+/// Until it's uncovered, only the retry (or a due timer, in `wake_due`) steps an occluded
+/// overlay, however often other windows turn the loop; input waits for the retry too. A
+/// prewarm frame draws regardless of both. `now` is read only where a retry is compared.
+pub(super) fn turn(gate: Gate, now: impl Fn() -> Instant) -> Turn {
+    if !gate.prewarm && gate.occluded {
+        return Turn::Occluded { recheck: gate.retry.is_none_or(|retry| retry <= now()) };
+    }
+    if !gate.dirty && gate.idle { return Turn::Rest; }
+    if !gate.prewarm && gate.retry.is_some_and(|retry| retry > now()) { return Turn::BackedOff; }
+    Turn::Draw
 }
 
 /// A resting overlay's timer frame, stepped before any drawable: `None` when it draws what
@@ -65,7 +158,7 @@ pub(super) fn rests<T: 'static>(rt: &Runtime<T>, runtime_idle: bool, dirty: bool
 /// `step` for a runtime that `rests`: its clocks (`clock`, `t`) move to the frame as a step
 /// would move them, so a compositor reading them animates the same, and nothing runs or builds.
 pub(super) fn rest<T: 'static>(rt: &mut Runtime<T>, clock: &mut FrameClock, compositor: &Option<Box<dyn Compositor<T>>>, frame_time: Instant) -> (bool, f64) {
-    let elapsed = clock.step(frame_time, compositor.as_ref().is_some_and(|c| c.animating())).total();
+    let elapsed = clock.frame_step(frame_time, compositor.as_ref().is_some_and(|c| c.animating())).total();
     rt.frame_target = Some(frame_time);
     rt.clock = rt.wall_start.map_or(rt.clock + elapsed, |t0| t0.elapsed().as_secs_f64());
     rt.t += elapsed * rt.time_scale as f64;
@@ -86,6 +179,7 @@ pub(super) fn claim(opportunity: Option<crate::platform::display_link::Opportuni
 /// Both native surface frames and offscreen prewarming use the same compositor path.
 pub(super) fn render_frame<T: 'static>(f: &mut Frame<'_, T>, compositor: &mut Option<Box<dyn Compositor<T>>>) -> bool {
     f.ui.upload_images(f.device, f.queue, &mut f.rt.images);
+    f.ui.build_surfaces(f.device, &f.rt.surfaces, f.rt.live_notifier());
     f.ui.prepare_surfaces(f.device, f.queue, &f.rt.surfaces, f.size);
     if let Some(c) = compositor {
         c.render(f);

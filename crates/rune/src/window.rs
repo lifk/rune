@@ -14,7 +14,7 @@ use winit::keyboard::ModifiersState;
 use winit::window::{Theme, Window, WindowId, WindowLevel};
 use winit::raw_window_handle::HasWindowHandle;
 
-use crate::app::{Shared, WindowRequest};
+use crate::app::{Activation, Shared, WindowRequest};
 use crate::compose::{Compositor, Frame};
 use crate::frame::clock::FrameClock;
 use crate::edit::Ime;
@@ -31,11 +31,19 @@ mod launch_drawables;
 use launch_drawables::LaunchDrawables;
 mod chrome;
 use chrome::{frame_chrome, place_chrome, sync_chrome, titlebar_double_click};
+mod configure;
+pub(crate) use configure::configure;
 mod create;
+#[cfg(target_os = "windows")]
+mod cpu_frame;
+#[cfg(target_os = "windows")]
+mod video_layer;
 mod native;
 use native::Native;
+mod wake;
+use wake::{WakeFacts, WakeWork};
 mod win;
-use win::Win;
+use win::{SurfaceRetries, SurfaceStep, SURFACE_TRIES, Win};
 mod first_frame;
 use first_frame::FirstFrame;
 
@@ -65,7 +73,7 @@ use redraw::{Redraw, RedrawEffect, RedrawEvent};
 use redraw::{Steady, SteadyEvent};
 mod presented;
 pub(crate) use presented::Presented;
-use presented::composing;
+use presented::{composed, composing};
 mod platform_sync;
 use platform_sync::sync_platform;
 mod shell_requests;
@@ -80,7 +88,15 @@ pub(crate) mod frame;
 mod handle;
 pub use handle::WindowHandle;
 use handle::native_window_number;
+mod life;
+pub(crate) use life::Life;
+mod sight;
+pub(crate) use sight::{Cover, Sight};
 mod lifecycle;
+mod minimize;
+pub(crate) use minimize::{Minimize, MinimizeEvent};
+mod reveal;
+use reveal::{Found, Reveal, RevealEffect};
 #[cfg(target_os = "macos")]
 mod mac;
 mod pacing;
@@ -92,7 +108,11 @@ pub(crate) use pacing::{
 pub(crate) use pacing::{HIDDEN_REFRESH, TIMER_FRAME_STALL};
 #[cfg(test)]
 use pacing::wall_wake_deadline;
+mod backoff;
+pub(crate) use backoff::{Backoff, BackoffEvent, BackoffEffect};
 mod stepping;
+pub mod spec;
+pub(crate) mod titlebar;
 #[cfg(all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android")))]
 mod float_on_open;
 #[cfg(not(target_arch = "wasm32"))]
@@ -106,6 +126,13 @@ mod covered;
 mod occluded_surface;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod wake_tests;
+#[cfg(test)]
+mod backoff_tests;
+#[cfg(test)]
+#[path = "window/frame_move_tests.rs"]
+mod frame_move_tests;
 
 pub(crate) enum WakeEvent {
     DisplayTick(usize),
@@ -113,6 +140,9 @@ pub(crate) enum WakeEvent {
     Position(usize, (i32, i32)), Level(usize, bool),
     Place(usize, crate::windows::PlaceRequest),
     Frame(usize, crate::window::frame::FrameRequest),
+    /// Windows: other windows started or stopped covering the window (platform::win32::occlusion).
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    Covered(usize, bool),
     /// The app was reopened (macOS: its Dock icon clicked; Windows: launched again while it
     /// runs, see `single_instance`); for `Windows`, not one host.
     #[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
@@ -128,6 +158,9 @@ pub(crate) enum WakeEvent {
     /// A native menu's modal loop holds the event loop: run its idle turn (`Windows::turn`).
     #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     Turn,
+    /// Windows: the GPU a CPU-drawn window was waiting for is made, or failed (`cpu_frame`).
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    GpuReady(usize),
 }
 
 /// What `Windows` needs of a host, whatever its state type: an app window or an overlay.
@@ -147,6 +180,8 @@ pub(crate) trait AnyHost {
     fn terminate(&mut self) {}
     /// The app starts to quit: runs `App::on_quit`, unless the window already closed.
     fn quit_hook(&mut self) {}
+    /// The app quits: off the screen now, before any hook runs.
+    fn vanish(&mut self) {}
     /// Ends a tracking pop-up menu and answers waiting ones `None`, before the host drops or
     /// the loop exits.
     fn cancel_menus(&mut self) {}
@@ -238,7 +273,7 @@ impl Windows {
             // button would, once the quit's hooks ran. A quit already asked to exit and skips
             // their close hooks.
             if !event_loop.exiting() {
-                self.quit(event_loop, false);
+                self.quit(event_loop, false, true);
                 for host in self.hosts.iter_mut().flatten() { host.terminate(); }
             }
             event_loop.exit();
@@ -293,6 +328,7 @@ impl ApplicationHandler<WakeEvent> for Windows {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let _handling = crate::quit::handling();
         let Some(factory) = self.factory.take() else { return };
+        crate::marks::mark("loop.resumed");
         let primary = event_loop.primary_monitor();
         let displays: Vec<_> = event_loop.available_monitors().map(|m| Display {
             id: Some(crate::DisplayId::from_monitor(m.clone(), is_wayland(event_loop))),
@@ -331,14 +367,15 @@ impl ApplicationHandler<WakeEvent> for Windows {
         let slot = match &event {
             WakeEvent::DisplayTick(i) | WakeEvent::App(i) | WakeEvent::Live(i) | WakeEvent::Window(i, _) | WakeEvent::Focus(i)
                 | WakeEvent::Position(i, _) | WakeEvent::Level(i, _) | WakeEvent::Place(i, _) | WakeEvent::Frame(i, _)
-                | WakeEvent::A11y(i) => *i,
+                | WakeEvent::A11y(i) | WakeEvent::Covered(i, _) | WakeEvent::GpuReady(i) => *i,
             WakeEvent::Reopen => {
                 self.reopen(event_loop);
                 self.cleanup(event_loop);
                 return;
             }
+            // A session query (`ending: false`) can still be cancelled: the windows stay up.
             WakeEvent::Quit(ending) => {
-                self.quit(event_loop, *ending);
+                self.quit(event_loop, *ending, *ending);
                 self.cleanup(event_loop);
                 return;
             }
@@ -359,6 +396,17 @@ impl ApplicationHandler<WakeEvent> for Windows {
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         let _handling = crate::quit::handling();
+        // Windows: a later launch handed to this loop (`single_instance`) is served once the app
+        // goes on with a window shown. One that came as the app ended (its last window already
+        // closing, the quit not started) isn't: the process starts the app again for it.
+        #[cfg(target_os = "windows")]
+        if crate::open_url::instance::launches_waiting() && !event_loop.exiting() {
+            let windows: Vec<_> = self.hosts.iter().map(|h| h.as_ref().map(|h| h.reopen_candidate()).unwrap_or_default()).collect();
+            if crate::platform::reopen::has_visible(&windows) {
+                crate::open_url::instance::served();
+            }
+        }
+        crate::marks::loop_waits();
         crate::cursor::os::make_pending(event_loop);
         let mut animating = false;
         for host in self.hosts.iter_mut().flatten() {
@@ -376,19 +424,27 @@ impl ApplicationHandler<WakeEvent> for Windows {
     }
     fn exiting(&mut self, event_loop: &ActiveEventLoop) {
         let _handling = crate::quit::handling();
+        crate::marks::mark("loop.exiting");
         // Every quit ends here, so the windows still open run `App::on_quit` first, unless the
         // quit's hooks already ran (a Windows logoff, the last window closing).
-        self.quit(event_loop, false);
+        self.quit(event_loop, false, true);
         // Rune didn't ask to exit, so the OS is ending the app: macOS Quit, Cmd-Q, the Dock's
         // Quit, logout. Windows close as their close button would, before the clipboard stops.
         if !event_loop.exiting() {
             for host in self.hosts.iter_mut().flatten() { host.terminate(); }
         }
         for host in self.hosts.iter_mut().flatten() { host.cancel_menus(); }
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(last) = crate::quit::fast_exit_hook() { crate::quit::end_fast(last); }
         // Surfaces go while winit's display connection is still open (layer surfaces live on it).
         self.hosts.clear();
+        crate::marks::mark("windows.dropped");
         crate::clipboard::shutdown();
-        crate::quit::send(crate::quit::Event::Exited);
+        if crate::quit::send(crate::quit::Event::Exited).contains(&crate::quit::Effect::Relaunch) {
+            crate::relaunch::spawn();
+        }
+        #[cfg(target_os = "windows")]
+        crate::open_url::instance::exited();
     }
 }
 
@@ -408,7 +464,8 @@ struct Host<S: 'static> {
     on_window: Option<crate::app::OnWindow>,
     on_ready: Option<crate::app::OnWindow>,
     frame_reports: crate::frame::encoded::FrameReports<S>,
-    finished: bool,
+    /// Shown, hidden or closed for good; `win` holds the window while it has one.
+    life: Life,
     /// False for windows `App::window` added: they live as long as the loop, never keep it.
     keeps_loop: bool,
     spec: AppSpec<S>,
@@ -422,8 +479,6 @@ struct Host<S: 'static> {
     on_reopen: Option<fn(&mut S, bool, &mut Tx) -> bool>,
     /// Its place among the windows receiving links (`App::on_open_url`).
     _open_urls: Option<crate::open_url::incoming::Listening>,
-    /// When it last hid, in `reopen::stamp` order.
-    hidden_at: Option<u64>,
     release_gpu: bool,
     open_at_start: bool,
     /// `App::float_on_open`: each window maps at a fixed size, then takes its own limits.
@@ -431,8 +486,8 @@ struct Host<S: 'static> {
     float_on_open: bool,
     /// `App::open_inactive`: the first open leaves focus where it is.
     open_inactive: bool,
-    /// `App::maximized`.
-    open_maximized: bool,
+    /// `App::maximized`, `App::full_screen`.
+    open_as: crate::windows::OpenAs,
     shared: Arc<Shared<S>>,
     shortcuts: crate::shortcuts::Guard,
     menus: crate::native_menu::Guard<S>,
@@ -462,15 +517,8 @@ struct Host<S: 'static> {
     comp: Option<Box<dyn Compositor<S>>>,
     #[cfg_attr(target_os = "macos", allow(dead_code))]
     wayland: bool,
-    /// The window's frame moving to where a handler asked (`Tx::resize_window`), top-down
-    /// screen points on the host's frame clock. macOS only; elsewhere frames change at once.
-    frame_anim: Option<crate::window::frame::FrameAnim>,
-    /// The window origin `frame_anim` last set, to notice a drag mid-flight.
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-    frame_origin: Option<[f32; 2]>,
-    /// The content size a resize request jumps to, so its Resized event lays out like a step
-    /// of a resize animation rather than a user's resize.
-    frame_jump: Option<(f32, f32)>,
+    /// The frame moving or jumping to where a handler asked (`stepping::FrameMove`).
+    frame_move: Option<stepping::FrameMove>,
     /// Present times of every window this host opens while tracing.
     #[cfg(target_os = "macos")]
     present_log: Option<Arc<crate::frame::present_time::metal::Log>>,
@@ -519,7 +567,7 @@ impl<S: 'static> Host<S> {
         let present_log = args.trace.as_ref().map(|_| Arc::default());
         let mut app = app;
         let comp = app.compositor.take();
-        let (on_focus, on_ime) = (app.on_focus, app.on_ime);
+        let (on_focus, on_ime, on_visibility) = (app.on_focus, app.on_ime, app.on_visibility);
         let titlebar = app.titlebar.filter(|_| !options.borderless);
         let chrome = app.chrome;
         let (srgb_blend, font_smoothing) = (app.srgb_blend, app.font_smoothing);
@@ -527,7 +575,7 @@ impl<S: 'static> Host<S> {
         let tab_visits_controls = app.tab_visits_controls;
         let fit_height = app.fit_content_height;
         let float_on_open = app.float_on_open;
-        let (open_inactive, open_maximized) = (app.open_inactive, app.maximized);
+        let (open_inactive, open_as) = (app.open_inactive, app.open_as);
         let app_stats = app.dev_stats;
         let playground = app.playground.take();
         let (mut spec, state, shared) = app.into_parts(args.scene.as_deref());
@@ -548,6 +596,7 @@ impl<S: 'static> Host<S> {
             args.size = None;
         }
         rt.on_focus = on_focus;
+        rt.on_visibility = on_visibility;
         rt.app_ime.hook = on_ime;
         rt.set_modifier_keys(modifier_keys);
         rt.set_srgb_blend(srgb_blend); rt.set_font_smoothing(font_smoothing);
@@ -588,7 +637,7 @@ impl<S: 'static> Host<S> {
             on_window,
             on_ready,
             frame_reports,
-            finished: false,
+            life: Life::Unopened,
             keeps_loop: true,
             spec,
             args,
@@ -599,12 +648,11 @@ impl<S: 'static> Host<S> {
             turn: any_host::Turn::Between,
             on_reopen,
             _open_urls: None,
-            hidden_at: None,
             release_gpu,
             open_at_start: open,
             float_on_open,
             open_inactive,
-            open_maximized,
+            open_as,
             shared,
             shortcuts,
             menus,
@@ -626,9 +674,7 @@ impl<S: 'static> Host<S> {
             ime_allowed: false,
             comp,
             wayland,
-            frame_anim: None,
-            frame_origin: None,
-            frame_jump: None,
+            frame_move: None,
             trace: None,
             trace_start: None,
             trace_frames: 0,
@@ -655,15 +701,6 @@ fn setup_waker<S: 'static>(shared: &Arc<crate::app::Shared<S>>) -> Waker {
 /// Uncovering settles first, so that frame builds once and paints motion where it would have
 /// ended, as Core Animation's time-based motion has by the time a covered window shows again.
 pub(crate) fn covered_step<S: 'static>(rt: &mut Runtime<S>) { rt.hidden_wake(); }
-
-/// Whether a drain of other threads' requests asks the window for a frame. A hidden launcher
-/// renders a change into its cached frame (paced); a shown launcher redraws for a change or
-/// as it shows; any other shown window redraws, unless only updates that changed nothing
-/// (`quiet`) woke it.
-fn drain_frame(launcher: bool, visible: bool, was_shown: bool, changed: bool, quiet: bool) -> bool {
-    if launcher && !visible { return changed; }
-    !quiet && if launcher { changed || was_shown && visible } else { visible }
-}
 
 /// A vsynced sRGB (or non-sRGB when `srgb_blend` is set) configuration for the surface, and the
 /// first alpha mode it supports that composites translucent pixels.
@@ -692,32 +729,6 @@ pub(crate) fn surface_config(surface: &wgpu::Surface, adapter: &wgpu::Adapter, (
     Some((config, crate::render::translucency::mode(surface, adapter)))
 }
 
-/// Configures `surface`, returning wgpu's error instead of panicking in its default handler,
-/// so a surface the driver refuses (an overlay's XWayland window on NVIDIA, hex#979) costs
-/// only its owner. The message names the configuration for logs.
-#[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn configure(surface: &wgpu::Surface, device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Result<(), String> {
-    let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
-    let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
-    surface.configure(device, config);
-    let error = pollster::block_on(internal.pop()).or(pollster::block_on(validation.pop()));
-    match error {
-        None => Ok(()),
-        Some(error) => {
-            let text = error.to_string();
-            let cause = text.lines().map(str::trim).filter(|line| !line.is_empty() && *line != "Caused by:").collect::<Vec<_>>().join(": ");
-            Err(format!("{cause} ({}x{}, {:?}, {:?}, {:?})", config.width, config.height, config.format, config.alpha_mode, config.present_mode))
-        }
-    }
-}
-
-/// The browser reports surface errors asynchronously; there is nothing to catch here.
-#[cfg(target_arch = "wasm32")]
-pub(crate) fn configure(surface: &wgpu::Surface, device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Result<(), String> {
-    surface.configure(device, config);
-    Ok(())
-}
-
 /// Follows a blend switch (`Tx::set_srgb_blend`) on a configured surface: reconfigures it for
 /// `rt`'s mode at its size and alpha mode, rebuilds `renderer` when its target format changes,
 /// and rebuilds the `alpha` pass (when there is one) for the new format. Returns false when the
@@ -729,7 +740,7 @@ pub(crate) fn reblend<S: 'static>(surface: &wgpu::Surface, gpu: &Gpu, config: &m
     let Some((next, _)) = surface_config(surface, &gpu.adapter, (config.width, config.height), srgb) else { return false };
     if (config.format, &config.view_formats) != (next.format, &next.view_formats) {
         (config.format, config.view_formats) = (next.format, next.view_formats);
-        if let Err(error) = configure(surface, &gpu.device, config) {
+        if let Err(error) = configure(surface, gpu, config) {
             eprintln!("rune: could not reconfigure a surface for a blend switch: {error}");
             return false;
         }
@@ -822,8 +833,9 @@ fn gesture_phase(phase: TouchPhase) -> crate::GesturePhase {
 }
 
 /// Hands a winit touch (a finger, or a pen where the system reports it as one) to the runtime
-/// in window points, timed on a clock that starts with the first touch.
-pub(crate) fn touch<S: 'static>(rt: &mut crate::Runtime<S>, touch: &winit::event::Touch, scale: f32) {
+/// in the view's points, timed on a clock that starts with the first touch.
+pub(crate) fn touch<S: 'static>(rt: &mut crate::Runtime<S>, touch: &winit::event::Touch) {
+    let scale = rt.input_scale();
     static START: std::sync::OnceLock<crate::time::Instant> = std::sync::OnceLock::new();
     let phase = match touch.phase {
         TouchPhase::Started => crate::TouchPhase::Started,
@@ -847,7 +859,7 @@ impl<S: 'static> Host<S> {
 
     /// Publishes what `AppHandle::is_visible` reports.
     fn publish(&self) {
-        let visible = !self.finished && self.win.as_ref().is_some_and(|w| w.visible);
+        let visible = self.life.shown() && self.win.is_some();
         self.shared.visible.store(visible, Ordering::Release);
     }
 }

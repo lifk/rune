@@ -111,6 +111,7 @@ pub(crate) fn set_ns_cursor(cursor: Cursor) {
     thread_local! {
         static TRANSPARENT: Option<Retained<NSObject>> = image_cursor(None);
         static MOVE: Option<Retained<NSObject>> = image_cursor(Some("move"));
+        static CELL: Option<Retained<NSObject>> = image_cursor(Some("cell"));
     }
     let Some(class) = objc2::runtime::AnyClass::get("NSCursor") else { return };
     #[cfg(feature = "macos-background-cursor")]
@@ -120,6 +121,7 @@ pub(crate) fn set_ns_cursor(cursor: Cursor) {
         let image = match cursor {
             C::Hidden => TRANSPARENT.with(Clone::clone),
             C::Move => MOVE.with(Clone::clone),
+            C::Cell => CELL.with(Clone::clone),
             C::Image(image) => native(image),
             _ => None,
         };
@@ -133,10 +135,29 @@ pub(crate) fn set_ns_cursor(cursor: Cursor) {
             (None, C::ResizeColumn) => msg_send_id![class, resizeLeftRightCursor],
             (None, C::ResizeRow) => msg_send_id![class, resizeUpDownCursor],
             (None, C::Crosshair) => msg_send_id![class, crosshairCursor],
+            // Public from macOS 15; before that only as the private selectors winit uses.
+            (None, C::ZoomIn) => named(class, &[objc2::sel!(zoomInCursor), objc2::sel!(_zoomInCursor)]),
+            (None, C::ZoomOut) => named(class, &[objc2::sel!(zoomOutCursor), objc2::sel!(_zoomOutCursor)]),
             (None, _) => msg_send_id![class, arrowCursor],
         };
         if let Some(ns) = ns { let _: () = msg_send![&*ns, set]; }
     }
+}
+
+/// The first of `selectors` NSCursor answers, else the arrow.
+///
+/// # Safety
+/// Main thread; each selector is a class method returning an NSCursor.
+unsafe fn named(class: &objc2::runtime::AnyClass, selectors: &[objc2::runtime::Sel]) -> Option<Retained<NSObject>> {
+    for &sel in selectors {
+        // SAFETY: the caller's; `respondsToSelector:` guards the send.
+        unsafe {
+            let responds: bool = msg_send![class, respondsToSelector: sel];
+            if responds { return msg_send_id![class, performSelector: sel]; }
+        }
+    }
+    // SAFETY: as above.
+    unsafe { msg_send_id![class, arrowCursor] }
 }
 
 /// The window server ignores `[NSCursor set]` from an app that isn't active, which an overlay's

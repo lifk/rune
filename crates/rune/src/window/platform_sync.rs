@@ -10,19 +10,29 @@ pub(super) fn sync_platform<S: 'static>(l: &mut Win, rt: &mut Runtime<S>, secure
     let focused = l.window.has_focus();
     secure_input.set(rt.has_secure_focus() && focused);
     let ime_allowed = rt.ime_area.is_some() && !rt.has_secure_focus() && focused;
-    if std::mem::take(&mut rt.ime_reset) || ime_allowed != *ime {
+    let reset = std::mem::take(&mut rt.ime_reset);
+    // Rune ended a composition itself (a blur, a click, a finished field): the input method
+    // drops its copy, so it doesn't come back in the next field.
+    if reset { crate::platform::ime::cancel(&l.window); }
+    if reset || ime_allowed != *ime {
         l.window.set_ime_allowed(false);
         l.window.set_ime_allowed(ime_allowed);
         *ime = ime_allowed;
     }
     l.apply_cursor(rt, focused);
     #[cfg(target_os = "macos")]
-    l.native.help.sync(&l.window, rt.help_regions());
+    if rt.zoom() == 1.0 {
+        l.native.help.sync(&l.window, rt.help_regions());
+    } else {
+        // Window points: the view's times its zoom.
+        let regions: Vec<([f32; 4], String)> = rt.help_regions().iter().map(|(r, t)| (rt.to_window(*r), t.clone())).collect();
+        l.native.help.sync(&l.window, &regions);
+    }
     // The process has one menu theme: the active window's, so its window menu matches it.
     #[cfg(target_os = "windows")]
     if focused { crate::platform::win32::dark_mode::menus(rt.backdrop_dark().unwrap_or(rt.env.system_dark)); }
     clipboard.flush(rt);
-    if let Some(a) = rt.ime_area {
+    if let Some(a) = rt.ime_area.map(|a| rt.to_window(a)) {
         l.window.set_ime_cursor_area(
             LogicalPosition::new(a[0] as f64, a[1] as f64),
             LogicalSize::new(a[2] as f64, a[3] as f64),

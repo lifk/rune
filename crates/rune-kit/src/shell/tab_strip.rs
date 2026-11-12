@@ -12,6 +12,8 @@ use crate::{Kit, Spinner};
 mod auto_scroll;
 mod drag;
 mod tab;
+#[cfg(test)]
+mod tests;
 
 pub use drag::{TabDragMode, TabDragPhase, TabDragState, TearOutSpec};
 
@@ -257,7 +259,6 @@ struct Strip<S> {
     two_line_height: f32,
     link_inset: f32,
     count: usize,
-    zoom: f32,
     spring: Spring,
     select_on_drag_start: bool,
     /// A pointer close locks the remaining tabs' width (horizontal strips).
@@ -301,7 +302,6 @@ pub struct TabStrip<'a, S: 'static> {
     items: Vec<TabItem<'a, S>>,
     active: Option<&'a str>,
     viewport: Option<f32>,
-    zoom: f32,
     overflow: Option<TabOverflow>,
     gap: Option<f32>,
     row_height: f32,
@@ -328,7 +328,6 @@ impl<'a, S: 'static> TabStrip<'a, S> {
             items: Vec::new(),
             active: None,
             viewport: None,
-            zoom: 1.0,
             overflow: None,
             gap: None,
             row_height: 28.0,
@@ -363,11 +362,6 @@ impl<'a, S: 'static> TabStrip<'a, S> {
         self.viewport = width;
         self
     }
-    /// The UI zoom the strip draws at (default 1), so drags convert from window points.
-    pub fn zoom(mut self, zoom: f32) -> Self {
-        self.zoom = if zoom > 0.0 { zoom } else { 1.0 };
-        self
-    }
     /// The overflow policy (default [`TabOverflow::HORIZONTAL_DEFAULT`] or
     /// [`TabOverflow::VERTICAL_DEFAULT`]).
     pub fn overflow(mut self, policy: TabOverflow) -> Self {
@@ -390,7 +384,8 @@ impl<'a, S: 'static> TabStrip<'a, S> {
         self.select_on_drag_start = Some(on);
         self
     }
-    /// Lets a drag across the strip tear a tab out ([`Self::on_tear_out`]). Off by default.
+    /// Lets a drag across the strip tear a tab out ([`Self::on_tear_out`]). Off by default, and
+    /// never for the only tab unless [`TearOutSpec::lone`].
     pub fn tear_out(mut self, spec: Option<TearOutSpec>) -> Self {
         self.tear = spec;
         self
@@ -464,7 +459,9 @@ impl<'a, S: 'static> TabStrip<'a, S> {
         self.handlers.double = Some(Rc::new(f));
         self
     }
-    /// The pointer entering (`true`) and leaving a tab.
+    /// The pointer entering (`true`) and leaving a tab. The strip draws its hover by hover
+    /// groups, so a handler that changes nothing the view draws says `tx.live_only()`, and the
+    /// hover runs no view; without a handler it never does.
     pub fn on_hover(mut self, f: impl Fn(&mut S, &str, bool, &mut Tx) + 'static) -> Self {
         self.handlers.hover = Some(Rc::new(f));
         self
@@ -522,7 +519,7 @@ impl<'a, S: 'static> TabStrip<'a, S> {
         let pitches: Vec<f32> = self.items.iter().map(|t| pitch(t.pinned, t.subtitle.is_some())).collect();
         let auto = auto_scroll::view(&format!("{}-scroll", self.key));
         if let Some(point) = drag.incoming() {
-            let slot = landing_slot(&pitches, pinned, point, &auto, vertical, self.zoom);
+            let slot = landing_slot(&pitches, pinned, point, &auto, vertical);
             drag.open_gap(slot, pitch(false, false));
         }
         let st = Strip {
@@ -535,7 +532,6 @@ impl<'a, S: 'static> TabStrip<'a, S> {
             two_line_height,
             link_inset: 8.0,
             count,
-            zoom: self.zoom,
             spring: self.spring,
             select_on_drag_start: self.select_on_drag_start.unwrap_or(!vertical),
             horizontal_lock: !vertical,
@@ -550,10 +546,10 @@ impl<'a, S: 'static> TabStrip<'a, S> {
             drag,
         };
         let active = self.active;
-        let hovered = st.drag.hovered().map(str::to_owned);
         let ids: Vec<String> = self.items.iter().map(|t| t.id.clone().into_owned()).collect();
-        let quiet = |i: usize| active == Some(ids[i].as_str()) || hovered.as_deref() == Some(ids[i].as_str());
-        let tear = self.tear.filter(|_| count > 1);
+        // A hover hides its tab's separators by hover groups (`tab::build`); the active tab has none.
+        let quiet = |i: usize| active == Some(ids[i].as_str());
+        let tear = self.tear.filter(|t| count > 1 || t.lone);
         let mut tabs: Vec<El> = self
             .items
             .into_iter()
@@ -570,7 +566,7 @@ impl<'a, S: 'static> TabStrip<'a, S> {
                     active: active == Some(ids[i].as_str()),
                     separator: !vertical && i > 0 && !quiet(i) && !quiet(i - 1),
                 };
-                let (tab, ghost) = tab::build(item, at, &st, k);
+                let (tab, ghost) = tab::build(item, at, (i > 0).then(|| ids[i - 1].as_str()), &st, k);
                 if let (Some(layer), Some(ghost)) = (layer.as_deref_mut(), ghost) {
                     layer.push(ghost);
                 }
@@ -606,9 +602,10 @@ impl<'a, S: 'static> TabStrip<'a, S> {
             row().key(self.key).grow(1.0).shrink().min_w(0.0).gap(gap).center_y().child(scroll).children(self.trailing)
         };
         if let Some(access) = access {
-            root = root.on_hover_change(move |s: &mut S, inside, _: &mut Tx| {
-                if !inside {
-                    access(s).leave();
+            root = root.on_hover_change(move |s: &mut S, inside, tx: &mut Tx| {
+                // Only letting go of the width lock a close left changes what the strip draws.
+                if inside || !access(s).leave() {
+                    tx.live_only();
                 }
             });
         }
@@ -616,12 +613,12 @@ impl<'a, S: 'static> TabStrip<'a, S> {
     }
 }
 
-/// The slot a tab dragged in from another strip lands in at `point` (window points): after each
+/// The slot a tab dragged in from another strip lands in at `point` (view points): after each
 /// unpinned tab whose middle the point has passed, measured with each tab's own length (`pitches`)
 /// from where the strip's viewport drew and how far it has scrolled.
-fn landing_slot(pitches: &[f32], pinned: usize, point: [f32; 2], auto: &auto_scroll::View, vertical: bool, zoom: f32) -> usize {
+fn landing_slot(pitches: &[f32], pinned: usize, point: [f32; 2], auto: &auto_scroll::View, vertical: bool) -> usize {
     let a = usize::from(vertical);
-    let along = (point[a] - auto_scroll::rect(auto)[a]) / zoom + auto_scroll::offset(auto, vertical);
+    let along = point[a] - auto_scroll::rect(auto)[a] + auto_scroll::offset(auto, vertical);
     let mut start = 0.0;
     for (i, pitch) in pitches.iter().enumerate() {
         if i >= pinned && along < start + pitch / 2.0 {

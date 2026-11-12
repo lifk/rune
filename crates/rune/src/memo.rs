@@ -116,7 +116,7 @@ fn el_flatten_reusable(e: &El) -> bool {
         && c.input.is_none()
         && e.handlers.get().is_none_or(|h| h.modal.is_none())
         && !(c.scroll.is_some() && c.scroll_axes.x())
-        && e.text.as_ref().is_none_or(|t| !t.redacted && t.live.is_none())
+        && e.text.as_ref().is_none_or(|t| !t.redacted && t.cold.live.is_none())
         && e.vis.pixels.as_ref().is_none_or(|_| {
             let sz = e.style.size();
             e.style.aspect_ratio().is_some() || (sz.width.is_auto() == sz.height.is_auto())
@@ -132,7 +132,7 @@ fn prekey_text_shapes(el: &mut El, scale: f32) {
         && let Some(t) = &el.text
         && !t.redacted
         && t.case.is_none()
-        && t.rings.is_empty()
+        && t.cold.rings.is_empty()
         && t.shape.is_none_or(|s| s.0 != scale.to_bits())
         && let Some(t) = &mut el.text
     {
@@ -205,6 +205,8 @@ enum Read {
     LayoutWith(String, Same, Option<[f32; 4]>),
     /// A `Cx::selection_rects` read, and the boxes it returned.
     Selection(Rc<[[f32; 4]]>),
+    /// A [`Tracked`](crate::Tracked) cell read, at its version then.
+    State(u32, u64),
 }
 
 impl PartialEq for Read {
@@ -213,6 +215,7 @@ impl PartialEq for Read {
             (Read::Caret(a, x), Read::Caret(b, y)) | (Read::Layout(a, x), Read::Layout(b, y)) => a == b && x == y,
             (Read::LayoutWith(a, f, x), Read::LayoutWith(b, g, y)) => a == b && f.is(g) && x == y,
             (Read::Selection(a), Read::Selection(b)) => a == b,
+            (Read::State(a, x), Read::State(b, y)) => a == b && x == y,
             _ => false,
         }
     }
@@ -231,8 +234,19 @@ impl Seen {
             Read::Layout(key, rect) => !moved(*rect, seen_rect(&self.layout, key)),
             Read::LayoutWith(key, same, rect) => !same.moved(*rect, seen_rect(&self.layout, key)),
             Read::Selection(boxes) => !boxes_moved(boxes, &self.layout.selection),
+            Read::State(id, version) => crate::tracked::version(*id) == *version,
         }
     }
+}
+
+/// Each `Read::State` once, the latest version a frame recorded for its cell.
+fn dedup_states(reads: &mut Vec<Read>) {
+    if reads.iter().filter(|r| matches!(r, Read::State(..))).count() < 2 { return; }
+    let (mut states, rest): (Vec<Read>, Vec<Read>) = std::mem::take(reads).into_iter().partition(|r| matches!(r, Read::State(..)));
+    states.sort_unstable_by_key(|r| match r { Read::State(id, v) => (*id, std::cmp::Reverse(*v)), _ => (0, std::cmp::Reverse(0)) });
+    states.dedup_by_key(|r| match r { Read::State(id, _) => *id, _ => 0 });
+    *reads = rest;
+    reads.extend(states);
 }
 
 /// `Cx` reads made by memos this build reused, which the view's `Cx` didn't see.
@@ -356,7 +370,8 @@ impl Scope {
     fn note(&mut self, reads: &[Read]) {
         let Some(frame) = self.reads.last_mut() else { return };
         for read in reads {
-            if !frame.contains(read) {
+            // State reads can number in the hundreds: they're deduplicated once, when the memo ends.
+            if matches!(read, Read::State(..)) || !frame.contains(read) {
                 frame.push(read.clone());
             }
         }
@@ -579,6 +594,20 @@ fn keyed(el: El, key: String) -> El {
     el.key(key)
 }
 
+/// Runs `f` inside the view build in progress as if it were the next build, and the rest of the
+/// build carries on as that one: memos used so far may be used once more, as the following frame
+/// would use them. For tooling that measures what a rebuild costs a frame: a surface rebuilt
+/// many times in one build to time it, its unchanged inner memos reused each time. Outside a
+/// view build it just runs `f`.
+pub fn as_next_build<R>(f: impl FnOnce() -> R) -> R {
+    SCOPES.with_borrow_mut(|s| {
+        if let Some(s) = s.last_mut() {
+            s.cache.pass += 1;
+        }
+    });
+    f()
+}
+
 /// The subtree `build` returns, keyed `id`, built again only when `version` (or the window's
 /// environment) differs from the last build's. Otherwise `build` isn't called and the
 /// previous subtree is reused, with the same node ids and state.
@@ -603,6 +632,14 @@ pub fn memo(id: impl Into<String>, version: impl Hash, build: impl FnOnce() -> E
 /// still joins it, as it does `memo`'s.
 #[cfg_attr(debug_assertions, track_caller)]
 pub fn memo_with_hash(id: impl Into<String>, version: u64, build: impl FnOnce() -> El) -> El {
+    memo_inner(id, version, false, build)
+}
+
+/// A memo, or with `region` a [`region`]: a region's reads of [`Tracked`](crate::Tracked)
+/// values join its reads. A memo's don't: its version says when it builds again, as it always
+/// has, so a cell that moves every frame (a clock) it reads doesn't rebuild it.
+#[cfg_attr(debug_assertions, track_caller)]
+fn memo_inner(id: impl Into<String>, version: u64, region: bool, build: impl FnOnce() -> El) -> El {
     let key = id.into();
     enum Step {
         Reuse(Rc<Built>),
@@ -629,7 +666,7 @@ pub fn memo_with_hash(id: impl Into<String>, version: u64, build: impl FnOnce() 
         if let Some(e) = s.cache.entries.get_mut(name) {
             if e.pass == pass {
                 store = false;
-            } else if e.version == version && e.reads.iter().all(|r| s.seen.holds(r)) {
+            } else if { report_miss(&key, e.version == version, &e.reads, &s.seen); e.version == version && e.reads.iter().all(|r| s.seen.holds(r)) } {
                 e.pass = pass;
                 e.virtual_row = s.virtual_row;
                 for read in &e.reads {
@@ -638,6 +675,7 @@ pub fn memo_with_hash(id: impl Into<String>, version: u64, build: impl FnOnce() 
                         Read::Layout(k, _) => note_read(&mut s.replayed.layout, k, None),
                         Read::LayoutWith(k, same, _) => note_read(&mut s.replayed.layout, k, Some(same.clone())),
                         Read::Selection(_) => note_read(&mut s.replayed.layout, SELECTION, None),
+                        Read::State(..) => {}
                     }
                 }
                 let parent_reads = if s.reads.is_empty() || e.reads.is_empty() { Vec::new() } else { e.reads.clone() };
@@ -673,12 +711,25 @@ pub fn memo_with_hash(id: impl Into<String>, version: u64, build: impl FnOnce() 
         Step::Plain => return keyed(build(), key),
         Step::Build { id, version, store } => (id, version, store),
     };
-    let el = keyed(build(), key);
+    // A region's `Tracked` reads join its reads; a memo's closure records none of its own (a
+    // region inside it still does, and they reach it as any nested read does).
+    let (el, states) = if region {
+        crate::tracked::begin();
+        let el = keyed(build(), key);
+        (el, crate::tracked::end())
+    } else {
+        let paused = crate::tracked::pause();
+        let el = keyed(build(), key);
+        crate::tracked::resume(paused);
+        (el, Vec::new())
+    };
     SCOPES.with_borrow_mut(|scopes| {
         let Some(s) = scopes.last_mut() else { return el };
         s.path.pop();
         let nested = s.nested.pop().unwrap_or_default();
-        let reads = s.reads.pop().unwrap_or_default();
+        let mut reads = s.reads.pop().unwrap_or_default();
+        reads.extend(states.into_iter().map(|(id, version)| Read::State(id, version)));
+        dedup_states(&mut reads);
         s.note(&reads);
         #[cfg(test)]
         {
@@ -695,6 +746,97 @@ pub fn memo_with_hash(id: impl Into<String>, version: u64, build: impl FnOnce() 
         s.cache.entries.insert(id, Entry { id: entry_id, version, built, key, reads, nested, pass, virtual_row });
         el
     })
+}
+
+/// With `RUNE_REGION_MISS` set, prints what made a memo or region build again: the first read
+/// that no longer holds (`state <cell> v<version>` for a [`Tracked`](crate::Tracked) value,
+/// `layout <key>`, `caret <key>`, `selection`), or `version` when its version changed. For
+/// finding what keeps a region rebuilding; `Tracked::id` names the cells.
+fn report_miss(key: &str, same_version: bool, reads: &[Read], seen: &Seen) {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if !*ON.get_or_init(|| std::env::var_os("RUNE_REGION_MISS").is_some()) { return; }
+    if !same_version { return eprintln!("rune-miss {key} version"); }
+    let Some(r) = reads.iter().find(|r| !seen.holds(r)) else { return };
+    let why = match r {
+        Read::State(id, v) => format!("state {id} v{v}"),
+        Read::Layout(k, _) | Read::LayoutWith(k, _, _) => format!("layout {k}"),
+        Read::Caret(k, _) => format!("caret {k}"),
+        Read::Selection(_) => "selection".into(),
+    };
+    eprintln!("rune-miss {key} {why}");
+}
+
+/// The version every [`region`] passes: a region's reads are its version.
+const REGION: u64 = 0x7265_6769_6f6e_0001;
+
+/// The subtree `build` returns, keyed `id`, built again only when something it read changed:
+/// a [`Tracked`](crate::Tracked) value it read was written, a `Cx` layout or caret read it made
+/// moved, or the window's environment changed. Otherwise `build` isn't called and the previous
+/// subtree is reused whole, as a [`memo`]'s is, with the same node ids and state.
+///
+/// A region must read the state it shows through `Tracked` values: anything else it reads (a
+/// plain field, a global, a `Cell`) can change without it noticing. Debug builds build every
+/// reused region again and print the first element that differs, naming the region.
+#[cfg_attr(debug_assertions, track_caller)]
+pub fn region(id: impl Into<String>, build: impl FnOnce() -> El) -> El {
+    region_with(id, (), build)
+}
+
+/// [`region`] that also rebuilds when `inputs` change: values the closure uses that aren't
+/// [`Tracked`](crate::Tracked) or read inside it, such as a palette or a size computed by the
+/// caller. Debug builds check its reuse as `region`'s.
+#[cfg_attr(debug_assertions, track_caller)]
+pub fn region_with(id: impl Into<String>, inputs: impl Hash, build: impl FnOnce() -> El) -> El {
+    let key = id.into();
+    #[cfg(debug_assertions)]
+    let check = key.clone();
+    let build = std::cell::Cell::new(Some(build));
+    let el = memo_inner(key, hash_of(&(REGION, inputs)), true, || build.take().expect("a region builds once")());
+    // Reused: debug builds build it again to show it was right to.
+    #[cfg(debug_assertions)]
+    if let Some(build) = build.take() {
+        let fresh = build();
+        let (mut a, mut b) = (Vec::new(), Vec::new());
+        print_el(&el, "", &mut a);
+        print_el(&fresh, "", &mut b);
+        if let Some(i) = (0..a.len().max(b.len())).find(|&i| a.get(i) != b.get(i)) {
+            REGION_WARNINGS.with_borrow_mut(|w| {
+                if w.iter().any(|x: &String| x.starts_with(&format!("rune: region {check:?} "))) { return; }
+                let warning = format!(
+                    "rune: region {check:?} was reused, but building it again gives something else at element {i}: \
+                     reused {:?}, built {:?}. It reads state that isn't Tracked.",
+                    a.get(i).map_or("(none)", String::as_str), b.get(i).map_or("(none)", String::as_str));
+                eprintln!("{warning}");
+                w.push(warning);
+            });
+        }
+    }
+    el
+}
+
+#[cfg(debug_assertions)]
+thread_local! {
+    static REGION_WARNINGS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
+
+/// The stale-region warnings debug builds printed (`region`); always empty in release builds.
+pub fn region_warnings() -> Vec<String> {
+    #[cfg(debug_assertions)]
+    { REGION_WARNINGS.with_borrow(Clone::clone) }
+    #[cfg(not(debug_assertions))]
+    { Vec::new() }
+}
+
+/// One line per element of `el`'s subtree, in order: its place, role, style, visuals and text,
+/// without its handlers. What a region's debug check compares.
+#[cfg(debug_assertions)]
+fn print_el(el: &El, parent: &str, out: &mut Vec<String>) {
+    let path = format!("{parent}/{}", el.key.as_deref().unwrap_or("#"));
+    let text = el.text.as_ref().map(|t| format!("{:?} {:?} {}/{} {} spans", t.content, t.color, t.style.size, t.style.weight, t.spans.len()));
+    out.push(format!("{path} {} {:?} {:?} {:?}", el.role_name(), el.style, el.vis, text));
+    for child in el.all_children() {
+        print_el(child, &path, out);
+    }
 }
 
 #[doc(hidden)]
@@ -748,6 +890,7 @@ pub fn cached((h1, h2): (u64, u64), build: impl FnOnce() -> El) -> El {
                     Read::Layout(k, _) => note_read(&mut s.replayed.layout, k, None),
                     Read::LayoutWith(k, same, _) => note_read(&mut s.replayed.layout, k, Some(same.clone())),
                     Read::Selection(_) => note_read(&mut s.replayed.layout, SELECTION, None),
+                    Read::State(..) => {}
                 }
             }
             let parent_reads = if s.reads.is_empty() || e.reads.is_empty() { Vec::new() } else { e.reads.clone() };

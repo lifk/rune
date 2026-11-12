@@ -191,7 +191,7 @@ fn same_visual_cold(a: &crate::el::VisualCold, b: &crate::el::VisualCold) -> boo
         surface, surface_place, border_bottom, border_sides, border_layout, border_dash, border_dash_phase, shadows, blur_motion,
         clip, clip_radius, clip_corners, cutout, icon, icon_inked, icon_one_color, gradient, radial, outline, shape,
         pixels, pixels_fit, effect, backdrop_blur, hover_motion, hover_within,
-        group_opacity, group_color, hover_alone, hover_share, hover_focus, icon_turn, cache_key, offset_motion, scale_motion,
+        group_opacity, group_color, hover_alone, hover_share, icon_turn, cache_key, offset_motion, scale_motion,
         origin, rotate_motion, child_exit, enter_delay, motion_intent, instant_motion, clip_to_content, flight_crop,
         hold_landing, offset, paint_alpha, layer_opacity, blur, rotate, mark, mirror_rtl, paint_order,
     } = b;
@@ -218,7 +218,7 @@ fn same_visual_cold(a: &crate::el::VisualCold, b: &crate::el::VisualCold) -> boo
         }
         && a.pixels_fit == *pixels_fit && a.effect == *effect && a.backdrop_blur == *backdrop_blur
         && opt_rc_eq(&a.hover_motion, hover_motion) && opt_rc_eq(&a.hover_within, hover_within)
-        && a.group_opacity == *group_opacity && a.group_color == *group_color && a.hover_alone == *hover_alone && a.hover_share == *hover_share && a.hover_focus == *hover_focus
+        && a.group_opacity == *group_opacity && a.group_color == *group_color && a.hover_alone == *hover_alone && a.hover_share == *hover_share
         && a.icon_turn == *icon_turn && a.cache_key == *cache_key
         && opt_box_eq(&a.offset_motion, offset_motion) && opt_box_eq(&a.scale_motion, scale_motion)
         && a.origin == *origin && opt_box_eq(&a.rotate_motion, rotate_motion)
@@ -241,8 +241,8 @@ pub(super) fn same_visual(a: &Visual, b: &Visual) -> bool {
 fn same_el_cold(a: &crate::el::ElCold, b: &crate::el::ElCold) -> bool {
     let crate::el::ElCold {
         focus, looping, trace_name, trace_namespace, role, label, live, above, motion, opacity_motion, lead,
-        transition, matched, scroll, scroll_axes, sticky, scroll_edges, growth, virtual_estimate, virtual_rows,
-        virtual_rows_version, glide, input, time_scale, help, help_cut, help_above, material, aspect_fit, a11y,
+        animated_changes, transition, matched, scroll, scroll_axes, sticky, scroll_edges, growth, virtual_estimate, virtual_rows,
+        virtual_rows_version, glide, input, time_scale, help, help_cut, help_side, material, aspect_fit, a11y,
         #[cfg(debug_assertions)]
         scroll_source: _,
         #[cfg(debug_assertions)]
@@ -260,6 +260,7 @@ fn same_el_cold(a: &crate::el::ElCold, b: &crate::el::ElCold) -> bool {
         && a.motion == *motion
         && opt_box_eq(&a.opacity_motion, opacity_motion)
         && a.lead == *lead
+        && a.animated_changes == *animated_changes
         && opt_box_eq(&a.transition, transition)
         && a.matched == *matched
         && a.scroll == *scroll
@@ -276,7 +277,7 @@ fn same_el_cold(a: &crate::el::ElCold, b: &crate::el::ElCold) -> bool {
         && a.time_scale == *time_scale
         && a.help == *help
         && a.help_cut == *help_cut
-        && a.help_above == *help_above
+        && a.help_side == *help_side
         && a.material == *material
         && a.aspect_fit == *aspect_fit
         && a.a11y == *a11y
@@ -391,7 +392,7 @@ fn same_handlers(
         && opt_rc_eq(&a.on_at_bottom, on_at_bottom)
         && match (&a.on_far_from_bottom, on_far_from_bottom) {
             (None, None) => true,
-            (Some((da, fa)), Some((db, fb))) => da == db && Rc::ptr_eq(fa, fb),
+            (Some((da, ua, fa)), Some((db, ub, fb))) => da == db && ua == ub && Rc::ptr_eq(fa, fb),
             _ => false,
         }
         && opt_rc_eq(&a.on_visible_rows, on_visible_rows)

@@ -1,11 +1,16 @@
 //! outline.wgsl's coverage on the CPU, line for line in f32: masks placed before any renderer
 //! can fill them (the first frame, a runtime drawn without one) come out as the GPU fills them.
+//! The integrals are written once over [`Lanes`], so a mask fill can take four at a time and
+//! give the bits the one-lane form gives.
 
+use super::lanes::Lanes;
 use super::store::OutlineStore;
 
 /// `outline_coverage`: how much of a pixel `2 * hw` rest px square at `local` (rest px from the
 /// pen, y up) the glyph of record `rec` covers, `scale` rest px a font unit, dilated by `r` rest
 /// px and hinted by record `hint` (0: none).
+// The CPU renderer's glyphs drawn straight from outlines use this (render/cpu_boot, IB-2).
+#[allow(dead_code)]
 pub(crate) fn coverage(store: &OutlineStore, rec: u32, hint: u32, local: [f32; 2], scale: f32, r: f32, hw: f32) -> f32 {
     let t = |i: u32| store.texel(i);
     let f = f32::from_bits;
@@ -56,17 +61,18 @@ pub(crate) fn coverage(store: &OutlineStore, rec: u32, hint: u32, local: [f32; 2
                 acc += 2.0 * hw * (q3[1].clamp(wlo, whi) - q1[1].clamp(wlo, whi));
                 continue;
             }
-            acc += integrate(q1, q2, q3, lo, hi, hw);
+            let ty = y_lanes(q1[1], q2[1], q3[1], lo, hi);
+            acc += integrate_x(q1, q2, q3, ty, hw);
         }
     }
     (acc.abs() / (4.0 * hw * hw)).min(1.0)
 }
 
-fn moved(code: u32, r: f32) -> [f32; 2] {
+pub(super) fn moved(code: u32, r: f32) -> [f32; 2] {
     [((code & 3) as f32 - 1.0) * r, ((code >> 2) & 3) as f32 * r]
 }
 
-fn hint_y(y: f32, a: [f32; 4], b: [f32; 4], c: [f32; 4]) -> f32 {
+pub(super) fn hint_y(y: f32, a: [f32; 4], b: [f32; 4], c: [f32; 4]) -> f32 {
     if y < a[1] { return y; }
     if y <= a[2] { return (y - a[1]) * c[0] + a[1]; }
     if y <= b[0] { return (y - a[2]) * c[1] + a[3]; }
@@ -74,44 +80,63 @@ fn hint_y(y: f32, a: [f32; 4], b: [f32; 4], c: [f32; 4]) -> f32 {
     (y - b[2]) * c[2] + b[3]
 }
 
-fn inside(a2: [f32; 2], a1: [f32; 2], x0: f32, ta: f32, tb: f32, hx: f32) -> f32 {
-    if tb <= ta { return 0.0; }
-    let tm = 0.5 * (ta + tb);
-    let d = 0.5 * (tb - ta);
-    let x_mid = (a2[0] * tm + a1[0]) * tm + x0 + hx;
-    let dmid = [2.0 * a2[0] * tm + a1[0], 2.0 * a2[1] * tm + a1[1]];
-    2.0 * d * x_mid * dmid[1] + (2.0 * d * d * d / 3.0) * (a2[0] * dmid[1] + 2.0 * a2[1] * dmid[0])
+/// Where a piece's y crosses `lo` and `hi`, from 0 to 1: `outline_integrate`'s first two lanes,
+/// which depend only on the row, so a mask's fill takes them once per row and piece.
+pub(super) fn y_lanes(q1: f32, q2: f32, q3: f32, lo: f32, hi: f32) -> [f32; 2] {
+    y_lanes_on(q1, q2, q3, lo, hi)
 }
 
-/// `outline_integrate`, its four lanes (y lo, y hi, x -hx, x +hx) written out.
-fn integrate(q1: [f32; 2], q2: [f32; 2], q3: [f32; 2], lo: f32, hi: f32, hx: f32) -> f32 {
-    let a2 = [q1[0] - 2.0 * q2[0] + q3[0], q1[1] - 2.0 * q2[1] + q3[1]];
-    let a1 = [2.0 * (q2[0] - q1[0]), 2.0 * (q2[1] - q1[1])];
-    let (y_rising, x_rising) = (q3[1] >= q1[1], q3[0] >= q1[0]);
-    let lane = |k: usize| -> f32 {
-        let (axis, rising) = if k < 2 { (1, y_rising) } else { (0, x_rising) };
-        let v = match k { 0 => if y_rising { lo } else { hi }, 1 => if y_rising { hi } else { lo }, 2 => -hx, _ => hx };
-        let (a2, a1) = (a2[axis], a1[axis]);
-        let sg = if rising { 1.0 } else { -1.0 };
-        let c = q1[axis] - v;
-        let sat0 = c * sg >= 0.0;
-        let sat1 = (q3[axis] - v) * sg <= 0.0;
-        let sq = (a1 * a1 - 4.0 * a2 * c).max(0.0).sqrt();
-        let qq = -0.5 * (a1 + if a1 >= 0.0 { sq } else { -sq });
-        let use_r1 = (a1 < 0.0) == rising;
-        let (num, den) = if use_r1 { (qq, a2) } else { (c, qq) };
-        let t_raw = if den != 0.0 { (num / den).clamp(0.0, 1.0) } else { 0.0 };
-        if sat0 { 0.0 } else if sat1 { 1.0 } else { t_raw }
+/// [`y_lanes`] on any lanes.
+#[inline(always)]
+pub(super) fn y_lanes_on<L: Lanes>(q1: L, q2: L, q3: L, lo: L, hi: L) -> [L; 2] {
+    let two = L::splat(2.0);
+    let (a2, a1) = (q1 - two * q2 + q3, two * (q2 - q1));
+    let rising = q3.ge(q1);
+    let (v0, v1) = (L::select(rising, lo, hi), L::select(rising, hi, lo));
+    [lane(a2, a1, q1, q3, v0, rising), lane(a2, a1, q1, q3, v1, rising)]
+}
+
+/// One lane of `outline_integrate`: where the quadratic `a2 t^2 + a1 t + q1` reaches `v`.
+#[inline(always)]
+fn lane<L: Lanes>(a2: L, a1: L, q1: L, q3: L, v: L, rising: L::Mask) -> L {
+    let (zero, one) = (L::splat(0.0), L::splat(1.0));
+    let sg = L::select(rising, one, -one);
+    let c = q1 - v;
+    let sat0 = (c * sg).ge(zero);
+    let sat1 = ((q3 - v) * sg).le(zero);
+    let sq = (a1 * a1 - L::splat(4.0) * a2 * c).max(zero).sqrt();
+    let qq = L::splat(-0.5) * (a1 + L::select(a1.ge(zero), sq, -sq));
+    let use_r1 = L::same(a1.lt(zero), rising);
+    let (num, den) = (L::select(use_r1, qq, c), L::select(use_r1, a2, qq));
+    let valid = den.ne(zero);
+    let t_raw = L::select(valid, (num / L::select(valid, den, one)).clamp(zero, one), zero);
+    L::select(sat0, zero, L::select(sat1, one, t_raw))
+}
+
+/// The box-filtered winding of a piece `q1 q2 q3` (relative to the texel's centre) within the
+/// rows its y lanes `t` bound, `2 * hx` wide: the rest of `outline_integrate`.
+#[inline(always)]
+pub(super) fn integrate_x<L: Lanes>(q1: [L; 2], q2: [L; 2], q3: [L; 2], t: [L; 2], hx: L) -> L {
+    let (zero, two) = (L::splat(0.0), L::splat(2.0));
+    let a2 = [q1[0] - two * q2[0] + q3[0], q1[1] - two * q2[1] + q3[1]];
+    let a1 = [two * (q2[0] - q1[0]), two * (q2[1] - q1[1])];
+    let x_rising = q3[0].ge(q1[0]);
+    let tx = [lane(a2[0], a1[0], q1[0], q3[0], -hx, x_rising), lane(a2[0], a1[0], q1[0], q3[0], hx, x_rising)];
+    let tc = [tx[0].clamp(t[0], t[1]), tx[1].clamp(t[0], t[1])];
+    let t1 = L::select(x_rising, tc[0], tc[1]);
+    let t2 = L::select(x_rising, tc[1], tc[0]).max(t1);
+    let inside = {
+        let half = L::splat(0.5);
+        let tm = half * (t1 + t2);
+        let d = half * (t2 - t1);
+        let x_mid = (a2[0] * tm + a1[0]) * tm + q1[0] + hx;
+        let dmid = [two * a2[0] * tm + a1[0], two * a2[1] * tm + a1[1]];
+        let v = two * d * x_mid * dmid[1] + (two * d * d * d / L::splat(3.0)) * (a2[0] * dmid[1] + two * a2[1] * dmid[0]);
+        L::select(t2.le(t1), zero, v)
     };
-    let t = [lane(0), lane(1), lane(2), lane(3)];
-    if t[1] <= t[0] { return 0.0; }
-    let tc = [t[2].clamp(t[0], t[1]), t[3].clamp(t[0], t[1])];
-    let t1 = if x_rising { tc[0] } else { tc[1] };
-    let t2 = (if x_rising { tc[1] } else { tc[0] }).max(t1);
-    let mut acc = inside(a2, a1, q1[0], t1, t2, hx);
-    let rab = if x_rising { [t2, t[1]] } else { [t[0], t1] };
-    let d = (rab[1] - rab[0]).max(0.0);
-    let tm = 0.5 * (rab[0] + rab[1]);
-    acc += d * (2.0 * a2[1] * tm + a1[1]) * (2.0 * hx);
-    acc
+    let rab = [L::select(x_rising, t2, t[0]), L::select(x_rising, t[1], t1)];
+    let d = (rab[1] - rab[0]).max(zero);
+    let tm = L::splat(0.5) * (rab[0] + rab[1]);
+    let acc = inside + d * (two * a2[1] * tm + a1[1]) * (two * hx);
+    L::select(t[1].le(t[0]), zero, acc)
 }

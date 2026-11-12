@@ -8,7 +8,7 @@ use super::style::{TableBody, TableFrame};
 const WIDTHS_BYTES: usize = 1 << 20;
 
 /// A setter's points: zero when negative, NaN or infinite, so a width never goes non-finite.
-fn pts(x: f32) -> f32 {
+pub(super) fn pts(x: f32) -> f32 {
     if x.is_finite() { x.max(0.0) } else { 0.0 }
 }
 
@@ -378,9 +378,18 @@ impl Renderer {
         let empty = Inline::default();
         let total: f32 = cols.natural.iter().sum();
         let mut r = row().role("row").w_full();
+        let table_dir = super::bidi::table_dir(t);
         for (j, (natural, min)) in cols.natural.iter().zip(&cols.min).enumerate() {
             let inl = cells.get(j).unwrap_or(&empty);
             let align = if self.s.table_align { t.align.get(j).copied().unwrap_or_default() } else { Align::Start };
+            // A cell's words read their own way, and its column keeps the table's alignment: a
+            // path in an Arabic table still starts at the column's right.
+            let dir = super::bidi::inline_dir(inl);
+            let align = match align {
+                Align::Start if dir.is_some() && dir != table_dir => Align::End,
+                Align::End if dir.is_some() && dir != table_dir => Align::Start,
+                a => a,
+            };
             let content = self
                 .with_reveal(
                     rich(inl.text.clone(), self.spans(inl, font))
@@ -389,6 +398,7 @@ impl Renderer {
                         .align(align),
                 )
                 .w_full();
+            let content = super::bidi::directed(super::bidi::isolated(content, inl), dir);
             // Full width: each column's share of the row is its share of the natural width, so
             // a wider row widens columns in proportion and a narrower one shrinks them as
             // without it. A table that scrolls never shrinks a column below its content.
@@ -456,8 +466,15 @@ impl Renderer {
                     // Unrounded, as a browser's table layout sums them; a hair over, so a cell at
                     // its column's natural width never wraps its last word.
                     let (min, max) = rune::text::content_widths(&inl.text, &spans, font);
-                    natural[j] = natural[j].max(max + 0.01);
-                    fit[j] = fit[j].max(min + 0.01);
+                    // Inline code's padding is white space set around it, which a line leaves
+                    // out of its width where it ends the line; a page counts an inline box's
+                    // padding in the cell's widths.
+                    let ends_code = |end: usize| inl.text[end..].chars().next().is_none_or(char::is_whitespace);
+                    let pad = |hit: bool| if hit { self.s.inline_code_pad } else { 0.0 };
+                    let pads = inl.spans.iter().filter(|s| s.2 == Style::CodePad && inl.spans.iter().any(|c| c.2 == Style::Code && c.1 == s.0));
+                    let (last, word) = pads.fold((false, false), |(last, word), s| (last || s.1 == inl.text.len(), word || ends_code(s.1)));
+                    natural[j] = natural[j].max(max + pad(last) + 0.01);
+                    fit[j] = fit[j].max(min + pad(word) + 0.01);
                 }
             }
             let min = fit.iter().map(|w| w.min(cap)).collect::<Vec<_>>();

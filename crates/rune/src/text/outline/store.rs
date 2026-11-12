@@ -20,7 +20,7 @@ pub(crate) struct Key {
     pub glyph: u32,
     pub coords: u64,
     pub skew: u8,
-    pub hinted: u32,
+    pub hinted: u64,
 }
 
 /// Where a glyph's record starts, its ink box in font units (x0, y0, x1, y1, y up) and the
@@ -140,6 +140,14 @@ impl OutlineStore {
         true
     }
 
+    /// The texels records fill so far (texel 0 included), as a recording keeps them.
+    pub(crate) fn used_texels(&self) -> &[[u32; 4]] { &self.texels[..self.used] }
+
+    /// A store holding `texels` (a recording's `used_texels`) and nothing else.
+    pub(crate) fn from_texels(texels: Vec<[u32; 4]>) -> OutlineStore {
+        OutlineStore { used: texels.len(), texels, ..OutlineStore::default() }
+    }
+
     /// Texel `i`, zero past the end.
     pub(crate) fn texel(&self, i: u32) -> [u32; 4] {
         self.texels.get(i as usize).copied().unwrap_or_default()
@@ -150,7 +158,10 @@ impl OutlineStore {
 
     pub(crate) fn support(&self) -> Support { self.support }
 
-    pub(crate) fn set_support(&mut self, support: Support) { self.support = support; }
+    pub(crate) fn set_support(&mut self, support: Support) {
+        self.support = support;
+        super::super::support::note_outlines(support);
+    }
 
     /// Rows the texture needs.
     pub(crate) fn rows(&self) -> u32 { (self.texels.len() / WIDTH as usize) as u32 }

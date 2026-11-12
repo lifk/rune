@@ -19,10 +19,9 @@ impl Scene {
         let anim = anim.into();
         if self.store.reduced_motion() {
             self.remove(from);
-            let enter = self.nodes[b].transition.springs.enter;
-            self.track_set(b, prop::PRESENCE, 0.0);
-            self.track_animate(b, prop::PRESENCE, 1.0, Anim::from(enter));
-            self.nodes[b].phase = Phase::Entering;
+            let entrance = Anim::from(self.nodes[b].transition.springs.enter);
+            let acts = self.nodes[b].phase_step(PhaseEvent::FadeIn { entrance });
+            self.apply(b, acts);
             return;
         }
         let (mut start, vel) = self.exact_world(a);
@@ -33,9 +32,8 @@ impl Scene {
         let fill = self.current::<Color>(a, prop::FILL).unwrap_or(self.nodes[a].fill);
         let (to_radius, to_fill) = (self.nodes[b].radius, self.nodes[b].fill);
         // `to` is the one surface from now on: fully present, no presence effect.
-        self.track_set(b, prop::PRESENCE, 1.0);
-        self.nodes[b].phase = Phase::Present;
-        self.nodes[b].fx_a = FX_ID;
+        let acts = self.nodes[b].phase_step(PhaseEvent::Appear);
+        self.apply(b, acts);
         self.start_path(b, start, vel, anim);
         self.track_set(b, prop::RADIUS, radius);
         self.track_animate(b, prop::RADIUS, to_radius, anim.x);
@@ -52,9 +50,8 @@ impl Scene {
         let Some(i) = self.slot(id) else { return };
         if self.store.reduced_motion() { return; }
         let anim = anim.into();
-        self.track_set(i, prop::PRESENCE, 1.0);
-        self.nodes[i].phase = Phase::Present;
-        self.nodes[i].fx_a = FX_ID;
+        let acts = self.nodes[i].phase_step(PhaseEvent::Appear);
+        self.apply(i, acts);
         self.start_path(i, start.edges(), [0.0; 4], anim);
         self.intent(id, Intent::POSITION, anim.y.curve.logical_duration());
     }

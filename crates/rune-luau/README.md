@@ -48,21 +48,32 @@ return {
 
 ## In Luau
 
-- **`@rune/ui`**: `row`, `col`, `box`, `spacer`, `text(content, props)`, `virtualList`, `hex`.
-  Containers take `(props, children)`; a string child is text, and `nil` or `false` children are
-  skipped. Props: `key`, `w`/`h` (points or `"full"`), `minW`..`maxH`, `grow`, `shrink`, `pad`,
+- **`@rune/ui`**: `row`, `col`, `box`, `spacer`, `text(content, props)`, `virtualList`, `each`,
+  `hex`. Containers take `(props, children)`; a string child is text, and `nil` or `false`
+  children are skipped. A props table frozen with `table.freeze` is decoded once per VM and its
+  node copied after that; a node whose props are partly its own takes the frozen style first and
+  a small table of its own after it, laid over it (`ui.row(ROW, { key = id }, children)`,
+  `ui.text(words, LABEL, { color = ink })`, host nodes too), and only that table is decoded.
+  Values after a text's props fill `{1}`, `{2}`... in its content, straight into the string the
+  element keeps (`ui.text("{1} / {2}", VALUE, read, write)`). Props: `key`, `w`/`h` (points or `"full"`), `minW`..`maxH`, `grow`, `shrink`, `pad`,
   `px`..`pl`, `m`..`ml`, `gap`, `align`, `justify`, `center`, `wrap`, `fill`, `hover`, `press`,
   `border`, `borderWidth`, `radius`, `clip`, `scrollY`, `scrollX`, `opacity`, `role`, `label`,
-  `help`, `helpSide`, `pin`, `corners`, `shadow`, `selected`, `focusable`, `disabled`, `hoverTransition`, `hoverGroup`, `hoverGroupColor`, `revealOnHover`, `onPress`, `onHover`, and for text `size`, `weight`, `lineHeight`, `tracking`, `color`, `mono`,
+  `help`, `helpSide`, `dir` (`"ltr"`, `"rtl"` or `"auto"`), `pin`, `corners`, `shadow`, `selected`, `focusable`, `disabled`, `hoverTransition`, `hoverGroup`, `hoverGroupColor`, `revealOnHover`, `onPress`, `onHover`, and for text `size`, `weight`, `lineHeight`, `tracking`, `color`, `mono`,
   `tabular`, `noWrap`, `truncate`, `fadeOut`, `selectable`, `textAlign`. Colours are palette names or
   `ui.hex("#rrggbb")`.
 - **`view:Memo(key, version, build)`** reuses the subtree while `version` (a string, number or
   boolean) is unchanged, without calling `build`. Its memo id, and its root's key, is `key` under
   the script's prefix (`luau:<name>:<key>`), so scripts in one window never share a memo. **`view:Handler(fn)`** returns `fn`; handlers
   run as tasks and receive a `UiEvent` (`kind`, `key`, `shift`, `alt`, `mod`).
-- **`ui.virtualList({ count, estimatedRowHeight, version, renderRow, rowKey?, onVisibleRows?, gap? })`**
+- **`ui.each(items, key, version, build)`** returns `build(item, index)` for each item as a list
+  of children, each a memo of its own on the item's key (also its node's key) and version, so a
+  render rebuilds only the items whose version moved. `key` and `version` are field names or
+  functions of `(item, index)`.
+- **`ui.virtualList({ count, estimatedRowHeight, version, renderRow, rowKey?, rowVersions?, onVisibleRows?, gap?, scrollY? })`**
   is `El::virtual_rows`: `renderRow(i)` (from 1) runs only for rows entering the window, and each
-  row is memoized on `version`.
+  row is memoized on `version` and its entry in `rowVersions`. With `scrollY = false` it has no
+  viewport of its own: it sits in a scrolling column under or among other content and builds the
+  rows that column shows.
 - **`task`**: `spawn`, `defer`, `delay`, `wait` and `cancel`, on the frame clock `poll` receives.
   Waiting costs nothing; `wait` in a render is an error.
 - **Signals**: a host's `Signal` has `Connect`, `Once` and `Wait`; a `ScriptSignal`
@@ -72,8 +83,8 @@ return {
   `luau-lsp` agree. `init.luau` stands for its folder: from it, `require("@self/x")` is `x.luau`
   and `require("./x")` would be beside the folder. `.luaurc` aliases apply, including the one
   above the folder (`Sources::parent_config`). Nothing outside the folder resolves; a cycle is an
-  error naming the chain. A module that starts with `--!native` compiles to native code where
-  the platform allows.
+  error naming the chain. A module that starts with `--!native` compiles to native code with
+  the `native-code` feature (Windows and Linux).
 
 ## Errors
 
@@ -83,8 +94,10 @@ safepoint, and that script carries on with its next call.
 
 ## Platforms
 
-Luau's native code generation (`luau-jit`) runs on Windows and Linux (x86-64, arm64); macOS,
-iOS and the web run its interpreter. On `wasm32-unknown-unknown`, Luau's C++ builds with
+Scripts run in Luau's interpreter. The `native-code` feature adds Luau's native code generation
+for modules that open with `--!native`, on Windows and Linux (x86-64, arm64) only: enable it for
+those targets alone. It costs every VM a 4 MiB committed code block as the VM starts, whether a
+native module ever loads or not. On `wasm32-unknown-unknown`, Luau's C++ builds with
 [WASI SDK](https://github.com/WebAssembly/wasi-sdk) 33 or newer and WebAssembly exception
 handling: set `WASI_SDK_PATH` and `scripts/web-build.sh` sets the compilers up; this crate links
 the SDK's C runtime and defines the few WASI calls it makes, so the page needs nothing extra.

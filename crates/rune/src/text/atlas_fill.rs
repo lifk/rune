@@ -18,6 +18,8 @@ pub struct Fill {
     pub scale: f32,
     pub radius: f32,
     pub pen: [f32; 2],
+    /// The coverage function (`text::Outline::coverage`).
+    pub coverage: u32,
 }
 
 /// Where an atlas entry's texels are.
@@ -39,6 +41,9 @@ pub(super) enum ResidencyEvent {
     FillRan,
     /// The renderer uploaded rows `y0..y1` of `page` from the CPU copy.
     RowsUploaded { page: u16, rows: (u32, u32) },
+    /// The CPU filled it in the page's CPU copy (`render::cpu_boot::fill_masks`), as a renderer
+    /// would have: its texels now go up with their rows, and no renderer fills it again.
+    FilledOnCpu,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -50,6 +55,10 @@ pub(super) enum ResidencyEffect {
 impl Residency {
     pub(super) fn step(&mut self, event: ResidencyEvent) -> Effects<ResidencyEffect> {
         match (*self, event) {
+            (Residency::Pending(g, _), ResidencyEvent::FilledOnCpu) => {
+                *self = Residency::Uploaded(g);
+                Effects::none()
+            }
             (Residency::Pending(g, f), ResidencyEvent::FillRan) => {
                 *self = Residency::Filled(g, f);
                 Effects::none()
@@ -98,9 +107,10 @@ impl Atlas {
         }
         self.rasterized += 1;
         self.touch(page as u16, w * h);
-        let g = AtlasGlyph { page: page as u16, x: ax, y: ay, w, h, left, top };
+        let g = AtlasGlyph { page: page as u16, x: ax, y: ay, w, h, left, top, lcd: fill.coverage == 3 };
         self.map.insert(key, Residency::Pending(g, fill));
         self.queue(page, key);
+        crate::marks::add("text.gpu_fills", 1);
         Some(g)
     }
 
@@ -123,6 +133,16 @@ impl Atlas {
 
     /// Each page's queued fills, stepped as run: the renderer draws them before the frame.
     pub(crate) fn take_fills(&mut self) -> Vec<(usize, Vec<QueuedFill>)> {
+        self.take_fills_as(ResidencyEvent::FillRan)
+    }
+
+    /// Each page's queued fills for the CPU to fill in the pages' CPU copy: they become masks the
+    /// CPU drew, so the GPU's first frame samples exactly the texels the CPU's did.
+    pub(crate) fn take_cpu_fills(&mut self) -> Vec<(usize, Vec<QueuedFill>)> {
+        self.take_fills_as(ResidencyEvent::FilledOnCpu)
+    }
+
+    fn take_fills_as(&mut self, ran: ResidencyEvent) -> Vec<(usize, Vec<QueuedFill>)> {
         let mut out = Vec::new();
         for (page, keys) in std::mem::take(&mut self.fills).into_iter().enumerate() {
             let mut fills = Vec::with_capacity(keys.len());
@@ -131,11 +151,13 @@ impl Atlas {
                 let Some(entry) = self.map.get_mut(&key) else { continue };
                 if let Residency::Pending(g, fill) = *entry && g.page as usize == page {
                     fills.push(QueuedFill { rect: [g.x, g.y, g.w, g.h], fill });
-                    let _ = entry.step(ResidencyEvent::FillRan);
+                    let _ = entry.step(ran);
                 }
             }
             if !fills.is_empty() { out.push((page, fills)); }
         }
+        #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
+        super::fill_bench::record(&self.outlines, &out);
         out
     }
 
@@ -145,5 +167,33 @@ impl Atlas {
         self.map.retain(|_, e| !e.outline_filled());
         self.fills.clear();
         self.clock += 1;
+    }
+}
+
+impl Atlas {
+    /// Every mask the GPU filled, by page, with the bytes `outline::fill_mask` gives for it:
+    /// what a CPU fill of the same mask writes (`Renderer::fill_drift` compares the two).
+    pub(crate) fn gpu_fills(&self) -> Vec<(u16, [u32; 4], Vec<u8>)> {
+        self.map.values().filter_map(|r| match *r {
+            Residency::Filled(g, fill) => {
+                let mut bytes = Vec::with_capacity((g.w * g.h) as usize);
+                super::outline::fill_mask(&self.outlines, &fill, [g.x, g.y], g.w, g.h, &mut bytes);
+                Some((g.page, [g.x, g.y, g.w, g.h], bytes))
+            }
+            _ => None,
+        }).collect()
+    }
+}
+
+impl Atlas {
+    /// Every mask filled from an outline or queued to be, with the outline store they read
+    /// (`fill_bench`). A measurement for the CPU renderer's first frame, not a fill.
+    #[doc(hidden)]
+    pub fn fill_set(&self) -> super::fill_bench::FillSet {
+        let fills = self.map.values().filter_map(|r| match *r {
+            Residency::Filled(g, fill) | Residency::Pending(g, fill) => Some(QueuedFill { rect: [g.x, g.y, g.w, g.h], fill }),
+            _ => None,
+        }).collect();
+        super::fill_bench::FillSet::new(super::outline::OutlineStore::from_texels(self.outlines.used_texels().to_vec()), fills)
     }
 }

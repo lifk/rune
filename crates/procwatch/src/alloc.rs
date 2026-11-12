@@ -15,6 +15,9 @@
 //! allocates nothing while other tests run in parallel. [`thread_allocated_bytes`] counts the
 //! bytes they asked for, for a per-frame allocation figure.
 
+#[cfg(feature = "alloc-sites")]
+pub mod sites;
+
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU64, AtomicUsize, Ordering::{Acquire, Relaxed, Release}};
@@ -80,8 +83,14 @@ impl<A> Counting<A> {
 
 fn grew(size: usize) {
     let live = LIVE.fetch_add(size as i64, Relaxed) + size as i64;
-    PEAK.fetch_max(live, Relaxed);
-    LARGEST.fetch_max(size, Relaxed);
+    // A plain read first: the peak and the largest rarely move, and `fetch_max` is a locked
+    // compare-and-swap loop on every call.
+    if live > PEAK.load(Relaxed) {
+        PEAK.fetch_max(live, Relaxed);
+    }
+    if size > LARGEST.load(Relaxed) {
+        LARGEST.fetch_max(size, Relaxed);
+    }
     if size >= BIG {
         BIG_LIVE.fetch_add(size as i64, Relaxed);
         BIG_BLOCKS.fetch_add(1, Relaxed);
@@ -89,6 +98,14 @@ fn grew(size: usize) {
     // `try_with`: a thread's last frees run after its locals are gone.
     let tag = TAG.try_with(Cell::get).unwrap_or(0) as usize;
     TAG_NET[tag].fetch_add(size as i64, Relaxed);
+}
+
+/// Notes that [`Counting`] serves requests; after the first, a read that keeps the flag's cache
+/// line shared rather than a store to it on every call.
+fn installed() {
+    if INSTALLED.load(Relaxed) == 0 {
+        INSTALLED.store(1, Relaxed);
+    }
 }
 
 fn shrank(size: usize) {
@@ -104,36 +121,46 @@ fn shrank(size: usize) {
 // SAFETY: every call goes straight to `inner`; the counters never touch the heap.
 unsafe impl<A: GlobalAlloc> GlobalAlloc for Counting<A> {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        INSTALLED.store(1, Relaxed);
+        installed();
         let p = unsafe { self.inner.alloc(layout) };
         if !p.is_null() {
             counted(layout.size());
             grew(layout.size());
+            #[cfg(feature = "alloc-sites")]
+            sites::allocated(p, layout.size());
         }
         p
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        INSTALLED.store(1, Relaxed);
+        installed();
         let p = unsafe { self.inner.alloc_zeroed(layout) };
         if !p.is_null() {
             counted(layout.size());
             grew(layout.size());
+            #[cfg(feature = "alloc-sites")]
+            sites::allocated(p, layout.size());
         }
         p
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        #[cfg(feature = "alloc-sites")]
+        sites::freed(ptr);
         unsafe { self.inner.dealloc(ptr, layout) };
         shrank(layout.size());
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        #[cfg(feature = "alloc-sites")]
+        sites::freed(ptr);
         let p = unsafe { self.inner.realloc(ptr, layout, new_size) };
         if !p.is_null() {
             counted(new_size);
             shrank(layout.size());
             grew(new_size);
+            #[cfg(feature = "alloc-sites")]
+            sites::allocated(p, new_size);
         }
         p
     }

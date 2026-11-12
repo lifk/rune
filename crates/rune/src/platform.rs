@@ -6,8 +6,11 @@ pub(crate) mod app_icon;
 pub(crate) mod display_link;
 #[cfg(target_vendor = "apple")]
 pub mod embed;
+pub(crate) mod ime;
 #[cfg(all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android")))]
 pub(crate) mod layer_shell;
+#[cfg(any(test, all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android"))))]
+pub(crate) mod layer_shell_machine;
 #[cfg(target_os = "macos")]
 pub(crate) mod macos;
 #[cfg(target_os = "macos")]

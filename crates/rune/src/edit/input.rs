@@ -3,7 +3,7 @@
 use parley::Layout;
 
 use super::*;
-use crate::text::Ink;
+use crate::text::{Ink, TextFlow};
 
 impl TextEdit {
     fn insert_newline(&mut self, block_for_new_line: Block, soft: bool) {
@@ -13,13 +13,7 @@ impl TextEdit {
         self.sync_invariants();
         let before = self.snapshot();
         let (a, b) = self.range();
-        let inserted_marks = if let Some((armed, p)) = self.pending.take()
-            && armed == (self.anchor, self.focus)
-        {
-            p
-        } else {
-            self.inherited_marks_at(a)
-        };
+        let inserted_marks = self.typing.take_at((self.anchor, self.focus)).unwrap_or_else(|| self.inherited_marks_at(a));
         self.apply_text_and_attr_replace((a, b), "\n", &inserted_marks, Some(block_for_new_line), soft);
         self.record_change(before, EditKind::LineBreak);
     }
@@ -32,26 +26,51 @@ impl TextEdit {
             self.anchor = i;
         }
         self.snap_to_pills();
-        self.pending = None;
+        self.typing = Typing::Inherited;
+        self.affinity = parley::Affinity::Downstream;
     }
 
-    fn move_h(&mut self, i: usize, extend: bool) {
+    /// Moves the caret to `i` (on `side` of it, from a visual step), or collapses a selection to
+    /// the end the arrow points at (`right`).
+    fn move_h(&mut self, (i, side): (usize, parley::Affinity), extend: bool, right: bool, layout: Option<TextFlow<'_>>) {
         let (a, b) = self.range();
         if !extend && a != b {
-            // Collapse to the side of travel.
-            let to = if i < self.focus { a } else { b };
+            let to = self.collapse_to(layout, right);
             self.anchor = to;
             self.focus = to;
+            self.affinity = parley::Affinity::Downstream;
         } else {
             self.set(i, extend);
+            if self.focus == i { self.affinity = side; }
         }
-        self.pending = None;
+        self.typing = Typing::Inherited;
+    }
+
+    /// The end of the selection Left (`!right`) or Right collapses it to, as Notepad and Word do:
+    /// the end drawn further that way when both sit on one line, so Left in an Arabic line goes
+    /// to its logical end. Across lines, the end the arrow steps toward in the focus's paragraph.
+    fn collapse_to(&self, layout: Option<TextFlow<'_>>, right: bool) -> usize {
+        let (a, b) = self.range();
+        let Some(l) = layout.filter(|_| !self.is_masked()) else { return if right { b } else { a } };
+        let (ca, cb) = (l.caret(self.display_index(a), parley::Affinity::Downstream, 0.0), l.caret(self.display_index(b), parley::Affinity::Upstream, 0.0));
+        if (ca.y0 - cb.y0).abs() < 1.0 {
+            return if (ca.x0 <= cb.x0) != right { a } else { b };
+        }
+        let forward = right == (l.piece_at(self.display_index(self.focus)).flow == crate::el::Flow::Ltr);
+        if forward { b } else { a }
     }
 
     /// Applies one key. `layout` is the field's layout for the current text (device px).
     pub fn key(&mut self, ev: &KeyEvent, layout: Option<&Layout<Ink>>) -> EditOutcome {
+        self.key_in(ev, layout.map(TextFlow::Single))
+    }
+
+    /// [`Self::key`] with the field's layout as it draws it, one paragraph's or a by-paragraph field's.
+    pub(crate) fn key_in(&mut self, ev: &KeyEvent, layout: Option<TextFlow<'_>>) -> EditOutcome {
         let mut out = EditOutcome::default();
         if matches!(ev.key, Key::Modifier { .. }) { return out; }
+        // Any key but Up and Down lets the column go.
+        let column = std::mem::take(&mut self.column);
         self.sync_invariants();
         let m = ev.mods;
         self.normalize_hidden_selection();
@@ -79,7 +98,8 @@ impl TextEdit {
                     return out;
                 }
             };
-            return self.key(&KeyEvent { key, mods: Mods { shift: m.shift, cmd: line, ..Mods::default() } }, layout);
+            self.column = column;
+            return self.key_in(&KeyEvent { key, mods: Mods { shift: m.shift, cmd: line, ..Mods::default() } }, layout);
         }
         if ev.is_command_chord() || ev.is_window_menu_chord() { return out; }
         // Typing, deleting and line breaks join the open undo step (`history::step`); any other key closes it.
@@ -184,7 +204,7 @@ impl TextEdit {
                                 if a == 0 || line_range.is_empty() {
                                     self.set_block(Block::Paragraph);
                                 } else {
-                                    let from = prev_char(&self.text, a);
+                                    let from = prev_backspace(&self.text, a);
                                     self.replace((from, a), "", EditKind::Delete);
                                 }
                             }
@@ -192,11 +212,11 @@ impl TextEdit {
                         }
                     } else if a > 0 {
                         let from = if line {
-                            if self.secure && !self.revealed { 0 } else { self.text[..a].rfind('\n').map_or(0, |i| i + 1) }
+                            if self.is_masked() { 0 } else { self.text[..a].rfind('\n').map_or(0, |i| i + 1) }
                         } else if word {
                             self.prev_word(a)
                         } else {
-                            prev_char(&self.text, a)
+                            prev_backspace(&self.text, a)
                         };
                         self.replace((from, a), "", if line || word { EditKind::DeleteRun } else { EditKind::Delete });
                     }
@@ -211,17 +231,17 @@ impl TextEdit {
                     self.replace((a, to), "", if word { EditKind::DeleteRun } else { EditKind::Delete });
                 }
             }
-            Key::Left if !line && let Some(i) = self.visual_step(layout, false, word) => self.move_h(i, m.shift),
+            Key::Left if !line && let Some(to) = self.visual_step(layout, false, word) => self.move_h(to, m.shift, false, layout),
             Key::Left => {
                 let i = if line { self.line_edge(layout, false) } else if word { self.prev_word(self.focus) } else { prev_char(&self.text, self.focus) };
-                self.move_h(i, m.shift);
+                self.move_h((i, parley::Affinity::Downstream), m.shift, false, layout);
             }
             Key::Right if !m.shift && !m.cmd && !m.alt && !m.ctrl && self.at_end_of_trailing_block() => self.leave_trailing_block(),
             Key::Down if !m.shift && !m.cmd && !m.alt && !m.ctrl && self.at_end_of_trailing_block() => self.leave_trailing_block(),
-            Key::Right if !line && let Some(i) = self.visual_step(layout, true, word) => self.move_h(i, m.shift),
+            Key::Right if !line && let Some(to) = self.visual_step(layout, true, word) => self.move_h(to, m.shift, true, layout),
             Key::Right => {
                 let i = if line { self.line_edge(layout, true) } else if word { self.next_word(self.focus) } else { next_char(&self.text, self.focus) };
-                self.move_h(i, m.shift);
+                self.move_h((i, parley::Affinity::Downstream), m.shift, true, layout);
             }
             // Home and End go to the text's ends on macOS. Elsewhere they go to the line's
             // edge, and with Ctrl to the text's ends.
@@ -233,11 +253,15 @@ impl TextEdit {
             Key::Up | Key::Down => {
                 let down = ev.key == Key::Down;
                 let n = self.text.len();
-                let i = if line || (self.secure && !self.revealed) {
+                // A run of Up and Down keeps the column it started in, as a browser's caret does
+                // through shorter lines (and lines of the other direction).
+                let mut kept = None;
+                let i = if line || self.is_masked() {
                     if down { n } else { 0 }
                 } else if let Some(l) = layout {
-                    match crate::text::move_line(l, self.display_index(self.focus), down) {
-                        Some(j) => {
+                    match l.move_line(self.display_index(self.focus), down, column.goal()) {
+                        Some((j, x)) => {
+                            kept = Some(x);
                             let j = self.model_index(j);
                             if j == self.focus { if down { n } else { 0 } } else { j }
                         }
@@ -252,10 +276,11 @@ impl TextEdit {
                 if m.shift {
                     self.focus = i;
                     self.snap_to_pills();
-                    self.pending = None;
+                    self.typing = Typing::Inherited;
                 } else {
                     self.set_caret(i);
                 }
+                self.column = kept.map_or(Column::Free, Column::Kept);
             }
             // Only the plain chord: with another modifier it's the app's (Ctrl+Alt+Z).
             Key::Command(_) => match ev.edit_command() {
@@ -265,7 +290,7 @@ impl TextEdit {
                 Some('a') => {
                     self.anchor = 0;
                     self.focus = self.text.len();
-                    self.pending = None;
+                    self.typing = Typing::Inherited;
                 }
                 Some('b' | 'i' | 'u') => {
                     if let Some(mark) = self.format_chord(ev) {
@@ -302,7 +327,7 @@ impl TextEdit {
         self.break_history_group();
         let before = self.snapshot();
         let n = self.text.len();
-        self.pending = None;
+        self.typing = Typing::Inherited;
         self.apply_text_and_attr_replace((n, n), "\n", &[], Some(Block::Paragraph), false);
         self.record_change(before, EditKind::Other);
     }
@@ -311,40 +336,47 @@ impl TextEdit {
     /// text moves visually ([`CaretMotion`]): across the line as it's drawn, and at the line's
     /// edge on the way its paragraph runs, so Left leaves a right-to-left line forward. `None`
     /// when it moves by the logical order.
-    fn visual_step(&self, layout: Option<&Layout<Ink>>, right: bool, word: bool) -> Option<usize> {
-        use super::caret_motion::{Arrow, CaretMotion, Landing};
+    fn visual_step(&self, layout: Option<TextFlow<'_>>, right: bool, word: bool) -> Option<(usize, parley::Affinity)> {
+        use super::caret_motion::{Arrow, Landing, visual_in};
+        let arrow = match (right, word) {
+            (false, false) => Arrow::Left,
+            (true, false) => Arrow::Right,
+            (false, true) => Arrow::WordLeft,
+            (true, true) => Arrow::WordRight,
+        };
         let l = layout?;
-        match CaretMotion::of(l, self.secure && !self.revealed) {
-            CaretMotion::Logical => None,
-            CaretMotion::Visual => {
-                let arrow = match (right, word) {
-                    (false, false) => Arrow::Left,
-                    (true, false) => Arrow::Right,
-                    (false, true) => Arrow::WordLeft,
-                    (true, true) => Arrow::WordRight,
-                };
-                Some(match super::caret_motion::visual(l, self.display_index(self.focus), arrow) {
-                    Landing::At(j) => self.model_index(j),
-                    Landing::Edge => {
-                        let forward = right == (crate::el::Flow::of_layout(l) == crate::el::Flow::Ltr);
-                        match (forward, word) {
-                            (true, false) => next_char(&self.text, self.focus),
-                            (true, true) => self.next_word(self.focus),
-                            (false, false) => prev_char(&self.text, self.focus),
-                            (false, true) => self.prev_word(self.focus),
-                        }
-                    }
-                })
+        let hidden = self.is_masked();
+        let (landing, flow) = visual_in(l, self.display_index(self.focus), self.affinity, arrow, hidden)?;
+        Some(match landing {
+            // Off macOS a word to the right goes on past the spaces after it where the text runs
+            // left to right, as Chromium's Ctrl+Right lands at the next word's start.
+            Landing::At(mut j, mut side) if arrow == Arrow::WordRight && !cfg!(target_os = "macos") => {
+                while super::caret_motion::space_right(l, j, side)
+                    && let Some((Landing::At(k, s), _)) = visual_in(l, j, side, Arrow::Right, hidden)
+                {
+                    (j, side) = (k, s);
+                }
+                (self.model_index(j), side)
             }
-        }
+            Landing::At(j, side) => (self.model_index(j), side),
+            Landing::Edge => {
+                let forward = right == (flow == crate::el::Flow::Ltr);
+                let i = match (forward, word) {
+                    (true, false) => next_char(&self.text, self.focus),
+                    (true, true) => self.next_word(self.focus),
+                    (false, false) => prev_char(&self.text, self.focus),
+                    (false, true) => self.prev_word(self.focus),
+                };
+                (i, parley::Affinity::Downstream)
+            }
+        })
     }
-
-    fn line_edge(&self, layout: Option<&Layout<Ink>>, end: bool) -> usize {
-        if self.secure && !self.revealed {
+    fn line_edge(&self, layout: Option<TextFlow<'_>>, end: bool) -> usize {
+        if self.is_masked() {
             return if end { self.text.len() } else { 0 };
         }
         if let Some(l) = layout {
-            return self.model_index(crate::text::line_edge(l, self.display_index(self.focus), end));
+            return self.model_index(l.line_edge(self.display_index(self.focus), end));
         }
         if end {
             self.text[self.focus..].find('\n').map_or(self.text.len(), |i| self.focus + i)
@@ -356,17 +388,22 @@ impl TextEdit {
     pub fn ime(&mut self, ev: &Ime) -> EditOutcome {
         if self.secure { self.cancel_composition(); return EditOutcome::default(); }
         self.sync_invariants();
-        self.break_history_group();
-        for effect in ime::step(&mut self.composition, ev) {
-            match effect {
-                ime::Effect::Commit(mut s) => {
-                    let clean = self.sanitize(&s);
-                    s.zeroize();
-                    self.insert(&clean);
-                }
-            }
+        for effect in ime::step(&mut self.composition, ime::Event::Ime(ev)) {
+            let ime::Effect::Commit(mut s) = effect;
+            self.commit_composed(&s);
+            s.zeroize();
         }
         EditOutcome::default()
+    }
+
+    /// Writes a composition's text over the selection as typing: it joins the open undo step,
+    /// as each Hangul syllable or kana phrase a person commits is part of what they type, the
+    /// way a browser's field groups them.
+    pub(super) fn commit_composed(&mut self, s: &str) {
+        let clean = self.sanitize(s);
+        if clean.is_empty() { return; }
+        let kind = if clean.contains(['\r', '\n']) { EditKind::LineBreak } else { EditKind::Text };
+        self.replace(self.range(), &clean, kind);
     }
 
     pub fn paste(&mut self, s: &str) -> EditOutcome {
@@ -442,7 +479,7 @@ impl TextEdit {
                     self.marks.push(MarkRange { start: s_idx, end: e_idx, mark: m.mark.clone() });
                 }
             }
-            self.pending = None;
+            self.typing = Typing::Inherited;
             self.normalize_marks();
             self.record_change(before, EditKind::Other);
             return EditOutcome::default();
@@ -495,7 +532,7 @@ impl TextEdit {
                 mark: m.mark.clone(),
             });
         }
-        self.pending = None;
+        self.typing = Typing::Inherited;
         self.sync_invariants();
         self.record_change(before, EditKind::Other);
         EditOutcome::default()

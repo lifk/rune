@@ -2,16 +2,26 @@
 use super::*;
 
 impl<S: 'static> Runtime<S> {
+    /// rame-profile: the paths of drawn nodes whose loop is running, which wake the window.
+    #[cfg(feature = "frame-profile")]
+    pub(crate) fn fp_loops(&self) -> Vec<String> {
+        self.nodes.iter().enumerate()
+            .filter(|(i, n)| n.looping.is_some() && self.seen.get(*i).copied().unwrap_or(false) && self.loops.contains_key(&n.id))
+            .map(|(_, n)| n.path.clone()).collect()
+    }
+
     /// Clock seconds now: the wall clock in a window (input arrives between frames), the
     /// virtual clock headless.
     pub(super) fn now_clock(&self) -> f64 {
         self.wall_start.map_or(self.clock, |t| t.elapsed().as_secs_f64())
     }
 
+    /// The window's size in its points and its scale. The view lays out in them over its zoom
+    /// ([`Cx::zoom`]), at the scale times the zoom.
     pub fn set_viewport(&mut self, viewport: (f32, f32), scale: f32) {
-        // Someone resized a window that fits its content (not a page's band): back to its height.
-        if self.fit_height && !self.page.on && self.window_resting && (self.fit_asked.unwrap_or(self.viewport.1) - viewport.1).abs() > 0.5 {
-            self.fit_asked = None;
+        (self.zoom.window, self.zoom.window_scale) = (viewport, scale);
+        let (viewport, scale) = self.zoom.view();
+        if self.fit_resized(viewport.1) {
             self.relayout = true;
             self.viewport_stepped = false;
         }
@@ -22,6 +32,8 @@ impl<S: 'static> Runtime<S> {
     /// user's resize it doesn't land running motion: content at rest follows the window and
     /// springs keep going.
     pub(crate) fn step_viewport(&mut self, viewport: (f32, f32), scale: f32) {
+        (self.zoom.window, self.zoom.window_scale) = (viewport, scale);
+        let (viewport, scale) = self.zoom.view();
         let fresh = !self.relayout;
         if self.change_viewport(viewport, scale) && fresh { self.viewport_stepped = true; }
     }
@@ -56,8 +68,13 @@ impl<S: 'static> Runtime<S> {
         if self.window_focused != Some(focused) {
             // Refocused, the pointer where it was hovers again; blurred, it waits for a move.
             if focused && self.window_focused == Some(false) { self.hover_paused = false; }
-            // A focused field's selection takes its active or inactive pair (`El::selection_style`).
-            if self.window_focused.is_some() && self.focused_input().is_some_and(|i| i.selection_style.is_some()) { self.dirty = true; }
+            // A selection takes its active or inactive pair (`El::selection_style`): a focused
+            // field's, or a selectable text's.
+            if self.window_focused.is_some()
+                && (self.focused_input().is_some_and(|i| i.selection_style.is_some()) || self.text_selection().is_some_and(|(_, r)| !r.is_empty()))
+            {
+                self.dirty = true;
+            }
             self.window_focused = Some(focused);
             if let Some(f) = self.on_focus { self.update(|s, tx| f(s, focused, tx)); }
             // Deliver the cancelled Up before FocusLost can commit a view that removes its
@@ -70,14 +87,12 @@ impl<S: 'static> Runtime<S> {
                 self.queue.push(Action::WindowFocus(focused));
             }
             if !focused {
+                self.finish_composition();
                 self.keys_lost();
                 // Losing the window ends hover, rather than waiting out an exit grace. A window
                 // that isn't key still hears the pointer, so its next move starts the wait again.
-                self.hover_pending.clear();
+                self.end_hover_delays();
                 self.hover_paused = true;
-                for path in std::mem::take(&mut self.hover_shown) {
-                    self.queue.push(Action::HoverChange(path, false));
-                }
             }
         }
         if !focused { self.input_click.clear(); self.wheel_lost(); }
@@ -143,7 +158,7 @@ impl<S: 'static> Runtime<S> {
         // Its wakes count from now (`schedule_pending_wakes`), so its clock reads now too.
         let mut one = Tx { clock: self.now_clock(), ..self.transaction() };
         let changed = crate::tooling::perf_warn::timed("an `update` closure", || f(&mut self.state, &mut one));
-        let stale = changed || one.frame_work() || one.window_frame.is_some() || one.srgb_blend.is_some_and(|b| b != self.srgb_blend) || one.font_smoothing.is_some_and(|m| m != self.text.smoothing)
+        let stale = changed || one.frame_work() || one.window_frame.is_some() || one.srgb_blend.is_some_and(|b| b != self.srgb_blend) || one.font_smoothing.is_some_and(|m| m != self.text.font_smoothing())
             || self.changes_families(&one)
             || (one.blur && self.focus.path().is_some());
         self.latch_requests(&mut one);
@@ -154,7 +169,9 @@ impl<S: 'static> Runtime<S> {
 
     /// Takes a `Tx::minimize` that `what` can't carry out, saying so in debug builds.
     pub(crate) fn ignore_minimize(&mut self, what: &str) {
-        if std::mem::take(&mut self.minimize_request) && cfg!(debug_assertions) {
+        let field = self.minimize.field();
+        self.minimize_step(crate::window::MinimizeEvent::Lost);
+        if field && cfg!(debug_assertions) {
             eprintln!("rune: minimize ignored: {what} can't minimize");
         }
     }
@@ -165,7 +182,7 @@ impl<S: 'static> Runtime<S> {
     pub(super) fn latch_requests(&mut self, tx: &mut Tx) {
         self.run_pick_reads(tx);
         self.shell_request = self.shell_request.max(tx.shell.take());
-        self.minimize_request |= std::mem::take(&mut tx.minimize);
+        if std::mem::take(&mut tx.minimize) { self.minimize_step(crate::window::MinimizeEvent::Asked); }
         self.titlebar.toggle_maximized |= std::mem::take(&mut tx.toggle_maximized);
         self.titlebar.toggle_full_screen |= std::mem::take(&mut tx.toggle_full_screen);
         if let Some(fullscreen) = tx.fullscreen.take() {
@@ -222,8 +239,9 @@ impl<S: 'static> Runtime<S> {
             self.dirty = true;
         }
         if let Some(title) = tx.title.take() { self.window_title.set(title); }
+        if let Some((text, how)) = tx.announce.take() { self.announcement.say(text, how); }
         if let Some(mut request) = tx.window_frame.take() {
-            request.spring = (request.animate && !tx.instant && !self.reduced_motion).then(|| tx.motion.unwrap_or(motion::DEFAULT));
+            request.spring = (request.animate && !tx.commit.snaps() && !self.reduced_motion).then(|| tx.motion.map_or(motion::DEFAULT, MotionSource::spring));
             self.window_frame = Some(self.window_frame.unwrap_or_default().merge(request));
         }
         crate::clipboard::flush_memory(self);
@@ -231,6 +249,8 @@ impl<S: 'static> Runtime<S> {
 
     /// Host time on the logical clock.
     pub(super) fn wall_clock(&self) -> Option<f64> {
+        #[cfg(test)]
+        if let Some(clock) = &self.test_clock { return Some(clock.now()); }
         self.wall_start.map(|t0| t0.elapsed().as_secs_f64())
     }
 
@@ -260,7 +280,7 @@ impl<S: 'static> Runtime<S> {
 
     pub(super) fn transaction(&self) -> Tx {
         Tx { trace: self.tracing().then(crate::el::TraceCalls::default), mods: self.held_mods, selection: self.selection_snapshot(),
-            input_time: crate::input::time::current(), clock: self.clock, focus_visible: self.focus.keyboard(), ..Tx::default() }
+            input_time: crate::input::time::current(), clock: self.clock, focus_visible: self.focus.keyboard(), focused: self.focused_key(), ..Tx::default() }
     }
 
     /// A scalar from the actual draw path (e.g. `shell.width`). Values hold until resampled.
@@ -293,6 +313,17 @@ impl<S: 'static> Runtime<S> {
 
     pub(super) fn logical_wake_deadline(&self) -> Option<f64> {
         self.wake_deadlines.first().copied().into_iter().chain(self.loop_wake.map(|w| w.0)).min_by(f64::total_cmp)
+    }
+
+    /// The next due timer of `poll`'s, on `wake_deadline`'s clock.
+    pub(crate) fn poll_wake_deadline(&self) -> Option<f64> {
+        self.wake_deadlines.first().copied()
+    }
+
+    /// The next frame motion asks for at its own cadence (a loop's next step, a video's next
+    /// picture), on `wake_deadline`'s clock.
+    pub(crate) fn motion_wake_deadline(&self) -> Option<f64> {
+        self.loop_wake.map(|w| w.0)
     }
 
     /// Lands every track before the next frame: growth, reveals and follow-the-end (guarantee 8,
@@ -435,9 +466,10 @@ impl<S: 'static> Runtime<S> {
         self.wake_deadlines.drain(..due);
         self.fire_hover_delays();
         self.fire_press_repeat();
-        let (wake, redraw) = crate::spell::pause::tick(&mut self.spell_watch, self.clock);
+        // Marks are paint's (`paint::content`), and this frame paints: a pause that ends or words
+        // the checker brought back show without the view running again.
+        let (wake, _marked) = crate::spell::pause::tick(&mut self.spell_watch, self.clock);
         if let Some(at) = wake { self.schedule_wakes([std::time::Duration::from_secs_f64((at - self.clock).max(0.0))]); }
-        if redraw { self.dirty = true; }
         if let Some(poll) = self.poll.filter(|_| !polled) {
             let mut one = self.transaction();
             // Scheduling does not imply a model change.
@@ -480,17 +512,18 @@ impl<S: 'static> Runtime<S> {
             // the previous field. The same boundary covers an earlier handler, and lets a
             // file drag find only what is mounted and reachable now (a covered window builds
             // nothing until this).
-            let routed = matches!(&action, Action::Key { .. } | Action::KeyUp(_) | Action::Physical(..) | Action::Ime(_) | Action::Paste(..) | Action::Files(_));
+            let routed = matches!(&action, Action::Key { .. } | Action::KeyUp(_) | Action::Physical(..) | Action::Ime(_) | Action::FinishIme | Action::Paste(..) | Action::Files(_));
             // So is a playground an earlier handler opened or moved.
             if routed { self.latch_playground(&mut tx); }
             if (ran || self.dirty || !tx.scroll_to.is_empty()) && routed {
                 if ran || self.dirty {
                     self.capture_flights(&mut tx);
                     if self.settle { tx.settle(); }
-                    self.settled |= tx.settle;
+                    self.settled |= tx.commit.lands();
                     #[cfg(debug_assertions)]
                     if ran_other || self.dirty || ran_layout { self.live_check = None; }
                     self.capture_keeps(&mut tx);
+                    tx.unprompted = self.motion_needs_cause && why & CommitWhy::INPUT == 0 && !tx.asked_motion;
                     self.commit_for(&tx, std::mem::take(&mut why) | CommitWhy::ROUTE | if self.dirty { CommitWhy::DIRTY } else { 0 });
                     #[cfg(debug_assertions)]
                     { let check = self.live_check.take(); self.compare_live_check(check); ran_other = false; }
@@ -500,7 +533,7 @@ impl<S: 'static> Runtime<S> {
                 if !tx.scroll_to.is_empty() {
                     self.drop_scroll_holds();
                     for r in std::mem::take(&mut tx.scroll_to) {
-                        self.reveal_row(&r, tx.instant);
+                        self.reveal_row(&r, tx.commit.snaps());
                     }
                 }
             }
@@ -563,15 +596,17 @@ impl<S: 'static> Runtime<S> {
                 if self.viewport_stepped { tx.window_step = true } else { tx.relayout = true }
             }
             if self.settle {
-                tx.instant = true;
-                tx.settle = true;
+                tx.commit = Commit::Settle;
             }
-            self.settled = tx.settle;
+            self.settled = tx.commit.lands();
             self.state_unchanged = !ran && !self.dirty && !ran_layout && !self.settle && self.commits > 0;
             #[cfg(debug_assertions)]
             if ran_other || besides || ran_layout || read_moved { self.live_check = None; }
             self.capture_keeps(&mut tx);
             let flag = |on: bool, bit: u16| if on { bit } else { 0 };
+            // Motion has a cause: the user, in this window. A commit nothing in this frame's
+            // input asked for shows what it brings in its final state (`Tx::unprompted`).
+            tx.unprompted = self.motion_needs_cause && why & CommitWhy::INPUT == 0 && !tx.asked_motion;
             self.commit_for(&tx, why | flag(self.dirty, CommitWhy::DIRTY) | flag(self.relayout, CommitWhy::RELAYOUT) | flag(self.settle, CommitWhy::SETTLE)
                 | flag(shifted, CommitWhy::VIRTUAL) | flag(ran_layout, CommitWhy::LAYOUT) | flag(read_moved, CommitWhy::READ));
             #[cfg(debug_assertions)]
@@ -603,7 +638,7 @@ impl<S: 'static> Runtime<S> {
         let mut scroll_bottom = std::mem::take(&mut tx.scroll_bottom);
         let scroll_pages = std::mem::take(&mut tx.scroll_pages);
         let mut scroll_offsets = std::mem::take(&mut tx.scroll_offsets);
-        if tx.instant {
+        if tx.commit.snaps() {
             for (_, animated) in &mut scroll_bottom { *animated = false; }
             for r in &mut scroll_offsets { r.glide = None; }
         }
@@ -614,7 +649,7 @@ impl<S: 'static> Runtime<S> {
         if !scroll_to.is_empty() || destination || follow {
             self.drop_scroll_holds();
         }
-        for r in &scroll_to { self.reveal_row(r, tx.instant); }
+        for r in &scroll_to { self.reveal_row(r, tx.commit.snaps()); }
         if destination || follow {
             self.step_scroll(0.0);
         }
@@ -623,9 +658,9 @@ impl<S: 'static> Runtime<S> {
         if !scroll_pages.is_empty() { self.scroll_pages(scroll_pages); }
         if !scroll_offsets.is_empty() { self.scroll_to_offsets(scroll_offsets); }
         // Explicit destinations processed after a reveal win for its entire lifetime.
-        if destination { self.scroll_reveals.clear(); }
+        if destination { self.requests.step(requests::Event::Destination); }
         // Those scrolls moved the caret after the commit a view placed from it saw.
-        if self.caret_watch && self.caret_moved(None) { self.commit(&Tx { instant: true, ..Tx::default() }); }
+        if self.caret_watch && self.caret_moved(None) { self.commit(&Tx { commit: Commit::Instant, ..Tx::default() }); }
         if let Some(request) = tx.select.take() {
             let from_change = std::mem::take(&mut tx.select_from_change);
             self.apply_select_request(request, from_change);
@@ -638,14 +673,14 @@ impl<S: 'static> Runtime<S> {
         if let Some(publish) = tests::MID_FRAME.with(|hook| hook.borrow_mut().take()) { publish(); }
         // Poll and input can publish after the initial wake read without committing. Sample
         // those values now, but retain the wake: a picture may still need next frame's layout.
-        let live_animating = self.latch_live(live_woke || self.live_pending());
+        let live_pending = live_woke || self.live_pending();
+        let live_animating = self.latch_live(live_pending);
         if let Some(trace) = tx.trace.take() {
             for event in trace.events { self.trace_event(event); }
             for (name, kind, value) in trace.channels { self.trace_channel(name, kind, value); }
         }
-        self.fit_held = std::mem::take(&mut self.fit_hold);
-        let dt = if self.fit_held { 0.0 } else { dt };
-        let instant_scroll = tx.instant || self.settled;
+        let dt = if self.fit_frame_holds() { 0.0 } else { dt };
+        let instant_scroll = tx.commit.snaps() || self.settled;
         let animating = self.step_motion(dt, instant_scroll) || live_animating;
         self.stats.shaped = self.text.shaped - shaped0;
         let filling = self.virtual_filling();
@@ -663,9 +698,17 @@ impl<S: 'static> Runtime<S> {
     /// frame then runs at exactly that time, however long the host slept. A hidden window
     /// sleeps through it; showing it settles.
     fn wake_for_motion(&mut self, at: f64) {
-        if !self.surface_visible || self.time_scale <= 0.0 { return; }
+        if !self.live.visible() || self.time_scale <= 0.0 { return; }
         let wake = self.clock + (at - self.t).max(0.0) / self.time_scale as f64;
         if self.loop_wake.is_none_or(|w| wake < w.0) { self.loop_wake = Some((wake, at)); }
+    }
+
+    /// Wakes for one frame at clock time `due` and draws nothing before it, as a delayed start
+    /// does: an instant scroll's hover hold asks for the frame it lets go on this way, so a
+    /// resting window draws no frame while the hold waits.
+    pub(super) fn wake_for_clock(&mut self, due: f64) {
+        let at = self.t + (due - self.clock).max(0.0) * self.time_scale as f64;
+        self.wake_for_motion(at);
     }
 
     pub(super) fn catch_up_motion(&mut self, dt: f64) {
@@ -727,12 +770,14 @@ impl<S: 'static> Runtime<S> {
         let mut source = |on: bool, bit: u16| { if on { sources |= bit; } on };
         animating |= source(self.step_growth(step as f32), AnimSource::GROWTH);
         animating |= source(self.step_scroll(step as f32), AnimSource::SCROLL);
-        animating |= source(self.step_nudges(), AnimSource::SCROLL);
+        // A hold draws nothing while it waits: its wake asks for the one frame that ends it.
+        let hold_wake = self.step_nudges();
         for stack in self.stacks.values_mut() { stack.grown = 0.0; }
         animating |= source(self.reveals_active(), AnimSource::REVEAL);
         // Values set from `on_scroll_offset` show in the frame that scrolled.
         if self.tell_scroll_offsets(instant_scroll) {
-            let live = self.latch_live(self.take_live_wake());
+            let took = self.take_live_wake();
+            let live = self.latch_live(took);
             if live { sources |= AnimSource::LIVE; }
             let running = self.scene.store().running();
             waits = running.then(|| self.scene.store().waiting_until()).flatten();
@@ -758,10 +803,16 @@ impl<S: 'static> Runtime<S> {
         self.end_exit_mask();
         self.record_rewind();
         animating |= source(self.loops_active, AnimSource::LOOP);
-        animating |= source(self.static_scale_settling || self.pixel_snap.easing(), AnimSource::SCALE_SETTLE);
+        animating |= source(self.scale_frame.is_some() || self.pixel_snap.easing(), AnimSource::SCALE_SETTLE);
         animating |= source(self.videos_active, AnimSource::VIDEO);
         animating |= source(self.draw_text_flights(), AnimSource::TEXT_FLIGHT);
+        if !animating && raster_check::on() {
+            self.check_resting_raster();
+        }
         if let Some(at) = waits { self.wake_for_motion(at); }
+        // An instant scroll's hold draws nothing until it ends: wake for the one frame that
+        // resolves hover then, taken from the state each frame so a re-arm moves it on.
+        if let Some(due) = hold_wake { self.wake_for_clock(due); }
         self.images.end_frame();
         if self.track_marks {
             self.marks.resize(self.instances.len(), 0);

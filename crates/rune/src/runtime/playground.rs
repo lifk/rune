@@ -2,7 +2,7 @@
 //! and what a new stage leaves behind.
 
 use super::*;
-use crate::playground::{FILTER, Nav, Region, Request};
+use crate::playground::{FILTER, Moved, Nav, Region, Request};
 
 pub(crate) fn handler_states<'a, S: 'static>(state: &'a mut S, playground: &'a mut Option<Box<crate::playground::Live<S>>>) -> crate::states::States<'a> {
     match playground {
@@ -47,7 +47,7 @@ impl<S: 'static> Runtime<S> {
         let requests = std::mem::take(&mut tx.playground);
         if requests.is_empty() { return; }
         // The playground swaps whole views: no fades between them.
-        tx.instant = true;
+        tx.commit = tx.commit.instant();
         let Some(playground) = &mut self.playground else { return };
         playground.request(requests);
         self.dirty = true;
@@ -80,13 +80,12 @@ impl<S: 'static> Runtime<S> {
         self.press = capture::Press::default();
         self.secondary = capture::Secondary::Up;
         self.drop_drag_out_request();
-        self.text_sel.dragging = false;
+        self.select_step(selectable::phase::Event::Release);
         self.input_click.clear();
         self.hovered = None;
         self.hover_gone.clear();
         self.hover_within.clear();
-        self.hover_shown.clear();
-        self.hover_pending.clear();
+        self.hover_delays.clear();
         self.forget_drop_targets();
         self.titlebar.clear();
         self.press_clicks.clear();
@@ -208,10 +207,9 @@ impl<S: 'static> Runtime<S> {
 
     /// Gives `region` the keyboard, redrawing the columns' focus.
     fn give_region(&mut self, region: Region) {
-        let focused = self.focus.owned();
+        let focus = self.focus.owned();
         let Some(playground) = &mut self.playground else { return };
-        playground.see_focus(focused.as_deref());
-        if playground.set_region(region) { self.dirty = true; }
+        if playground.moved(Moved::Give { region, seen: focus }) { self.dirty = true; }
     }
 
     /// A press in the open playground gives its column the keyboard.
@@ -225,18 +223,20 @@ impl<S: 'static> Runtime<S> {
     /// field focused in the stage, Tab into the side column. Focus a hover moved (a menu-like
     /// row under the pointer) is passed over, and so is focus leaving: the column keeps it.
     fn sync_region(&mut self) {
-        let (focused, hover) = (self.focus.owned(), self.focus.hovered());
+        if self.playground.as_ref().is_none_or(|p| p.saw_focus(self.focus.path())) { return; }
+        let at = if self.focus.hovered() { None } else { self.focused_index() };
+        let region = at.map(|i| {
+            if self.under(i, |k| k == "playground-side") {
+                Region::Side
+            } else if self.under(i, crate::playground::is_stage) {
+                Region::Stage
+            } else {
+                Region::List
+            }
+        });
+        let focus = self.focus.owned();
         let Some(playground) = &mut self.playground else { return };
-        if !playground.see_focus(focused.as_deref()) || hover { return; }
-        let Some(i) = self.focused_index() else { return };
-        let region = if self.under(i, |k| k == "playground-side") {
-            Region::Side
-        } else if self.under(i, crate::playground::is_stage) {
-            Region::Stage
-        } else {
-            Region::List
-        };
-        if self.playground.as_mut().is_some_and(|p| p.set_region(region)) { self.dirty = true; }
+        if playground.moved(Moved::Focus { focus, region }) { self.dirty = true; }
     }
 
     /// Polls the open stage, then queues the keys its steps pressed ([`Play::press`]) behind
@@ -265,17 +265,24 @@ impl<S: 'static> Runtime<S> {
         let Some(region) = self.playground.as_ref().filter(|p| p.is_open()).map(|p| p.region()) else { return self.route_key(ev, false, one) };
         let aside = self.focused_index().filter(|&i| !self.under(i, crate::playground::is_stage)).and_then(|_| self.focus.set_aside());
         if let Some(p) = &mut self.playground {
-            p.set_region(Region::Stage);
+            p.moved(Moved::Hold(Region::Stage));
             p.pressing = true;
         }
         let took = self.route_key(ev, false, one);
         if let Some(p) = &mut self.playground { p.pressing = false; }
+        // Focus goes back only if the key left it where it was: otherwise what it focused stays,
+        // and the next look at focus gives that column the keyboard.
         let back = aside.filter(|_| self.focus.path().is_none());
+        let path = back.as_ref().and_then(|aside| match aside {
+            focus_machine::Focus::On { path, .. } => Some(path.clone()),
+            _ => None,
+        });
         let Some(p) = &mut self.playground else { return took };
-        p.set_region(region);
+        p.moved(Moved::Resume { region, back: path });
         if let Some(aside) = back {
-            if let focus_machine::Focus::On { path, .. } = &aside { p.see_focus(Some(path)); }
             self.focus.put_back(aside);
+            // A key that blurred it reported the slot off; it's back.
+            self.sync_side_focus();
         }
         took
     }
@@ -296,11 +303,11 @@ impl<S: 'static> Runtime<S> {
         !self.focus.hovered() && self.focused_index().is_some_and(|i| self.nodes[i].key.as_deref().is_some_and(|k| k.starts_with("playground-slot-")))
     }
 
-    /// Tells the playground whether the keyboard is on its side controls that take keys, so
-    /// their view can mark what the keys move; a change rebuilds the view.
+    /// Tells the keyboard whether the side controls that take keys have focus, so their view
+    /// can mark what the keys move; a change rebuilds the view.
     pub(super) fn sync_side_focus(&mut self) {
-        let active = self.on_side_keys();
-        if self.playground.as_mut().is_some_and(|p| p.set_side_active(active)) { self.dirty = true; }
+        let slot = self.on_side_keys();
+        if self.playground.as_mut().is_some_and(|p| p.moved(Moved::Slot(slot))) { self.dirty = true; }
     }
 
     /// The paths of the focusable controls in the playground's side column, in order.

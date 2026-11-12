@@ -71,7 +71,8 @@ fn pick(hwnd: HWND, context: &Context) -> Option<String> {
         GetCursorPos(&mut at);
         // Without the foreground, the menu doesn't close when the user clicks elsewhere.
         SetForegroundWindow(hwnd);
-        let picked = TrackPopupMenu(popup, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON, at.x, at.y, 0, hwnd, ptr::null());
+        let flags = TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON | crate::popup_menu::layout();
+        let picked = TrackPopupMenu(popup, flags, at.x, at.y, 0, hwnd, ptr::null());
         PostMessageW(hwnd, WM_NULL, 0, 0);
         DestroyMenu(popup);
         match menu.get((picked as usize).checked_sub(1)?) { Some(TrayItem::Action { id, .. }) => Some(id.clone()), _ => None }
@@ -158,7 +159,10 @@ impl Native {
             drop(context);
         }).map_err(|e| TrayError::Backend(e.to_string()))?;
         match result.recv() {
-            Ok(Ok(window)) => Ok(Self { window, model, worker: Some(worker) }),
+            Ok(Ok(window)) => {
+                LIVE.lock().unwrap_or_else(|e| e.into_inner()).push(window);
+                Ok(Self { window, model, worker: Some(worker) })
+            }
             Ok(Err(e)) => { let _ = worker.join(); Err(e) }
             Err(_) => { let _ = worker.join(); Err(TrayError::Backend("tray thread exited".into())) }
         }
@@ -171,8 +175,22 @@ impl Native {
     pub(super) fn set_tooltip(&self, tooltip: String) { self.model.lock().unwrap().tooltip = tooltip; self.update(); }
 }
 
+/// The windows of the trays alive now, so a fast exit can take their icons off the
+/// notification area (an icon a process leaves behind stays until the pointer passes over it).
+static LIVE: Mutex<Vec<isize>> = Mutex::new(Vec::new());
+
+/// Removes every tray icon at once, from whatever thread (`NIM_DELETE` names the icon by its
+/// window and id); their threads and windows go with the process.
+pub(super) fn remove_all() {
+    for &window in LIVE.lock().unwrap_or_else(|e| e.into_inner()).iter() {
+        // SAFETY: `data` names an icon this process added; a removed one fails harmlessly.
+        unsafe { Shell_NotifyIconW(NIM_DELETE, &data(window as HWND, 0)) };
+    }
+}
+
 impl Drop for Native {
     fn drop(&mut self) {
+        LIVE.lock().unwrap_or_else(|e| e.into_inner()).retain(|&w| w != self.window);
         // SAFETY: WM_CLOSE destroys the window on its own thread, which then quits its loop.
         unsafe { PostMessageW(self.window as HWND, WM_CLOSE, 0, 0) };
         if let Some(worker) = self.worker.take() { let _ = worker.join(); }

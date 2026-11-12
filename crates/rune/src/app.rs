@@ -69,6 +69,7 @@ pub struct App<S: 'static> {
     pub(crate) turn_scope: Option<TurnScope<S>>,
     pub(crate) on_focus: Option<fn(&mut S, bool, &mut Tx)>,
     pub(crate) on_mods: Option<fn(&mut S, crate::Mods, &mut Tx)>,
+    pub(crate) on_visibility: Option<fn(&mut S, bool, &mut Tx)>,
     pub(crate) on_ime: Option<fn(&mut S, &crate::Ime, &mut Tx) -> bool>,
     pub(crate) on_reopen: Option<fn(&mut S, bool, &mut Tx) -> bool>,
     pub(crate) on_open_url: Option<crate::open_url::incoming::OnOpenUrl<S>>,
@@ -91,11 +92,14 @@ pub struct App<S: 'static> {
     /// `App::font_url`'s fonts, which a web app fetches before its first frame.
     #[cfg(target_arch = "wasm32")]
     pub(crate) font_urls: Vec<String>,
+    /// `App::font_url_later`'s fonts, which a web app fetches after its first frame.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) late_font_urls: Vec<String>,
     pub(crate) float_on_open: bool,
     /// `App::open_inactive`: the first open leaves focus where it is.
     pub(crate) open_inactive: bool,
-    /// `App::maximized`: the window opens maximized.
-    pub(crate) maximized: bool,
+    /// `App::maximized`, `App::full_screen`: how the window's first open shows it.
+    pub(crate) open_as: crate::windows::OpenAs,
     pub(crate) modifier_keys: bool,
     pub(crate) tab_visits_controls: bool,
     pub(crate) srgb_blend: bool,
@@ -124,6 +128,7 @@ impl<S: 'static> App<S> {
             turn_scope: None,
             on_focus: None,
             on_mods: None,
+            on_visibility: None,
             on_ime: None,
             on_reopen: None,
             on_open_url: None,
@@ -144,9 +149,11 @@ impl<S: 'static> App<S> {
             web_document: false,
             #[cfg(target_arch = "wasm32")]
             font_urls: Vec::new(),
+            #[cfg(target_arch = "wasm32")]
+            late_font_urls: Vec::new(),
             float_on_open: false,
             open_inactive: false,
-            maximized: false,
+            open_as: crate::windows::OpenAs::Normal,
             modifier_keys: false,
             tab_visits_controls: false,
             srgb_blend: true,
@@ -225,7 +232,15 @@ impl<S: 'static> App<S> {
     /// Open the window maximized, as a window saved maximized reopens. The size it opens at
     /// stays what restoring it returns to.
     pub fn maximized(mut self, maximized: bool) -> Self {
-        self.maximized = maximized;
+        self.open_as = self.open_as.maximized(maximized);
+        self
+    }
+
+    /// Open the window full screen, as a window saved full screen reopens (Electron's
+    /// `setFullScreen(true)`): borderless over the display it opens on, on Windows and Linux.
+    /// Leaving full screen returns to the frame it opened at, maximized if `maximized` is on too.
+    pub fn full_screen(mut self, full_screen: bool) -> Self {
+        self.open_as = self.open_as.full_screen(full_screen);
         self
     }
 
@@ -277,6 +292,16 @@ impl<S: 'static> App<S> {
     /// ```
     pub fn on_modifiers(mut self, f: fn(&mut S, crate::Mods, &mut Tx)) -> Self {
         self.on_mods = Some(f);
+        self
+    }
+
+    /// Hears the window go off screen (minimised, hidden, or covered whole by other windows
+    /// where the system says so) and come back, with whether it shows now, as a web page's
+    /// `visibilitychange` hears `document.hidden` change: for work that should wait while no
+    /// one can see it, such as a notification's timer. Called once per change after the first
+    /// frame. Native windows only.
+    pub fn on_visibility(mut self, f: fn(&mut S, bool, &mut Tx)) -> Self {
+        self.on_visibility = Some(f);
         self
     }
 
@@ -650,7 +675,7 @@ impl<S: 'static> AppHandle<S> {
     /// nonactivating panel takes keys without activating. The window open at launch doesn't
     /// activate the app beyond what the platform does at launch.
     pub fn open(&self) {
-        self.request(|q| { q.window = Some(WindowRequest::Open(None)); q.minimize = false; });
+        self.request(|q| { q.window = Some(WindowRequest::Open(None)); q.cancel_minimize(); });
     }
 
     /// Show or recreate the window without requesting focus. A minimized window stays minimized;
@@ -661,13 +686,13 @@ impl<S: 'static> AppHandle<S> {
 
     /// Hide the window, retaining its host and state. Does not invoke the close callback.
     pub fn hide(&self) {
-        self.request(|q| { q.window = Some(WindowRequest::Hide); q.minimize = false; });
+        self.request(|q| { q.window = Some(WindowRequest::Hide); q.cancel_minimize(); });
     }
 
     /// Focus/activate an already-visible window, restoring it if minimized.
     /// On Wayland this requests attention; use activate(token) for compositor-authorized focus.
     pub fn focus(&self) {
-        self.request(|q| { q.focus = true; q.minimize = false; });
+        self.request(|q| { q.activation = Some(Activation::Focus); });
     }
 
     /// Set the outer position in physical desktop pixels (negative coordinates are valid).
@@ -689,13 +714,13 @@ impl<S: 'static> AppHandle<S> {
     /// lets it take focus. Where tokens don't exist this is `open`.
     pub fn activate(&self, token: impl Into<String>) {
         let token = token.into();
-        self.request(|q| { q.window = Some(WindowRequest::Open(Some(token).filter(|t| !t.is_empty()))); q.minimize = false; });
+        self.request(|q| { q.window = Some(WindowRequest::Open(Some(token).filter(|t| !t.is_empty()))); q.cancel_minimize(); });
     }
 
     /// Close the window as the close button would (`App::on_close` runs; without
     /// `keep_running` the app quits).
     pub fn close(&self) {
-        self.request(|q| { q.window = Some(WindowRequest::Close); q.minimize = false; });
+        self.request(|q| { q.window = Some(WindowRequest::Close); q.cancel_minimize(); });
     }
 
     /// Minimize the window, as `Tx::minimize` does from a handler. Does nothing for a hidden
@@ -703,7 +728,7 @@ impl<S: 'static> AppHandle<S> {
     /// the shown window; a later `open`, `focus`, `hide` or `close` cancels it, and it cancels
     /// an earlier `focus`.
     pub fn minimize(&self) {
-        self.request(|q| { q.minimize = true; q.focus = false; });
+        self.request(|q| { q.activation = Some(Activation::Minimize); });
     }
 
     /// Put the window into or out of fullscreen, as the window manager's fullscreen action
@@ -724,7 +749,14 @@ impl<S: 'static> AppHandle<S> {
     /// app quit before it mounts never does.
     pub fn quit(&self) {
         self.shared.quitting.store(true, Ordering::Release);
-        self.request(|q| q.quit = true);
+        self.request(|q| q.quit = q.quit.max(Some(crate::quit::After::Exit)));
+    }
+
+    /// Quit the app as [`AppHandle::quit`] does, then start it again with the same arguments
+    /// once this process has exited ([`Tx::relaunch`]). Web: as `quit`.
+    pub fn relaunch(&self) {
+        self.shared.quitting.store(true, Ordering::Release);
+        self.request(|q| q.quit = Some(crate::quit::After::Relaunch));
     }
 
     /// macOS: show or hide the app's Dock icon (and app menu) while it runs, switching between
@@ -778,17 +810,28 @@ pub(crate) enum WindowRequest {
     Close,
 }
 
+/// What `AppHandle` asked of the window's activation: bring it forward, or minimize it. The
+/// later of the two wins. A show leaves it alone so a minimize can follow one; opening,
+/// hiding, closing or focusing the window takes a minimize back out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Activation {
+    /// Focus and activate an already-visible window, restoring it if minimized.
+    Focus,
+    /// Minimize the window, after a show in the same turn.
+    Minimize,
+}
+
 pub(crate) struct Requests<S> {
     pub window: Option<WindowRequest>,
     pub dock: Option<bool>,
-    pub focus: bool,
-    /// `AppHandle::minimize`, after `window`. It and `focus` are last-wins.
-    pub minimize: bool,
+    /// `AppHandle::focus` or `AppHandle::minimize`; last-wins (`cancel_minimize`).
+    pub activation: Option<Activation>,
     /// `AppHandle::set_fullscreen` / `Tx::set_fullscreen`; last-wins.
     pub fullscreen: Option<bool>,
     pub position: Option<(i32, i32)>,
     pub place: Option<crate::windows::PlaceRequest>,
-    pub quit: bool,
+    /// `AppHandle::quit` or `AppHandle::relaunch`, and what follows the exit.
+    pub quit: Option<crate::quit::After>,
     /// `AppHandle::wake` asked for `poll`.
     pub woken: bool,
     /// Keys a background input source (a gamepad) sent for the runtime, in order.
@@ -797,15 +840,27 @@ pub(crate) struct Requests<S> {
 }
 
 impl<S> Requests<S> {
+    /// Asks something of the window itself: show, hide or close it, focus or minimize it, or
+    /// move it. A request added here reaches both `only_updates` and `Shared::window_pending`.
+    fn asks_window(&self) -> bool {
+        self.window.is_some()
+            || self.activation.is_some()
+            || self.fullscreen.is_some()
+            || self.position.is_some()
+            || self.place.is_some()
+    }
+
+    /// A later open, hide, close or focus takes a minimize back out; a show leaves it, so a
+    /// minimize can follow one.
+    fn cancel_minimize(&mut self) {
+        if self.activation == Some(Activation::Minimize) { self.activation = None; }
+    }
+
     /// Nothing but updates: no wake for `poll`, no window, focus or geometry request.
     pub(crate) fn only_updates(&self) -> bool {
         !self.woken
-            && self.window.is_none()
-            && !self.focus
-            && !self.minimize
+            && !self.asks_window()
             && self.fullscreen.is_none()
-            && self.position.is_none()
-            && self.place.is_none()
             && self.keys.is_empty()
     }
 }
@@ -815,12 +870,11 @@ impl<S> Default for Requests<S> {
         Requests {
             window: None,
             dock: None,
-            focus: false,
-            minimize: false,
+            activation: None,
             fullscreen: None,
             position: None,
             place: None,
-            quit: false,
+            quit: None,
             woken: false,
             keys: Vec::new(),
             updates: Vec::new(),
@@ -895,7 +949,7 @@ impl<S> Shared<S> {
     /// A request a `--desktop` run applies to the window (dock and quit aside) waits for `take`.
     pub(crate) fn window_pending(&self) -> bool {
         let r = self.requests.lock().unwrap();
-        r.window.is_some() || r.focus || r.minimize || r.position.is_some() || r.place.is_some() || !r.updates.is_empty()
+        r.asks_window() || !r.updates.is_empty()
     }
 
     pub fn take_place(&self) -> Option<crate::windows::PlaceRequest> {
@@ -1022,7 +1076,7 @@ mod tests {
             Some(WindowRequest::Close),
             "window requests collapse to the latest"
         );
-        assert!(!requests.quit);
+        assert!(requests.quit.is_none());
         let mut n = 0;
         for f in requests.updates {
             f(&mut n, &mut Tx::default());
@@ -1069,10 +1123,10 @@ mod tests {
         }).join().unwrap();
         let requests = app.shared.take();
         assert_eq!(requests.window, Some(WindowRequest::Show), "focus must not overwrite show");
-        assert!(requests.focus);
+        assert_eq!(requests.activation, Some(Activation::Focus));
         assert_eq!(requests.position, Some((-300, 40)));
         let drained = app.shared.take();
-        assert!(!drained.focus && drained.window.is_none() && drained.position.is_none());
+        assert!(drained.activation.is_none() && drained.window.is_none() && drained.position.is_none());
     }
 
     #[test]
@@ -1113,17 +1167,17 @@ mod tests {
         let mut rt = Runtime::new(0u32, |_: &u32, _: &mut Cx<u32>| el(), (100.0, 100.0), Env::default());
         rt.on_focus = Some(|_, focused, tx| if !focused { tx.minimize(); });
         rt.window_focus(true);
-        assert!(!rt.minimize_request);
+        assert!(!rt.minimize.latched());
         rt.window_focus(false);
-        assert!(rt.minimize_request && rt.shell_request.is_none(), "a handler's minimize is latched for the shell");
+        assert!(rt.minimize.field() && rt.shell_request.is_none(), "a handler's minimize is latched for the shell");
         rt.ignore_minimize("a test");
-        assert!(!rt.minimize_request, "a shell that can't minimize takes the request");
+        assert!(!rt.minimize.latched(), "a shell that can't minimize takes the request");
         rt.update(|_, tx| tx.minimize());
-        assert!(rt.minimize_request);
+        assert!(rt.minimize.field());
         let app = App::new(spec());
         app.handle().minimize();
         let requests = app.shared.take();
-        assert!(requests.minimize && requests.window.is_none());
+        assert!(requests.activation == Some(Activation::Minimize) && requests.window.is_none());
     }
 
     #[test]
@@ -1139,21 +1193,24 @@ mod tests {
         app.handle().set_fullscreen(true);
         let requests = app.shared.take();
         assert_eq!(requests.fullscreen, Some(true));
-        assert!(requests.minimize == false && requests.window.is_none());
+        assert!(requests.activation.is_none() && requests.window.is_none());
     }
 
     #[test]
     fn a_handles_minimize_and_focus_are_last_wins_and_hide_close_or_open_cancel_it() {
         let app = App::new(spec());
         let h = app.handle();
-        let after = |calls: &dyn Fn()| { calls(); let r = app.shared.take(); (r.window, r.focus, r.minimize) };
-        assert_eq!(after(&|| { h.focus(); h.minimize(); }), (None, false, true), "focus then minimize stays minimized");
-        assert_eq!(after(&|| { h.minimize(); h.focus(); }), (None, true, false));
-        assert_eq!(after(&|| { h.show(); h.minimize(); }), (Some(WindowRequest::Show), false, true), "shows, then minimizes");
-        assert_eq!(after(&|| { h.minimize(); h.show(); }), (Some(WindowRequest::Show), false, true));
-        assert_eq!(after(&|| { h.minimize(); h.hide(); }), (Some(WindowRequest::Hide), false, false));
-        assert_eq!(after(&|| { h.minimize(); h.close(); }), (Some(WindowRequest::Close), false, false));
-        assert_eq!(after(&|| { h.minimize(); h.open(); }), (Some(WindowRequest::Open(None)), false, false), "open restores");
+        let after = |calls: &dyn Fn()| { calls(); let r = app.shared.take(); (r.window, r.activation) };
+        assert_eq!(after(&|| { h.focus(); h.minimize(); }), (None, Some(Activation::Minimize)), "focus then minimize stays minimized");
+        assert_eq!(after(&|| { h.minimize(); h.focus(); }), (None, Some(Activation::Focus)));
+        assert_eq!(after(&|| { h.show(); h.minimize(); }), (Some(WindowRequest::Show), Some(Activation::Minimize)), "shows, then minimizes");
+        assert_eq!(after(&|| { h.minimize(); h.show(); }), (Some(WindowRequest::Show), Some(Activation::Minimize)));
+        assert_eq!(after(&|| { h.minimize(); h.hide(); }), (Some(WindowRequest::Hide), None));
+        assert_eq!(after(&|| { h.minimize(); h.close(); }), (Some(WindowRequest::Close), None));
+        assert_eq!(after(&|| { h.minimize(); h.open(); }), (Some(WindowRequest::Open(None)), None), "open restores");
+        assert_eq!(after(&|| { h.focus(); h.open(); }), (Some(WindowRequest::Open(None)), Some(Activation::Focus)), "open leaves a focus asked first");
+        assert_eq!(after(&|| { h.focus(); h.hide(); }), (Some(WindowRequest::Hide), Some(Activation::Focus)));
+        assert_eq!(after(&|| { h.minimize(); h.show(); h.focus(); }), (Some(WindowRequest::Show), Some(Activation::Focus)));
     }
 
     #[test]
@@ -1170,13 +1227,13 @@ mod tests {
         press(&mut rt, Code::KeyW, 'w', Unhandled::Close);
         assert_eq!(rt.shell_request.take(), Some(Shell::Close), "an unhandled ⌘W closes as the button would");
         press(&mut rt, Code::KeyM, 'm', Unhandled::Minimize);
-        assert!(std::mem::take(&mut rt.minimize_request) && rt.shell_request.is_none());
+        assert!(rt.minimize_step(crate::window::MinimizeEvent::Taken) && rt.shell_request.is_none());
         rt.on_key = Some(|n, ev, _| { *n += 1; ev.is_command('w') });
         press(&mut rt, Code::KeyW, 'w', Unhandled::Close);
         assert_eq!((rt.state, rt.shell_request), (1, None), "the app's own ⌘W wins, once");
         press(&mut rt, Code::KeyM, 'm', Unhandled::Minimize);
         assert_eq!(rt.state, 2, "the app saw ⌘M first");
-        assert!(rt.minimize_request, "and didn't take it");
+        assert!(rt.minimize.latched(), "and didn't take it");
     }
 
     thread_local! { static BUILDS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) }; }

@@ -36,10 +36,11 @@ pub(crate) struct A11yItem {
     pub id: Option<String>,
     /// A link's URL.
     pub href: Option<String>,
-    /// In a page, text's font, so the browser's selection and find highlights land on the
+    /// Text's font, so the browser's Find highlight (and, in a page, its selection) lands on the
     /// drawn glyphs.
     pub font: Option<A11yFont>,
-    /// `El::selectable` text in a page: the browser selects and copies it.
+    /// Text the browser selects and copies, in a page: `El::selectable` text, and text outside
+    /// anything that takes the pointer (`Runtime::page_text_selects`).
     pub selectable: bool,
 }
 
@@ -143,17 +144,33 @@ pub(crate) fn align_name(align: crate::el::Align) -> &'static str {
     }
 }
 
+/// Roles of controls a press works, which keep the pointer even without their own handler.
+const CONTROL_ROLES: [&str; 16] = ["button", "link", "tab", "checkbox", "switch", "radio", "combobox", "option",
+    "menuitem", "menuitemcheckbox", "menuitemradio", "slider", "spinbutton", "scrollbar", "textbox", "searchbox"];
+
+/// Node `n` takes the pointer: a press, drag, gesture or pointer handler, a control, or a field.
+/// Hover alone doesn't count; the page's mirror forwards hover to the canvas.
+pub(crate) fn takes_pointer(n: &Node) -> bool {
+    let h = &n.handlers;
+    h.on_press.is_some() || h.on_double_press.is_some() || h.on_secondary_press.is_some()
+        || h.on_pointer_move.is_some() || h.on_drag.is_some() || h.drag_out.is_some() || h.on_drag_start.is_some()
+        || h.gestures.as_ref().is_some_and(|g| g.takes_gestures())
+        || n.input.is_some() || n.window_drag == crate::el::WindowDrag::Drag
+        || n.a11y.more.as_ref().is_some_and(|m| m.href.is_some())
+        || CONTROL_ROLES.contains(&n.role)
+}
+
 fn round1(v: f32) -> f32 { (v * 10.0).round() / 10.0 }
 
 pub(crate) fn clean_slice(spec: &crate::el::TextSpec, a: usize, b: usize) -> String {
     let a = a.min(spec.content.len());
     let b = b.min(spec.content.len()).max(a);
-    if spec.uncopied.is_empty() {
+    if spec.cold.uncopied.is_empty() {
         return spec.content[a..b].to_owned();
     }
     let mut out = String::with_capacity(b - a);
     let mut cur = a;
-    for &(ua, ub) in &spec.uncopied {
+    for &(ua, ub) in &spec.cold.uncopied {
         let (ua, ub) = (ua as usize, ub as usize);
         if ub <= cur || ua >= b { continue; }
         let stop = ua.max(cur).min(b);
@@ -165,13 +182,13 @@ pub(crate) fn clean_slice(spec: &crate::el::TextSpec, a: usize, b: usize) -> Str
 }
 
 fn text_runs(path: &str, spec: &crate::el::TextSpec) -> Vec<A11yRun> {
-    if spec.links.is_empty() {
+    if spec.cold.links.is_empty() {
         let t = clean_slice(spec, 0, spec.content.len());
         return if t.is_empty() { Vec::new() } else { vec![A11yRun { text: t, href: None, path: None, link: None }] };
     }
     let mut out = Vec::new();
     let mut at = 0usize;
-    for (idx, link) in spec.links.iter().enumerate() {
+    for (idx, link) in spec.cold.links.iter().enumerate() {
         let (la, lb) = ((link.start as usize).min(spec.content.len()), (link.end as usize).min(spec.content.len()));
         if la > at {
             let before = clean_slice(spec, at, la);
@@ -208,7 +225,7 @@ impl<S: 'static> Runtime<S> {
         // its offset changes nothing in the mirror, and hashing it would rewrite the whole page's
         // items on every frame of a horizontal flick.
         let mut entries: Vec<_> = self.scrolls.iter()
-            .map(|(id, s)| (id.0, s.offset.to_bits(), if self.page.on { 0 } else { s.x.offset.to_bits() }))
+            .map(|(id, s)| (id.0, s.offset.to_bits(), if self.page.is_some() { 0 } else { s.x.offset.to_bits() }))
             .collect();
         entries.sort_unstable_by_key(|e| e.0);
         entries.hash(&mut h);
@@ -236,6 +253,20 @@ impl<S: 'static> Runtime<S> {
             if let Some(p) = self.nodes[i].parent { ends[p] = ends[p].max(ends[i]); }
         }
         ends
+    }
+
+    /// In a page, which nodes' text the browser selects without `El::selectable`, as a web page's
+    /// text selects: all of it but text inside something that takes the pointer (mirrored text
+    /// takes the pointer from the canvas, so it would swallow that control's press) or inside
+    /// `El::unselectable`. Empty outside a page. A parent always comes before its children.
+    pub(crate) fn page_text_selects(&self) -> Vec<bool> {
+        if self.page.is_none() { return Vec::new(); }
+        let mut out = vec![false; self.nodes.len()];
+        for (i, n) in self.nodes.iter().enumerate() {
+            let inherited = n.parent.is_none_or(|p| out[p]);
+            out[i] = inherited && !n.a11y.unselectable && !takes_pointer(n);
+        }
+        out
     }
 
     pub(crate) fn descendant_label(&self, root: usize, end: usize) -> String {
@@ -277,6 +308,7 @@ impl<S: 'static> Runtime<S> {
         let mut last_flow_parent: Option<usize> = None;
         let mut inline: Option<Inline> = None;
         let ends = self.subtree_ends();
+        let selects = self.page_text_selects();
         // Open containers: (end of their node subtree, their item index).
         let mut open: Vec<(usize, usize)> = Vec::new();
         // Open horizontal scrollers and how far the browser has scrolled each, so their content
@@ -303,7 +335,7 @@ impl<S: 'static> Runtime<S> {
             }
             // A page hands every horizontal viewport to the DOM: iOS scrolls it natively, at the
             // compositor's rate, with axis locking, momentum and text selection.
-            if self.page.on && n.scroll_axes == crate::el::ScrollAxes::X {
+            if self.page.is_some() && n.scroll_axes == crate::el::ScrollAxes::X {
                 let rect = self.mirror_rect(i, 0.0);
                 let offset = self.scrolls.get(&n.id).map_or(0.0, |st| st.x.offset);
                 let mut item = A11yItem::new("scroll_x", &n.path, rect);
@@ -373,6 +405,7 @@ impl<S: 'static> Runtime<S> {
             }
             if let Some(spec) = n.text.as_deref().filter(|t| !t.redacted && rect[2] > 0.0 && rect[3] > 0.0) {
                 let runs = text_runs(&n.path, spec);
+                let selectable = spec.selectable || selects.get(i).copied().unwrap_or(false);
                 if !runs.is_empty() {
                     let is_heading = n.role == "heading";
                     // Flowed word-by-word paragraphs (`pr_chips::flow`) put sibling words (or 1-word
@@ -396,10 +429,10 @@ impl<S: 'static> Runtime<S> {
                         i += 1;
                         continue;
                     }
-                    let text_rect = if self.page.on { inset_rect(rect, n.inset) } else { rect };
+                    let text_rect = inset_rect(rect, n.inset);
                     if !is_heading && flow_group.is_none()
                         && let Some(prev) = inline.filter(|l| l.item + 1 == out.len() && l.parent == n.parent)
-                        && let Some(gap) = prev.gap(n.target, spec.style, spec.selectable)
+                        && let Some(gap) = prev.gap(n.target, spec.style, selectable)
                         && let Some(item) = out.last_mut().filter(|it| it.kind == "text")
                     {
                         join_inline(item, text_rect, runs, gap > spec.style.size * 0.15);
@@ -418,18 +451,20 @@ impl<S: 'static> Runtime<S> {
                     item.text = plain;
                     item.runs = rich_runs;
                     item.id = if is_heading { anchor_id(n.key.as_deref()) } else { None };
-                    if self.page.on {
-                        item.rect = text_rect;
-                        let style = spec.style;
-                        item.font = Some(A11yFont {
-                            family: family_name(style.family),
-                            weight: style.weight,
-                            line_height: round1(if style.line_height > 0.0 { style.line_height } else { style.size * 1.25 }),
-                            tracking: style.tracking,
-                            italic: style.italic,
-                            align: align_name(spec.align),
-                        });
-                        item.selectable = spec.selectable;
+                    // Laid out in the drawn text's font, so the browser's Find highlight (and, in a
+                    // page, its selection) lands on the glyphs.
+                    item.rect = text_rect;
+                    let style = spec.style;
+                    item.font = Some(A11yFont {
+                        family: family_name(style.family),
+                        weight: style.weight,
+                        line_height: round1(if style.line_height > 0.0 { style.line_height } else { style.size * 1.25 }),
+                        tracking: style.tracking,
+                        italic: style.italic,
+                        align: align_name(spec.align),
+                    });
+                    if self.page.is_some() {
+                        item.selectable = selectable;
                     }
                     push(&mut out, item);
                     last_flow_parent = if is_heading { None } else { flow_group };
@@ -440,7 +475,7 @@ impl<S: 'static> Runtime<S> {
                         top: n.target[1],
                         bottom: n.target[3],
                         style: spec.style,
-                        selectable: spec.selectable,
+                        selectable,
                     });
                 }
             } else if n.role == "heading" && let Some(lbl) = n.label.clone().filter(|s| !s.trim().is_empty()) {
@@ -460,7 +495,7 @@ impl<S: 'static> Runtime<S> {
     /// The page's horizontal scroll viewports: their paths and how far each is scrolled right.
     /// The browser's mirror holds the containers, so the DOM keeps an offset Rune scrolls too.
     pub(crate) fn page_scroll_x(&self) -> Vec<(String, f32)> {
-        if !self.page.on { return Vec::new(); }
+        if self.page.is_none() { return Vec::new(); }
         self.nodes.iter()
             .filter(|n| n.scroll_axes == crate::el::ScrollAxes::X)
             .filter_map(|n| self.scrolls.get(&n.id).map(|st| (n.path.clone(), st.x.offset as f32)))
@@ -468,8 +503,15 @@ impl<S: 'static> Runtime<S> {
     }
 
     /// Returns updated JSON only when layout commits, viewport or scroll positions changed.
+    /// Whether only scrolling moved the mirror since it was last built: nothing committed and the
+    /// viewport is the same.
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    pub(crate) fn web_a11y_scrolled_only(&self, mirror: &A11yMirror) -> bool {
+        mirror.commits == self.commits && !mirror.json.is_empty() && mirror.scroll_digest != self.scroll_digest()
+    }
+
     pub(crate) fn web_a11y<'a>(&self, mirror: &'a mut A11yMirror) -> Option<&'a str> {
-        let vp = (self.viewport.0.to_bits(), if self.page.on { 0 } else { self.viewport.1.to_bits() });
+        let vp = (self.viewport.0.to_bits(), if self.page.is_some() { 0 } else { self.viewport.1.to_bits() });
         let sd = self.scroll_digest();
         if mirror.commits == self.commits && mirror.viewport == vp && mirror.scroll_digest == sd && !mirror.json.is_empty() {
             return None;
@@ -499,7 +541,7 @@ impl<S: 'static> Runtime<S> {
             Some("a11y_link") => {
                 let Some(k) = event["link"].as_u64().and_then(|n| usize::try_from(n).ok()) else { return false };
                 let Some(i) = self.live(path) else { return false };
-                if self.nodes[i].text.as_ref().is_none_or(|t| k >= t.links.len()) { return false; }
+                if self.nodes[i].text.as_ref().is_none_or(|t| k >= t.cold.links.len()) { return false; }
                 self.queue.push(Action::Link(path.to_owned(), k));
                 true
             }

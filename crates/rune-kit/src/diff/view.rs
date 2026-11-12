@@ -164,7 +164,8 @@ impl<S: 'static> DiffView<S> {
         let scroll = col().key("scroll").w_full().grow(1.0).min_h(0.0).scroll(ScrollSpec { stick_bottom: false });
         let scroll = if wrap { scroll } else { scroll.scroll_xy() };
         let scroll = scroll.child(list);
-        let mut root = col().key(key).w_full().grow(1.0).min_h(0.0).fill(v.look.bg).child(scroll);
+        // Code reads left to right in any window: gutters at the left, old before new.
+        let mut root = col().key(key).dir(rune::Direction::Ltr).w_full().grow(1.0).min_h(0.0).fill(v.look.bg).child(scroll);
         if let Some(f) = st.sticky() {
             root = root.child(v.file_header(s, st, f, true).key("sticky").absolute(0.0, 0.0).w_full());
         }
@@ -574,7 +575,7 @@ impl<S: 'static> View<S> {
         c.cursor(Cursor::Pointer).on_drag(move |s: &mut S, d: &mut Drag, tx| {
             let st = get(s);
             match d.phase {
-                Phase::Down => st.press_line(f, at),
+                Phase::Down => st.press_line(f, at, tx.mods().shift),
                 Phase::Move => {
                     let Some(r) = st.row_from(row_at, d.y) else { return };
                     let r = st.rows[r as usize];

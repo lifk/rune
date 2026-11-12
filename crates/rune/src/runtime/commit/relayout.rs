@@ -43,11 +43,39 @@ pub(super) fn reusable(n: &Node) -> bool {
     })
 }
 
+/// How a commit measures, decided once before it starts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum CommitKind {
+    /// Run the view and flatten what it returns.
+    Rebuild,
+    /// Only the window resized: lay the last commit's nodes out again at the new size.
+    Relayout,
+    /// Only virtual windows moved: keep mounted subtrees and build the rows that enter.
+    Remount,
+}
+
 impl<S: 'static> Runtime<S> {
+    /// Which way this commit measures. Both shortcuts need everything the view reads to be as
+    /// the last commit built it, checked here once for both.
+    pub(super) fn commit_kind(&self, tx: &Tx) -> CommitKind {
+        let unchanged = self.state_unchanged && !tx.commit.lands() && !self.reuse.read_moved
+            && self.reuse.scale == self.env.scale && self.reuse.srgb == Some(self.srgb_blend)
+            && self.playground.is_none() && !self.patch_pending()
+            // Exiting nodes left the layout tree.
+            && self.layout.live_count() == self.nodes.len();
+        if !unchanged { return CommitKind::Rebuild; }
+        if self.relayout {
+            // The nodes it built are all there, in the layout tree's order.
+            return if self.nodes.iter().all(reusable) { CommitKind::Relayout } else { CommitKind::Rebuild };
+        }
+        if self.virtual_only() { CommitKind::Remount } else { CommitKind::Rebuild }
+    }
+
     /// Measures a commit: lays the last tree out again when only the viewport changed since it
     /// was built, remounts virtual rows alone when only their window moved, else runs the view.
     pub(super) fn measure_commit(&mut self, tx: &Tx) -> Measured {
-        if self.resize_only(tx) {
+        let kind = self.commit_kind(tx);
+        if kind == CommitKind::Relayout {
             // The view keeps what it last read; `settle_layout_reads` and the caret check run it
             // when the new layout moves them.
             let reads = self.layout_seen.reads.clone();
@@ -64,7 +92,7 @@ impl<S: 'static> Runtime<S> {
                 }
             };
         }
-        if self.virtual_only(tx) {
+        if kind == CommitKind::Remount {
             let _blend = crate::theme::scope(self.srgb_blend);
             let _bars = crate::platform::scroll_bars::scope(self.scroll_bars.state, self.scroll_bars.runtime_id);
             let reads = self.layout_seen.reads.clone();
@@ -88,17 +116,6 @@ impl<S: 'static> Runtime<S> {
         self.refresh_layout_seen();
         self.measure(tx)
     }
-
-    /// Whether this commit only resized the window: nothing the view reads changed since the
-    /// last commit built it, and the nodes it built are all there, in the layout tree's order.
-    pub(super) fn resize_only(&self, tx: &Tx) -> bool {
-        self.relayout && self.state_unchanged && !tx.settle && !self.reuse.read_moved
-            && self.reuse.scale == self.env.scale && self.reuse.srgb == Some(self.srgb_blend)
-            && self.playground.is_none() && !self.patch_pending()
-            // Exiting nodes left the layout tree.
-            && self.layout.live_count() == self.nodes.len()
-            && self.nodes.iter().all(reusable)
-    }
 }
 
 impl<S: 'static> Measurement<'_, S> {
@@ -114,8 +131,9 @@ impl<S: 'static> Measurement<'_, S> {
         for slot in self.nodes.iter_mut() {
             if slot.input.is_some() || slot.is_secure() {
                 // The new nodes lay their text out again; the cache then holds the only reference.
-                slot.text_layout = None;
-                let mut copy = Node { elided: None, virtual_mount: false, ..slot.clone() };
+                // A by-paragraph field's goes with it, to re-break its paragraphs from.
+                let kept = slot.text_layout.take().filter(|l| matches!(l, TextLayout::Paragraphs(_)));
+                let mut copy = Node { elided: None, virtual_mount: false, text_layout: kept, ..slot.clone() };
                 copy.clear_run_layout();
                 nodes.push(copy);
             } else {
@@ -161,7 +179,8 @@ impl<S: 'static> Measurement<'_, S> {
             nodes,
             reduced_motion: self.reduced_motion,
             time_scale: self.time_scale,
-            defaults: self.defaults,
+            zoom: self.zoom,
+            defaults: self.defaults.clone(),
             titlebar: self.titlebar,
             caret_read: self.caret_read,
             layout_reads: self.layout_reads,
@@ -331,14 +350,22 @@ pub(super) fn lay_out_text_in_place(text: &mut TextSystem, n: &mut Node, scale: 
 pub(super) fn lay_out_text(text: &mut TextSystem, n: &mut Node, w: f32, scale: f32) {
     let Some(spec) = &n.text else { return };
     // A cell of a run draws from the run's layout (and keeps it cached) instead of its own.
-    let run = spec.advance_in.as_ref().map(|(run, at)| (text.run_layout(run, spec.style, scale), *at));
+    let run = spec.cold.advance_in.as_ref().map(|(run, at)| (text.run_layout(run, spec.style, scale), *at));
     if let Some((r, _)) = run.filter(|(r, at)| r.x(*at).is_some()) {
-        n.text_layout = Some(r.layout.clone());
+        n.text_layout = Some(TextLayout::Single(r.layout.clone()));
         n.cold_mut().run_layout = Some(r);
         return;
     }
     let wrap = spec.wrap.then_some(w * scale);
-    let mut layout = text.layout_for_spec(spec, scale, wrap, line_alignment(spec));
+    // A by-paragraph field keeps what its last layout (still on it) shares with this one.
+    let mut layout = match text.layout_text(spec, n.input.is_some(), scale, wrap, line_alignment(spec), n.text_layout.as_ref()) {
+        TextLayout::Single(l) => l,
+        paragraphs => {
+            n.text_layout = Some(paragraphs);
+            n.elided = None;
+            return;
+        }
+    };
     let mut elided = None;
     if spec.truncate && layout.full_width() > w * scale + 0.5 {
         let (cut, e) = truncated(text, spec, scale, w * scale);
@@ -346,6 +373,6 @@ pub(super) fn lay_out_text(text: &mut TextSystem, n: &mut Node, w: f32, scale: f
     } else if let Some((cut, e)) = clamped(text, spec, scale, w * scale, &layout) {
         (layout, elided) = (cut, Some(e));
     }
-    n.text_layout = Some(layout);
+    n.text_layout = Some(TextLayout::Single(layout));
     n.elided = elided;
 }

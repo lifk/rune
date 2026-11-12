@@ -109,7 +109,7 @@ impl<S: 'static> Runtime<S> {
         });
         if !any_active_unseen && !mounts { return Vec::new(); }
         // Each new node's place in the last build, found walking both trees in step.
-        let mut last = paint_tracks::LastBuild::default();
+        let mut last = paint_tracks::Finder::default();
         let olds: Vec<Option<usize>> = nodes.iter().map(|n| last.find(&self.nodes, n.id)).collect();
         let window = [0.0, 0.0, self.viewport.0, self.viewport.1];
         // Per node: the swept clip and scroll-offset range its children are under, in points.
@@ -126,6 +126,19 @@ impl<S: 'static> Runtime<S> {
                 Some(p) if n.above.is_none() && p < i => inner[p],
                 Some(_) if n.above.is_none() => { after[i] = true; (window, [0.0; 2], [0.0; 2]) }
                 _ => (window, [0.0; 2], [0.0; 2]),
+            };
+            // A stuck element draws where it's held, not where scrolling puts it: its shift last
+            // frame brings it, and everything it holds, back into its viewport (a header's
+            // ticking number mounts in sight there).
+            let (shift_min, shift_max) = match olds[i].filter(|_| self.has_sticky).and_then(|o| self.stuck.get(o).filter(|s| **s != 0.0).map(|&s| (o, s))) {
+                Some((o, s)) => {
+                    let axis = usize::from(!matches!(self.sticky_of(o), Some((crate::el::StickyEdge::Left, ..))));
+                    let (mut lo, mut hi) = (shift_min, shift_max);
+                    lo[axis] -= s;
+                    hi[axis] -= s;
+                    (lo, hi)
+                }
+                None => (shift_min, shift_max),
             };
             let t = n.target;
             let r = [t[0] - shift_max[0], t[1] - shift_max[1], t[2] - shift_min[0], t[3] - shift_min[1]];

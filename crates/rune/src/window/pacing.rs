@@ -12,10 +12,13 @@ pub(crate) fn wall_wake_deadline<S>(rt: &Runtime<S>) -> Option<Instant> {
 /// covered, faded out or unpaced. A timer due within a frame interval of the last poll
 /// (`Tx::wake_after(Duration::ZERO)` asks for the next frame) waits for that interval, so a
 /// poll that keeps asking steps at most once per `TIMER_FRAME` and never spins the loop.
+/// Motion's own frames (a loop's step, a video's next picture) come when due: held a frame
+/// after each poll, they'd drift later every frame and drop one every half second.
 pub(crate) fn timer_deadline<S>(rt: &Runtime<S>) -> Option<Instant> {
-    let due = wall_wake_deadline(rt)?;
-    let polled = rt.wall_start.and_then(|t0| t0.checked_add(Duration::try_from_secs_f64(rt.polled_at()).ok()?));
-    Some(polled.map_or(due, |polled| due.max(polled + TIMER_FRAME)))
+    let wall = |t: f64| rt.wall_start?.checked_add(Duration::try_from_secs_f64(t).ok()?);
+    let polled = wall(rt.polled_at());
+    let timer = rt.poll_wake_deadline().and_then(wall).map(|due| polled.map_or(due, |polled| due.max(polled + TIMER_FRAME)));
+    timer.into_iter().chain(rt.motion_wake_deadline().and_then(wall)).min()
 }
 
 /// Paces the frame a hidden host keeps ready to show (a launcher's cached pixels, a retained
@@ -112,39 +115,55 @@ pub(crate) fn timer_wants_frame<S>(rt: &Runtime<S>, next_frame: Option<Instant>)
 /// re-check.
 pub(crate) const TIMER_FRAME_STALL: Duration = OCCLUDED_RETRY;
 
-/// The frame a due timer asked a shown window for, until it draws it. An overdue timer whose
-/// frame never comes would otherwise keep turning the loop (`new_events` asks again, no frame
-/// arrives, and `wake_deadline` returns the past timer), so after `TIMER_FRAME_STALL` the timer
-/// runs covered instead and the next ask starts over.
+/// The frame a due timer asked a shown window for, until it draws it, and whether only that timer
+/// asked for it. An overdue timer whose frame never comes would otherwise keep turning the loop
+/// (`new_events` asks again, no frame arrives, and `wake_deadline` returns the past timer), so
+/// after `TIMER_FRAME_STALL` the timer runs covered instead and the next ask starts over.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum TimerFrame {
-    /// No timer waits on a frame.
-    #[default]
-    Idle,
-    /// A due timer asked for a frame at `asked`, which the window hasn't drawn yet.
-    Owed { asked: Instant },
+pub(crate) struct TimerFrame {
+    /// When a due timer asked for a frame the window hasn't drawn yet.
+    owed: Option<Instant>,
+    /// Only a timer asked for it, so the frame may draw what is already on screen instead of
+    /// taking a drawable. A window event, or any wake but the display tick, says otherwise. It
+    /// outlives `drawn`: a draw that returns before its decision leaves the frame for a later one.
+    quiet: bool,
 }
 
 impl TimerFrame {
-    /// A due timer asked for a frame, if none is owed already.
-    pub(crate) fn asked(&mut self, now: Instant) {
-        if *self == TimerFrame::Idle { *self = TimerFrame::Owed { asked: now }; }
+    /// A due timer asked for a frame: only it did, if nothing else has since the last frame.
+    pub(crate) fn asked_quiet(&mut self, now: Instant) {
+        self.owed.get_or_insert(now);
+        self.quiet = true;
     }
 
+    /// The frame asked for at the stall bound ran covered in its place, and the next is asked for
+    /// from `now`; only a timer asking still holds.
+    pub(crate) fn stalled_again(&mut self, now: Instant) { self.owed = Some(now); }
+
     /// The frame came, or ran covered in its place: nothing waits for it now.
-    pub(crate) fn drawn(&mut self) { *self = TimerFrame::Idle; }
+    pub(crate) fn drawn(&mut self) { self.owed = None; }
+
+    /// Something other than a timer asked for a frame: the one that follows draws in full.
+    pub(crate) fn no_longer_quiet(&mut self) { self.quiet = false; }
+
+    /// Only a timer asked for the frame that is next to draw.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub(crate) fn quiet(&self) -> bool { self.quiet }
+
+    /// The frame reaches its draw decision: whether only a timer asked for it.
+    pub(crate) fn take_quiet(&mut self) -> bool { std::mem::take(&mut self.quiet) }
 
     /// Whether the frame asked for is still outstanding after the stall bound.
     pub(crate) fn stalled(&self, now: Instant) -> bool {
-        matches!(*self, TimerFrame::Owed { asked } if now >= asked + TIMER_FRAME_STALL)
+        self.owed.is_some_and(|asked| now >= asked + TIMER_FRAME_STALL)
     }
 
     /// The runtime's next timer as the host waits for it: one already due while its frame is
     /// outstanding waits out the stall instead, so the loop sleeps rather than waking at once
     /// for a frame that can't come.
     pub(crate) fn wait(&self, due: Option<Instant>, now: Instant) -> Option<Instant> {
-        match (due, *self) {
-            (Some(due), TimerFrame::Owed { asked }) if due <= now => Some(asked + TIMER_FRAME_STALL),
+        match (due, self.owed) {
+            (Some(due), Some(asked)) if due <= now => Some(asked + TIMER_FRAME_STALL),
             (due, _) => due,
         }
     }
@@ -188,8 +207,8 @@ impl Missed {
     /// event (a display tick, a notification, input or a timer). There is no `ControlFlow::Poll`
     /// here: retrying at once is what spins a core while a window is occluded or its displays
     /// sleep. A display link that is still running retries a timeout on its next tick.
-    /// `occluded_wait` is the caller's backoff, held to `OCCLUDED_RETRY..=OCCLUDED_MAX`; an
-    /// occluded miss waits it out, then doubles it.
+    /// `occluded_wait` is the caller's backoff (`Backoff`), held to
+    /// `OCCLUDED_RETRY..=OCCLUDED_MAX`; an occluded miss waits it out, then doubles it.
     pub(crate) fn retry(self, paced: bool, now: Instant, occluded_wait: &mut Duration) -> Option<Instant> {
         match self {
             Missed::Occluded => {
@@ -208,17 +227,25 @@ impl Missed {
 /// `reconfigures` times, synchronously; every other miss returns at once. On macOS a surface
 /// wgpu would call occluded is never asked: each failed `get_current_texture` leaks a texture
 /// id in wgpu-core 30.0.1.
-pub(crate) fn acquire(surface: &wgpu::Surface, device: &wgpu::Device, config: &wgpu::SurfaceConfiguration, reconfigures: u32,
+pub(crate) fn acquire(surface: &wgpu::Surface, gpu: &Gpu, config: &wgpu::SurfaceConfiguration, configured: bool, reconfigures: u32,
     meter: &mut SurfaceMeter) -> Result<wgpu::SurfaceTexture, Missed> {
-    acquire_checked(surface, device, config, reconfigures, meter, true)
+    acquire_checked(surface, gpu, config, configured, reconfigures, meter, true)
 }
 
 /// `acquire`, skipping the occlusion check when the caller has just read the window hosting
-/// the surface as visible (`check_occlusion` false).
-pub(crate) fn acquire_checked(surface: &wgpu::Surface, device: &wgpu::Device, config: &wgpu::SurfaceConfiguration, mut reconfigures: u32,
+/// the surface as visible (`check_occlusion` false). `configured` is whether the surface's last
+/// configuration took: one that didn't has no presentation, and wgpu panics on its next
+/// drawable (`Missed::Unconfigured`), so it is never asked.
+pub(crate) fn acquire_checked(surface: &wgpu::Surface, gpu: &Gpu, config: &wgpu::SurfaceConfiguration, configured: bool, mut reconfigures: u32,
     meter: &mut SurfaceMeter, check_occlusion: bool) -> Result<wgpu::SurfaceTexture, Missed> {
     #[cfg(not(target_os = "macos"))]
     let _ = check_occlusion;
+    // A lost device configures nothing, and wgpu drops the error that says so: like a surface
+    // whose configuration failed, it has no presentation to take a drawable from.
+    if gpu.is_lost() || !configured {
+        meter.failed(Missed::Unconfigured);
+        return Err(Missed::Unconfigured);
+    }
     #[cfg(target_os = "macos")]
     if check_occlusion && crate::platform::macos::surface_occluded(surface) {
         meter.skipped();
@@ -231,14 +258,14 @@ pub(crate) fn acquire_checked(surface: &wgpu::Surface, device: &wgpu::Device, co
             // A surface that won't take its configuration again is reported rather than
             // panicking in wgpu's default error handler.
             Err(Missed::Outdated) if reconfigures > 0 => {
-                if let Err(error) = super::configure(surface, device, config) {
+                if let Err(error) = super::configure(surface, gpu, config) {
                     eprintln!("rune: a surface refused its configuration: {error}");
                     return Err(Missed::Unconfigured);
                 }
                 reconfigures -= 1;
             }
             Err(Missed::Outdated) => {
-                return Err(match super::configure(surface, device, config) {
+                return Err(match super::configure(surface, gpu, config) {
                     Ok(()) => Missed::Outdated,
                     Err(error) => {
                         eprintln!("rune: a surface refused its configuration: {error}");

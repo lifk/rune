@@ -6,12 +6,19 @@ impl Windows {
     /// The app starts to quit (`crate::quit`): every window still open runs `App::on_quit`, once
     /// per quit. A session ending now (`ending`) then closes the windows as their close buttons
     /// would, before the loop ends, as a macOS logout does: the OS may end the process next.
-    pub(super) fn quit(&mut self, event_loop: &ActiveEventLoop, ending: bool) {
-        use crate::quit::{Effect, Event};
-        for effect in crate::quit::send(Event::Start { ending }) {
+    /// With `hide`, every window leaves the screen first, so the quit looks done the moment it
+    /// starts and the hooks run unseen.
+    pub(super) fn quit(&mut self, event_loop: &ActiveEventLoop, ending: bool, hide: bool) {
+        use crate::quit::{After, Effect, Event};
+        if hide {
+            for host in self.hosts.iter_mut().flatten() { host.vanish(); }
+            crate::marks::mark("quit.hidden");
+        }
+        for effect in crate::quit::send(Event::Start { ending, after: After::Exit }) {
             match effect {
                 Effect::RunHooks => {
                     for host in self.hosts.iter_mut().flatten() { host.quit_hook(); }
+                    crate::marks::mark("quit.hooks");
                     crate::quit::send(Event::HooksRan);
                 }
                 Effect::CloseAndExit => {
@@ -21,6 +28,8 @@ impl Windows {
                     }
                     crate::quit::send(Event::WindowsClosed);
                 }
+                // Only the loop's end relaunches.
+                Effect::Relaunch => {}
             }
         }
     }

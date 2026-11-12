@@ -116,7 +116,7 @@ Rune's core crate: views, layout, animation, rendering, text and the native shel
     place from Parley's bytes), pens sit on Skia's quarter pixels, and Skia's gamma tables
     (sRGB, contrast 1, eight luminance buckets) weigh each mask by its ink
     (`text/windows/`). Off Windows it draws as `Off`.
-  - `Windfoil`, the default everywhere but macOS and a Mac's browser: Rune's own text, the same
+  - `Windfoil`: Rune's own text with CoreText's weight, the same
     on every OS. Each glyph's exact pixel coverage from its outline, Windfoil's closed-form box filter over
     xy-monotone quadratics (DesLauriers 2026), with CoreText's dilation (times `TEXT_WEIGHT`,
     0.93, which puts its ink within 1% of CoreText's) and y autohint applied per pixel, pens on
@@ -131,6 +131,17 @@ Rune's core crate: views, layout, animation, rendering, text and the native shel
     start with the Windfoil shader everywhere but macOS, where the Classic shader keeps drawing
     until text asks for outlines; where it can't be built, the CPU fills the same masks
     (`text/outline/cover.rs`) and moving text draws from them.
+  - `WindfoilChromium`, the default everywhere but macOS and a Mac's browser, then `Slug`,
+    `HintedGpu` and `Hinted`: the other ways to draw from the outline store. Each takes Chromium's weight (no dilation, Skia's text gamma):
+    Windfoil's box coverage of the design outline, Slug's two-ray winding (`outline_slug` in
+    `outline.wgsl`), the outline after skrifa's light autohint, and that autohinted outline on
+    whole-pixel pens, which is Chromium's text on Linux. `FontSmoothing::ALL` lists every mode and
+    `FontSmoothing::support` says whether this machine draws one as named (`text/support.rs`).
+  - `WindfoilRgb` and `ClearType` (Windows): subpixel text. Masks hold three coverages a pixel
+    (Windfoil's box about each subpixel, or DirectWrite's `CLEARTYPE_3x1`), and the window draws
+    them with a dual-source pipeline that blends each channel by its own (`render/variant.rs`,
+    `Lcd`). Layers draw them grayscale; without dual-source blending they draw as
+    `WindfoilChromium` and `DirectWrite`.
   `On` and `Off` work on every OS, since they are arithmetic on outlines. Blending is separate
   (`srgb_blend`).
   `cargo run -p rune --example coretext_compare [-- --smoothing on|off]` measures
@@ -1320,6 +1331,7 @@ history-exclusion marker and expires on Rune's shared clipboard worker. Expiry
 compares the current text and, on macOS/Windows, the clipboard revision; copying
 something else cancels the old expiry. Linux's portable API exposes no revision,
 so it compares text. Clipboard managers must honor the platform marker themselves.
+On Windows, locking the session (Win+L) clears a secret still on the clipboard at once.
 
 Put `.on_paste(|s: &mut State, text: &str, tx| { ... })` on the view root (or modal
 root) to handle Cmd/Ctrl-V when no field is focused. `tx.request_paste()` requests
@@ -1910,9 +1922,13 @@ and push retained immutable CoreVideo buffers from a decoder thread. macOS uses
 CVMetalTextureCache and wgpu-hal Metal texture import without CPU pixel copies.
 BGRA and NV12 420v/420f are supported with BT.601/709 matrices and sRGB/709 transfer
 attachments. Pixel-matched video uses exact texel loads at Retina scale.
+A window's or overlay's first drawn surface compiles the surface pipeline on a thread of its
+own; the surface draws from the frame after it's ready, which the window's live wake asks for.
+Headless runs compile it in place.
 
 Per-draw notifications carry source frame ID, CPU submit time, completion-observed time,
-and optional GPU render-pass timestamp queries. These are **not presented-frame timestamps**:
+and optional GPU render-pass timestamp queries, read only while a drawn surface has an observer
+(`set_observer`): resolving them costs a submission a frame. These are **not presented-frame timestamps**:
 true presentation feedback needs the planned own Mac shell with CAMetalLayer /
 CAMetalDisplayLink. wgpu-hal 30 does not expose its acquired drawable, and wgpu 30
 forbids mixing normal encoding with the raw command-buffer completed-handler escape
@@ -1941,8 +1957,10 @@ tap.play();
 ```
 
 - **Controls and state**: `play` (from the start after `Ended`), `pause`, `seek` (clamped),
-  `set_rate`, `set_looping`, `set_muted`; `state()` is `Loading`, `Ready`, `Playing`, `Ended`
-  or `Failed(message)`, plus `time()`, `duration()`, `natural_size()`.
+  `set_rate`, `set_looping`, `set_muted`, `set_volume`; `state()` is `Loading`, `Ready`, `Playing`, `Ended`
+  or `Failed(message)`, plus `time()`, `duration()`, `natural_size()` and `has_sound()`
+  (whether the clip has a sound track it can play, as a page's controls grey their mute
+  button without one; `None` until the clip's facts are read).
 - **Sound**: `Player::file`/`url`/`new` make videos, which start muted. `Player::audio` makes
   an audio clip, which starts unmuted. `set_muted` changes either.
 - **Request headers**: `Player::request(url).header("Authorization", token).audio()` (or
@@ -1981,6 +1999,25 @@ tap.play();
   follows the virtual clock of the runtime on the thread that made it, as a video's does
   (pause, seek, rate, loop, and the end, which wakes the clip's waker), with no sound. `--tree` adds a `video` object (`kind`, `state`, `time`,
   `duration`, `size`, `rate`, `looping`, `muted`, `error`) to video elements.
+- **Windows**: Media Foundation's source reader decodes each clip on a thread of its own, with
+  the GPU's decoder (DXVA, through a D3D11 device on the adapter Rune draws with) where it has
+  one and in software otherwise. The source resolves while that device comes up. Each picture
+  is copied on the GPU into a small ring of shared NV12 textures, made as pictures need them (a
+  paused clip makes one), that Rune's D3D12 device samples in place, ordered by fences, with the
+  draw's bind group kept per texture: no CPU copy, and
+  the UI thread only swaps the picture for the refresh the frame presents at (read from DWM's
+  timing). A playing clip asks for the next frame when its next picture is due, not every
+  refresh. A clip nobody draws stops decoding (its queue fills); a muted one picks up at its
+  picture when drawn again, and after 3 s undrawn its decoder lets go of everything but the
+  picture on screen. Loops seek back while the last pictures still wait, so there's no gap.
+  Sound plays on the default output through WASAPI, following the playback clock. Media
+  Foundation, D3D11 and WASAPI load on the first clip, through `GetProcAddress`: nothing at
+  launch, nothing in the import table. Formats are what Media Foundation reads: mp4/mov/m4v
+  (H.264; HEVC, VP9 and AV1 with their system extensions), WebM, mp3, m4a/AAC, wav, flac. A
+  Windows N edition without the Media Feature Pack fails every clip with a message saying so.
+  `RUNE_VIDEO_LOG=1` prints each open's steps in microseconds (`frames` adds every picture);
+  `RUNE_VIDEO_DECODE=software` skips the GPU decoder. Request headers aren't sent on Windows
+  yet: such a clip fails with a message.
 - **Other platforms**: every clip reports `Failed("video playback isn't supported on this
   platform yet")` (or the audio equivalent), and video draws a neutral grey placeholder.
 

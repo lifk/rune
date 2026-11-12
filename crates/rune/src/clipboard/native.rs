@@ -54,6 +54,12 @@ fn worker() -> &'static mpsc::Sender<Request> {
 }
 
 /// Called by the shared event-loop exit path, including overlay-only applications.
+/// `clipboard::clear_secret_now`: the worker clears the last secret if it still holds the clipboard.
+#[cfg(target_os = "windows")]
+pub(super) fn clear_secret_now() {
+    if let Some(w) = WORKER.get() { let _ = w.sender.send(Request::Clear(None)); }
+}
+
 pub(super) fn shutdown() {
     if let Some(worker) = WORKER.get() { worker.stop(); }
 }
@@ -89,7 +95,7 @@ impl Backend for arboard::Clipboard {
         Some(content)
     }
     fn revision(&self) -> Option<u64> { revision() }
-    fn clear(&mut self) { let _ = arboard::Clipboard::clear(self); }
+    fn clear(&mut self) -> Result<(), String> { arboard::Clipboard::clear(self).map_err(|e| e.to_string()) }
 }
 
 fn run_worker<B: Backend>(recv: mpsc::Receiver<Request>, mut open: impl FnMut() -> Option<B>) {
@@ -106,7 +112,7 @@ fn run_worker<B: Backend>(recv: mpsc::Receiver<Request>, mut open: impl FnMut() 
             Ok(request) => request,
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
         };
-        if matches!(request, Request::Clear(_)) && core.held.is_none() { continue; }
+        if matches!(request, Request::Clear(_)) && core.hold.is_free() { continue; }
         if clipboard.is_none() { clipboard = open(); }
         let Some(cb) = &mut clipboard else {
             if let Request::Write(copy, notify) = request && let Some(slot) = copy.slot() {

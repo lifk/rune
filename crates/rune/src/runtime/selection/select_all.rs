@@ -19,7 +19,7 @@ impl<S: 'static> Runtime<S> {
             self.end_group_path(h).unwrap_or_else(|| self.end_path(h)).to_owned()
         });
         if unit.is_some() {
-            self.text_sel.pick.0 = unit;
+            self.selectable.pick.0 = unit;
         }
     }
 
@@ -35,7 +35,7 @@ impl<S: 'static> Runtime<S> {
             };
         }
         let live = |i: usize| self.is_selectable(i) && !self.subtree_exiting(i) && self.allowed(i);
-        let picked = self.text_sel.pick.0.as_deref().and_then(|p| self.live(p)).filter(|&u| {
+        let picked = self.selectable.pick.0.as_deref().and_then(|p| self.live(p)).filter(|&u| {
             if self.nodes[u].selection_group { (u + 1..self.nodes.len()).any(|j| self.member(j, u)) } else { live(u) }
         });
         if picked.is_some() {
@@ -57,7 +57,7 @@ impl<S: 'static> Runtime<S> {
                     return true;
                 }
                 Some(gp) if self.live(&gp).is_none() => {
-                    let texts = &self.virtuals.iter().nth(vi).unwrap().1.selection.texts;
+                    let texts = self.virtuals.iter().nth(vi).unwrap().1.selection.pins.texts();
                     let mut members = texts.iter().enumerate()
                         .filter(|(_, t)| t.group_path.as_deref() == Some(gp.as_str()))
                         .map(|(ti, _)| selectable::virtual_selection::EndRef::Offscreen(vi, ti));

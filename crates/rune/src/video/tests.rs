@@ -1,7 +1,7 @@
 use super::*;
 
 fn meta() -> Meta {
-    Meta { duration: 1.0, size: Some((64, 36)), frame: 0.25 }
+    Meta { duration: 1.0, size: Some((64, 36)), frame: 0.25, sound: false }
 }
 
 #[test]
@@ -52,6 +52,8 @@ fn extensions_come_from_the_last_path_segment() {
     assert_eq!(ext("sounds/clip."), None);
 }
 
+/// Windows reads WebM and Ogg when the system has their extensions, so it finds out on open.
+#[cfg(not(target_os = "windows"))]
 #[test]
 fn webm_video_fails_at_once() {
     let a = Player::url("https://example.com/clips/tap.webm?v=2");
@@ -64,9 +66,24 @@ fn webm_video_fails_at_once() {
     assert!(!a.is_playing(), "a failed clip doesn't play");
 }
 
+/// An audio clip no backend has seen, so nothing has changed before the test starts.
+fn quiet_audio() -> Player {
+    let shared = Arc::new(Shared {
+        source: MediaSource::from("missing.m4a"),
+        headers: Vec::new(),
+        kind: Kind::Audio,
+        ctl: Mutex::new(Control { muted: false, kind: Kind::Audio, ..Control::default() }),
+        wakes: Mutex::new(Vec::new()),
+        waker: WakerSlot::default(),
+        notified: AtomicU64::new(0),
+        native: Mutex::new(backend::Native::default()),
+    });
+    Player { surface: NativeSurface::with_video(shared.clone()), shared }
+}
+
 #[test]
 fn the_waker_hears_each_state_change_once() {
-    let a = Player::audio("missing.m4a");
+    let a = quiet_audio();
     let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let seen = calls.clone();
     a.set_waker(Arc::new(move || {
@@ -74,7 +91,7 @@ fn the_waker_hears_each_state_change_once() {
     }));
     a.shared.settle(false);
     assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 0, "nothing changed yet");
-    a.shared.ctl.lock().unwrap().open(Ok(Meta { duration: 2.0, size: None, frame: 1.0 / 30.0 }));
+    a.shared.ctl.lock().unwrap().open(Ok(Meta { duration: 2.0, size: None, frame: 1.0 / 30.0, sound: false }));
     a.shared.settle(false);
     a.shared.settle(false);
     assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1);
@@ -85,6 +102,7 @@ fn the_waker_hears_each_state_change_once() {
 
 /// An unsupported format fails inside the constructor, before any waker can be set: setting
 /// one afterwards still delivers that failure, once.
+#[cfg(not(target_os = "windows"))]
 #[test]
 fn a_waker_set_after_a_failure_hears_it_once() {
     let a = Player::url("tap.ogv");
@@ -126,6 +144,17 @@ fn parking_never_releases_a_playing_clip() {
     assert!(Arc::ptr_eq(&released[0], &clips[1].shared), "the oldest paused clip goes");
 }
 
+/// Only formats that no build reads fail at once; with `ogg-audio`, Ogg audio opens later.
+#[cfg(target_os = "macos")]
+#[test]
+fn only_formats_no_build_reads_fail_at_once() {
+    let ogv = Player::audio("https://example.com/clip.ogv");
+    assert!(matches!(ogv.shared.snapshot().state, PlayerState::Failed(e) if e.contains(".ogv")));
+    let ogg = Player::audio("https://example.com/clip.ogg");
+    let failed = matches!(ogg.shared.snapshot().state, PlayerState::Failed(_));
+    assert_eq!(failed, !cfg!(feature = "ogg-audio"), "{:?}", ogg.shared.snapshot().state);
+}
+
 #[test]
 fn handle_edits_are_shared_and_validated() {
     let v = Video::url("https://example.com/clip.mp4");
@@ -155,14 +184,14 @@ fn state_follows_open_play_end_and_failure() {
     c.open(Ok(meta()));
     assert_eq!(c.state(), PlayerState::Ready);
     assert_eq!((c.duration, c.size), (Some(1.0), Some((64, 36))));
-    c.playing = true;
+    step(&mut c, Event::Play);
     assert_eq!(c.state(), PlayerState::Playing);
     c.advance_virtual(10.0);
     c.advance_virtual(10.5);
     assert_eq!(c.time, 0.5);
     let generation = c.generation;
     c.advance_virtual(11.25);
-    assert_eq!((c.time, c.playing, c.ended), (1.0, false, true));
+    assert_eq!((c.time, &c.run), (1.0, &Run::Ended));
     assert_eq!(c.state(), PlayerState::Ended);
     assert!(c.generation > generation, "ending re-runs views");
     c.fail("boom".into());
@@ -174,21 +203,20 @@ fn state_follows_open_play_end_and_failure() {
 fn virtual_time_loops_rates_and_seeks() {
     let mut c = Control::default();
     c.open(Ok(meta()));
-    c.playing = true;
+    step(&mut c, Event::Play);
     c.looping = true;
     c.rate = 2.0;
     c.advance_virtual(0.0);
     c.advance_virtual(0.6);
     assert!((c.time - 0.2).abs() < 1e-9, "1.2 s wraps to 0.2: {}", c.time);
-    assert!(c.playing);
-    c.seek = Some(0.75);
-    c.anchor = None;
+    assert!(c.playing());
+    step(&mut c, Event::Seek(0.75));
     c.advance_virtual(5.0);
     assert_eq!(c.time, 0.75);
     c.advance_virtual(5.1);
     assert!((c.time - 0.95).abs() < 1e-9);
     // Paused time stays put whatever the clock does.
-    c.playing = false;
+    step(&mut c, Event::Pause);
     c.advance_virtual(9.0);
     assert!((c.time - 0.95).abs() < 1e-9);
 }
@@ -200,28 +228,28 @@ fn playing_after_the_end_restarts_from_zero() {
         let mut c = v.shared.ctl.lock().unwrap();
         c.open(Ok(meta()));
         c.time = 1.0;
-        c.ended = true;
+        c.run = Run::Ended;
     }
     assert_eq!(v.state(), PlayerState::Ended);
     v.play();
     let c = v.shared.ctl.lock().unwrap();
     assert_eq!(c.seek, Some(0.0));
-    assert!(c.playing && !c.ended);
+    assert!(c.playing());
 }
 
 #[test]
 fn display_positions_loop_or_end() {
     let mut c = Control::default();
     c.open(Ok(meta()));
-    c.playing = true;
+    step(&mut c, Event::Play);
     assert!(!c.observe(0.4, false));
     assert_eq!(c.time, 0.4);
     c.looping = true;
     assert!(c.observe(1.0, true), "looping restarts the player");
-    assert_eq!((c.time, c.playing), (0.0, true));
+    assert_eq!((c.time, c.playing()), (0.0, true));
     c.looping = false;
     assert!(!c.observe(1.2, true));
-    assert_eq!((c.time, c.playing, c.state()), (1.0, false, PlayerState::Ended));
+    assert_eq!((c.time, c.playing(), c.state()), (1.0, false, PlayerState::Ended));
 }
 
 #[test]
@@ -269,9 +297,9 @@ fn failures_draw_a_placeholder_and_stop_drawing() {
     let mut rt = crate::Runtime::new(v.clone(), view, (32.0, 18.0), crate::Env::new(true, 2.0));
     rt.frame(0.0);
     let PlayerState::Failed(message) = v.state() else { panic!("{:?}", v.state()) };
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     assert!(message.contains("no such file"), "{message}");
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     assert_eq!(message, "video playback isn't supported on this platform yet");
     let frame = v.surface().latest().expect("placeholder frame");
     assert_eq!((frame.size, frame.format), ([32, 18], Format::Bgra));
@@ -569,7 +597,7 @@ fn headless_audio_time_follows_the_virtual_clock() {
     let heard = ends.clone();
     let clip = a.clone();
     a.set_waker(Arc::new(move || {
-        if clip.shared.ctl.lock().unwrap().ended {
+        if clip.shared.ctl.lock().unwrap().run == Run::Ended {
             heard.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         }
     }));

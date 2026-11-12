@@ -47,8 +47,8 @@ pub(crate) struct NodeCold {
     pub(super) help: Option<String>,
     /// `El::help_when_truncated`.
     pub(super) help_cut: bool,
-    /// `El::help_above`.
-    pub(super) help_above: bool,
+    /// `El::help_side`.
+    pub(super) help_side: Option<crate::Side>,
     #[cfg(debug_assertions)]
     pub(super) scroll_source: Option<&'static std::panic::Location<'static>>,
 }
@@ -79,7 +79,7 @@ impl crate::cold::Empty for NodeCold {
         material: None,
         help: None,
         help_cut: false,
-        help_above: false,
+        help_side: None,
         #[cfg(debug_assertions)]
         scroll_source: None,
     };
@@ -94,7 +94,7 @@ pub(crate) struct Node {
     pub parent: Option<usize>,
     pub(super) taffy: SlotId,
     pub text: Option<crate::cold::SharedBox<TextSpec>>,
-    pub text_layout: Option<Rc<Layout<Ink>>>,
+    pub text_layout: Option<crate::text::TextLayout>,
     /// Where `text_layout` cut the text for `El::truncate` and its kin.
     pub(crate) elided: Option<Elision>,
     pub(super) input: Option<Box<InputSpec>>,
@@ -355,21 +355,6 @@ impl Default for Inh {
     }
 }
 
-/// What moves a scroll viewport's vertical offset: one mode at a time, so a viewport can't
-/// follow its bottom while it glides, or coast while a glide carries it.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(super) enum ScrollMode {
-    /// At rest where a hand, an app or a glide left it.
-    #[default]
-    Rest,
-    /// A stick-to-bottom viewport following its content's end.
-    Pinned,
-    /// Coasting from a fling, keys or wheel momentum at `v` points a second, decaying.
-    Momentum { v: f32 },
-    /// Gliding on a spring (`ScrollState::glide_spring`) at `v` points a second.
-    Glide { v: f32, to: GlideTo },
-}
-
 /// Where a glide goes.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum GlideTo {
@@ -392,50 +377,36 @@ impl GlideTo {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(super) struct ScrollState {
     pub(super) offset: f64,
+    /// What moves it, with the hand's latches for this frame (`runtime/scroll/mode.rs`).
     pub(super) mode: ScrollMode,
     pub(super) max: f64,
-    /// A hand moved the offset since the last scroll step (an input latch the step clears).
-    pub(super) direct: bool,
-    /// A hand or its momentum moved it in the last scroll step (derived there).
-    pub(super) scrolling: bool,
-    /// A hand (the wheel, keys, a drag, their momentum) or an app's instant jump moved it since
-    /// `El::on_scroll_offset` was last told; not following its bottom, a glide or an anchor.
-    pub(super) by_hand: bool,
-    /// A hand scrolled while the growth stack moved: no shrink glide until it settles.
-    pub(super) shrink_cut: bool,
-    /// The growth stack's layout end while its rows still move (see `ease_to_shrunk_end`).
-    pub(super) laid: Option<f64>,
     /// At-bottom state last sent to `El::on_at_bottom`.
     pub(super) at_bottom: Option<bool>,
     /// State last sent to `El::on_far_from_bottom`.
     pub(super) far_from_bottom: Option<bool>,
     /// Whether the last frame drew the content's bottom on the viewport's (see `stuck_offset`).
     pub(super) held: bool,
-    /// The offset, x and y, the last frame drew the content at, in points (slack and a stuck
-    /// bottom included): how far it carried the content up and left.
-    pub(super) drawn: [f32; 2],
-    /// Which way the last frame's drawn vertical offset stepped: -1, 0 or 1, kept across modes
-    /// so a glide landing on a pinned end carries its direction in. A pinned end that would step
-    /// straight back holds its pixel instead (see the paint pass).
-    pub(super) drawn_step: i8,
+    /// The horizontal offset the last frame drew the content at, in points.
+    pub(super) drawn_x: f32,
+    /// Where it drew the vertical offset, and the pinned end's hold (`scroll_drawn`).
+    pub(super) drawn: PixelHold,
     /// Room freed under a pinned growth stack, held under its last row (see `step_slack`).
     pub(super) slack: scroll_bottom::Slack,
     /// The horizontal axis of `El::scroll_x` and `El::scroll_xy`; all zero on a vertical one.
     pub(super) x: AxisScroll,
-    /// What `El::on_scroll_offset` was last told (`runtime/scroll/watch.rs`).
-    pub(super) told: Option<crate::ScrollPos>,
-    /// The `El::on_scroll_offset` handler that was told, by address: a rebuilt view's new
-    /// handler hears where the viewport stands, though it didn't move.
-    pub(super) told_by: usize,
+    /// What `El::on_scroll_offset` has been told, and which handler heard it
+    /// (`runtime/scroll/watch.rs`).
+    pub(super) watch: super::scroll_watch::Watch,
     /// The spring `Tx::scroll_to_with` gave the running glide, on both axes; `GLIDE` when none.
     pub(super) spring: Option<rune_motion::Spring>,
-    /// Frames left in which an app's instant scroll (`Tx::scroll_to_instant` and the like)
-    /// counts as layout moving, so hover under a still pointer holds while an app steps its
-    /// own glide frame by frame (`runtime/input/hover.rs`).
-    pub(super) nudged: u8,
+    /// An app's instant scroll (`Tx::scroll_to_instant` and the like) landed less than
+    /// `scroll_nudge::NUDGE_HOLD` ago, so content moved under a still pointer and hover waits
+    /// for it to pass while the app steps its own glide frame by frame
+    /// (`runtime/input/hover.rs`).
+    pub(super) nudge: scroll_nudge::Nudge,
 }
 
 /// A scroll viewport's horizontal offset, momentum velocity and limit (points).
@@ -486,9 +457,8 @@ pub(super) struct Stack {
     pub(super) pad_bottom: f32,
     pub(super) gap: f32,
     pub(super) width: f32,
-    /// Measure at the landing width immediately; defer height targets until it is stable.
-    pub(super) width_hold_until: f64,
-    pub(super) width_shrink_until: f64,
+    /// A width change the rows still wait out (heights it defers go in `pending_heights`).
+    pub(super) width_hold: WidthHold,
     pub(super) pending_heights: HashMap<NodeId, f32>,
     /// The window size at the last commit.
     pub(super) window: (f32, f32),
@@ -502,6 +472,38 @@ pub(super) struct Stack {
     pub(super) slides: content_slide::ContentSlides,
     /// Fold rows opening or shutting together as one block.
     pub(super) runs: Vec<growth_runs::GrowthRun>,
+}
+
+/// A growth stack whose width changed: its rows measure at the new width at once, but their
+/// new heights wait until the width is stable, and a streaming row shrinks only a while after.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(super) enum WidthHold {
+    #[default]
+    Off,
+    /// Heights wait until `until`; a streaming row may shrink from `shrink_from`.
+    Rewrap { until: f64, shrink_from: f64 },
+}
+
+impl WidthHold {
+    /// Seconds new heights wait after a width change.
+    const HOLD: f64 = 0.12;
+    /// Seconds a streaming row keeps its height after a width change before it may shrink.
+    const SHRINK: f64 = 0.4;
+
+    /// The width changed at `now`.
+    pub(super) fn rewrap(now: f64) -> WidthHold {
+        WidthHold::Rewrap { until: now + Self::HOLD, shrink_from: now + Self::SHRINK }
+    }
+
+    /// Whether a height set at `at` waits for the width to settle.
+    pub(super) fn defers(self, at: f64) -> bool {
+        matches!(self, WidthHold::Rewrap { until, .. } if at < until)
+    }
+
+    /// Whether a streaming row may shrink at `now`.
+    pub(super) fn may_shrink(self, now: f64) -> bool {
+        !matches!(self, WidthHold::Rewrap { shrink_from, .. } if now < shrink_from)
+    }
 }
 
 /// What a press on a window drag region asks the shell to do, synchronously in that press.
@@ -520,3 +522,7 @@ pub struct FrameStats {
     pub glyphs: usize,
     pub shaped: u32,
 }
+
+#[cfg(test)]
+#[path = "width_hold_tests.rs"]
+mod width_hold_tests;

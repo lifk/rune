@@ -43,6 +43,41 @@ pub(super) fn pixel_ratio(pixels: &crate::Pixels) -> f32 {
     if w > 0 && h > 0 { w as f32 / h as f32 } else { 0.0 }
 }
 
+/// How a picture that takes one side from its image's ratio gets the other. Taffy carries an
+/// aspect ratio over from the preferred size before min and max clamp it (`w_full().max_w(176.0)`
+/// at 4.4:1 in a 696-point column came out 176 wide yet reserved 158 tall), so a side in points
+/// is clamped here first. A percentage under a min or max can't be: that picture measures
+/// instead (`Picture::Measured`), its other side from the side it gets, as a browser sizes an
+/// image.
+fn picture_side(style: &mut CompactStyle) -> Picture {
+    use taffy::util::MaybeResolve;
+    let size = style.size();
+    let tall = size.height.is_auto();
+    let (min, max) = (style.min_size(), style.max_size());
+    let (set, min, max) = if tall { (size.width, min.width, max.width) } else { (size.height, min.height, max.height) };
+    if min.is_auto() && max.is_auto() { return Picture::Styled; }
+    let points = |l: LengthPercentageAuto| l.maybe_resolve(None, |_, _| 0.0);
+    let limits_in_points = (min.is_auto() || points(min).is_some()) && (max.is_auto() || points(max).is_some());
+    let Some(v) = set.maybe_resolve(None, |_, _| 0.0).filter(|_| limits_in_points) else { return Picture::Measured };
+    let v = points(max).map_or(v, |m| v.min(m));
+    let v = points(min).map_or(v, |m| v.max(m));
+    let side = taffy::Dimension::length(v);
+    style.set_size(if tall { Size { width: side, height: size.height } } else { Size { width: size.width, height: side } });
+    Picture::Styled
+}
+
+/// How a picture's ratio reaches layout.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Picture {
+    /// As the style's aspect ratio.
+    Styled,
+    /// As its leaf's measure (`text_layout::compute_layout`), keyed by the ratio.
+    Measured,
+}
+
+/// A measured picture's measure key: its ratio, so a new one measures again.
+fn picture_key(ratio: f32) -> u64 { 0x7069_6300_0000_0000 | u64::from(ratio.to_bits()) }
+
 // Build the owned path directly, without cloning a key or formatting an index into a
 // temporary segment first. Measurement and flattening must use the same identity rule.
 /// Whether `path` lies inside an element keyed `scope` (always, without one).
@@ -184,24 +219,29 @@ fn prepare_text(
     scale: f32,
     flow: Option<crate::el::Flow>,
 ) -> (Option<u64>, bool) {
-    if let Some(t) = text && t.flow != flow {
-        t.flow = flow;
+    if let Some(t) = text
+        && let dir = crate::el::step_text_dir(t.dir, crate::el::TextDirEvent::Flatten(flow))
+        && t.dir != dir
+    {
+        t.dir = dir;
         t.shape = None;
     }
     if let Some(t) = text && t.redacted {
         // Rich links carry URLs and can expose them through hover, copy and tree children.
         use zeroize::Zeroize;
         let t: &mut TextSpec = t;
-        for link in &mut t.links {
-            link.id.zeroize();
-            if let Some(label) = &mut link.label { label.zeroize(); }
-            if let Some(help) = &mut link.help { help.zeroize(); }
-        }
-        t.links.clear();
-        t.rings.clear();
         t.selectable = false;
-        t.advance_in = None;
-        t.live = None;
+        if let Some(cold) = t.cold.get_mut_if_some() {
+            for link in &mut cold.links {
+                link.id.zeroize();
+                if let Some(label) = &mut link.label { label.zeroize(); }
+                if let Some(help) = &mut link.help { help.zeroize(); }
+            }
+            cold.links.clear();
+            cold.rings.clear();
+            cold.advance_in = None;
+            cold.live = None;
+        }
     }
     if input.is_some_and(|i| i.edit.is_hidden_multiline()) && let Some(t) = text {
         // The fixed mask stays one line even in a field narrower than twelve bullets.
@@ -211,16 +251,22 @@ fn prepare_text(
         && t.redacted
     {
         t.case = None;
-        if !t.secure_revealed {
+        if !t.cold.secure_revealed {
             t.conceal();
         }
     }
-    if let Some(t) = text && t.live.is_some() {
+    if let Some(t) = text && t.cold.live.is_some() {
         assert!(input.is_none() && !t.redacted && !t.wrap && t.spans.is_empty() && t.reveal < 0.0 && !t.truncate,
             "live_text requires plain single-line text; use truncate_fade for overflow");
     }
     if input.is_none()
-        && text.as_ref().is_some_and(|t| t.redacted || t.case.is_some() || !t.rings.is_empty())
+        && text.as_ref().is_some_and(|t| !t.cold.isolates.is_empty() || !t.cold.pills.is_empty())
+        && let Some(t) = text
+    {
+        t.apply_isolates();
+    }
+    if input.is_none()
+        && text.as_ref().is_some_and(|t| t.redacted || t.case.is_some() || !t.cold.rings.is_empty())
         && let Some(t) = text
     {
         t.apply_case();
@@ -232,9 +278,9 @@ fn prepare_text(
     }
     let measure = text.as_ref().map(|t| t.shape.map_or(0, |s| s.1) ^ u64::from(t.wrap) ^ (u64::from(t.truncate || t.truncate_fade) << 1)
         ^ ((t.max_lines as u64) << 2)
-        ^ (u64::from(input.is_some_and(|i| i.edit.is_revealed()) || t.secure_revealed) << 3)
+        ^ (u64::from(input.is_some_and(|i| i.edit.is_revealed()) || t.cold.secure_revealed) << 3)
         ^ (u64::from(t.wrap_anywhere) << 4)
-        ^ t.advance_in.as_ref().map_or(0, |(run, at)| run.hash.rotate_left(3) ^ (*at as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)));
+        ^ t.cold.advance_in.as_ref().map_or(0, |(run, at)| run.hash.rotate_left(3) ^ (*at as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)));
     // Secure leaves remeasure without retaining a content-derived dictionary oracle.
     let secure_measure = text.as_ref().is_some_and(|t| t.redacted);
     let measure = if secure_measure { Some(0) } else { measure };
@@ -315,7 +361,7 @@ fn node_cold_needed(c: &NodeCold) -> bool {
         || c.material.is_some()
         || c.help.is_some()
         || c.help_cut
-        || c.help_above;
+        || c.help_side.is_some();
     #[cfg(debug_assertions)]
     let base = base || c.scroll_source.is_some();
     base
@@ -392,7 +438,7 @@ fn flatten_owned(
     } else {
         in_row
     };
-    let instant_changes = flags.has(ElFlags::INSTANT_CHANGES) || parent.is_some_and(|p| nodes[p].instant_changes);
+    let instant_changes = flags.has(ElFlags::INSTANT_CHANGES) || (parent.is_some_and(|p| nodes[p].instant_changes) && !el.cold.animated_changes);
     let trace_namespace = el.cold.trace_namespace.or_else(|| parent.and_then(|p| nodes[p].trace_namespace));
     let role = el.role_name();
     let parent_flow = parent.map_or(crate::el::Flow::Ltr, |p| nodes[p].flow);
@@ -421,9 +467,9 @@ fn flatten_owned(
             style.aspect_ratio().is_none() && sz.width.is_auto() != sz.height.is_auto()
         })
         .map(pixel_ratio);
-    if let Some(ratio) = pixel_aspect.filter(|&r| r > 0.0) {
-        style.set_aspect_ratio(Some(ratio));
-    }
+    let picture = pixel_aspect.filter(|&r| r > 0.0).map(|ratio| (ratio, picture_side(&mut style)));
+    if let Some((ratio, Picture::Styled)) = picture { style.set_aspect_ratio(Some(ratio)); }
+    let measure = measure.or(picture.filter(|p| p.1 == Picture::Measured).map(|p| picture_key(p.0)));
     let aspect_fit = (cold.aspect_fit > 0.0).then(|| {
         let room = fit_room(&style, parent_row);
         Box::new((cold.aspect_fit, std::mem::replace(&mut style, room)))
@@ -474,7 +520,7 @@ fn flatten_owned(
             material: c.material,
             help: c.help,
             help_cut: c.help_cut,
-            help_above: c.help_above,
+            help_side: c.help_side,
             #[cfg(debug_assertions)]
             scroll_source: c.scroll_source,
         })
@@ -595,7 +641,7 @@ fn flatten_ref(
     } else {
         in_row
     };
-    let instant_changes = flags.has(ElFlags::INSTANT_CHANGES) || parent.is_some_and(|p| nodes[p].instant_changes);
+    let instant_changes = flags.has(ElFlags::INSTANT_CHANGES) || (parent.is_some_and(|p| nodes[p].instant_changes) && !el.cold.animated_changes);
     let trace_namespace = el.cold.trace_namespace.or_else(|| parent.and_then(|p| nodes[p].trace_namespace));
     let mut style: Cow<'_, CompactStyle> = Cow::Borrowed(&el.style);
     if let Some(sx) = parent_sx {
@@ -620,9 +666,9 @@ fn flatten_ref(
             style.aspect_ratio().is_none() && sz.width.is_auto() != sz.height.is_auto()
         })
         .map(pixel_ratio);
-    if let Some(ratio) = pixel_aspect.filter(|&r| r > 0.0) {
-        style.to_mut().set_aspect_ratio(Some(ratio));
-    }
+    let picture = pixel_aspect.filter(|&r| r > 0.0).map(|ratio| (ratio, picture_side(style.to_mut())));
+    if let Some((ratio, Picture::Styled)) = picture { style.to_mut().set_aspect_ratio(Some(ratio)); }
+    let measure = measure.or(picture.filter(|p| p.1 == Picture::Measured).map(|p| picture_key(p.0)));
     let aspect_fit = if c.aspect_fit > 0.0 {
         let room = fit_room(&style, parent_row);
         let orig = std::mem::replace(&mut style, Cow::Owned(room)).into_owned();
@@ -675,7 +721,7 @@ fn flatten_ref(
             material: c.material,
             help: c.help.clone(),
             help_cut: c.help_cut,
-            help_above: c.help_above,
+            help_side: c.help_side,
             #[cfg(debug_assertions)]
             scroll_source: c.scroll_source,
         })

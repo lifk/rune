@@ -2,18 +2,19 @@
 #[path = "selection_collect.rs"]
 mod collect;
 
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
-use std::rc::Rc;
 
 use taffy::style::{Display, FlexDirection};
 
-use super::{
-    Held, SelectedText, Unit, kept, same_keyed_path, trim_uncopied,
-};
+use super::phase::{self, Far, Selection};
+use super::{SelectedText, kept, same_keyed_path, trim_uncopied};
 use crate::el::{El, SelectionCopy, TextSpec};
 use crate::runtime::Runtime;
+
+#[path = "pins.rs"]
+pub(crate) mod pins;
+pub(crate) use pins::{OffscreenText, PinnedSelection, Pins, PinsEvent, Scope, Source};
 
 /// Maximum number of unbuilt virtual rows built on demand when copying or reading a selection.
 /// Past this cap, collection stops building further unbuilt rows and returns the prefix collected
@@ -45,44 +46,6 @@ impl VirtualEnd {
     }
 }
 
-/// One selectable text inside an offscreen virtual row.
-#[derive(Clone, Debug)]
-pub(crate) struct OffscreenText {
-    pub list_path: String,
-    pub row_key: String,
-    pub row_index: usize,
-    pub order_in_row: usize,
-    pub rel_path: String,
-    pub path: String,
-    pub key: Option<String>,
-    pub group_path: Option<String>,
-    pub spec: TextSpec,
-    /// True when this text and the previous selectable text in the same row share a horizontal
-    /// (`FlexDirection::Row | FlexDirection::RowReverse`) lowest common ancestor (table cells).
-    pub tab_before: bool,
-}
-
-/// Offscreen selection state retained on a [`crate::el::virtual_list::VirtualList`].
-#[derive(Default)]
-pub(crate) struct PinnedSelection {
-    pub texts: Vec<OffscreenText>,
-    pub copy_providers: Vec<(String, SelectionCopy)>,
-    pub source: Option<Rc<crate::el::virtual_rows::RowSource>>,
-    pub unmounted: HashMap<usize, El>,
-    pub group_path: Option<String>,
-    pub inert: bool,
-}
-
-impl std::fmt::Debug for PinnedSelection {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PinnedSelection")
-            .field("texts", &self.texts.len())
-            .field("group_path", &self.group_path)
-            .field("inert", &self.inert)
-            .finish()
-    }
-}
-
 /// A resolved selection endpoint: either a mounted node index in `Runtime::nodes` or an offscreen
 /// text `(virtual_list_iter_index, text_index)` in `PinnedSelection::texts`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -111,6 +74,25 @@ pub(crate) fn collect_virtual_row_selection(
     );
 }
 
+/// Collects one built row's selectable texts into `pins`. A row builder that panics before this
+/// leaves everything collected before it in the state, as dev wrote straight into its list did.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn collect_row_into_pins(
+    pins: &mut Pins,
+    row_el: &El,
+    list_path: &str,
+    row_key: &str,
+    row_index: usize,
+    list_group: Option<&str>,
+    list_inert: bool,
+) {
+    if let Some((texts, providers)) = pins.text_buffers() {
+        collect_virtual_row_selection(
+            row_el, list_path, row_key, row_index, list_group, list_inert, texts, providers,
+        );
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn walk_row_el<'a>(
     el: &'a El,
@@ -135,6 +117,7 @@ fn walk_row_el<'a>(
     let mut had_child_text = false;
     if !inert && el.cold.input.is_none() && let Some(t) = &el.text && t.selectable && !t.redacted {
         let mut spec = TextSpec::clone(t);
+        spec.apply_isolates();
         spec.apply_case();
         texts.push(OffscreenText {
             list_path: list_path.to_owned(),
@@ -175,24 +158,25 @@ pub(super) fn offscreen_piece(t: &OffscreenText, range: Range<usize>, base: Opti
         None => t.path.clone(),
     };
     let len = t.spec.content.len();
-    let (full_a, full_b) = if t.spec.uncopied.is_empty() {
+    let (full_a, full_b) = if t.spec.cold.uncopied.is_empty() {
         (0, len)
     } else {
-        trim_uncopied(&t.spec.uncopied, (0, len))
+        trim_uncopied(&t.spec.cold.uncopied, (0, len))
     };
     let whole = !range.is_empty() && len > 0 && range.start <= full_a && range.end >= full_b;
     let text = t.spec.copy_slice(range.start as u32, range.end as u32).unwrap_or_default();
-    SelectedText { path, key: t.key.clone(), range, len, whole, text }
+    let content = t.spec.content.get(range.clone()).unwrap_or_default().to_owned();
+    SelectedText { path, key: t.key.clone(), range, len, whole, text, content }
 }
 
 impl<S: 'static> Runtime<S> {
     pub(crate) fn virtual_list_allowed(&self, list_path: &str) -> bool {
         self.live(list_path).is_some()
-            && !self.virtuals.get(list_path).is_some_and(|v| v.selection.inert)
+            && !self.virtuals.get(list_path).is_some_and(|v| v.selection.scope.inert)
     }
 
     pub(crate) fn offscreen_text(&self, vi: usize, ti: usize) -> &OffscreenText {
-        &self.virtuals.iter().nth(vi).unwrap().1.selection.texts[ti]
+        &self.virtuals.iter().nth(vi).unwrap().1.selection.pins.texts()[ti]
     }
 
     pub(crate) fn end_path(&self, end: EndRef) -> &str {
@@ -302,7 +286,7 @@ impl<S: 'static> Runtime<S> {
             if !self.virtual_list_allowed(list_path) {
                 continue;
             }
-            for (ti, t) in v.selection.texts.iter().enumerate() {
+            for (ti, t) in v.selection.pins.texts().iter().enumerate() {
                 if t.path == path && v.index_of(&t.row_key).is_some_and(|r| !v.range.contains(&r)) {
                     return Some(EndRef::Offscreen(vi, ti));
                 }
@@ -321,7 +305,7 @@ impl<S: 'static> Runtime<S> {
                 let full = end.full_path();
                 return self.live(&full).filter(|&i| self.is_selectable(i)).map(EndRef::Mounted);
             }
-            for (ti, t) in v.selection.texts.iter().enumerate() {
+            for (ti, t) in v.selection.pins.texts().iter().enumerate() {
                 if t.row_key == end.row_key && t.rel_path == end.rel_path {
                     return Some(EndRef::Offscreen(vi, ti));
                 }
@@ -331,13 +315,12 @@ impl<S: 'static> Runtime<S> {
     }
 
     pub(crate) fn selection_holder_end(&self) -> Option<EndRef> {
-        let sel = &self.text_sel;
-        let path = sel.path.as_deref()?;
-        let h = self.resolve_end(path, sel.anchor_end.as_ref())?;
+        let sel = self.selectable.phase.selection()?;
+        let h = self.resolve_end(&sel.path, sel.anchor_end.as_ref())?;
         let upto = match &sel.far {
             None => sel.anchor.max(sel.focus).max(sel.origin.1),
-            Some((far, _))
-                if self.resolve_end(far, sel.focus_end.as_ref())
+            Some(far)
+                if self.resolve_end(&far.path, far.end.as_ref())
                     .is_some_and(|f| self.tree_order(f) > self.tree_order(h)) =>
             {
                 sel.content.len()
@@ -348,42 +331,39 @@ impl<S: 'static> Runtime<S> {
     }
 
     pub(crate) fn focus_holder_end(&self, holder: EndRef) -> Option<EndRef> {
-        let sel = &self.text_sel;
-        let Some((path, content)) = &sel.far else { return Some(holder) };
-        let f = self.resolve_end(path, sel.focus_end.as_ref())?;
-        let upto = if self.tree_order(f) > self.tree_order(holder) { sel.focus } else { content.len() };
-        (self.end_same_group(f, holder) && kept(content, self.end_content(f), upto)).then_some(f)
+        let sel = self.selectable.phase.selection()?;
+        let Some(far) = &sel.far else { return Some(holder) };
+        let f = self.resolve_end(&far.path, far.end.as_ref())?;
+        let upto = if self.tree_order(f) > self.tree_order(holder) { sel.focus } else { far.content.len() };
+        (self.end_same_group(f, holder) && kept(&far.content, self.end_content(f), upto)).then_some(f)
     }
 
-    /// Updates `anchor_end`, `focus_end` and each `VirtualList::pinned_rows`.
+    /// Updates the selection's `anchor_end` and far `end`, and each list's pins.
     pub(crate) fn sync_selection_pins(&mut self) {
-        if self.text_sel.path.is_none() {
+        let Some(sel) = self.selectable.phase.selection() else {
+            // With nothing selected nothing lies between its ends.
+            self.selectable.mounted_between.clear();
             for v in self.virtuals.values_mut() {
-                v.pinned_rows.clear();
-                v.selection.texts.clear();
-                v.selection.copy_providers.clear();
+                v.selection.pins.sync(PinsEvent::Clear);
             }
             return;
+        };
+        let (anchor, focus, far) = (sel.anchor, sel.focus, sel.far.is_some());
+        let ends = self.selection_holder_end().map(|h| {
+            let focus_end = if far { self.focus_holder_end(h).and_then(|f| self.virtual_end_of(f, focus)) } else { None };
+            (self.virtual_end_of(h, anchor), focus_end)
+        });
+        let Some(sel) = self.selectable.phase.selection_mut() else { return };
+        if let Some((anchor_end, focus_end)) = ends {
+            sel.anchor_end = anchor_end;
+            if let Some(far) = &mut sel.far { far.end = focus_end; }
         }
-        if let Some(h) = self.selection_holder_end() {
-            self.text_sel.anchor_end = self.virtual_end_of(h, self.text_sel.anchor);
-            self.text_sel.focus_end = if self.text_sel.far.is_some() {
-                self.focus_holder_end(h).and_then(|f| self.virtual_end_of(f, self.text_sel.focus))
-            } else {
-                None
-            };
-        }
-        let a_end = self.text_sel.anchor_end.clone();
-        let f_end = self.text_sel.focus_end.clone();
+        let a_end = sel.anchor_end.clone();
+        let f_end = sel.far.as_ref().and_then(|f| f.end.clone());
         for (list_path, v) in &mut self.virtuals {
-            v.pinned_rows.clear();
-            if let Some(a) = &a_end && &a.list_path == list_path {
-                v.pinned_rows.push(a.row_key.clone());
-            }
-            if let Some(f) = &f_end && &f.list_path == list_path && !v.pinned_rows.contains(&f.row_key) {
-                v.pinned_rows.push(f.row_key.clone());
-            }
-            v.selection.texts.retain(|t| v.pinned_rows.contains(&t.row_key));
+            let anchor = a_end.as_ref().filter(|a| &a.list_path == list_path).map(|a| a.row_key.as_str());
+            let focus = f_end.as_ref().filter(|f| &f.list_path == list_path).map(|f| f.row_key.as_str());
+            v.selection.pins.sync(PinsEvent::Select { anchor, focus });
         }
     }
 
@@ -472,9 +452,10 @@ impl<S: 'static> Runtime<S> {
             }
             (EndRef::Offscreen(vi0, ti0), EndRef::Offscreen(vi1, ti1)) if vi0 == vi1 => {
                 let (_, v) = self.virtuals.iter().nth(vi0).unwrap();
-                let row_key = &v.selection.texts[ti0].row_key;
-                let (o0, o1) = (v.selection.texts[ti0].order_in_row, v.selection.texts[ti1].order_in_row);
-                for t in &v.selection.texts {
+                let texts = v.selection.pins.texts();
+                let row_key = &texts[ti0].row_key;
+                let (o0, o1) = (texts[ti0].order_in_row, texts[ti1].order_in_row);
+                for t in texts {
                     if &t.row_key == row_key && t.order_in_row > o0 && t.order_in_row < o1 && t.group_path.as_deref() == Some(g_path) {
                         (&t.path, t.spec.content.as_str()).hash(&mut hasher);
                     }
@@ -487,18 +468,14 @@ impl<S: 'static> Runtime<S> {
 
     pub(crate) fn seal_between(&mut self) {
         self.sync_selection_pins();
-        self.text_sel.mounted_between.clear();
-        let Some(h) = self.selection_holder_end() else {
-            self.text_sel.between = 0;
+        self.selectable.mounted_between.clear();
+        let Some((h, f)) = self.selection_holder_end().and_then(|h| Some((h, self.focus_holder_end(h)?))) else {
+            if let Some(sel) = self.selectable.phase.selection_mut() { sel.between = 0; }
             self.remember_pick();
             return;
         };
-        let Some(f) = self.focus_holder_end(h) else {
-            self.text_sel.between = 0;
-            self.remember_pick();
-            return;
-        };
-        self.text_sel.between = self.between_hash_ends(h, f);
+        let between = self.between_hash_ends(h, f);
+        if let Some(sel) = self.selectable.phase.selection_mut() { sel.between = between; }
         if let Some(g_path) = self.end_group_path(h).map(str::to_owned)
             && let Some((list_path, r0, r1)) = self.is_cross_row_virtual(h, f)
             && let Some(v) = self.virtuals.get(&list_path)
@@ -510,7 +487,7 @@ impl<S: 'static> Runtime<S> {
                 .collect();
             for key in keys {
                 if let Some(hash) = self.mounted_row_hash(&list_path, &key, &g_path) {
-                    self.text_sel.mounted_between.insert(key, hash);
+                    self.selectable.mounted_between.insert(key, hash);
                 }
             }
         }
@@ -518,10 +495,10 @@ impl<S: 'static> Runtime<S> {
     }
 
     pub(crate) fn between_matches(&mut self, h: EndRef, f: EndRef) -> bool {
-        if self.text_sel.far.is_none() {
+        let Some(sealed) = self.selectable.phase.selection().filter(|s| s.far.is_some()).map(|s| s.between) else {
             return true;
-        }
-        if self.between_hash_ends(h, f) != self.text_sel.between {
+        };
+        if self.between_hash_ends(h, f) != sealed {
             return false;
         }
         if let Some(g_path) = self.end_group_path(h).map(str::to_owned)
@@ -535,12 +512,12 @@ impl<S: 'static> Runtime<S> {
                 .collect();
             for key in keys {
                 if let Some(hash) = self.mounted_row_hash(&list_path, &key, &g_path) {
-                    if let Some(&prev) = self.text_sel.mounted_between.get(&key) {
+                    if let Some(&prev) = self.selectable.mounted_between.get(&key) {
                         if prev != hash {
                             return false;
                         }
                     } else {
-                        self.text_sel.mounted_between.insert(key, hash);
+                        self.selectable.mounted_between.insert(key, hash);
                     }
                 }
             }
@@ -553,7 +530,8 @@ impl<S: 'static> Runtime<S> {
         let Some(h) = self.selection_holder_end() else { return false };
         let Some(f) = self.focus_holder_end(h) else { return false };
         if h == f {
-            let (a, b) = (self.text_sel.anchor.min(self.text_sel.focus), self.text_sel.anchor.max(self.text_sel.focus));
+            let Some(sel) = self.selectable.phase.selection() else { return false };
+            let (a, b) = (sel.anchor.min(sel.focus), sel.anchor.max(sel.focus));
             a < b && b <= self.end_content(h).len()
         } else {
             true
@@ -601,14 +579,14 @@ impl<S: 'static> Runtime<S> {
     /// After a commit: drop a selection whose texts went away, stopped being selectable or
     /// changed what it selected, or whose texts between its ends changed.
     pub(crate) fn prune_text_selection(&mut self) {
-        if self.text_sel.path.is_none() { return; }
+        if self.selectable.phase.selection().is_none() { return; }
         let mut rebind = false;
         if self.selection_holder_end().is_none()
-            && self.text_sel.anchor_end.is_none()
-            && let Some(old_path) = self.text_sel.path.clone()
+            && let Some(sel) = self.selectable.phase.selection().filter(|s| s.anchor_end.is_none())
         {
-            let upto = self.text_sel.anchor.max(self.text_sel.focus).max(self.text_sel.origin.1);
-            if let Some(i) = self.rebound(&old_path, &self.text_sel.content, upto) {
+            let old_path = sel.path.clone();
+            let upto = sel.anchor.max(sel.focus).max(sel.origin.1);
+            if let Some(i) = self.rebound(&old_path, &sel.content, upto) {
                 let old_ancs: Vec<&str> = std::iter::successors(Some(old_path.as_str()), |p| p.rsplit_once('/').map(|(a, _)| a)).collect();
                 let new_ancs: Vec<usize> = std::iter::successors(Some(i), |&p| self.nodes[p].parent).collect();
                 for (&old_anc, &new_anc) in old_ancs.iter().zip(&new_ancs) {
@@ -616,21 +594,22 @@ impl<S: 'static> Runtime<S> {
                         self.sel_heard.by_path.insert(self.nodes[new_anc].path.clone(), v);
                     }
                 }
-                self.text_sel.path = Some(self.nodes[i].path.clone());
+                if let Some(sel) = self.selectable.phase.selection_mut() { sel.path = self.nodes[i].path.clone(); }
                 rebind = true;
             }
         }
         if let Some(h) = self.selection_holder_end()
             && self.focus_holder_end(h).is_none()
-            && self.text_sel.focus_end.is_none()
-            && let Some((far, content)) = &self.text_sel.far
-            && let Some(j) = self.rebound(far, content, self.text_sel.focus)
+            && let Some(sel) = self.selectable.phase.selection()
+            && let Some(far) = sel.far.as_ref().filter(|f| f.end.is_none())
+            && let Some(j) = self.rebound(&far.path, &far.content, sel.focus)
         {
-            self.text_sel.far = Some((self.nodes[j].path.clone(), content.clone()));
+            if let Some(far) = self.selectable.phase.selection_mut().and_then(|s| s.far.as_mut()) { far.path = self.nodes[j].path.clone(); }
             rebind = true;
         }
         if rebind && let Some((h, f)) = self.selection_holder_end().and_then(|h| Some((h, self.focus_holder_end(h)?))) {
-            self.text_sel.between = self.between_hash_ends(h, f);
+            let between = self.between_hash_ends(h, f);
+            if let Some(sel) = self.selectable.phase.selection_mut() { sel.between = between; }
         }
         let Some((h, f)) = self.selection_holder_end().and_then(|h| Some((h, self.focus_holder_end(h)?))) else {
             self.clear_text_selection();
@@ -640,19 +619,14 @@ impl<S: 'static> Runtime<S> {
             self.clear_text_selection();
             return;
         }
-        let h_path = self.end_path(h).to_owned();
-        if self.text_sel.path.as_deref() != Some(h_path.as_str()) {
-            self.text_sel.path = Some(h_path);
-        }
-        let h_content = self.end_content(h).to_owned();
-        if self.text_sel.content != h_content {
-            self.text_sel.content = h_content;
-        }
-        if f != h {
-            let (f_path, f_content) = (self.end_path(f).to_owned(), self.end_content(f).to_owned());
-            if let Some((fp, fc)) = &mut self.text_sel.far {
-                if *fp != f_path { *fp = f_path; }
-                if *fc != f_content { *fc = f_content; }
+        let (h_path, h_content) = (self.end_path(h).to_owned(), self.end_content(h).to_owned());
+        let far = (f != h).then(|| (self.end_path(f).to_owned(), self.end_content(f).to_owned()));
+        if let Some(sel) = self.selectable.phase.selection_mut() {
+            if sel.path != h_path { sel.path = h_path; }
+            if sel.content != h_content { sel.content = h_content; }
+            if let Some((f_path, f_content)) = far && let Some(far) = &mut sel.far {
+                if far.path != f_path { far.path = f_path; }
+                if far.content != f_content { far.content = f_content; }
             }
         }
         self.sync_selection_pins();
@@ -662,27 +636,14 @@ impl<S: 'static> Runtime<S> {
     pub(crate) fn select_span_ends(&mut self, first: EndRef, last: EndRef) {
         let head = self.end_path(first).to_owned();
         let content = self.end_content(first).to_owned();
-        let far = (first != last).then(|| (self.end_path(last).to_owned(), self.end_content(last).to_owned()));
-        let end = far.as_ref().map_or(content.len(), |f| f.1.len());
+        let far = (first != last).then(|| Far::new(self.end_path(last).to_owned(), self.end_content(last).to_owned()));
+        let end = far.as_ref().map_or(content.len(), |f| f.content.len());
         let origin = if far.is_some() { (0, 0) } else { (0, end) };
         let anchor_end = self.virtual_end_of(first, 0);
         let focus_end = (first != last).then(|| self.virtual_end_of(last, end)).flatten();
-        let sel = &mut self.text_sel;
-        (sel.path, sel.content, sel.anchor, sel.focus, sel.origin, sel.unit, sel.far) =
-            (Some(head), content, 0, end, origin, Unit::Char, far);
+        let mut sel = Selection::new(head, content, (0, end), origin);
         sel.anchor_end = anchor_end;
-        sel.focus_end = focus_end;
-        sel.dragging = false;
-        self.seal_between();
+        sel.far = far.map(|far| Far { end: focus_end, ..far });
+        self.select_step(phase::Event::Select(sel));
     }
-}
-
-/// Resets `Held` while preserving modifier and pick state.
-pub(super) fn clear_held(sel: &mut Held) {
-    sel.path = None;
-    sel.far = None;
-    sel.anchor_end = None;
-    sel.focus_end = None;
-    sel.mounted_between.clear();
-    sel.dragging = false;
 }

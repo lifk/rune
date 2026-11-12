@@ -1,0 +1,92 @@
+diff --git a/src/platform_impl/windows/window.rs b/src/platform_impl/windows/window.rs
+index 228c6f0..1fcf1f2 100644
+--- a/src/platform_impl/windows/window.rs
++++ b/src/platform_impl/windows/window.rs
+@@ -1246,7 +1246,12 @@ impl InitData<'_> {
+             unsafe { DeleteObject(region) };
+         }
+ 
+-        win.set_skip_taskbar(self.attributes.platform_specific.skip_taskbar);
++        // A new window is on the taskbar already: only taking it off needs the TaskbarList COM
++        // object (CoInitializeEx and CoCreateInstance on this thread, about 7,800 us and nine
++        // shell DLLs before the window's first frame).
++        if self.attributes.platform_specific.skip_taskbar {
++            win.set_skip_taskbar(true);
++        }
+         win.set_window_icon(self.attributes.window_icon.clone());
+         win.set_taskbar_icon(self.attributes.platform_specific.taskbar_icon.clone());
+ 
+@@ -1328,6 +1333,11 @@ unsafe fn init(
+     // Will be changed later using `window.set_enabled_buttons` but we need to set a default here
+     // so the diffing later can work.
+     window_flags.set(WindowFlags::CLOSABLE, true);
++    // The window is made with the boxes it asks for, so `set_enabled_buttons` in `on_create`
++    // changes nothing: adding them there rewrote its styles and changed its frame again
++    // (`SWP_FRAMECHANGED`, about 1,000 us before its first frame).
++    window_flags.set(WindowFlags::MINIMIZABLE, attributes.enabled_buttons.contains(WindowButtons::MINIMIZE));
++    window_flags.set(WindowFlags::MAXIMIZABLE, attributes.enabled_buttons.contains(WindowButtons::MAXIMIZE));
+     window_flags.set(WindowFlags::CLIP_CHILDREN, attributes.platform_specific.clip_children);
+ 
+     let mut fallback_parent = || match attributes.platform_specific.owner {
+@@ -1360,6 +1370,18 @@ unsafe fn init(
+     let menu = attributes.platform_specific.menu;
+     let fullscreen = attributes.fullscreen.clone();
+     let maximized = attributes.maximized;
++    // A window with a physical position is made there, at its size, so it is born on its
++    // display at that display's scale. Made at the default place (the primary display) and moved
++    // there afterwards, it would cross to the other display's scale (WM_DPICHANGED) and be
++    // resized to keep its logical size: a window saved on a 150 % display beside a 100 % primary
++    // would reopen half as large again.
++    let (x, y, width, height) = match (attributes.position, attributes.inner_size) {
++        (Some(Position::Physical(p)), Some(Size::Physical(s))) => {
++            (p.x, p.y, s.width as i32, s.height as i32)
++        },
++        (Some(Position::Physical(p)), _) => (p.x, p.y, CW_USEDEFAULT, CW_USEDEFAULT),
++        _ => (CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT),
++    };
+     let mut initdata = InitData { event_loop, attributes, window_flags, window: None };
+ 
+     let (style, ex_style) = window_flags.to_window_styles();
+@@ -1369,10 +1391,10 @@ unsafe fn init(
+             class_name.as_ptr(),
+             title.as_ptr(),
+             style,
+-            CW_USEDEFAULT,
+-            CW_USEDEFAULT,
+-            CW_USEDEFAULT,
+-            CW_USEDEFAULT,
++            x,
++            y,
++            width,
++            height,
+             parent.unwrap_or(0),
+             menu.unwrap_or(0),
+             util::get_instance_handle(),
+diff --git a/src/platform_impl/windows/window_state.rs b/src/platform_impl/windows/window_state.rs
+index 8e24a4f..bfe251b 100644
+--- a/src/platform_impl/windows/window_state.rs
++++ b/src/platform_impl/windows/window_state.rs
+@@ -380,7 +380,9 @@ impl WindowFlags {
+             diff.remove(WindowFlags::MINIMIZED);
+         }
+ 
+-        if diff.contains(WindowFlags::CLOSABLE) || new.contains(WindowFlags::CLOSABLE) {
++        // A new window's system menu has Close enabled: the menu (`GetSystemMenu` makes the
++        // window its own copy, about 1,200 us before its first frame) is touched only to change it.
++        if diff.contains(WindowFlags::CLOSABLE) && !(self.is_empty() && new.contains(WindowFlags::CLOSABLE)) {
+             let flags = MF_BYCOMMAND
+                 | if new.contains(WindowFlags::CLOSABLE) { MF_ENABLED } else { MF_DISABLED };
+ 
+@@ -395,6 +397,12 @@ impl WindowFlags {
+             }
+         }
+ 
++        // A show or a hide alone: ShowWindow set WS_VISIBLE itself. Writing the styles again and
++        // refreshing the frame (SWP_FRAMECHANGED) cost a window's first show about 2,200 us.
++        if diff == WindowFlags::VISIBLE {
++            return;
++        }
++
+         if diff != WindowFlags::empty() {
+             let (style, style_ex) = new.to_window_styles();
+ 

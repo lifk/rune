@@ -102,12 +102,20 @@ impl TextSystem {
     /// `origin` (device px). Only that grapheme's glyphs are visited. `_scale` is unused (the
     /// run holds its scale); it stays for source compatibility.
     pub fn glyphs_in(&mut self, run: &RunLayout, at: usize, _scale: f32, origin: [f32; 2], out: &mut Vec<GlyphQuad>) {
+        self.glyphs_in_scaled(run, at, origin, 1.0, out);
+    }
+
+    /// [`Self::glyphs_in`] with the run magnified `k` times about `origin`: pen positions scale
+    /// and each glyph rasterizes at `k` times its size, as [`Self::glyphs_in_band`] does for a
+    /// paragraph, so a cell under a zoom draws as crisply as the words beside it.
+    pub(crate) fn glyphs_in_scaled(&mut self, run: &RunLayout, at: usize, origin: [f32; 2], k: f32, out: &mut Vec<GlyphQuad>) {
         let Some(i) = run.grapheme(at) else { return };
         let glyphs = run.graphemes[i].2 as usize..run.graphemes[i + 1].2 as usize;
         for g in &run.glyphs[glyphs] {
             let face = &run.faces[g.face as usize];
-            let baseline = (origin[1] + face.face.baseline).round();
-            self.push_glyph(&face.face, &face.coords, g.id, [origin[0] + g.x, baseline + g.y], 1.0, at as u32, out);
+            let baseline = (origin[1] + face.face.baseline * k).round();
+            let pen = if k == 1.0 { [origin[0] + g.x, baseline + g.y] } else { [origin[0] + g.x * k, baseline + g.y * k] };
+            self.push_glyph(&face.face, &face.coords, g.id, pen, k, at as u32, out);
         }
     }
 
@@ -121,7 +129,7 @@ impl TextSystem {
         let glide = self.glide;
         let (font, font_size, ink, skew) = (&face.font, face.size * k, face.ink, face.skew);
         let direct_write = self.direct_write();
-        let windfoil = self.smoothing == FontSmoothing::Windfoil;
+        let windfoil = self.smoothing.look().is_some();
         let radius = if direct_write { 0.0 } else { self.apple.radius(ink, font_size) * if windfoil { outline::TEXT_WEIGHT } else { 1.0 } };
         let gamma = self.windows.bucket(ink);
         let ([fx, fy], [subpx, subpy]) = place(at, font_size, self.glide, direct_write || windfoil);
@@ -134,9 +142,13 @@ impl TextSystem {
             subpx,
             subpy,
             dilation: if direct_write { gamma as u32 } else { (radius as f32).to_bits() },
-            apple: if direct_write { DIRECT_WRITE_KEY } else if windfoil { WINDFOIL_KEY } else { self.apple.key() },
+            apple: if direct_write { DIRECT_WRITE_KEY | (self.smoothing == FontSmoothing::ClearType) as u8 } else { self.smoothing.outline_key().unwrap_or_else(|| self.apple.key()) },
             skew,
+            bold: face.bold,
         };
+        let miss = crate::marks::counting() && !self.atlas.map.contains_key(&key);
+        if miss { crate::marks::add("text.glyphs", 1); }
+        let _raster = crate::marks::Timed::start("text.raster_ns", miss);
         let entry = match self.atlas.map.get(&key) {
             Some(e) => {
                 let mask = e.mask();
@@ -147,11 +159,23 @@ impl TextSystem {
             }
             None => {
                 // Colour glyphs sit on whole pixels and ignore emboldening and obliques.
-                let color_key = GlyphKey { subpx: 0, subpy: 0, dilation: 0, apple: 0, skew: 0, ..key };
+                let color_key = GlyphKey { subpx: 0, subpy: 0, dilation: 0, apple: 0, skew: 0, bold: false, ..key };
                 if let Some(c) = self.color_glyphs.get_mut(&color_key) {
                     c.used = true;
                     out.push(c.quad(gx, gy, glide, ink, byte));
                     return Placed::Other;
+                }
+                let landed = |placed: Rasterized, out: &mut Vec<GlyphQuad>| match placed {
+                    Rasterized::Placed(a) => {
+                        out.push(atlas_quad(a, fx, fy, ink, byte));
+                        Placed::Atlas(a, [subpx, subpy])
+                    }
+                    Rasterized::Empty => Placed::Empty([subpx, subpy]),
+                    Rasterized::Unplaced => { crate::marks::text_missed(); Placed::Other }
+                };
+                // A mask an earlier launch saved: no colour check, outline or fill.
+                if windfoil && let Some(placed) = self.cached_mask(&key, face) {
+                    return landed(placed, out);
                 }
                 let Some(font_ref) = FontRef::from_index(font.data.as_ref(), font.index as usize) else {
                     return Placed::Other;
@@ -163,7 +187,9 @@ impl TextSystem {
                     .hint(false)
                     .normalized_coords(coords.iter().copied())
                     .build();
-                if let Some((pixels, at)) = rasterize_color(&mut scaler, glyph as u16) {
+                // COLR v1 first (Windows 11's emoji, COLR v1 Noto Color Emoji), then swash's COLR v0 and bitmaps.
+                let v1 = if scaler.has_color_outlines() { super::colr::rasterize(font.data.as_ref(), font.index, glyph, font_size, coords) } else { None };
+                if let Some((pixels, at)) = v1.or_else(|| rasterize_color(&mut scaler, glyph as u16)) {
                     self.color_bytes = self.color_bytes.saturating_add((at.width as usize) * (at.height as usize) * 4);
                     self.color_pixels.push(pixels);
                     let index = self.color_pixels.len() as u32;
@@ -173,28 +199,44 @@ impl TextSystem {
                     return Placed::Other;
                 }
                 // Windfoil masks place their own entries (GPU-filled ones are queued, not uploaded).
-                if windfoil && let Some(placed) = self.windfoil_mask(key, face, coords, font_size, [subpx, subpy]) {
-                    return match placed {
-                        Rasterized::Placed(a) => {
-                            out.push(atlas_quad(a, fx, fy, ink, byte));
-                            Placed::Atlas(a, [subpx, subpy])
-                        }
-                        Rasterized::Empty => Placed::Empty([subpx, subpy]),
-                        Rasterized::Unplaced => Placed::Other,
-                    };
+                if windfoil {
+                    self.note_mask_font(face);
+                    if let Some(placed) = self.windfoil_mask(key, face, coords, font_size, [subpx, subpy]) {
+                        return landed(placed, out);
+                    }
                 }
                 let (phase_x, shift_y) = (subpx as f32 / coretext_match::PHASES, subpy as f32 / GLIDE_PHASES as f32);
                 #[cfg(target_os = "windows")]
-                let placed = direct_write.then(|| self.windows.rasterize(&mut self.atlas, &windows::Job {
+                let placed = (direct_write && !face.bold).then(|| self.windows.rasterize(&mut self.atlas, &windows::Job {
                     font: font_ref, blob: &font.data, key: (key.font, key.index, key.coords), coords, glyph: glyph as u16, ppem: font_size,
-                    phase_x, shift_y, skew, lum: gamma,
+                    phase_x, shift_y, skew, lum: gamma, lcd: self.smoothing == FontSmoothing::ClearType,
                 })).flatten();
                 #[cfg(not(target_os = "windows"))]
                 let placed = None;
-                let placed = placed.unwrap_or_else(|| self.apple.rasterize(&mut self.scale_cx, &mut self.atlas, macos::smoothing::Job {
-                    font: font_ref, key: (key.font, key.index, key.coords), coords, glyph: glyph as u16, ppem: font_size,
-                    phase_x, shift_y, radius, skew,
-                }));
+                let placed = match placed {
+                    Some(p) => p,
+                    // Off Windfoil, synthetic bold draws from Skia's stroked outline, through its text gamma.
+                    None if face.bold => {
+                        let lum = direct_write.then_some(gamma);
+                        match synthetic_bold::mask(&mut self.scale_cx, font_ref, coords, glyph as u16, font_size, phase_x, shift_y, skew) {
+                            Some((mut data, at)) if at.width > 0 && at.height > 0 && data.iter().any(|&c| c != 0) => {
+                                if let Some(lum) = lum {
+                                    let table = windows::skia_gamma::table(lum);
+                                    data.iter_mut().for_each(|c| *c = table[*c as usize]);
+                                }
+                                match self.atlas.put(at.width, at.height, &data, at.left, at.top) {
+                                    Some(g) => Rasterized::Placed(g),
+                                    None => Rasterized::Unplaced,
+                                }
+                            }
+                            _ => Rasterized::Empty,
+                        }
+                    }
+                    None => self.apple.rasterize(&mut self.scale_cx, &mut self.atlas, macos::smoothing::Job {
+                        font: font_ref, key: (key.font, key.index, key.coords), coords, glyph: glyph as u16, ppem: font_size,
+                        phase_x, shift_y, radius, skew,
+                    }),
+                };
                 match placed {
                     Rasterized::Placed(g) => {
                         self.atlas.map.insert(key, Residency::Uploaded(g));
@@ -204,7 +246,7 @@ impl TextSystem {
                         self.atlas.map.insert(key, Residency::Blank);
                         None
                     }
-                    Rasterized::Unplaced => return Placed::Other,
+                    Rasterized::Unplaced => { crate::marks::text_missed(); return Placed::Other }
                 }
             }
         };
@@ -229,7 +271,8 @@ impl TextSystem {
 
 /// The glyph key tag of a DirectWrite mask (CoreGraphics' pipelines use the low bits).
 pub(super) const DIRECT_WRITE_KEY: u8 = 0x80;
-/// The glyph key tag of a Windfoil mask (`windfoil.rs`).
+/// The glyph key tag of a Windfoil mask (`windfoil.rs`), with the mode's number in its low bits
+/// (`FontSmoothing::outline_key`).
 pub(super) const WINDFOIL_KEY: u8 = 0x40;
 
 /// Where a glyph with its resting pen at `at` draws at `ppem` device px, gliding by `glide`: its
@@ -258,13 +301,16 @@ pub(super) enum Placed {
 
 /// The quad of atlas mask `a` for a pen at whole-pixel x `fx` and baseline `gy`.
 pub(super) fn atlas_quad(a: AtlasGlyph, fx: f32, gy: f32, ink: u16, byte: u32) -> GlyphQuad {
+    // A subpixel mask is three texels a pixel.
+    let w = if a.lcd { a.w / 3 } else { a.w };
     GlyphQuad {
-        rect: [fx + a.left as f32, gy.round() - a.top as f32, a.w as f32, a.h as f32],
+        rect: [fx + a.left as f32, gy.round() - a.top as f32, w as f32, a.h as f32],
         uv: [a.x as f32, (a.page as u32 * ATLAS_SIZE + a.y) as f32],
         ink,
         byte,
         color: 0,
         outline: None,
+        lcd: a.lcd,
     }
 }
 
@@ -276,6 +322,8 @@ pub(super) struct Face {
     pub(super) ink: u16,
     /// A face without italics leans by a fixed angle instead of fontique's 14°.
     pub(super) skew: u8,
+    /// Drawn in synthetic bold ([`synthetic_bold`]).
+    pub(super) bold: bool,
     pub(super) baseline: f32,
 }
 
@@ -289,8 +337,9 @@ impl Face {
             font: run.font().clone(),
             size: run.font_size(),
             coords_key: coords.iter().fold(0u64, |h, &c| h.wrapping_mul(31).wrapping_add(c as u16 as u64)),
-            ink: glyph_run.style().brush.0,
+            ink: glyph_run.style().brush.0 & !synthetic_bold::SYNTHETIC_BOLD,
             skew: if run.synthesis().skew().is_some() { SYNTHETIC_OBLIQUE } else { 0 },
+            bold: glyph_run.style().brush.0 & synthetic_bold::SYNTHETIC_BOLD != 0,
             baseline: glyph_run.baseline(),
         }
     }

@@ -25,14 +25,14 @@ use rune_taffy::prelude::*;
 
 use crate::color::{Color, over, srgb_encode};
 use crate::edit::{EditOutcome, Ime, KeyEvent};
-use crate::el::{Align, Drag, El, GrowthSpec, InputSpec, Phase, PointerEvent, ScrollSpec, Shell, TextSpec, Tx, Visual};
+use crate::el::{Align, Commit, Drag, El, GrowthSpec, InputSpec, MotionSource, Phase, PointerEvent, ScrollSpec, Shell, TextSpec, Tx, Visual};
 use crate::growth::{GrowTrack, SUBSTEP};
 // Half-open, like overlays, NSPointInRect and PtInRect: a shared edge belongs to one side.
 use crate::overlay::options::contains;
 use crate::flight::{TextFlight, transformed};
 use crate::render::{Instance, KIND_DASHED, KIND_EFFECT, KIND_GLYPH, KIND_GRADIENT, KIND_IMAGE, KIND_INSET, KIND_RADIAL, KIND_RECT, KIND_SEGMENT, KIND_SHADOW, KIND_TRIANGLE, NO_CLIP};
 use crate::shape::{LineCap, Op, Shape};
-use crate::text::{Deco, PaintedDeco, GlyphQuad, Ink, TextSystem};
+use crate::text::{Deco, PaintedDeco, GlyphQuad, Ink, TextFlow, TextLayout, TextSystem};
 use crate::tok::motion;
 use event_log::log_event;
 
@@ -90,12 +90,16 @@ mod interaction_timing;
 mod drag_out_host;
 #[path = "runtime/paint/exit_mask.rs"]
 mod exit_mask;
+#[path = "runtime/paint/raster_check.rs"]
+mod raster_check;
 #[path = "runtime/font_families.rs"]
 mod font_families;
 #[path = "runtime/key_index.rs"]
 mod key_index;
 #[path = "runtime/system_settings.rs"]
 mod system_settings;
+#[path = "runtime/zoom.rs"]
+mod zoom;
 #[path = "runtime/commit/prune.rs"]
 mod prune;
 pub(crate) use blend::{apron_key, glyph, icon_inst, premul};
@@ -136,6 +140,9 @@ mod visible;
 mod links;
 #[path = "runtime/selection/selectable.rs"]
 pub(crate) mod selectable;
+#[path = "runtime/selection/text_marks.rs"]
+mod text_marks;
+pub use text_marks::TextMark;
 #[path = "runtime/selection/click.rs"]
 mod input_click;
 #[path = "runtime/input/help.rs"]
@@ -151,6 +158,8 @@ mod scroll_x;
 mod scroll_offset;
 #[path = "runtime/scroll/reveal.rs"]
 mod reveal;
+#[path = "runtime/scroll/requests.rs"]
+mod requests;
 #[path = "runtime/scroll/anchor.rs"]
 mod scroll_anchor;
 #[path = "runtime/scroll/sticky.rs"]
@@ -168,12 +177,22 @@ mod live_latch;
 mod loop_clock;
 #[path = "runtime/motion/rewind.rs"]
 mod rewind_record;
+#[path = "runtime/scroll/drawn.rs"]
+mod scroll_drawn;
+use scroll_drawn::PixelHold;
+#[path = "runtime/scroll/nudge.rs"]
+mod scroll_nudge;
+#[path = "runtime/scroll/mode.rs"]
+mod scroll_mode;
+use scroll_mode::ScrollMode;
 #[path = "runtime/scroll/watch.rs"]
 mod scroll_watch;
 #[doc(hidden)]
 pub use scroll_watch::scroll_watch_state;
 #[path = "runtime/input/gesture.rs"]
 mod gesture_dispatch;
+#[path = "runtime/input/key_releases.rs"]
+mod key_releases;
 #[path = "runtime/input/touch.rs"]
 mod touch_input;
 pub use touch_input::TouchPhase;
@@ -185,6 +204,8 @@ mod flights;
 mod text_flights;
 #[path = "runtime/input/hover.rs"]
 mod hover;
+#[path = "runtime/input/hover_delay.rs"]
+mod hover_delay;
 #[path = "runtime/motion/timer_wake.rs"]
 mod timer_wake;
 #[path = "runtime/motion/idle_meter.rs"]
@@ -200,8 +221,8 @@ mod secondary;
 pub(crate) mod field_menu;
 #[path = "runtime/input/app_ime.rs"]
 mod app_ime;
-#[path = "runtime/input/press_clicks.rs"]
-mod press_clicks;
+#[path = "runtime/input/press_run.rs"]
+mod press_run;
 #[path = "runtime/input/press_repeat.rs"]
 mod press_repeat;
 #[path = "runtime/input/titlebar.rs"]
@@ -212,7 +233,7 @@ mod window_requests;
 #[path = "runtime/paint/tracks.rs"]
 mod paint_tracks;
 #[path = "runtime/input/action.rs"]
-mod action;
+pub(crate) mod action;
 use action::*;
 #[path = "runtime/paint/bands.rs"]
 mod bands;
@@ -265,6 +286,9 @@ mod live_only_tests;
 #[cfg(test)]
 #[path = "runtime/live_check_tests.rs"]
 mod live_check_tests;
+#[cfg(test)]
+#[path = "runtime/virtual_store_tests.rs"]
+mod virtual_store_tests;
 #[path = "runtime/selection/select_all.rs"]
 mod select_all;
 #[cfg(test)]
@@ -309,6 +333,8 @@ mod apply_scratch;
 mod relayout;
 #[path = "runtime/virtual/window.rs"]
 mod virtual_window;
+#[path = "runtime/virtual/fill.rs"]
+mod virtual_fill;
 #[path = "runtime/motion/unseen_presence.rs"]
 mod unseen_presence;
 #[path = "runtime/virtual/row_reorder.rs"]
@@ -341,7 +367,7 @@ mod paint_probe;
 pub use elements::{ElementInfo, Pick, Picked, Pose};
 #[path = "runtime/paint/cache_layer.rs"]
 mod cache_layer;
-use cache_layer::{ActiveCache, NodeCache};
+use cache_layer::{ActiveCache, AnotherFrame, NodeCache, RasterPass, RasterPhase, ScaleSettle};
 #[path = "runtime/paint/helpers.rs"]
 mod paint_helpers;
 use paint_helpers::*;
@@ -373,12 +399,12 @@ pub(crate) use commit_why::CommitWhy;
 #[cfg(debug_assertions)]
 pub(crate) use layout_read::window_read_key;
 pub(crate) use types::{AnimSource, Node};
-use types::{AxisScroll, GlideTo, Inh, NodeCold, RevealState, RowLayout, ScaleMotion, ScrollMode, ScrollState, Stack};
+use types::{AxisScroll, GlideTo, Inh, NodeCold, RevealState, RowLayout, ScaleMotion, ScrollState, Stack, WidthHold};
 #[path = "runtime/motion/tracks.rs"]
 mod tracks;
 use tracks::{SCROLL_DECAY, mark_ancestors, scroll_offsets, word_starts};
 mod commit;
-use commit::{Measured, Measurement, unwrapped_width};
+use commit::{Measured, Measurement, Pass, unwrapped_width};
 
 pub struct Runtime<S: 'static> {
     pub state: S,
@@ -386,6 +412,8 @@ pub struct Runtime<S: 'static> {
     /// `App::on_modifiers`, and the modifiers it last heard.
     pub(crate) on_mods: Option<fn(&mut S, crate::Mods, &mut Tx)>,
     mods_heard: crate::Mods,
+    /// `App::on_visibility`.
+    pub(crate) on_visibility: Option<fn(&mut S, bool, &mut Tx)>,
     /// `App::on_ime` and the composition it has open.
     pub(crate) app_ime: app_ime::AppIme<S>,
     view: fn(&S, &mut Cx<S>) -> El,
@@ -398,8 +426,10 @@ pub struct Runtime<S: 'static> {
     pub images: crate::pixels::ImageAtlas,
     pub scene: Scene,
     pub env: Env,
-    /// Viewport in points.
+    /// Viewport in points: the view's, the window's over the zoom.
     pub viewport: (f32, f32),
+    /// The view's UI zoom and the window it applies to (`Cx::zoom`).
+    zoom: zoom::Zoom,
     /// Transparent native surfaces/headless exports clear to transparent black.
     pub transparent: bool,
     /// Opt-in gamma-space (sRGB) blending for translucent fills, shadows and blurs.
@@ -430,6 +460,8 @@ pub struct Runtime<S: 'static> {
     watch: crate::tooling::perf_warn::Watch,
     /// Windowed runs read the clock from the wall instead of summing frame steps.
     pub wall_start: Option<crate::time::Instant>,
+    #[cfg(test)]
+    pub(crate) test_clock: Option<crate::Clock>,
     /// Called for keys unhandled by the focused control; return true to consume it.
     pub on_key: Option<fn(&mut S, &KeyEvent, &mut Tx) -> bool>,
     pub(crate) nodes: Vec<Node>,
@@ -500,7 +532,7 @@ pub struct Runtime<S: 'static> {
     /// Sideways scroll of focused single-line fields, in points, keyed by node path.
     input_scroll: HashMap<String, f32>,
     dissolve_scratch: Vec<bool>,
-    exit_mask: exit_mask::ExitMask,
+    exit_mask: exit_mask::Mask,
     key_index: key_index::KeyIndex,
     has_dissolve: bool,
     cache_live_scratch: Vec<bool>,
@@ -526,20 +558,16 @@ pub struct Runtime<S: 'static> {
     /// Sections whose rows fade under their stuck header this frame (`ScrollFade::below_sticky`),
     /// with the paint clip top the header keeps.
     sticky_bands: Vec<(usize, f32)>,
-    /// `Tx::keep_on_screen` across the commit underway.
-    keeps: Vec<sticky::Keep>,
-    /// `Tx::scroll_into_view` requests that follow their target while growth/layout springs run.
-    scroll_reveals: Vec<sticky::Reveal>,
+    /// `Tx::keep_on_screen` across the commit underway, and `Tx::scroll_into_view` requests that
+    /// follow their target while growth/layout springs run.
+    requests: requests::Requests,
     /// Some element is `El::raise`d: paint order isn't tree order.
     has_raise: bool,
     /// Some element sets `El::paint_order`: its siblings paint out of tree order.
     has_paint_order: bool,
-    /// The focus where the held non-IME key(s) went down, so a release after focus moves
-    /// still reaches that element first.
-    key_focus: Option<String>,
-    keys_held: u32,
-    ime_keys_down: u32,
-    ime_eat_key_up: bool,
+    /// Key releases an input method takes, and the focus where the held non-IME key(s) went
+    /// down, so a release after focus moves still reaches that element first.
+    key_releases: key_releases::KeyReleases,
     /// Pictures whose image changed shape since the last commit, which lays them out at once.
     aspect_snap: Vec<NodeId>,
     /// Drawn rect per node (points, root space), for tools and hit tests.
@@ -561,8 +589,8 @@ pub struct Runtime<S: 'static> {
     /// The memo pass the current commit's first view build was. Memos none of its builds used
     /// go once it applies.
     memo_since: u64,
-    /// Frames in a row an index-built list has asked for to fill its overscan.
-    virtual_fill: u32,
+    /// Whether an index-built list still fills its overscan, and for how many frames.
+    virtual_fill: virtual_fill::Fill,
     /// True when the commit in flight is for scroll/layout only (`self.state` wasn't mutated).
     state_unchanged: bool,
     reuse: relayout::Reuse,
@@ -607,7 +635,10 @@ pub struct Runtime<S: 'static> {
     /// modal that opens in this commit returns focus to.
     focus_before_commit: Option<String>,
     /// `Tx::focus`: the key the next commit focuses, and whether its ring shows.
-    focus_request: Option<(String, bool)>,
+    focus_request: Option<(String, bool, crate::el::FocusAsk)>,
+    /// This commit's focus is a `Tx::return_focus` hand-back, which a modal opening in it
+    /// doesn't take as where focus was.
+    focus_returned: bool,
     /// Focused text fields that unmounted without being blurred: while another field holds focus,
     /// remounting one with its old `focused = true` flag does not steal focus back.
     unmounted_focused: Vec<std::sync::Weak<crate::edit::History>>,
@@ -617,25 +648,21 @@ pub struct Runtime<S: 'static> {
     loops: HashMap<NodeId, rune_motion::LoopTrack>,
     loop_clock: loop_clock::LoopClock,
     loops_active: bool,
-    /// `El::scale` per node that has one or had one: (factor, animation time it last changed,
-    /// whether it has ever changed). See [`ScaleMotion`].
-    static_scales: HashMap<NodeId, (f32, f64, bool)>,
-    /// A changed `El::scale` hasn't held still long enough for its text to rasterize.
-    static_scale_settling: bool,
+    /// Last scale observation per node that has a scale or had one. See [`ScaleMotion`].
+    static_scales: HashMap<NodeId, ScaleSettle>,
+    /// Frame requested by scale settling or pixel snapping in the last paint.
+    scale_frame: Option<AnotherFrame>,
     /// Some node ran on a scaled clock (`El::time_scale`) at the last commit.
     time_scaled: bool,
     /// Shared host deadline: unscaled wake time and corresponding animation time.
     loop_wake: Option<(f64, f64)>,
-    surface_visible: bool,
     hovered: Option<String>,
     /// Elements with `on_hover_change` that the pointer is inside.
     hover_within: Vec<String>,
     /// `on_hover_change` handlers of elements that left the tree, owed their queued leave.
     hover_gone: Vec<(String, crate::el::WindowFocusFn)>,
-    /// Elements with `hover_delays` whose `on_hover_change` last heard `true`.
-    hover_shown: Vec<String>,
-    /// Delayed hover changes waiting out their delay: path, inside, due on the clock.
-    hover_pending: Vec<(String, bool, f64)>,
+    /// Elements with `hover_delays`: which heard the enter, and which wait out a delay.
+    hover_delays: hover_delay::HoverDelays,
     /// A press or blur stopped the waits to report an enter; the pointer's next move restarts them.
     hover_paused: bool,
     /// Hover waiting out layout motion under a still pointer.
@@ -661,13 +688,13 @@ pub struct Runtime<S: 'static> {
     window_origin: (f32, f32),
     /// The window's content top-left in desktop pixels, as its host last saw it (`Drag::screen_point`).
     window_pixels: Option<(i32, i32)>,
-    /// Commits in a row caused only by layout feedback (see `layout_read`).
-    layout_echoes: u32,
+    /// Whether layout feedback may still cause a commit (see `layout_read`).
+    feedback: layout_read::Feedback,
     /// An edit ran this frame: keep the caret in its scroll viewport after the commit.
     caret_follow: bool,
     links: links::LinkState,
     /// The selection in `El::selectable` text.
-    text_sel: selectable::Held,
+    selectable: selectable::phase::TextSel,
     /// `Tx::text_selection`'s snapshot, kept while neither a commit nor the selection changed.
     sel_snapshot: std::cell::RefCell<Option<selectable::Snapshot>>,
     /// What each `El::on_selection_change` element (by path) last heard.
@@ -697,8 +724,9 @@ pub struct Runtime<S: 'static> {
     pub(crate) clipboard: Option<crate::clipboard::MemoryClipboard>,
     /// A handler or `update` asked to close the window or quit (the shell takes it).
     pub shell_request: Option<Shell>,
-    /// A handler or `update` asked to minimize the window (`Tx::minimize`); the shell takes it.
-    pub(crate) minimize_request: bool,
+    /// A handler or `update` asked to minimize the window (`Tx::minimize`); the shell takes it,
+    /// after a show the same turn asked for (`window::Minimize`).
+    pub(crate) minimize: crate::window::Minimize,
     /// A handler, update or `AppHandle` asked for fullscreen (`Tx::set_fullscreen`); the shell
     /// takes it. Last request wins.
     pub(crate) fullscreen_request: Option<bool>,
@@ -719,21 +747,23 @@ pub struct Runtime<S: 'static> {
     pub(crate) window_frame: Option<crate::window::frame::FrameRequest>,
     /// The window's title (`Tx::set_title`), from `AppSpec`'s.
     pub(crate) window_title: window_requests::Title,
+    /// `Tx::announce`'s last words, for the accessibility tree's live region.
+    pub(crate) announcement: crate::a11y::Announcement,
     /// The window's height follows the root's natural height (`App::fit_content_height`).
     pub(crate) fit_height: bool,
-    /// The content height last asked of the window.
-    fit_asked: Option<f32>,
+    /// The height a window that fits its content last asked for, and the frame its move
+    /// starts with. The host takes the hold as it starts the move.
+    pub(crate) fit: window_requests::FitWindow,
     /// The band of a taller document the window draws (`App::web_document`).
-    pub(crate) page: web_page::Page,
-    /// A fitting window at rest asked to move: this frame shows the commit's motion at its
-    /// start, as the window can't move until the next frame.
-    fit_hold: bool,
-    /// The last frame held its motion for the window (`fit_hold`). The host reads it.
-    pub(crate) fit_held: bool,
+    pub(crate) page: Option<web_page::Page>,
     /// The host's window frame isn't moving or about to: set by the host before each frame.
     pub(crate) window_resting: bool,
     /// What `update` asked of the next commit.
     pending: Tx,
+    /// Motion has a cause (`Tx::unprompted`): a commit no input in this window caused mounts and
+    /// unmounts at once. On for every window an app opens (`tooling::runtime_for`); a bare
+    /// `Runtime` keeps every commit's motion.
+    pub(crate) motion_needs_cause: bool,
     pub animating: bool,
     /// Why the last frame was animating, as [`AnimSource`] bits, for traces.
     pub(crate) anim_sources: u16,
@@ -755,7 +785,7 @@ pub struct Runtime<S: 'static> {
     pub(crate) trace_channels: Option<HashMap<&'static str, (&'static str, f32)>>,
     /// Counters for perf gates.
     pub stats: FrameStats,
-    live_wake: Arc<crate::live::Wake>,
+    live: live_latch::LiveLane,
     live_clock: Arc<()>,
     window_focused: Option<bool>,
     /// The focused spellchecked field's word at the caret (`spell::pause`).
@@ -763,7 +793,6 @@ pub struct Runtime<S: 'static> {
     /// `keys_lost` queued its `FocusLost` since the window last had focus.
     keys_lost: bool,
     live_subscriptions: Vec<Arc<crate::live::Subscription>>,
-    live_dirty: bool,
     /// Events whose handler said `Tx::live_only`, and so didn't commit.
     live_only_skips: u64,
     /// The clock at the last commit.
@@ -792,7 +821,7 @@ pub struct Runtime<S: 'static> {
     /// (the shell sleeps until then instead of drawing every display frame).
     pub ambient: Option<f32>,
     /// The presses counted into `Drag::clicks`.
-    press_clicks: press_clicks::PressClicks,
+    press_clicks: press_run::PressRun,
     /// The held press's drag repeat (`Tx::drag_repeat_after`).
     press_repeat: press_repeat::PressRepeat,
     titlebar: titlebar::Titlebar,
@@ -836,6 +865,7 @@ impl<S: 'static> Runtime<S> {
             scene,
             env,
             viewport,
+            zoom: zoom::Zoom { k: 1.0, window: viewport, window_scale: env.scale },
             transparent: false,
             srgb_blend: false,
             native_overlay: false,
@@ -856,6 +886,8 @@ impl<S: 'static> Runtime<S> {
             idle_meter: Default::default(),
             watch: Default::default(),
             wall_start: None,
+            #[cfg(test)]
+            test_clock: None,
             on_key: None,
             nodes: Vec::new(),
             spare_nodes: Vec::new(),
@@ -917,14 +949,10 @@ impl<S: 'static> Runtime<S> {
             stuck: Vec::new(),
             sticky_frame: Vec::new(),
             sticky_bands: Vec::new(),
-            keeps: Vec::new(),
-            scroll_reveals: Vec::new(),
+            requests: Default::default(),
             has_raise: false,
             has_paint_order: false,
-            key_focus: None,
-            keys_held: 0,
-            ime_keys_down: 0,
-            ime_eat_key_up: false,
+            key_releases: Default::default(),
             aspect_snap: Vec::new(),
             drawn: Vec::new(),
             drawn_scale: Vec::new(),
@@ -938,7 +966,7 @@ impl<S: 'static> Runtime<S> {
             rewind: None,
             virtual_culled: HashSet::default(),
             memo_since: 0,
-            virtual_fill: 0,
+            virtual_fill: virtual_fill::Fill::default(),
             state_unchanged: false,
             reuse: Default::default(),
             virtual_inputs: HashMap::default(),
@@ -965,21 +993,20 @@ impl<S: 'static> Runtime<S> {
             modal_focus: modal_focus::ModalFocus::Closed,
             focus_before_commit: None,
             focus_request: None,
+            focus_returned: false,
             unmounted_focused: Vec::new(),
             modal_scope: None,
             loops: HashMap::default(),
             loop_clock: Default::default(),
             loops_active: false,
             static_scales: HashMap::default(),
-            static_scale_settling: false,
+            scale_frame: None,
             time_scaled: false,
             loop_wake: None,
-            surface_visible: true,
             hovered: None,
             hover_within: Vec::new(),
             hover_gone: Vec::new(),
-            hover_shown: Vec::new(),
-            hover_pending: Vec::new(),
+            hover_delays: Default::default(),
             hover_paused: false,
             hover_hold: Default::default(),
             file_drag: Default::default(),
@@ -993,10 +1020,10 @@ impl<S: 'static> Runtime<S> {
             visible_fired: HashMap::default(),
             window_origin: (0.0, 0.0),
             window_pixels: None,
-            layout_echoes: 0,
+            feedback: Default::default(),
             caret_follow: false,
             links: Default::default(),
-            text_sel: Default::default(),
+            selectable: Default::default(),
             sel_snapshot: Default::default(),
             sel_heard: Default::default(),
             input_click: Default::default(),
@@ -1013,7 +1040,7 @@ impl<S: 'static> Runtime<S> {
             clear_secret_request: false,
             clipboard: None,
             shell_request: None,
-            minimize_request: false,
+            minimize: Default::default(),
             fullscreen_request: None,
             fullscreen: false,
             url_requests: Vec::new(),
@@ -1024,13 +1051,13 @@ impl<S: 'static> Runtime<S> {
             next_file_dialog: 0,
             window_frame: None,
             window_title: Default::default(),
+            announcement: Default::default(),
             fit_height: false,
-            fit_asked: None,
-            page: Default::default(),
-            fit_hold: false,
-            fit_held: false,
+            fit: Default::default(),
+            page: None,
             window_resting: false,
             pending: Tx::default(),
+            motion_needs_cause: false,
             animating: false,
             anim_sources: 0,
             commit_why: 0,
@@ -1041,7 +1068,7 @@ impl<S: 'static> Runtime<S> {
             record_events: true,
             trace_channels: None,
             stats: FrameStats::default(),
-            live_wake: crate::live::Wake::new(Arc::new(|| {})),
+            live: live_latch::LiveLane::new(Arc::new(|| {})),
             live_clock: Arc::new(()),
             frame_target: None,
             videos_active: false,
@@ -1052,9 +1079,9 @@ impl<S: 'static> Runtime<S> {
             on_focus: None,
             on_mods: None,
             mods_heard: Default::default(),
+            on_visibility: None,
             app_ime: Default::default(),
             live_subscriptions: Vec::new(),
-            live_dirty: false,
             live_only_skips: 0,
             last_commit_clock: f64::NEG_INFINITY,
             #[cfg(debug_assertions)]

@@ -24,6 +24,8 @@ pub(crate) struct ElCold {
     pub(crate) motion: Option<Spring>,
     pub(crate) opacity_motion: Option<Box<Anim>>,
     pub(crate) lead: Option<(Spring, Spring)>,
+    /// `El::animated_changes`: an ancestor's `El::instant_changes` stops here.
+    pub(crate) animated_changes: bool,
     pub(crate) transition: Option<Box<Transition>>,
     pub(crate) matched: Option<Rc<str>>,
     pub(crate) scroll: Option<ScrollSpec>,
@@ -42,8 +44,8 @@ pub(crate) struct ElCold {
     pub(crate) help: Option<String>,
     /// `El::help_when_truncated`: the tooltip shows only while the text is cut short.
     pub(crate) help_cut: bool,
-    /// `El::help_above`: the tooltip shows above the element.
-    pub(crate) help_above: bool,
+    /// `El::help_side`: the side the tooltip shows on; None for under the element.
+    pub(crate) help_side: Option<crate::Side>,
     pub(crate) material: Option<crate::SystemMaterial>,
     /// `El::aspect_fit`'s width over height; 0 when unset.
     pub(crate) aspect_fit: f32,
@@ -68,6 +70,7 @@ impl Empty for ElCold {
         motion: None,
         opacity_motion: None,
         lead: None,
+        animated_changes: false,
         transition: None,
         matched: None,
         scroll: None,
@@ -83,7 +86,7 @@ impl Empty for ElCold {
         time_scale: 1.0,
         help: None,
         help_cut: false,
-        help_above: false,
+        help_side: None,
         material: None,
         aspect_fit: 0.0,
         a11y: A11y::EMPTY,

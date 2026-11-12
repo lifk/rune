@@ -1,0 +1,1 @@
+- macOS video: a poster for an older paused seek is never shown and can't fail the clip, while posters for the time currently asked for still show; a late audio load error no longer fails a clip that has already opened.
