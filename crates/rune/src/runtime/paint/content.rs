@@ -19,6 +19,10 @@ pub(super) struct LeafBox {
     pub rest: f32,
     pub gliding: bool,
     pub caret: Option<[f32; 4]>,
+    /// The rows of the screen, in pixels, where what it draws can show: its clip's, cut to the
+    /// window's unless it draws into a layer turned or cached first. A long text draws its
+    /// lines there and no others.
+    pub shown: [f32; 2],
 }
 
 impl<S: 'static> Runtime<S> {
@@ -50,6 +54,7 @@ impl<S: 'static> Runtime<S> {
             rest,
             gliding,
             caret: input_caret,
+            shown,
         } = b;
         let (w, h) = ((r[2] - r[0]).max(0.0), (r[3] - r[1]).max(0.0));
         let (w_exact, h_exact) = ((r_exact[2] - r_exact[0]).max(0.0), (r_exact[3] - r_exact[1]).max(0.0));
@@ -59,6 +64,10 @@ impl<S: 'static> Runtime<S> {
         let text_color = self.nodes[i].vis.icon.map(|(_, c)| c)
             .or_else(|| self.nodes[i].text.as_ref().map(|sp| sp.color))
             .map(|c| self.color(node_id, P_TEXT, c));
+        // A terminal's cell grid paints its rows itself (`grid.rs`).
+        if let Some(g) = self.nodes[i].vis.grid.clone() {
+            self.paint_grid(i, &g, r, r_exact, clip, fade, o, glyph_count);
+        }
         let n = &self.nodes[i];
         let text_tint = |c: Color| paint_tracks::group_tint(n, c, group);
         if let Some(shape) = &n.vis.shape {
@@ -261,7 +270,7 @@ impl<S: 'static> Runtime<S> {
                 let e = &inp.edit;
                 // The bytes of the paragraphs the clip shows, which a long draft's selection and
                 // spelling marks are drawn in; the newline after the last one included.
-                let (top, bottom) = if tk > 1e-4 { ((clip[1] - origin[1]) / tk, (clip[3] - origin[1]) / tk) } else { (f32::NEG_INFINITY, f32::INFINITY) };
+                let (top, bottom) = if tk > 1e-4 { ((shown[0] - origin[1]) / tk, (shown[1] - origin[1]) / tk) } else { (f32::NEG_INFINITY, f32::INFINITY) };
                 let (shown_a, shown_b) = flow.pieces_in(top, bottom).fold((usize::MAX, 0), |(lo, hi), p| (lo.min(p.start), hi.max(p.end.saturating_add(1))));
                 let departing = self.flights.iter().any(|f| f.departs(&n.path, n.key.as_deref())
                     && f.alphas(f.destination, now, self.reduced_motion).0 > 0.0);
@@ -316,12 +325,10 @@ impl<S: 'static> Runtime<S> {
                     // The composition's underline: thin under what's composed, thick under the
                     // clause being converted, each clause a point short at both ends so clauses
                     // read apart, as Chromium draws them (`CompositionMarkerPainter`).
-                    if let Some((p, _)) = e.preedit() {
+                    if e.preedit().is_some() {
                         let pa = e.range().0;
-                        let pb = pa + p.len();
-                        let (ta, tb) = e.preedit_target().map_or((pb, pb), |(a, b)| (pa + a, pa + b));
-                        for (a, b, thick) in [(pa, ta, 1.0), (ta, tb, 2.0), (tb, pb, 1.0)] {
-                            if a >= b { continue; }
+                        for clause in e.preedit_clauses() {
+                            let (a, b, thick) = (pa + clause.range().start, pa + clause.range().end, if clause.is_target() { 2.0 } else { 1.0 });
                             for (bb, _) in flow.range_boxes(a, b, false) {
                                 let (x0, x1) = (origin[0] + bb.x0 as f32 * tk, origin[0] + bb.x1 as f32 * tk);
                                 let inset = if x1 - x0 > 4.0 * s { s } else { 0.0 };
@@ -360,13 +367,13 @@ impl<S: 'static> Runtime<S> {
             let single = laid.single().is_some();
             let em = spec.spans.iter().filter_map(|sp| sp.size).fold(spec.style.size.max(spec.style.line_px()), f32::max);
             let pad = 2.0 * em * s + 2.0 / raster.max(1e-4);
-            let rows = if tk > 1e-4 { (clip[1] - rest_origin[1]) / tk - pad..(clip[3] - rest_origin[1]) / tk + pad } else { f32::NEG_INFINITY..f32::INFINITY };
+            let rows = if tk > 1e-4 { (shown[0] - rest_origin[1]) / tk - pad..(shown[1] - rest_origin[1]) / tk + pad } else { f32::NEG_INFINITY..f32::INFINITY };
             for piece in flow.pieces_in(rows.start, rows.end) {
                 let layout = piece.layout;
                 let (origin, rest_origin) = ([origin[0], origin[1] + piece.y * tk], [rest_origin[0], rest_origin[1] + piece.y * tk]);
                 let (spans_here, pills, strikes) = (piece.spans(&spec.spans), piece.pills(&spec.cold.pills), piece.strikes(&spec.cold.strikes));
                 // Span backgrounds (inline code), strikethroughs, a selection over them, then glyphs.
-                let reveal = self.reveals.get(&n.id).filter(|st| !st.words.is_empty() && spec.cold.advance_in.is_none());
+                let reveal = self.reveals.get(&n.id).filter(|_| spec.cold.advance_in.is_none()).and_then(RevealPhase::fade);
                 self.deco_scratch.clear();
                 let mut pill_icons = Vec::new();
                 let pill_bg = spec.cold.pill_colors.map_or(spec.rich_style().link.alpha(0.2), |(bg, _)| bg);
@@ -410,7 +417,7 @@ impl<S: 'static> Runtime<S> {
                 }
                 for d in &self.deco_scratch {
                     let alpha = if d.ring.is_some() {
-                        reveal.map_or(1.0, |st| Self::reveal_alpha(st, d.byte, self.scene.store().node_time(n.id)))
+                        reveal.map_or(1.0, |fade| fade.alpha(d.byte, self.scene.store().node_time(n.id)))
                     } else { 1.0 };
                     let c = premul(d.color, o * alpha, srgb);
                     let mut inst = rect_inst(d.rect, c, d.radius, clip, fade);
@@ -506,6 +513,11 @@ impl<S: 'static> Runtime<S> {
                 // A cell of a longer run draws its slice of the run's glyphs, shaped in context, at the
                 // same raster factor as a paragraph: under a zoom its masks are made at the zoomed size
                 // rather than magnified, and the frame it comes to rest places them.
+                // A still text whose quads this frame would draw as the last one did copies them,
+                // as `El::grid` rows do: `quads` is the entry to record them under otherwise.
+                let mut copied = false;
+                let mut quads: Option<((NodeId, usize), Rc<parley::Layout<crate::text::Ink>>, u64, usize, usize)> = None;
+                let mut pages: Option<Vec<(u16, u32)>> = None;
                 let zoom = if let (Some(r), Some((_, at))) = (&n.run_layout, &spec.cold.advance_in)
                     && let Some(x) = r.x(*at)
                 {
@@ -524,7 +536,7 @@ impl<S: 'static> Runtime<S> {
                     let band = if tk > 1e-4 {
                         let em = spec.spans.iter().filter_map(|sp| sp.size).fold(spec.style.size.max(spec.style.line_px()), f32::max);
                         let pad = 2.0 * em * s + 2.0 / raster.max(1e-4);
-                        (clip[1] - origin[1]) / tk - pad..(clip[3] - origin[1]) / tk + pad
+                        (shown[0] - origin[1]) / tk - pad..(shown[1] - origin[1]) / tk + pad
                     } else {
                         f32::NEG_INFINITY..f32::INFINITY
                     };
@@ -532,7 +544,33 @@ impl<S: 'static> Runtime<S> {
                     // A secret's glyphs aren't kept past the frame that draws them.
                     let secret = spec.redacted || n.input.as_ref().is_some_and(|i| i.edit.is_secure());
                     let shared = piece.shared.or(laid.single());
+                    let still = scale_motion == ScaleMotion::Still && glide == [0.0; 2] && !bytes && !place_masks
+                        && !self.flights.iter().any(|f| f.lands(&n.path, n.key.as_deref()));
+                    if let Some(l) = shared.filter(|_| still && !direct && !secret) {
+                        use std::hash::{Hash, Hasher};
+                        let mut h = rune_motion::Fx::default();
+                        (origin.map(f32::to_bits), clip.map(f32::to_bits), fade.map(f32::to_bits), shown.map(f32::to_bits), [tk, raster, s].map(f32::to_bits)).hash(&mut h);
+                        (premul(color, o, srgb).map(f32::to_bits), srgb, self.text.emit_key()).hash(&mut h);
+                        for sp in spans_here.iter() {
+                            sp.color.map(|c| premul(c, o, srgb).map(f32::to_bits)).hash(&mut h);
+                        }
+                        let (id, key) = ((n.id, Rc::as_ptr(l) as usize), h.finish());
+                        match self.text_quads.get_mut(&id).filter(|(held, d, _)| Rc::ptr_eq(held, l) && d.key == key) {
+                            Some((_, d, used)) => {
+                                *used = self.quads_frame;
+                                self.instances.extend_from_slice(&d.instances);
+                                d.pages.iter().for_each(|&(page, texels)| self.text.touch_quad(page, texels));
+                                *glyph_count += d.glyphs;
+                                copied = true;
+                            }
+                            None => {
+                                quads = Some((id, l.clone(), key, self.instances.len(), *glyph_count));
+                                pages = Some(Vec::new());
+                            }
+                        }
+                    }
                     match shared.filter(|_| !direct && !secret) {
+                        _ if copied => {}
                         Some(l) => self.text.glyphs_in_band_cached(l, r_origin, raster, bytes, band.clone(), &mut self.glyph_scratch),
                         None => self.text.glyphs_in_band(layout, r_origin, raster, bytes, band.clone(), &mut self.glyph_scratch),
                     }
@@ -580,8 +618,8 @@ impl<S: 'static> Runtime<S> {
                     if !link_fx.is_empty() && let Some(c) = link_fx.glyph_color(q.byte) {
                         f = premul(c, o, srgb);
                     }
-                    if let Some(st) = reveal {
-                        let a = Self::reveal_alpha(st, q.byte, self.scene.store().node_time(n.id));
+                    if let Some(fade) = reveal {
+                        let a = fade.alpha(q.byte, self.scene.store().node_time(n.id));
                         if a <= 0.0 {
                             continue;
                         }
@@ -590,6 +628,20 @@ impl<S: 'static> Runtime<S> {
                     self.instances.extend(glyph_or_image(q, &self.text, &mut self.images, f, clip, fade)
                         .map(|g| zoom_glyph(g, origin, r_origin, zoom)));
                     *glyph_count += 1;
+                    // A colour or outline glyph draws per frame, from another atlas or a record.
+                    if q.color != 0 || q.outline.is_some() {
+                        pages = None;
+                    } else if let Some(pages) = pages.as_mut() {
+                        let (page, texels) = (q.atlas_page() as u16, (q.rect[2] * if q.lcd { 3.0 } else { 1.0 } * q.rect[3]) as u32);
+                        match pages.iter_mut().find(|p| p.0 == page) {
+                            Some(p) => p.1 += texels,
+                            None => pages.push((page, texels)),
+                        }
+                    }
+                }
+                if let (Some((id, layout, key, start, glyphs)), Some(pages)) = (quads, pages) {
+                    let d = crate::el::grid::DrawnRow { key, instances: self.instances[start..].to_vec(), pages, glyphs: *glyph_count - glyphs };
+                    self.text_quads.insert(id, (layout, d, self.quads_frame));
                 }
             }
             if let (Some(c), Some(inp)) = (caret, &n.input) {

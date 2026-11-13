@@ -10,6 +10,13 @@ impl<S: 'static> Runtime<S> {
             .map(|(_, n)| n.path.clone()).collect()
     }
 
+    /// Whether a drawn node's loop runs (a spinner): what a window shows would fall behind it
+    /// while the window draws nothing.
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    pub(crate) fn loops_shown(&self) -> bool {
+        self.nodes.iter().enumerate().any(|(i, n)| n.looping.is_some() && self.seen.get(i).copied().unwrap_or(false) && self.loops.contains_key(&n.id))
+    }
+
     /// Clock seconds now: the wall clock in a window (input arrives between frames), the
     /// virtual clock headless.
     pub(super) fn now_clock(&self) -> f64 {
@@ -56,9 +63,6 @@ impl<S: 'static> Runtime<S> {
         }
         changed
     }
-
-    /// Whether the window has the keyboard focus, as its last focus event said.
-    pub(crate) fn has_window_focus(&self) -> bool { self.window_focused == Some(true) }
 
     /// Queue a native focus transition. Repeated notifications do not repeat the callback.
     /// Losing focus is also `keys_lost`.
@@ -267,6 +271,15 @@ impl<S: 'static> Runtime<S> {
         self.schedule_wakes_from(self.clock, wakes);
     }
 
+    /// Wakes for a frame once the clock reaches `due`, as [`Tx::wake_at`] asks from a handler (a
+    /// deadline already past wakes the next frame), for the runtime's own timers.
+    #[cfg_attr(feature = "frame-profile", track_caller)]
+    pub(super) fn wake_at(&mut self, due: f64) {
+        #[cfg(feature = "frame-profile")]
+        crate::frame::live_log::waker(std::panic::Location::caller(), std::time::Duration::from_secs_f64((due - self.clock).max(0.0)));
+        self.schedule_wakes_from(due, [std::time::Duration::ZERO]);
+    }
+
     pub(super) fn schedule_wakes_from(&mut self, now: f64, wakes: impl IntoIterator<Item = std::time::Duration>) {
         for delay in wakes {
             let deadline = now + delay.as_secs_f64();
@@ -280,7 +293,7 @@ impl<S: 'static> Runtime<S> {
 
     pub(super) fn transaction(&self) -> Tx {
         Tx { trace: self.tracing().then(crate::el::TraceCalls::default), mods: self.held_mods, selection: self.selection_snapshot(),
-            input_time: crate::input::time::current(), clock: self.clock, focus_visible: self.focus.keyboard(), focused: self.focused_key(), ..Tx::default() }
+            input_time: crate::input::time::current(), clock: self.clock, focus_visible: self.focus.keyboard(), focused: self.focused_key(), assistive: self.a11y.is_some(), ..Tx::default() }
     }
 
     /// A scalar from the actual draw path (e.g. `shell.width`). Values hold until resampled.
@@ -466,6 +479,9 @@ impl<S: 'static> Runtime<S> {
         self.wake_deadlines.drain(..due);
         self.fire_hover_delays();
         self.fire_press_repeat();
+        self.fire_edge_scroll();
+        self.fire_autoscroll();
+        self.fire_touch_hold();
         // Marks are paint's (`paint::content`), and this frame paints: a pause that ends or words
         // the checker brought back show without the view running again.
         let (wake, _marked) = crate::spell::pause::tick(&mut self.spell_watch, self.clock);
@@ -607,6 +623,9 @@ impl<S: 'static> Runtime<S> {
             // Motion has a cause: the user, in this window. A commit nothing in this frame's
             // input asked for shows what it brings in its final state (`Tx::unprompted`).
             tx.unprompted = self.motion_needs_cause && why & CommitWhy::INPUT == 0 && !tx.asked_motion;
+            // Its layout lands too, as an instant change's does: a container that grows to fit what a
+            // server brought doesn't ease to its height (motion already running keeps on).
+            if tx.unprompted { tx.commit = tx.commit.instant(); }
             self.commit_for(&tx, why | flag(self.dirty, CommitWhy::DIRTY) | flag(self.relayout, CommitWhy::RELAYOUT) | flag(self.settle, CommitWhy::SETTLE)
                 | flag(shifted, CommitWhy::VIRTUAL) | flag(ran_layout, CommitWhy::LAYOUT) | flag(read_moved, CommitWhy::READ));
             #[cfg(debug_assertions)]
@@ -795,6 +814,8 @@ impl<S: 'static> Runtime<S> {
         }
         self.finish_keeps();
         animating |= self.write_drawn_rects();
+        // A selection's edge scroll stepped: it follows the pointer over this layout, and shows.
+        if self.laid_edge_scroll() { animating |= self.build(); }
         self.report_at_bottom();
         animating |= self.report_visible_rows();
         self.report_layout();

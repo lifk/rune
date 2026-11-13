@@ -106,6 +106,9 @@ pub struct App<S: 'static> {
     pub(crate) font_smoothing: crate::FontSmoothing,
     pub(crate) dev_stats: Option<fn() -> String>,
     pub(crate) playground: Option<crate::Playground<S>>,
+    /// `playground::attach`, set by `App::playground`: a window calls it through this, so an app
+    /// without a playground doesn't link it.
+    pub(crate) attach_playground: Option<crate::playground::Attach<S>>,
 }
 
 impl<S: 'static> App<S> {
@@ -160,6 +163,7 @@ impl<S: 'static> App<S> {
             font_smoothing: crate::FontSmoothing::default(),
             dev_stats: None,
             playground: None,
+            attach_playground: None,
         }
     }
 
@@ -582,17 +586,19 @@ impl<S: 'static> App<S> {
             self = self.menu_item(item);
         }
         self.playground = Some(playground);
+        self.attach_playground = Some(crate::playground::attach::<S>);
         self
     }
 
     /// Runs until the app quits. Agent-tooling arguments (`--snap`, `--tree`, ...) render
     /// headless instead: the window requests are ignored there, and updates apply each frame.
-    /// Panics when the app can't start, such as without a display; `try_run` returns that error.
+    /// Prints the error to stderr and exits 1 when the app can't start, such as without a
+    /// display (wasm32 has no process exit, so there it panics); `try_run` returns that error.
     pub fn run(self) {
-        if let Err(error) = self.try_run() { panic!("{error}"); }
+        crate::tooling::started(self.try_run());
     }
 
-    /// `run`, returning an error instead of panicking when the event loop can't start (no
+    /// `run`, returning an error instead of exiting when the event loop can't start (no
     /// display over ssh or in CI, no Wayland or X11 server) or fails.
     #[cfg(target_arch = "wasm32")]
     pub fn try_run(mut self) -> Result<(), String> {
@@ -609,8 +615,13 @@ impl<S: 'static> App<S> {
             None => Args::parse(),
         };
         if args.headless() {
-            crate::render::discard_prewarm();
-            crate::tooling::try_headless(self, args)
+            #[cfg(any(feature = "tooling", debug_assertions))]
+            {
+                crate::render::discard_prewarm();
+                crate::tooling::try_headless(self, args)
+            }
+            #[cfg(not(any(feature = "tooling", debug_assertions)))]
+            Err(crate::tooling::WITHOUT_TOOLING.into())
         } else {
             crate::window::run(self, args)
         }

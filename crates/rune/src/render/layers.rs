@@ -13,6 +13,10 @@ pub(super) const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 pub const DEFAULT_CACHE_BUDGET: u64 = 64 * 1024 * 1024;
 /// What spare layer targets may hold (Layers::spare): a full-window layer at 2880x1800 or two menus' worth.
 const SPARE_BYTES: u64 = 32 * 1024 * 1024;
+/// What they keep once the window rests (`window::rest`): the most recently used, which the
+/// screen on show takes again for its menus and hovers. Making a target costs the frame that
+/// takes it a few ms on an integrated GPU.
+const RESTING_SPARE_BYTES: u64 = 8 * 1024 * 1024;
 /// Maximum width or height of a cached subtree's offscreen texture in device pixels.
 const MAX_CACHE_DIM: u32 = 4096;
 
@@ -37,6 +41,9 @@ mod continuous_corner_tests;
 #[cfg(test)]
 #[path = "layer_show_tests.rs"]
 mod show_tests;
+#[cfg(test)]
+#[path = "layer_rebind_tests.rs"]
+mod rebind_tests;
 
 pub(super) struct Layers {
     plan: Vec<Layer>,
@@ -54,14 +61,33 @@ pub(super) struct Layers {
     viewport: (u32, u32),
     image_generation: u64,
     allocations: u64,
+    /// The atlas and outline texture generation: every target's base bind group names the
+    /// generation it was made against, and a parked target is bound again only when a layer takes
+    /// it in a later one.
+    bindings: u64,
     cache_budget: u64,
     frame_stamp: u64,
     /// Test-only: the most bytes of live targets and their blur scratches a frame has held at once.
     #[cfg(test)]
     peak: u64,
+    /// Test-only: how many times a target's base bind group has been made again.
+    #[cfg(test)]
+    pub(super) binds: u64,
 }
 
 impl Layers {
+    /// Whether every group of the frame lands where its instances say: drawn straight into its
+    /// parent's pass, or into a target composited back at its own place, neither turned nor
+    /// blurred, so a changed instance changes only the pixels its bounds cover
+    /// (`Renderer::redraws_in_place`).
+    #[cfg(target_os = "windows")]
+    pub(super) fn in_place(&self) -> bool {
+        self.plan.iter().enumerate().all(|(i, l)| match self.planner.dispositions.get(i) {
+            Some(Disposition::Inline | Disposition::Skip) | None => true,
+            Some(Disposition::Render { .. } | Disposition::Cached { .. }) => l.turn.is_none() && !l.free && l.blur == 0.0,
+        })
+    }
+
     /// Kept textures get the budget left after this frame's visible caches.
     fn trim_retained(&mut self, active_bytes: u64) {
         let available = self.cache_budget.saturating_sub(active_bytes);
@@ -77,8 +103,13 @@ impl Layers {
     fn park(&mut self, mut t: Target) {
         t.cache = None;
         self.spare.push(t);
+        self.trim_spare(SPARE_BYTES);
+    }
+
+    /// Drops the least recently used spare targets until they hold at most `limit` bytes.
+    fn trim_spare(&mut self, limit: u64) {
         let mut bytes: u64 = self.spare.iter().map(Renderer::target_bytes).sum();
-        while bytes > SPARE_BYTES {
+        while bytes > limit {
             let oldest = self.spare.iter().enumerate().min_by_key(|(_, t)| t.last_used).unwrap().0;
             bytes -= Renderer::target_bytes(&self.spare.swap_remove(oldest));
         }
@@ -119,10 +150,13 @@ impl Default for Layers {
             viewport: (0, 0),
             image_generation: 0,
             allocations: 0,
+            bindings: 0,
             cache_budget: DEFAULT_CACHE_BUDGET,
             frame_stamp: 0,
             #[cfg(test)]
             peak: 0,
+            #[cfg(test)]
+            binds: 0,
         }
     }
 }
@@ -156,6 +190,11 @@ pub(super) struct Target {
     cache: Option<(u64, u64)>,
     last_used: u64,
     content_size: [f32; 2],
+    /// The `Layers::bindings` generation the base bind group was made against.
+    binding: u64,
+    /// Test-only: the outline texture's height the base bind group was made against.
+    #[cfg(test)]
+    outline_rows: u32,
 }
 
 impl Describe for Target {
@@ -169,6 +208,19 @@ impl Describe for Target {
             content: self.content_size,
         }
     }
+}
+
+/// Binds `t` to the frame's atlas and outline texture, and to `generation`: its base bind group
+/// here, its composite and image and glyph pages at the next `prepare_layers`.
+fn rebind_target(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, globals: &wgpu::Buffer,
+    outlines: Option<&wgpu::Texture>, atlas: &wgpu::Texture, t: &mut Target, generation: u64) {
+    t.base = Renderer::bind_group(device, layout, globals, outlines, atlas, atlas, Some(&t.projection));
+    // No target's identity is 0, so the composite is made again.
+    t.composite_parent = Some(0);
+    t.image_generation = u64::MAX;
+    t.binding = generation;
+    #[cfg(test)]
+    { t.outline_rows = outlines.map_or(0, wgpu::Texture::height); }
 }
 
 /// Resource/pass counters for diagnostics. The ordinary path creates no layer resources.
@@ -206,6 +258,63 @@ impl Renderer {
     /// Current [`El::cache`](crate::El::cache) texture memory budget in bytes.
     pub fn cache_budget(&self) -> u64 {
         self.layers.cache_budget
+    }
+
+    /// With `alloc-sites` (a measuring build), the heap dump's `rune-gpu` section lists what this
+    /// renderer's pools hold after its latest frame or rest, as `<pool> <count> <bytes>`.
+    #[cfg(all(feature = "alloc-sites", not(target_arch = "wasm32")))]
+    pub(super) fn report_pools(&self) {
+        static POOLS: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        fn texture_bytes(t: &wgpu::Texture) -> u64 {
+            let block = u64::from(t.format().block_copy_size(None).unwrap_or(4));
+            (0..t.mip_level_count()).map(|m| u64::from((t.width() >> m).max(1)) * u64::from((t.height() >> m).max(1)) * block).sum()
+        }
+        let pool = |name: &str, ts: &mut dyn Iterator<Item = u64>| {
+            let (n, bytes) = ts.fold((0, 0), |(n, b), x| (n + 1, b + x));
+            format!("{name} {n} {bytes}\n")
+        };
+        let l = &self.layers;
+        let out = [
+            pool("layer-live", &mut l.targets.iter().flatten().filter(|t| t.cache.is_none()).map(Self::target_bytes)),
+            pool("layer-cache-live", &mut l.targets.iter().flatten().filter(|t| t.cache.is_some()).map(Self::target_bytes)),
+            pool("layer-retained", &mut l.retained.iter().map(Self::target_bytes)),
+            pool("layer-spare", &mut l.spare.iter().map(Self::target_bytes)),
+            pool("backdrops", &mut self.backdrops.iter().map(|b| texture_bytes(&b.texture))),
+            pool("glyph-atlas", &mut std::iter::once(&self.atlas).chain(self.atlas_pages.iter().map(|p| &p.0)).map(texture_bytes)),
+            pool("image-pages", &mut self.images.iter().flatten().map(|p| texture_bytes(&p.0))),
+        ].concat();
+        *POOLS.lock().unwrap_or_else(|e| e.into_inner()) = out;
+        ONCE.call_once(|| procwatch::alloc::sites::contribute("rune-gpu", || POOLS.lock().unwrap_or_else(|e| e.into_inner()).clone()));
+    }
+
+    /// What a window at rest gives back (`window::rest`): spare targets past the most recently
+    /// used `RESTING_SPARE_BYTES`, and cache textures no layer drew last frame. With `all`, every
+    /// spare target, and the scratch targets of this screen's layers and its backdrop copies and
+    /// blur pyramid, which its next frame makes again (a few ms on an integrated GPU). It keeps the
+    /// textures of caches on screen, which the last frame's instances name instead of their
+    /// contents, and takes the ones it drops out of `resident`, so their next frame paints them.
+    /// What no submission still uses is freed here; the rest when the device next polls.
+    pub(crate) fn give_back(&mut self, all: bool, resident: &mut std::collections::HashMap<u64, u64>) {
+        for t in self.layers.retained.drain(..) {
+            if let Some((node, _)) = t.cache { resident.remove(&node); }
+        }
+        self.layers.trim_spare(if all { 0 } else { RESTING_SPARE_BYTES });
+        if all {
+            for slot in &mut self.layers.targets {
+                if slot.as_ref().is_some_and(|t| t.cache.is_none()) { *slot = None; }
+            }
+            self.backdrops.clear();
+            if let Some(blur) = &mut self.backdrop_blur { blur.give_back(); }
+        }
+        #[cfg(all(feature = "alloc-sites", not(target_arch = "wasm32")))]
+        self.report_pools();
+    }
+
+    /// Frees the staging chunks kept for reuse (`window::rest`, out of sight only: the next
+    /// frame's uploads would make new ones).
+    pub(crate) fn trim_uploads(&self) {
+        self.uploads.trim();
     }
 
     pub(super) fn sync_resident_caches(&self, out: &mut std::collections::HashMap<u64, u64>) {
@@ -435,10 +544,13 @@ impl Renderer {
                     if let Some(mut t) = self.layers.targets[slot].take() { t.cache = None; self.layers.spare.push(t); }
                 }
                 Move::Set { slot, from } => {
-                    let t = match from {
+                    let mut t = match from {
                         Kept::Retained(at) => self.layers.retained.swap_remove(at),
                         Kept::Spare(at) => self.layers.spare.swap_remove(at),
                     };
+                    // A target parked before the atlas or outline texture changed binds it now,
+                    // once; a spare no layer takes again never makes a bind group at all.
+                    self.rebind_if_stale(device, &mut t);
                     self.layers.targets[slot] = Some(t);
                 }
                 Move::Create { slot, size } => self.layers.targets[slot] = Some(self.make_target(device, size)),
@@ -473,7 +585,9 @@ impl Renderer {
         Target { texture, view, projection,
             identity: self.layers.allocations, composite_parent: None,
             quad: Self::instance_buffer(device, 1), base, composite, images: Vec::new(), glyphs: Vec::new(), image_generation: u64::MAX, blur: None,
-            cache: None, last_used: 0, content_size: [0.0; 2] }
+            cache: None, last_used: 0, content_size: [0.0; 2], binding: self.layers.bindings,
+            #[cfg(test)]
+            outline_rows: self.uber.outlines().map_or(0, wgpu::Texture::height) }
     }
 
     /// Draws what each layer's disposition says: its target's descriptor, its blur, and the quad
@@ -490,6 +604,9 @@ impl Renderer {
                     if cache.is_some() { t.last_used = stamp; }
                     let mut quad = Instance::begin_layer(rect, l.clip, LayerSpec {
                         opacity: l.opacity, blend: l.blend, ..Default::default() });
+                    // A hit composites the same turned quad a miss drew: the turn belongs to the
+                    // scope, not to the pass that filled its texture.
+                    if let Some((angle, pivot)) = l.turn { quad = quad.turned(angle, pivot); }
                     quad.fade = l.fade;
                     if (t.content_size[0] - rect[2]).abs() > 0.5 || (t.content_size[1] - rect[3]).abs() > 0.5 {
                         quad.uv = [0.0, 0.0, t.content_size[0], t.content_size[1]];
@@ -597,16 +714,28 @@ impl Renderer {
 
     pub(super) fn images_changed(&mut self) { self.layers.image_generation += 1; }
 
-    /// Makes every target's bind groups again (a new outline texture): the base one here, its
-    /// composite and image and glyph pages at the next `prepare_layers`.
+    /// Makes every live target's bind groups again (a new atlas or outline texture), and starts a
+    /// generation: the slots and retained caches bind it here, a parked target binds it when a
+    /// layer takes it back, and a spare no layer takes again makes nothing.
     pub(super) fn rebind_layers(&mut self, device: &wgpu::Device) {
+        self.layers.bindings += 1;
+        let generation = self.layers.bindings;
         let (layout, globals, outlines, atlas) = (&self.bind_layout, &self.globals, self.uber.outlines(), &self.atlas);
         for t in self.layers.targets.iter_mut().flatten().chain(&mut self.layers.retained) {
-            t.base = Self::bind_group(device, layout, globals, outlines, atlas, atlas, Some(&t.projection));
-            // No target's identity is 0, so the composite is made again.
-            t.composite_parent = Some(0);
-            t.image_generation = u64::MAX;
+            rebind_target(device, layout, globals, outlines, atlas, t, generation);
+            #[cfg(test)]
+            { self.layers.binds += 1; }
         }
+    }
+
+    /// Binds `t` to the atlas and outline texture this frame draws with, if it was made or parked
+    /// against an earlier generation.
+    fn rebind_if_stale(&mut self, device: &wgpu::Device, t: &mut Target) {
+        let generation = self.layers.bindings;
+        if t.binding == generation { return; }
+        rebind_target(device, &self.bind_layout, &self.globals, self.uber.outlines(), &self.atlas, t, generation);
+        #[cfg(test)]
+        { self.layers.binds += 1; }
     }
 
     pub(super) fn refresh_layer_bindings(&mut self, device: &wgpu::Device) {

@@ -73,7 +73,7 @@ impl<S: 'static> Runtime<S> {
             && (self.flying.is_empty() || !self.flying.iter().any(|f| f.0 == new_n.id))
             && (self.aspect_snap.is_empty() || !self.aspect_snap.contains(&new_n.id))
             && new_n.text.as_ref().is_none_or(|t| {
-                t.reveal < 0.0 || self.reveals.get(&new_n.id).is_some_and(|r| r.words.is_empty() && r.len == t.content.len())
+                t.reveal < 0.0 || self.reveals.get(&new_n.id).is_some_and(|r| r.caught_up(t.content.len()))
             })
     }
 
@@ -190,7 +190,7 @@ fn same_visual_cold(a: &crate::el::VisualCold, b: &crate::el::VisualCold) -> boo
     let crate::el::VisualCold {
         surface, surface_place, border_bottom, border_sides, border_layout, border_dash, border_dash_phase, shadows, blur_motion,
         clip, clip_radius, clip_corners, cutout, icon, icon_inked, icon_one_color, gradient, radial, outline, shape,
-        pixels, pixels_fit, effect, backdrop_blur, hover_motion, hover_within,
+        grid, pixels, pixels_fit, effect, backdrop_blur, hover_motion, hover_within,
         group_opacity, group_color, hover_alone, hover_share, icon_turn, cache_key, offset_motion, scale_motion,
         origin, rotate_motion, child_exit, enter_delay, motion_intent, instant_motion, clip_to_content, flight_crop,
         hold_landing, offset, paint_alpha, layer_opacity, blur, rotate, mark, mirror_rtl, paint_order,
@@ -211,6 +211,12 @@ fn same_visual_cold(a: &crate::el::VisualCold, b: &crate::el::VisualCold) -> boo
         && a.icon_inked == *icon_inked && a.icon_one_color == *icon_one_color
         && opt_box_eq(&a.gradient, gradient) && opt_box_eq(&a.radial, radial)
         && a.outline == *outline && opt_rc_eq(&a.shape, shape)
+        // A grid built again from the same rows is the same grid.
+        && match (&a.grid, grid) {
+            (None, None) => true,
+            (Some(x), Some(y)) => Rc::ptr_eq(x, y) || (x.cols == y.cols && x.cell == y.cell && x.caret == y.caret && x.rows.len() == y.rows.len() && x.rows.iter().zip(&y.rows).all(|(p, q)| Rc::ptr_eq(p, q))),
+            _ => false,
+        }
         && match (&a.pixels, pixels) {
             (None, None) => true,
             (Some(pa), Some(pb)) => Arc::ptr_eq(&pa.source, &pb.source),
@@ -241,8 +247,9 @@ pub(super) fn same_visual(a: &Visual, b: &Visual) -> bool {
 fn same_el_cold(a: &crate::el::ElCold, b: &crate::el::ElCold) -> bool {
     let crate::el::ElCold {
         focus, looping, trace_name, trace_namespace, role, label, live, above, motion, opacity_motion, lead,
-        animated_changes, transition, matched, scroll, scroll_axes, sticky, scroll_edges, growth, virtual_estimate, virtual_rows,
+        animated_changes, option_as_alt, transition, matched, scroll, scroll_axes, sticky, scroll_edges, growth, virtual_estimate, virtual_rows,
         virtual_rows_version, glide, input, time_scale, help, help_cut, help_side, material, aspect_fit, a11y,
+        expanded_memo: _,
         #[cfg(debug_assertions)]
         scroll_source: _,
         #[cfg(debug_assertions)]
@@ -261,6 +268,7 @@ fn same_el_cold(a: &crate::el::ElCold, b: &crate::el::ElCold) -> bool {
         && opt_box_eq(&a.opacity_motion, opacity_motion)
         && a.lead == *lead
         && a.animated_changes == *animated_changes
+        && a.option_as_alt == *option_as_alt
         && opt_box_eq(&a.transition, transition)
         && a.matched == *matched
         && a.scroll == *scroll
@@ -334,6 +342,7 @@ fn same_handlers(
         on_press,
         on_double_press,
         on_secondary_press,
+        on_middle_press,
         on_hover,
         on_hover_change,
         hover_delay,
@@ -378,6 +387,7 @@ fn same_handlers(
         && opt_rc_eq(&a.on_press, on_press)
         && opt_rc_eq(&a.on_double_press, on_double_press)
         && opt_rc_eq(&a.on_secondary_press, on_secondary_press)
+        && opt_rc_eq(&a.on_middle_press, on_middle_press)
         && opt_rc_eq(&a.on_hover, on_hover)
         && opt_rc_eq(&a.on_hover_change, on_hover_change)
         && a.hover_delay == *hover_delay
@@ -414,7 +424,8 @@ fn same_handlers(
 
 /// Exhaustively checks that `el` has not been mutated by builders after `Built::placeholder`
 /// returned it (apart from `key` and `virtual_mount`, which flattening handles explicitly).
-pub(super) fn same_root_el(el: &El, built: &crate::memo::Built) -> bool {
+/// `expanded`: `el` is the placeholder after `El::expand_memo` copied the shared children in.
+pub(super) fn same_root_el(el: &El, built: &crate::memo::Built, expanded: bool) -> bool {
     let base = &built.root;
     let El {
         style,
@@ -439,8 +450,7 @@ pub(super) fn same_root_el(el: &El, built: &crate::memo::Built) -> bool {
     a.set(ignored, false);
     b.set(ignored, false);
 
-    el.children.is_empty()
-        && el.memo_children().is_some_and(|mc| Rc::ptr_eq(mc, &built.children))
+    (expanded || (el.children.is_empty() && el.memo_children().is_some_and(|mc| Rc::ptr_eq(mc, &built.children))))
         && el.role == *role
         && a == b
         && el.vis_flags == *vis_flags
@@ -534,10 +544,15 @@ pub(super) fn try_reuse_memo(
     if flat.inherited != inherited || flat.hover_within.as_deref() != hover_within.as_deref() {
         return None;
     }
-    if el.key != old_slice[0].key || !same_root_el(el, built) {
+    if el.key != old_slice[0].key || !same_root_el(el, built, false) {
         return None;
     }
     if !old_slice.iter().all(|old| !old.is_moved_stub() && !old.path.is_empty() && taffy.can_reuse(old.id.0, old.taffy)) {
+        return None;
+    }
+    // A picture that takes a side from its image's ratio keeps its layout only while the image
+    // keeps that ratio: one still loading when it was flattened gets its size later.
+    if !old_slice.iter().all(|old| old.cold.get().and_then(|c| c.pixel_aspect).is_none_or(|r| old.vis.pixels.as_ref().is_some_and(|p| super::flatten::pixel_ratio(p) == r))) {
         return None;
     }
 

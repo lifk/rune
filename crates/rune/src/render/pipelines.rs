@@ -21,7 +21,8 @@ impl Renderer {
             mapped_at_creation: false,
         });
         let stand_in = Self::image_texture(device, 1, 1);
-        crate::text::note_dual_source(device.features().contains(wgpu::Features::DUAL_SOURCE_BLENDING));
+        // Subpixel text waits for the subpixel pipeline (`lcd_ready`), not just the feature.
+        if !device.features().contains(wgpu::Features::DUAL_SOURCE_BLENDING) { crate::text::note_dual_source(false); }
         let spring_layout = properties.map(|_| crate::gpu::springs::Bindings::layout(device));
         let vertex_entry = if properties.is_some() { "vs_springs" } else { "vs" };
         // The shader machine starts Classic; everywhere but macOS (whose default text keeps the
@@ -74,6 +75,7 @@ impl Renderer {
             uber,
             lcd: variant::Lcd::Unbuilt,
             lcd_frame: false,
+            frame_wake: None,
             stand_in,
             atlas_pages: Vec::new(),
             images: Vec::new(),
@@ -92,6 +94,10 @@ impl Renderer {
             uploads: Default::default(),
             fills: Default::default(),
             device_key: crate::compose::DeviceKey::next(),
+            #[cfg(target_os = "windows")]
+            clear_quad: std::sync::OnceLock::new(),
+            #[cfg(target_os = "windows")]
+            damage: Default::default(),
         }
     }
 

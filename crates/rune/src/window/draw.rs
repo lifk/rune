@@ -53,6 +53,9 @@ impl<S: 'static> Host<S> {
         l.stop_pacing();
         let shown = self.life.shown();
         l.first_frame.skipped(Instant::now());
+        // Covered by other windows, it still draws what changed, later (`CoveredDraw`).
+        #[cfg(target_os = "windows")]
+        if shown && self.life.covered() && !l.minimized() { l.covered_draw = l.covered_draw.step(CoveredDrawEvent::Asked(Instant::now())); }
         self.land_frame();
         if shown {
             self.rt.set_live_visible(false);
@@ -70,6 +73,7 @@ impl<S: 'static> Host<S> {
         // Windows: a window still on the CPU renderer draws there (`cpu_frame`).
         #[cfg(target_os = "windows")]
         {
+            self.look();
             self.hand_over_if_done();
             if self.win.as_ref().is_some_and(|w| w.native.mode.cpu_draws()) { return self.draw_cpu(resizing); }
         }
@@ -77,7 +81,11 @@ impl<S: 'static> Host<S> {
         let Some(l) = self.win.as_ref() else { return };
         let hidden = launcher && !self.life.shown();
         let covered = (!launcher && !self.life.uncovered()) || l.minimized();
-        if covered {
+        #[cfg(target_os = "windows")]
+        let owed = covered && !l.minimized() && l.covered_draw.drawing();
+        #[cfg(not(target_os = "windows"))]
+        let owed = false;
+        if covered && !owed {
             // A covered window's clips stop presenting on their layers, as they stop being pulled.
             #[cfg(target_os = "windows")]
             if let Some(w) = self.win.as_mut() {
@@ -86,6 +94,8 @@ impl<S: 'static> Host<S> {
             }
             return self.covered_frame();
         }
+        // A covered window's owed frame shows the settled state, as its first one uncovered does.
+        if owed { self.rt.settle_all(); }
         // A missed frame's retry, or the timer pacing unpaced motion: input waits for it, and
         // `new_events` runs due timers meanwhile.
         if !resizing && l.backing_off(Instant::now()) { return; }
@@ -102,7 +112,18 @@ impl<S: 'static> Host<S> {
         {
             eprintln!("rune: the window's swap chain couldn't change its alpha for a clip's layer: {error}");
         }
+        // The swap chain still holds a frame the compositor hasn't shown: this one draws when it
+        // has room, built from the input that came by then (`slot`).
+        #[cfg(target_os = "windows")]
+        if !hidden && let Some(l) = self.win.as_mut() {
+            // SAFETY: the object is the live swap chain's; `Slot` waits on its own copy.
+            let waitable = l.surface.as_ref().and_then(|s| unsafe { s.as_hal::<wgpu::hal::api::Dx12>().and_then(|h| h.waitable_handle()) });
+            let handle = self.native_handle.clone();
+            if l.native.slot.take(waitable.map(|h| h.0), move || handle.send(WakeEvent::FrameSlot)) == super::slot::Take::Later { return; }
+        }
         let Some(l) = self.win.as_mut() else { return };
+        #[cfg(target_os = "windows")]
+        if owed { l.covered_draw = l.covered_draw.step(CoveredDrawEvent::Drawn); }
         // The frame a due timer asked for is here, drawing or running covered below.
         l.timer_frame.drawn();
         // Starting the display link for a window that isn't on screen would wait for a tick that
@@ -227,7 +248,9 @@ impl<S: 'static> Host<S> {
         };
         #[cfg(feature = "frame-profile")]
         let fp_acquired = fp_start.map(|_| crate::frame::live_log::Stamp::now());
-        if !hidden && !self.rt.live_visible() && { let size = l.window.inner_size(); size.width > 0 && size.height > 0 } {
+        // A covered window's owed frame (`CoveredDraw`) draws settled and stays covered: live, its
+        // loops would ask for frames no one sees.
+        if !hidden && !self.life.covered() && !self.rt.live_visible() && { let size = l.window.inner_size(); size.width > 0 && size.height > 0 } {
             // Uncovered after a missed frame said it was occluded.
             self.rt.set_live_visible(true);
             self.rt.settle_all();
@@ -321,6 +344,9 @@ impl<S: 'static> Host<S> {
             format: (target_format != l.config.format).then_some(target_format),
             ..Default::default()
         });
+        // An image's pixels changed where its instances didn't: the whole frame draws (`damage`).
+        #[cfg(target_os = "windows")]
+        let images_changed = rt.images.pages.iter().any(|p| p.dirty.is_some());
         renderer.upload_images(&gpu.device, &gpu.queue, &mut rt.images);
         renderer.build_surfaces(&gpu.device, &rt.surfaces, rt.live_notifier());
         // Playing clips on their own layer (`video_layer`): the surfaces this frame punches out.
@@ -337,7 +363,29 @@ impl<S: 'static> Host<S> {
         #[cfg(feature = "frame-profile")]
         let fp_uploaded = fp_start.map(|_| crate::frame::live_log::Stamp::now());
         let mut enc = gpu.device.create_command_encoder(&Default::default());
+        #[cfg(target_os = "windows")]
+        let mut present_rect = None;
+        // Why the frame drew all of the window (frame-profile).
+        #[allow(unused_mut)]
+        let mut whole_why: Option<&'static str> = None;
         let target = l.alpha.as_ref().map_or(&view, |a| &a.view);
+        renderer.set_frame_wake(rt.live_wake());
+        let size = (l.config.width, l.config.height);
+        // Only what changed is redrawn and presented (`damage`): the renderer's `draw` takes the
+        // armed rectangles when nothing but the instances draws there, a compositor's
+        // `Frame::draw_ui` included.
+        #[cfg(target_os = "windows")]
+        let part = {
+            let whole = if l.alpha.is_some() { Some("alpha") } else if images_changed { Some("image") }
+                else if !l.config.usage.contains(wgpu::TextureUsages::COPY_DST) { Some("no copies") } else { None };
+            match l.native.damage.plan(&rt.instances, size, rt.clear_color(), whole.is_none()) {
+                super::damage::Plan::All(why) => { whole_why = Some(whole.unwrap_or(why)); None }
+                super::damage::Plan::Part { draw, present } => {
+                    renderer.arm_damage(&gpu.device, &gpu.queue, &draw, rt.clear_color(), size, l.config.format);
+                    Some(present)
+                }
+            }
+        };
         if let Some(c) = self.comp.as_mut() {
             let mut f = Frame {
                 device: &gpu.device,
@@ -345,7 +393,7 @@ impl<S: 'static> Host<S> {
                 encoder: &mut enc,
                 target,
                 format: target_format,
-                size: (l.config.width, l.config.height),
+                size,
                 dt,
                 update_ms,
                 rt: &mut *rt,
@@ -354,9 +402,18 @@ impl<S: 'static> Host<S> {
             c.render(&mut f);
             animating |= c.animating();
         } else {
-            renderer.prepare(&gpu.device, &gpu.queue, &mut rt.text.atlas, &rt.instances, (l.config.width, l.config.height));
+            renderer.prepare(&gpu.device, &gpu.queue, &mut rt.text.atlas, &rt.instances, size);
             renderer.draw(&mut enc, target, rt.clear_color());
         }
+        // Every frame, so a frame drawn whole leaves the renderer's kept frame behind.
+        #[cfg(target_os = "windows")]
+        match (renderer.damage_drawn(), part) {
+            (Ok(()), part) => present_rect = part,
+            (Err(why), Some(_)) => whole_why = Some(why),
+            (Err(_), None) => {}
+        }
+        #[cfg(not(feature = "frame-profile"))]
+        let _ = whole_why;
         if let Some(alpha) = &l.alpha { alpha.draw(&mut enc, &view); }
         #[cfg(feature = "frame-profile")]
         let fp_encoded = fp_start.map(|_| crate::frame::live_log::Stamp::now());
@@ -368,8 +425,17 @@ impl<S: 'static> Host<S> {
         l.window.pre_present_notify();
         #[cfg(target_os = "macos")]
         l.native.materials.present(&rt.materials, rt.env.scale, || gpu.queue.present(frame));
+        #[cfg(target_os = "windows")]
+        if let (Some(rects), Some(surface)) = (&present_rect, l.surface.as_ref())
+            // SAFETY: only names the rectangles the next present changed.
+            && let Some(hal) = unsafe { surface.as_hal::<wgpu::hal::api::Dx12>() } {
+            let rects: Vec<_> = rects.iter().map(|&[left, top, right, bottom]| windows::Win32::Foundation::RECT { left, top, right, bottom }).collect();
+            hal.set_present_rects(&rects);
+        }
         #[cfg(not(target_os = "macos"))]
         gpu.queue.present(frame);
+        #[cfg(target_os = "windows")]
+        l.native.slot.presented();
         // A swap chain made again on a handed-over window's visual takes over now (`cpu_frame`).
         #[cfg(target_os = "windows")]
         if matches!(l.native.mode, super::cpu_frame::SurfaceMode::Rebinding { .. }) {
@@ -389,6 +455,15 @@ impl<S: 'static> Host<S> {
                 entry: fp_entry.unwrap_or(start), start, acquired, built, uploaded, encoded, submitted, presented: crate::frame::live_log::Stamp::now(),
                 phases: crate::frame::profile::take(), nodes: rt.nodes.len(), shaped: rt.stats.shaped, instances: rt.instances.len(),
                 animating, why: std::mem::take(&mut rt.commit_why), next: 0, poll_due: None, loop_due: None, loops: Vec::new(),
+                #[cfg(target_os = "windows")]
+                damage: present_rect,
+                #[cfg(not(target_os = "windows"))]
+                damage: None,
+                whole: whole_why,
+                #[cfg(target_os = "windows")]
+                change: l.native.damage.seen,
+                #[cfg(not(target_os = "windows"))]
+                change: None,
             }),
             _ => None,
         };
@@ -443,24 +518,14 @@ impl<S: 'static> Host<S> {
         // link going; without one its timer waits a frame in `wake_deadline`.
         let next_tick = l.next_tick(now).filter(|_| !hidden);
         let rests = !hidden && !(self.trace.is_some() && self.args.frames.is_some());
-        #[cfg(feature = "frame-profile")]
-        #[allow(unused_mut)]
-        let mut fp_steady = 0u16;
-        #[cfg(target_os = "windows")]
-        {
-            // A frame the run alone asked for changes nothing unless it draws something new.
-            let changed = !l.steady.held_frame() || (!composed(self.comp.as_deref()) && !l.presented.as_ref().is_some_and(|p| p.same(rt, &l.config)));
-            #[cfg(feature = "frame-profile")]
-            { fp_steady |= u16::from(l.steady.held_frame()) << 8 | u16::from(changed) << 9; }
-            let event = if hidden { SteadyEvent::Ends } else { SteadyEvent::Drew { changed, focused: rt.has_window_focus(), now } };
-            l.steady = l.steady.step(event).0;
-        }
         self.idle = Presented::settle(&mut l.presented, rt, &l.config, animating || FrameMove::moving(&self.frame_move), next_tick, rests, composed(self.comp.as_deref()));
+        // A drawn frame asks for nothing: it only puts the rest off.
+        if !hidden { let _ = rest::step(&mut self.rest, RestEvent::Drew { now, low: rest::low_memory() }); }
         // Why the window draws again: each bit is one of `Presented::settle`'s reasons.
         #[cfg(feature = "frame-profile")]
         let fp_next = [animating, FrameMove::moving(&self.frame_move), rt.needs_commit(), rt.stale() && !rt.needs_commit(), rt.has_pending_input(), rt.live_pending(),
             rt.window_frame.is_some(), super::timer_wants_frame(rt, next_tick)]
-            .iter().enumerate().fold(fp_steady, |bits, (i, on)| bits | (u16::from(*on) << i));
+            .iter().enumerate().fold(0u16, |bits, (i, on)| bits | (u16::from(*on) << i));
         #[cfg(target_os = "macos")]
         if !hidden && let Some(latency) = l.native.launch_drawables.settle(self.idle, now) {
             l.config.desired_maximum_frame_latency = latency;
@@ -470,17 +535,9 @@ impl<S: 'static> Host<S> {
                 l.surface_ok = false;
             }
         }
-        #[cfg(target_os = "windows")]
-        if self.idle && !hidden {
-            let (steady, again) = l.steady.step(SteadyEvent::Rests { now });
-            l.steady = steady;
-            if again { l.request_redraw(); }
-            #[cfg(feature = "frame-profile")]
-            if again { fp_steady |= 1 << 10; }
-        }
         #[cfg(feature = "frame-profile")]
         if let Some(mut f) = fp_frame {
-            f.next = fp_next | fp_steady & (1 << 10);
+            f.next = fp_next;
             f.poll_due = rt.poll_wake_deadline().map(|d| d - rt.polled_at());
             f.loop_due = rt.motion_wake_deadline().map(|d| d - rt.polled_at());
             if f.loop_due.is_some() { f.loops = rt.fp_loops(); }

@@ -11,6 +11,8 @@ rune = { path = "../rune", default-features = false }
 rune-highlights = { path = "../rune-highlights" }
 rune-mermaid = { path = "../rune-mermaid", optional = true }
 rune-motion = { path = "../rune-motion" }
+# Search's accent folding (`search`): NFD, the data Parley already links.
+icu_normalizer = { version = "2", default-features = false, features = ["compiled_data"] }
 unicode-segmentation = "1.13"
 pulldown-cmark = { version = "0.13", default-features = false, optional = true }
 
@@ -39,6 +41,8 @@ name = "layout_text_cost"
 required-features = ["markdown", "frame-profile"]
 
 [dev-dependencies]
+# The examples' headless runs (`--snap`, `--trace`, ...) in release builds.
+rune = { path = "../rune", default-features = false, features = ["keys-overlay"] }
 procwatch = { path = "../procwatch" }
 # The accessibility tree tests read and write `Runtime::accessibility_json` (tests/a11y).
 serde_json = "1"

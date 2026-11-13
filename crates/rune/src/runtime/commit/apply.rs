@@ -1,5 +1,7 @@
 //! Applying a completed measurement pass to `Scene`, growth stacks, reveals, scroll viewports,
 //! live bindings and retained exits.
+use std::collections::hash_map::Entry;
+
 use super::*;
 
 impl<S: 'static> Runtime<S> {
@@ -40,6 +42,7 @@ impl<S: 'static> Runtime<S> {
         }
         for v in self.virtuals.values_mut() {
             v.shown = v.keys[v.range.clone()].iter().cloned().collect();
+            v.mounted = v.indexed.then(|| crate::el::virtual_list::Mounted::of(v));
         }
         // A row scrolled into view mounts settled with its subtree. Content added later under a
         // row already on screen is a live change and keeps its own entrance.
@@ -621,50 +624,42 @@ impl<S: 'static> Runtime<S> {
             if let Some(spec) = &nodes[i].text
                 && spec.reveal >= 0.0
             {
-                let content = &spec.content;
+                let content = spec.content.as_str();
                 let now = if time_scaled { self.scene.store().node_time(id) } else { now };
                 let fade = if self.reduced_motion { 0.15 } else { spec.reveal };
+                // A text that has never faded here starts level with its content, or at none when
+                // it is entering. A state that outlived its node (an instant parent unmount keeps
+                // the reveal, and its path, for the child's return) keeps its words.
                 let mounted_late = !was_present && !instant && !tx.unprompted && !nodes[i].virtual_mount;
-                let st = self.reveals.entry(id).or_insert_with(|| RevealState {
-                    len: if mounted_late { 0 } else { content.len() },
-                    words: Vec::new(),
-                    fade,
-                });
-                st.fade = fade;
-                if instant || (!was_present && nodes[i].virtual_mount) || content.len() < st.len || !content.is_char_boundary(st.len) {
-                    st.len = content.len();
-                    st.words.clear();
-                } else if content.len() > st.len && fade > 0.0 {
-                    let mut starts = Vec::new();
-                    word_starts(content, st.len, &mut starts);
-                    // A word continuing across the old end keeps its time. New words wait behind
-                    // every streaming text's newest word, taken in reading order, so one edge moves
-                    // down the page: a chunk spanning several paragraphs or list items fades them
-                    // one after another, never all at once. Only while the newest word is still
-                    // fading: texts mounting at once behind a long run (a remount, a restored
-                    // turn) fade together as before, never waiting through still frames.
-                    let own = st.words.last().map_or(now, |w| w.1.max(now));
-                    let chained = !time_scaled && self.reveal_chain - now <= f64::from(fade);
-                    let chain = if chained { self.reveal_chain.max(now) } else { now };
-                    let queued = ((chain - now) / 0.0055) as usize;
-                    let pending = st.words.iter().filter(|w| w.1 > now).count() + starts.len() + queued;
-                    let stagger = if self.reduced_motion {
-                        0.0
-                    } else {
-                        let k = (pending as f32 / 24.0).clamp(0.0, 1.0);
-                        (0.020 + (0.0055 - 0.020) * k) as f64
-                    };
-                    let mut tn = if chain > own { chain + stagger } else { own };
-                    for b in starts {
-                        st.words.push((b, tn));
-                        tn += stagger;
+                let (st, vacant) = match self.reveals.entry(id) {
+                    Entry::Occupied(st) => (st.into_mut(), false),
+                    Entry::Vacant(st) => {
+                        let shown = if mounted_late { 0 } else { content.len() };
+                        (st.insert(RevealPhase::Idle { shown }), true)
                     }
-                    if !time_scaled && let Some(last) = st.words.last() {
-                        self.reveal_chain = self.reveal_chain.max(last.1);
-                    }
-                    st.len = content.len();
+                };
+                let arrival = if instant || (!was_present && nodes[i].virtual_mount) || content.len() < st.shown() || !content.is_char_boundary(st.shown()) {
+                    Arrival::Replaced
+                } else if !vacant {
+                    Arrival::Kept
+                } else if mounted_late {
+                    Arrival::Entering
                 } else {
-                    st.len = content.len();
+                    Arrival::Landed
+                };
+                let chain = if time_scaled { None } else { Some(&self.reveal_chain) };
+                let effects = st.step(RevealEvent::Commit {
+                    content,
+                    fade,
+                    arrival,
+                    chain,
+                    now,
+                    reduced_motion: self.reduced_motion,
+                });
+                for effect in effects {
+                    match effect {
+                        RevealEffect::Started(at) => self.reveal_chain.started(at),
+                    }
                 }
             }
         }
@@ -704,6 +699,13 @@ impl<S: 'static> Runtime<S> {
         // Removed nodes stay mounted in `Scene` until their exit transition settles at opacity 0.
         let present_len = nodes.len();
         let mut old_nodes = std::mem::take(&mut self.nodes);
+        // A node reused from the last commit keeps its bindings' latches, which a commit that
+        // lands drops as a rebuilt node's are (below).
+        if tx.commit.lands() {
+            for n in nodes.iter_mut().filter(|n| n.cold.get().is_some_and(|c| !c.live.is_empty())) {
+                if let Some(cold) = n.cold.get_mut_if_some() { cold.live.iter_mut().for_each(|b| b.seen = None); }
+            }
+        }
         for old in &old_nodes {
             if old.cold.get().is_none_or(|c| c.live.is_empty()) { continue; }
             if let Some(&i) = self.node_index.get(&old.id) {

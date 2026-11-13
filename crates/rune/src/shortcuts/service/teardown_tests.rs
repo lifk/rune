@@ -290,6 +290,47 @@ fn wait_until(ready: impl Fn() -> bool) {
 }
 
 #[test]
+fn a_call_that_reaches_the_new_engine_wakes_its_host_and_lets_the_old_one_go() {
+    let app = app("Rerouted");
+    let control = app.shared.shortcuts.control.clone();
+    // The first host's wake is the only thing that keeps it alive, so a Weak sees it dropped.
+    let alive = Arc::new(());
+    let old = Arc::downgrade(&alive);
+    let token = alive.clone();
+    let guard = Guard::attach_with(&app.shared, Arc::new(move || { let _ = &token; }), false, false, connect_exclusive);
+    drop(alive);
+
+    // A second host installs its engine, as `attach` does before it takes routing, and its own
+    // wake. Routing still names the first host until that attach finishes.
+    let engine = Engine { title: "Rerouted", wayland: false, sink: Arc::new(|_, _| {}), connect: connect_exclusive, bindings: Bindings::Disconnected };
+    let second = Arc::new(Mutex::new(engine));
+    let seen = Arc::new(Mutex::new(None));
+    let b_wake: Waker = {
+        let (old, seen) = (old.clone(), seen.clone());
+        Arc::new(move || { *seen.lock().unwrap() = Some(old.upgrade().is_some()); })
+    };
+    *control.engine.lock().unwrap() = Some(Slot { engine: second.clone(), wake: b_wake.clone() });
+
+    // The call captures routing's wake (the first host) and the newer engine, then runs on it.
+    let (entered, enter) = mpsc::channel();
+    let (finish, finished) = mpsc::channel::<()>();
+    let caller = {
+        let control = control.clone();
+        std::thread::spawn(move || control.call(move |_| { entered.send(()).unwrap(); finished.recv().unwrap(); Ok(()) }))
+    };
+    enter.recv_timeout(PATIENCE).unwrap();
+    // The newer host finishes its attach, so routing lets the first host's wake go; the call still
+    // holds the copy it captured.
+    step_attachment(&mut control.attachment.lock().unwrap(), AttachEvent::Attach { owner: std::thread::current().id(), wake: b_wake });
+    finish.send(()).unwrap();
+    caller.join().unwrap().unwrap();
+
+    assert_eq!(*seen.lock().unwrap(), Some(false), "the first host's wake must be gone before the new host's callback runs");
+    drop(guard);
+    drop(second);
+}
+
+#[test]
 fn a_call_parked_on_a_replaced_engine_still_runs_on_it_and_wakes_its_host() {
     use std::sync::atomic::AtomicUsize;
     static FIRST_WAKES: AtomicUsize = AtomicUsize::new(0);
@@ -303,7 +344,7 @@ fn a_call_parked_on_a_replaced_engine_still_runs_on_it_and_wakes_its_host() {
     let control = app.shared.shortcuts.control.clone();
 
     // Holding the engine's lock parks the call on it. Its own clone of the Arc shows it got there.
-    let old = control.engine.lock().unwrap().clone().unwrap();
+    let old = control.engine.lock().unwrap().as_ref().map(|slot| slot.engine.clone()).unwrap();
     let locked = old.lock().unwrap();
     let caller = { let handle = handle.clone(); std::thread::spawn(move || handle.unregister_shortcut(id)) };
     wait_until(|| Arc::strong_count(&old) == 3);
@@ -317,7 +358,7 @@ fn a_call_parked_on_a_replaced_engine_still_runs_on_it_and_wakes_its_host() {
             drop(guard);
         })
     };
-    wait_until(|| control.engine.try_lock().is_ok_and(|slot| slot.as_ref().is_some_and(|current| !Arc::ptr_eq(current, &old))));
+    wait_until(|| control.engine.try_lock().is_ok_and(|slot| slot.as_ref().is_some_and(|current| !Arc::ptr_eq(&current.engine, &old))));
     drop(locked);
 
     let answer = caller.join().unwrap();

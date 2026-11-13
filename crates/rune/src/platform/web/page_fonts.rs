@@ -14,14 +14,18 @@ extern "C" {
     fn add_font_face(family: &str, bytes: &[u8], weight: &str, style: &str);
 }
 
-/// [`share`] in a task of its own, so the frame just presented isn't followed by a long one.
+/// [`share`] one font file at a time in the page's idle time (1 s at the latest each), so the
+/// frames and reads that follow the first one aren't held behind it: shared at once, a page's
+/// fonts held its first reads' answers back 34 ms.
 pub(super) fn share_later(fonts: &'static [&'static [u8]]) {
     if fonts.is_empty() {
         return;
     }
     wasm_bindgen_futures::spawn_local(async move {
-        let _ = wasm_bindgen_futures::JsFuture::from(super::platform::next_task()).await;
-        share(fonts.iter().copied());
+        for &font in fonts {
+            let _ = wasm_bindgen_futures::JsFuture::from(super::platform::next_idle(1000)).await;
+            share([font]);
+        }
     });
 }
 
@@ -33,8 +37,9 @@ pub(super) fn share<'a>(fonts: impl IntoIterator<Item = &'a [u8]>) {
             let Some(family) = collection.family_name(id).map(str::to_owned) else { continue };
             // A collection file's later faces would need their own file; its first is the one.
             for face in faces.iter().filter(|f| f.index() == 0) {
-                let weight = face.axes().iter().find(|a| a.tag.to_string() == "wght")
-                    .map_or_else(|| face.weight().value().to_string(), |a| format!("{} {}", a.min, a.max));
+                let declared = crate::text::face_weights::declared(&family, face.weight().value()).map(|r| format!("{} {}", r.0, r.1));
+                let weight = declared.or_else(|| face.axes().iter().find(|a| a.tag.to_string() == "wght").map(|a| format!("{} {}", a.min, a.max)))
+                    .unwrap_or_else(|| face.weight().value().to_string());
                 let style = match face.style() { FontStyle::Normal => "normal", FontStyle::Italic => "italic", FontStyle::Oblique(_) => "oblique" };
                 add_font_face(&family, bytes, &weight, style);
             }

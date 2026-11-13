@@ -18,7 +18,7 @@ pub(super) enum RowLayout {
 pub(crate) struct NodeCold {
     pub trace_name: Option<&'static str>,
     pub trace_namespace: Option<(&'static str, &'static str)>,
-    pub label: Option<String>,
+    pub label: Option<std::borrow::Cow<'static, str>>,
     pub(super) live: Vec<crate::live::Bound>,
     /// The run a cell measures and draws from (see `El::advance_in`).
     pub(super) run_layout: Option<Rc<crate::text::RunLayout>>,
@@ -142,6 +142,8 @@ pub(crate) struct Node {
     pub(super) selection_group: bool,
     pub(super) window_drag: crate::el::WindowDrag,
     pub(super) ime_cursor: bool,
+    /// `El::ime_option_as_alt`.
+    pub(super) ime_option_as_alt: bool,
     /// Placeholder left in `self.nodes` after `try_reuse_memo` moves a node into the new pass.
     pub(super) moved_stub: bool,
 }
@@ -209,6 +211,7 @@ impl Node {
             selection_group: false,
             window_drag: crate::el::WindowDrag::None,
             ime_cursor: false,
+            ime_option_as_alt: false,
             moved_stub: true,
         }
     }
@@ -435,14 +438,6 @@ impl AxisScroll {
     pub(super) fn toward(&self, delta: f64) -> f64 {
         match self.flow { crate::el::Flow::Ltr => -delta, crate::el::Flow::Rtl => delta }
     }
-}
-
-#[derive(Clone, Debug, Default)]
-pub(super) struct RevealState {
-    pub(super) len: usize,
-    /// (word start byte, start time) for words still fading.
-    pub(super) words: Vec<(u32, f64)>,
-    pub(super) fade: f32,
 }
 
 #[derive(Clone, Debug, Default)]

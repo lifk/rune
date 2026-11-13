@@ -85,14 +85,22 @@ pub(super) struct Win {
     pub(super) timer_frame: TimerFrame,
     /// The last frame presented, while the window rests.
     pub(super) presented: Option<Presented>,
-    /// The window's steady run after a change (`STEADY`).
+    /// A frame asked for while other windows covered it, still to draw (`CoveredDraw`).
     #[cfg(target_os = "windows")]
-    pub(super) steady: Steady,
+    pub(super) covered_draw: CoveredDraw,
     /// Its next frame (`redraw`).
     pub(super) redraw: std::cell::Cell<Redraw>,
 }
 
 impl Win {
+    /// Windows: its next frame waits for room in the swap chain, and comes when there is (`slot`).
+    pub(super) fn waits_for_slot(&self) -> bool {
+        #[cfg(target_os = "windows")]
+        return matches!(self.native.slot, super::slot::Slot::Waiting(_));
+        #[cfg(not(target_os = "windows"))]
+        false
+    }
+
     /// Asks for a frame: now, or at the turn's end while the window paints (`Redraw`).
     #[cfg_attr(feature = "frame-profile", track_caller)]
     pub(super) fn request_redraw(&self) { self.redraw_step(RedrawEvent::Ask(Instant::now())); }

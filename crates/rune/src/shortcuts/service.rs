@@ -29,12 +29,20 @@ static NEXT_ID: AtomicU32 = AtomicU32::new(1);
 /// between two Apps can name its owner. Headless registrations stay out of it.
 static NATIVE: Mutex<Vec<(ShortcutId, Shortcut, &'static str)>> = Mutex::new(Vec::new());
 
+/// The Linux engine and the host that installed it. The wake travels with the engine, so a call
+/// that reaches the engine a newer host installed wakes that host, not the one it captured.
+#[cfg(target_os = "linux")]
+struct Slot {
+    engine: Arc<Mutex<Engine>>,
+    wake: Waker,
+}
+
 struct Control {
     #[cfg(not(target_os = "linux"))]
     key: usize,
     attachment: Mutex<Attachment<Job>>,
     #[cfg(target_os = "linux")]
-    engine: Mutex<Option<Arc<Mutex<Engine>>>>,
+    engine: Mutex<Option<Slot>>,
     /// How many hosts have attached; changed and read under the routing lock.
     hosts: AtomicU64,
 }
@@ -141,20 +149,28 @@ impl Drop for Engine {
 }
 
 impl Control {
-    fn invoke<T: Send + 'static>(&self, f: impl FnOnce(&mut Engine) -> Result<T, ShortcutError> + Send + 'static) -> Result<T, ShortcutError> {
-        self.invoke_stamped(None, f)
+    fn call<T: Send + 'static>(&self, f: impl FnOnce(&mut Engine) -> Result<T, ShortcutError> + Send + 'static) -> Result<T, ShortcutError> {
+        self.call_stamped(None, f)
     }
 
     /// Runs a call, stamping it with the latest host while routing can't change.
-    fn invoke_stamped<T: Send + 'static>(&self, stamp: Option<Stamp>, f: impl FnOnce(&mut Engine) -> Result<T, ShortcutError> + Send + 'static) -> Result<T, ShortcutError> {
+    fn call_stamped<T: Send + 'static>(&self, stamp: Option<Stamp>, f: impl FnOnce(&mut Engine) -> Result<T, ShortcutError> + Send + 'static) -> Result<T, ShortcutError> {
         let mut route = self.attachment.lock().unwrap();
         let call = AttachEvent::Call { from: std::thread::current().id(), shared: cfg!(target_os = "linux") };
         let effect = step_attachment(&mut route, call).into_iter().next();
         if let Some(stamp) = stamp { stamp.store(self.hosts.load(Ordering::Relaxed), Ordering::Relaxed); }
         #[cfg(target_os = "linux")]
         {
-            let Some(AttachEffect::Run { wake }) = effect else { return Err(ShortcutError::NotRunning) };
-            let shared = self.engine.lock().unwrap().clone().ok_or(ShortcutError::NotRunning)?;
+            let Some(AttachEffect::Run { .. }) = effect else { return Err(ShortcutError::NotRunning) };
+            // differs from dev: the routing wake only gates the call; the slot's host is woken.
+            // Letting routing's copy go here means a host the call no longer reaches isn't kept
+            // alive through another host's callback.
+            drop(effect);
+            let (shared, wake) = {
+                let slot = self.engine.lock().unwrap();
+                let slot = slot.as_ref().ok_or(ShortcutError::NotRunning)?;
+                (slot.engine.clone(), slot.wake.clone())
+            };
             // Acquire the engine before releasing routing, so shutdown cannot race a new call.
             let mut engine = shared.lock().unwrap();
             drop(route);
@@ -197,7 +213,7 @@ impl<S: 'static> Hub<S> {
             .map(ShortcutId).map_err(|_| ShortcutError::Backend("shortcut id space exhausted".into()))?;
         let stamp = Stamp::default();
         self.handlers.lock().unwrap().insert(id, (stamp.clone(), handler));
-        if let Err(e) = self.control.invoke_stamped(Some(stamp), move |engine| engine.register(id, shortcut)) {
+        if let Err(e) = self.control.call_stamped(Some(stamp), move |engine| engine.register(id, shortcut)) {
             self.handlers.lock().unwrap().remove(&id);
             return Err(e);
         }
@@ -206,7 +222,7 @@ impl<S: 'static> Hub<S> {
 
     pub(super) fn unregister(&self, id: ShortcutId) -> Result<(), ShortcutError> {
         let handlers = self.handlers.clone();
-        self.control.invoke(move |engine| {
+        self.control.call(move |engine| {
             engine.unregister(id)?;
             handlers.lock().unwrap().remove(&id);
             Ok(())
@@ -221,12 +237,12 @@ impl<S: 'static> Hub<S> {
 
     pub(super) fn owner(&self, shortcut: &Shortcut) -> Option<String> {
         let shortcut = shortcut.clone();
-        self.control.invoke(move |engine| Ok(engine.owner(&shortcut))).ok().flatten()
+        self.control.call(move |engine| Ok(engine.owner(&shortcut))).ok().flatten()
     }
 
     pub(crate) fn fire(&self, shortcut: &Shortcut) -> Result<(), ShortcutError> {
         let shortcut = shortcut.clone();
-        self.control.invoke(move |engine| {
+        self.control.call(move |engine| {
             let id = engine.bindings.find(&shortcut).ok_or(ShortcutError::UnknownId)?;
             (engine.sink)(id, None);
             Ok(())
@@ -271,7 +287,7 @@ impl Guard {
         ENGINES.with(|engines| engines.borrow_mut().insert(control.key, Rc::new(RefCell::new(engine))));
         // A replaced engine closes with the slot locked, so callers wait until its chords are free.
         #[cfg(target_os = "linux")]
-        { *control.engine.lock().unwrap() = Some(Arc::new(Mutex::new(engine))); }
+        { *control.engine.lock().unwrap() = Some(Slot { engine: Arc::new(Mutex::new(engine)), wake: wake.clone() }); }
         {
             let mut route = control.attachment.lock().unwrap();
             control.hosts.fetch_add(1, Ordering::Relaxed);
@@ -315,10 +331,10 @@ impl Drop for Guard {
         // The slot stays locked through the release, so a new host can't start while this one's
         // backend still holds its chords.
         #[cfg(target_os = "linux")]
-        if let Some(engine) = self.control.engine.lock().unwrap().take() {
+        if let Some(slot) = self.control.engine.lock().unwrap().take() {
             // A host that attached since installed this engine first, so it ends with this close.
             ended = self.control.hosts.load(Ordering::Relaxed);
-            engine.lock().unwrap().release();
+            slot.engine.lock().unwrap().release();
         }
         if let Some(cleanup) = self.cleanup.take() { cleanup(ended); }
     }
@@ -328,6 +344,8 @@ impl Drop for Guard {
 mod lifecycle_tests;
 #[cfg(test)]
 mod machine_tests;
+#[cfg(test)]
+mod routing_tests;
 #[cfg(test)]
 mod host_handler_tests;
 #[cfg(all(test, target_os = "linux"))]
@@ -455,7 +473,7 @@ mod tests {
             captured.activate(tx.activation_token().unwrap());
             *state = true;
         }).unwrap();
-        app.shared.shortcuts.control.invoke(move |engine| {
+        app.shared.shortcuts.control.call(move |engine| {
             (engine.sink)(id, Some("compositor-token".into()));
             Ok(())
         }).unwrap();
@@ -468,5 +486,39 @@ mod tests {
         drop(app);
         drop(guard);
         assert!(weak.upgrade().is_none(), "handler captures must be released at host shutdown");
+    }
+
+    /// Whether a backend saw its chord still claimed as it was dropped.
+    static RETIRED_WITH_CLAIM: Mutex<Vec<bool>> = Mutex::new(Vec::new());
+    const GRAB_CHORD: &str = "ctrl+alt+shift+f11";
+
+    struct Grab;
+
+    impl Backend for Grab {
+        fn register(&mut self, _: ShortcutId, _: &Shortcut) -> Result<(), ShortcutError> { Ok(()) }
+        fn unregister(&mut self, _: ShortcutId) -> Result<(), ShortcutError> { Ok(()) }
+    }
+
+    // A desktop grab stands until the backend is gone, so the claim that names it must stand too.
+    impl Drop for Grab {
+        fn drop(&mut self) {
+            let held = NATIVE.lock().unwrap().iter().any(|(.., s, _)| *s == GRAB_CHORD.parse::<Shortcut>().unwrap());
+            RETIRED_WITH_CLAIM.lock().unwrap().push(held);
+        }
+    }
+
+    fn grab(_: bool, _: Sink) -> Result<NativeBackend, ShortcutError> { Ok(Box::new(Grab)) }
+
+    #[test]
+    fn a_backend_retires_before_its_chord_stops_naming_an_owner() {
+        RETIRED_WITH_CLAIM.lock().unwrap().clear();
+        let shortcut = GRAB_CHORD.parse::<Shortcut>().unwrap();
+        let mut engine = Engine { title: "Grab", wayland: false, sink: Arc::new(|_, _| {}), connect: grab, bindings: Bindings::Disconnected };
+        let id = ShortcutId(0x7000_0001);
+        engine.register(id, shortcut.clone()).unwrap();
+        engine.unregister(id).unwrap();
+        assert!(engine.bindings.find(&shortcut).is_none(), "the registration went");
+        assert!(!NATIVE.lock().unwrap().iter().any(|(.., s, _)| *s == shortcut), "the claim went with the registration");
+        assert_eq!(*RETIRED_WITH_CLAIM.lock().unwrap(), vec![true], "the backend saw its chord still claimed while it was alive");
     }
 }

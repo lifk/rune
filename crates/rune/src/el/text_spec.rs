@@ -47,6 +47,8 @@ pub struct TextSpec {
     pub(crate) selectable: bool,
     pub(crate) redacted: bool,
     pub(crate) wrap_anywhere: bool,
+    /// See [`El::wrap_greedy`](crate::El::wrap_greedy).
+    pub(crate) greedy: bool,
     /// See [`El::exact_lines`](crate::El::exact_lines): the height is its lines' own, unrounded,
     /// unless [`El::rounded_lines`](crate::El::rounded_lines) rounds it to device pixels.
     pub(crate) exact_lines: bool,
@@ -188,6 +190,7 @@ impl TextSpec {
             selectable: false,
             redacted: false,
             wrap_anywhere: false,
+            greedy: false,
             exact_lines: true,
             dir: TextDir::Auto,
         }
@@ -252,6 +255,11 @@ impl TextSpec {
         }
     }
 
+    /// Whether its lines break as Chromium's `text-wrap-style: pretty` does ([`crate::text::set_pretty_wrap`]).
+    pub(crate) fn pretty(&self) -> bool {
+        crate::text::pretty_wrap() && !self.greedy && !self.redacted && !self.wrap_anywhere && !self.justify
+    }
+
     /// [`crate::text::shape_key`] of this text in its direction.
     pub(crate) fn fresh_shape_key(&self, scale: f32) -> u64 {
         let key = crate::text::shape_key(&self.content, &self.spans, self.style, scale, self.wrap_anywhere, &self.cold.pills);
@@ -272,12 +280,25 @@ impl TextSpec {
         }
     }
 
-    /// Whether it lays out one paragraph at a time, each in its own direction
-    /// ([`crate::text::ParagraphLayout`]): a wrapped, uncut field's by-paragraph text. Others
-    /// stay one layout (a static text splits into one text per paragraph instead).
+    /// Whether it lays out one paragraph at a time ([`crate::text::ParagraphLayout`]), so an
+    /// edit shapes only the paragraphs it changed: a wrapped, uncut field's text of more than
+    /// one paragraph, or of any when each paragraph takes its own direction. Others stay one
+    /// layout (a static text splits into one text per paragraph instead).
     pub(crate) fn by_paragraph(&self, input: bool) -> bool {
-        matches!(self.dir, TextDir::Plaintext(_)) && input && self.wrap && !self.redacted && !self.truncate && !self.truncate_fade
+        input && self.wrap && !self.redacted && !self.truncate && !self.truncate_fade
             && self.max_lines == 0 && self.cold.live.is_none() && self.cold.advance_in.is_none()
+            && (matches!(self.dir, TextDir::Plaintext(_)) || self.content.contains('\n'))
+    }
+
+    /// The direction every paragraph of a by-paragraph layout takes, or None when each takes
+    /// its own (`El::dir_by_paragraph`): the element's, else the whole text's first strong
+    /// character's, as one layout of it would read.
+    pub(crate) fn paragraphs_flow(&self) -> Option<crate::el::Flow> {
+        match self.dir {
+            TextDir::Fixed(flow) => Some(flow),
+            TextDir::Auto => Some(if crate::Direction::of(&self.content) == Some(crate::Direction::Rtl) { crate::el::Flow::Rtl } else { crate::el::Flow::Ltr }),
+            TextDir::Plaintext(_) => None,
+        }
     }
 
     /// Zeroizes the shown string and shows `content` instead.

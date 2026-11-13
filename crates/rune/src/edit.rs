@@ -20,7 +20,8 @@ mod display;
 mod history;
 mod html;
 mod ime;
-pub use ime::Ime;
+pub use ime::{Clause, Ime};
+pub(crate) use ime::ImeText;
 mod input;
 mod keys;
 pub use keys::{Key, KeyEvent, KeySide, Modifier, Mods};
@@ -32,6 +33,9 @@ pub(crate) use secure::{MULTILINE_SECURE_MASK, Masking};
 use secure::LineMode;
 mod typing;
 use typing::Typing;
+mod direction_keys;
+use direction_keys::FieldDir;
+pub(crate) use direction_keys::{DirChord, step_dir_chord};
 pub(crate) use history::History;
 use history::{EditKind, EditedTag, Group};
 
@@ -72,6 +76,8 @@ pub struct TextEdit {
     /// a byte there has a place at the end of one run and at the start of the other. Arrows
     /// and presses set it; anything else puts it before the byte that follows.
     pub(crate) affinity: parley::Affinity,
+    /// The direction Ctrl+Left Shift or Ctrl+Right Shift set (`direction_keys`).
+    dir: FieldDir,
 }
 
 impl std::fmt::Debug for TextEdit {
@@ -116,6 +122,7 @@ impl std::hash::Hash for TextEdit {
         self.secure.hash(h);
         self.revealed.hash(h);
         self.is_single_line().hash(h);
+        self.dir.hash(h);
     }
 }
 
@@ -188,6 +195,7 @@ impl TextEdit {
             edited_tag: EditedTag::default(),
             column: Column::Free,
             affinity: parley::Affinity::Downstream,
+            dir: FieldDir::Natural,
         }
     }
 
@@ -411,6 +419,26 @@ impl TextEdit {
         self.composition.target()
     }
 
+    /// The composition's clauses, each a byte range of the preedit, the one being converted
+    /// marked (one clause over the whole preedit when the input method gives none). Empty when
+    /// not composing.
+    pub fn preedit_clauses(&self) -> Vec<Clause> {
+        self.composition.clauses()
+    }
+
+    /// The text around the selection for the platform's input method to read (reconversion,
+    /// document feed); none for a secret or mid-composition.
+    pub(crate) fn ime_text(&self) -> Option<ImeText> {
+        if self.secure || self.is_composing() { return None; }
+        let (a, b) = self.range();
+        let t = &self.text;
+        let mut start = t[..a].rfind('\n').map_or(0, |i| i + 1).max(a.saturating_sub(1024));
+        while !t.is_char_boundary(start) { start += 1; }
+        let mut end = t[b..].find('\n').map_or(t.len(), |i| b + i).min(b + 1024);
+        while !t.is_char_boundary(end) { end -= 1; }
+        Some(ImeText { text: t[start..end].to_owned(), start, selection: a - start..b - start })
+    }
+
     /// Ends the input method's composition without writing it, as an edit replacing the text
     /// under it does.
     pub fn cancel_composition(&mut self) {
@@ -425,10 +453,11 @@ impl TextEdit {
         if self.secure { self.cancel_composition(); return false; }
         let mut finished = false;
         for effect in ime::step(&mut self.composition, ime::Event::Finish) {
-            let ime::Effect::Commit(mut s) = effect;
-            self.commit_composed(&s);
-            s.zeroize();
-            finished = true;
+            if let ime::Effect::Commit(mut s) = effect {
+                self.commit_composed(&s);
+                s.zeroize();
+                finished = true;
+            }
         }
         finished
     }

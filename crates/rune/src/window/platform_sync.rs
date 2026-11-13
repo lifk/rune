@@ -19,6 +19,16 @@ pub(super) fn sync_platform<S: 'static>(l: &mut Win, rt: &mut Runtime<S>, secure
         l.window.set_ime_allowed(ime_allowed);
         *ime = ime_allowed;
     }
+    // A terminal's caret asks for Option as Alt (`El::ime_option_as_alt`): AppKit then hands the key
+    // under Option over as itself, not the character the layout composes with it.
+    #[cfg(target_os = "macos")]
+    {
+        use winit::platform::macos::{OptionAsAlt, WindowExtMacOS};
+        let want = if ime_allowed && rt.ime_option_as_alt { OptionAsAlt::Both } else { OptionAsAlt::None };
+        if l.window.option_as_alt() != want {
+            l.window.set_option_as_alt(want);
+        }
+    }
     l.apply_cursor(rt, focused);
     #[cfg(target_os = "macos")]
     if rt.zoom() == 1.0 {
@@ -32,6 +42,8 @@ pub(super) fn sync_platform<S: 'static>(l: &mut Win, rt: &mut Runtime<S>, secure
     #[cfg(target_os = "windows")]
     if focused { crate::platform::win32::dark_mode::menus(rt.backdrop_dark().unwrap_or(rt.env.system_dark)); }
     clipboard.flush(rt);
+    // The focused field's text, for the input method to convert again or read around the caret.
+    crate::platform::ime::sync(&l.window, if ime_allowed { rt.ime_text() } else { None });
     if let Some(a) = rt.ime_area.map(|a| rt.to_window(a)) {
         l.window.set_ime_cursor_area(
             LogicalPosition::new(a[0] as f64, a[1] as f64),

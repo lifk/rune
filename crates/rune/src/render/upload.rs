@@ -56,6 +56,11 @@ impl Uploads {
         self.staging.get_or_insert_with(|| Staging::new(device, queue)).clone()
     }
 
+    /// Frees the staging chunks kept for reuse (`Renderer::give_back`).
+    pub(super) fn trim(&self) {
+        if let Some(staging) = &self.staging { staging.trim(); }
+    }
+
     #[cfg(test)]
     pub(super) fn stats(&self) -> rune_staging::Stats {
         self.staging.as_ref().map(Staging::stats).unwrap_or_default()
@@ -210,7 +215,7 @@ impl Renderer {
             atlas.invalidate();
         }
         atlas.outlines.set_support(self.uber.support());
-        self.lcd_frame = atlas.lcd && self.lcd_ready(device);
+        self.lcd_frame = self.lcd_ready(device, atlas.lcd_wanted) && atlas.lcd;
         if let Some(rows) = atlas.dirty.take() {
             atlas.rows_uploaded(0, rows);
             Self::write_rows(&staging, &self.atlas, &atlas.data, rows);
@@ -269,6 +274,8 @@ impl Renderer {
             }
         }
         self.prepare_backdrop_blur(device, queue, viewport);
+        #[cfg(all(feature = "alloc-sites", not(target_arch = "wasm32")))]
+        self.report_pools();
     }
 
     /// A window's or overlay's first native surface: its renderer's pipeline compiles on a thread

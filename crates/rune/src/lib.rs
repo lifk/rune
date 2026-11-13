@@ -90,6 +90,7 @@ pub use drag_out::DragItem;
 pub use drag_out::DragOperation;
 pub use drag_out::DragOutcome;
 pub use edit::Block;
+pub use edit::Clause;
 pub use edit::Ime;
 pub use edit::Key;
 pub use edit::KeyEvent;
@@ -129,6 +130,7 @@ pub use el::Tx;
 pub use el::anchor_rect;
 pub use el::auto_grow;
 pub use el::canvas;
+pub use el::{GridRow, grid};
 pub use el::col;
 pub use el::edit_access;
 pub use el::effect;
@@ -198,7 +200,7 @@ pub use live::Live;
 pub use live::LiveText;
 pub use live::Tween;
 pub use memo::{memo, region, region_with};
-pub use tracked::Tracked;
+pub use tracked::{Reads, Tracked, tracked_reads};
 pub use native_menu::MenuError;
 pub use native_menu::MenuItem;
 pub use native_surface::NativeSurface;
@@ -225,6 +227,11 @@ pub use pixels::Pixels;
 pub use platform::accent::SystemAccent;
 pub use platform::accent::system_accent;
 pub use platform::app_icon::set_app_icon;
+pub use platform::preferences::SystemContrast;
+/// Windows: raises this process's threads whose name passes the filter to a priority floor, walking
+/// only this process's threads.
+#[cfg(target_os = "windows")]
+pub use platform::win32::raise_threads;
 #[cfg(target_os = "windows")]
 pub use platform::app_icon::set_app_icon_resource;
 #[cfg(target_vendor = "apple")]
@@ -254,6 +261,9 @@ pub use popup_menu::PopupMenu;
 pub use popup_menu::PopupMenuError;
 pub use popup_menu::popup_menu_supported;
 pub use quit::fast_exit;
+pub use quit::orderly_exit;
+#[cfg(not(target_arch = "wasm32"))]
+pub use quit::exit_deadline;
 pub use quit::quitting;
 pub use recorder::FakeMicrophone;
 pub use recorder::Level;

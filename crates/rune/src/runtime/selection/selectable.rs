@@ -21,8 +21,12 @@ use std::ops::Range;
 /// Chromium on Windows and Linux doesn't.
 const SECONDARY_SELECTS_WORD: bool = cfg!(target_os = "macos");
 
+#[path = "copy_html.rs"]
+mod copy_html;
 #[path = "copy_join.rs"]
 mod copy_join;
+#[path = "edge_scroll.rs"]
+pub(crate) mod edge_scroll;
 #[path = "phase.rs"]
 pub(crate) mod phase;
 #[path = "toolbar.rs"]
@@ -73,7 +77,6 @@ fn prev_boundary(text: &str, i: usize) -> usize { floor_boundary(text, i.saturat
 /// line (on its break, or past the end of the text) it takes the line's last word or paragraph,
 /// as AppKit does.
 pub(crate) fn unit_at(text: &str, i: usize, unit: Unit) -> (usize, usize) {
-    use icu_segmenter::{WordSegmenter, options::WordBreakInvariantOptions};
     let mut i = floor_boundary(text, i);
     if i > 0 && i == text.len() && unit != Unit::Char { i = prev_boundary(text, i); }
     match unit {
@@ -85,7 +88,7 @@ pub(crate) fn unit_at(text: &str, i: usize, unit: Unit) -> (usize, usize) {
             }
             let mut last = (i, i);
             let mut start = 0;
-            for end in WordSegmenter::new_dictionary(WordBreakInvariantOptions::default()).segment_str(text).filter(|&b| b > 0) {
+            for end in word_ends(text) {
                 last = (start, end);
                 if i < end { return last; }
                 start = end;
@@ -98,6 +101,18 @@ pub(crate) fn unit_at(text: &str, i: usize, unit: Unit) -> (usize, usize) {
             (start, end)
         }
     }
+}
+
+/// Where each of `text`'s words ends, in order, the last at `text.len()`: ICU4X's dictionaries
+/// natively, the browser's (`Intl.Segmenter`) in a page, which links none.
+fn word_ends(text: &str) -> impl Iterator<Item = usize> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use icu_segmenter::{WordSegmenter, options::WordBreakInvariantOptions};
+        WordSegmenter::new_dictionary(WordBreakInvariantOptions::default()).segment_str(text).filter(|&b| b > 0)
+    }
+    #[cfg(target_arch = "wasm32")]
+    crate::platform::web::segmenter::words(text).into_iter()
 }
 
 /// The selection a drag from unit range `origin` to unit range `at` makes: (anchor, focus).
@@ -502,10 +517,11 @@ impl<S: 'static> Runtime<S> {
         out.finish()
     }
 
-    /// Text `i` was drawn beside text `p`, to its right on the same line (a table row's cells).
+    /// Text `i` was drawn beside text `p` on the same line, past it on either side: a table row's
+    /// cells, which a right-to-left table draws from the right.
     pub(crate) fn beside(&self, p: usize, i: usize) -> bool {
         let (pb, nb) = (self.drawn_box(p), self.drawn_box(i));
-        nb[1] < pb[3] - 0.5 && nb[0] >= pb[2] - 0.5
+        nb[1] < pb[3] - 0.5 && (nb[0] >= pb[2] - 0.5 || nb[2] <= pb[0] + 0.5)
     }
 
     /// Selects from the start of text `first` to the end of text `last`, a later text of its
@@ -526,6 +542,8 @@ impl<S: 'static> Runtime<S> {
 
     /// Steps the selection's phase and carries out what it asks for.
     pub(super) fn select_step(&mut self, event: phase::Event<'_>) {
+        // Only the held press's own drag keeps the list scrolling at its edge.
+        if !matches!(event, phase::Event::Drag { .. }) { self.stop_edge_scroll(); }
         let effects = phase::step(&mut self.selectable.phase, event);
         self.carry_select(effects);
     }
@@ -679,7 +697,11 @@ impl<S: 'static> Runtime<S> {
         let path = self.end_path(h).to_owned();
         let Some(text) = self.copy_text() else { return false };
         log_event!(self, "copy {path}");
-        tx.copy(text);
+        // Its formatting too, as a browser copies a page's selection.
+        match self.copy_html() {
+            Some(html) => tx.copy_rich(crate::ClipboardContent::new(text).with_html(html)),
+            None => tx.copy(text),
+        }
         true
     }
 
@@ -700,6 +722,7 @@ impl<S: 'static> Runtime<S> {
             self.select_step(phase::Event::Select(phase::Selection::new(path.to_owned(), content, (a, b), (a, b))));
         }
         let text = self.copy_text();
+        let html = text.as_ref().and_then(|_| self.copy_html());
         let mut copy = crate::PopupItem::new("copy", crate::labels::label(crate::Label::Copy)).enabled(text.is_some());
         // The primary modifier, as the copy key handler takes it: ⌘C on macOS, Ctrl+C elsewhere.
         if let Ok(shortcut) = "mod+c".parse::<crate::Shortcut>() { copy = copy.key_equivalent(shortcut); }
@@ -708,7 +731,12 @@ impl<S: 'static> Runtime<S> {
             menu: crate::PopupMenu::new().item(copy),
             anchor: crate::PopupAnchor::Point(x, y),
             on_pick: Box::new(move |_, picked, tx| {
-                if picked == Some("copy") && let Some(text) = text { tx.copy(text); }
+                if picked == Some("copy") && let Some(text) = text {
+                    match html {
+                        Some(html) => tx.copy_rich(crate::ClipboardContent::new(text).with_html(html)),
+                        None => tx.copy(text),
+                    }
+                }
             }),
             field: None,
         });

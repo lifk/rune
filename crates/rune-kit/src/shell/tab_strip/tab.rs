@@ -1,7 +1,7 @@
 //! One tab of a [`TabStrip`](super::TabStrip): its pill, avatar, title, status mark and close
 //! button, with the press, drag, hover and middle-click handlers on its slot.
 
-use rune::{Anim, Beat, Color, Drag, Easing, El, MotionIntent, Phase, PointerButton, Sequence, SpringPair, Transition, Tx, col, el, icon, row, text};
+use rune::{Anim, Beat, Color, Drag, Easing, El, MotionIntent, Phase, Sequence, SpringPair, Transition, Tx, col, el, icon, row, text};
 
 use super::drag::{Lane, Release};
 use super::{Strip, TabDensity, TabItem, TabItemStatus, TabReorder, TabTearMove, TabTearOut};
@@ -238,7 +238,8 @@ fn lead(avatar: Option<El>, glyph: Option<&'static rune::Icon>, active: bool, ba
 /// The title: clipped, never ellipsised, fading out before the status and close slot.
 fn title(title: &str, editor: Option<El>, at: &Place, vertical: bool, emphasized: bool, k: &Kit) -> El {
     let c = &k.c;
-    let font = rune::TextStyle { weight: k.ty.ui_medium.weight, ..k.ty.ui_compact };
+    // `text-[13px] font-medium` with no tracking, where the kit's compact UI type has -0.04.
+    let font = rune::TextStyle { weight: k.ty.ui_medium.weight, tracking: 0.0, ..k.ty.ui_compact };
     let ink = if at.active || editor.is_some() { c.text_base } else { c.text_faint };
     if let Some(field) = editor {
         return row().key("title").grow(1.0).shrink().min_w(0.0).mr(SLOT_END).child(field);
@@ -253,12 +254,12 @@ fn title(title: &str, editor: Option<El>, at: &Place, vertical: bool, emphasized
         return row().key("title").grow(1.0).shrink().min_w(0.0).child(hidden(label.truncate_fade_width(0.0).opacity(0.0)).instant_changes());
     }
     let wrap = row().key("title").grow(1.0).shrink().min_w(0.0);
-    // The fade ends 24 points before the link's end, clear of the slot. The title itself runs on
-    // under the slot, as Desktop's `flex-1` title runs under its mask: a title whose direction
-    // ends the other way (Latin in a right-to-left tab) starts there.
-    let faded = |label: El| label.truncate_fade_width(0.0).mr(-24.0);
+    // The fade ends 24 points before the link's end, clear of the slot, at the end of the title's
+    // own words: a Latin title in a right-to-left tab starts at its left and fades at its right,
+    // never hiding its first word under the slot (as Desktop's `flex-1` title does).
+    let faded = |label: El| label.truncate_fade_width(FADE / font.size);
     if emphasized {
-        return wrap.mr(24.0).clip_fade_linear(0.0, 0.0, FADE, 0.0).child(faded(label));
+        return wrap.mr(24.0).child(faded(label));
     }
     // At rest it fades only an overflowing title, 4 points from a horizontal tab's end. A compact
     // tab's hover hides it; a wider tab's hover shows it faded clear of the slot instead, in the
@@ -269,7 +270,7 @@ fn title(title: &str, editor: Option<El>, at: &Place, vertical: bool, emphasized
         return wrap.mr(end).child(hidden(rest.group_opacity(1.0, 0.0)));
     }
     let rest = row().key("rest").grow(1.0).shrink().min_w(0.0).mr(end).child(hidden(rest.group_opacity(1.0, 0.0)));
-    let hovered = hidden(row().key("hovered").pin(Some(0.0), Some(0.0), Some(24.0), Some(0.0)).clip_fade_linear(0.0, 0.0, FADE, 0.0)
+    let hovered = hidden(row().key("hovered").pin(Some(0.0), Some(0.0), Some(24.0), Some(0.0))
         .group_opacity(0.0, 1.0).child(faded(label)));
     wrap.child(rest).child(hovered)
 }
@@ -367,23 +368,22 @@ fn handlers<S: 'static>(mut slot: El, id: &str, at: &Place, closable: bool, st: 
     let lock = at.width.filter(|_| st.horizontal_lock).unwrap_or(0.0);
     let select_early = st.select_on_drag_start;
     let reveal = (st.scroll_key.clone(), format!("t-{id}"));
-    if closable {
-        slot = slot.pointer_buttons([PointerButton::Middle]);
+    if let Some(close) = h.close.clone().filter(|_| closable) {
+        let id = id.to_owned();
+        slot = slot.on_middle_press(move |s: &mut S, tx: &mut Tx| {
+            if let Some(a) = access.filter(|_| lock > 0.0) {
+                a(s).width_lock = Some(lock);
+            }
+            close(s, &id, tx);
+        });
     }
     {
-        let (id, select, close, reveal) = (id.to_owned(), h.select.clone(), h.close.clone().filter(|_| closable), reveal.clone());
+        let (id, select, reveal) = (id.to_owned(), h.select.clone(), reveal.clone());
         slot = slot.on_press_tx(move |s: &mut S, tx: &mut Tx| {
             if let Some(a) = access
                 && a(s).take_swallowed_click()
             {
                 return;
-            }
-            if tx.button() == PointerButton::Middle {
-                let Some(f) = &close else { return };
-                if let Some(a) = access.filter(|_| lock > 0.0) {
-                    a(s).width_lock = Some(lock);
-                }
-                return f(s, &id, tx);
             }
             if let Some(f) = &select {
                 f(s, &id, tx);
@@ -414,9 +414,6 @@ fn handlers<S: 'static>(mut slot: El, id: &str, at: &Place, closable: bool, st: 
     let (id, select, reorder, tear, tear_move) = (id.to_owned(), h.select.clone(), h.reorder.clone(), h.tear_out.clone(), h.tear_move.clone());
     let (scroll, auto) = (st.scroll_key.clone(), st.auto.clone());
     slot.on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| {
-        if tx.button() != PointerButton::Primary {
-            return;
-        }
         match d.phase {
             Phase::Down => {
                 access(s).press(&lane, [d.x, d.y], super::auto_scroll::offset(&auto, vertical));

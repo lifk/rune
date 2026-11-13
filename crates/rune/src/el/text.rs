@@ -286,6 +286,15 @@ impl El {
         }
         self
     }
+    /// Break this text's lines greedily when the app wraps text prettily
+    /// ([`crate::text::set_pretty_wrap`]): text that grows while it's read, such as a reply
+    /// still streaming in, whose last lines would move as each word arrives.
+    pub fn wrap_greedy(mut self) -> Self {
+        if let Some(t) = &mut self.text {
+            t.greedy = true;
+        }
+        self
+    }
     /// Whether this is text that wraps (`.wrap()`), for containers that let such text shrink
     /// to their width.
     pub fn wraps(&self) -> bool {
@@ -405,7 +414,9 @@ impl El {
         self
     }
     /// Called with a [`Link`]'s id when it is clicked, or pressed with Enter or Space while
-    /// focused.
+    /// focused. A middle click on a link calls it too, as a browser opens a link in a new tab:
+    /// [`Tx::button`] is then [`PointerButton::Middle`](crate::PointerButton::Middle), for a
+    /// handler whose link only opens in place to ignore.
     pub fn on_link<S: 'static>(mut self, f: impl Fn(&mut S, &str, &mut Tx) + 'static) -> Self {
         if let Some(t) = &mut self.text {
             t.cold.on_link = Some(LinkFn(Rc::new(move |s, id, tx| f(downcast::<S>(s), id, tx))));

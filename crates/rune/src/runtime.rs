@@ -175,6 +175,9 @@ pub use motion_elements::MotionElement;
 mod live_latch;
 #[path = "runtime/motion/loop_clock.rs"]
 mod loop_clock;
+#[path = "runtime/motion/reveal_phase.rs"]
+mod reveal_phase;
+use reveal_phase::{Arrival, RevealChain, RevealEffect, RevealEvent, RevealPhase};
 #[path = "runtime/motion/rewind.rs"]
 mod rewind_record;
 #[path = "runtime/scroll/drawn.rs"]
@@ -189,6 +192,8 @@ use scroll_mode::ScrollMode;
 mod scroll_watch;
 #[doc(hidden)]
 pub use scroll_watch::scroll_watch_state;
+#[path = "runtime/input/autoscroll.rs"]
+mod autoscroll;
 #[path = "runtime/input/gesture.rs"]
 mod gesture_dispatch;
 #[path = "runtime/input/key_releases.rs"]
@@ -252,6 +257,8 @@ mod shadow_paint;
 mod shape_paint;
 use shape_paint::push_shape;
 use props::*;
+#[cfg(not(target_os = "windows"))]
+pub(crate) use scroll_x::LINE_POINTS;
 pub(crate) use scroll_x::{SHIFT_TURNS_WHEEL, wheel_delta};
 pub(crate) use scroll_offset::ScrollRequest;
 pub(crate) use reveal::ScrollReveal;
@@ -259,6 +266,9 @@ pub use selectable::{SelectedText, SelectionChange, TextSelection};
 #[cfg(test)]
 #[path = "runtime/timer_wake_tests.rs"]
 mod timer_wake_tests;
+#[cfg(test)]
+#[path = "runtime/grid_tests.rs"]
+mod grid_tests;
 #[cfg(test)]
 #[path = "runtime/truncate_tests.rs"]
 mod truncate_tests;
@@ -289,6 +299,9 @@ mod live_check_tests;
 #[cfg(test)]
 #[path = "runtime/virtual_store_tests.rs"]
 mod virtual_store_tests;
+#[cfg(test)]
+#[path = "runtime/virtual/fill_resume_tests.rs"]
+mod fill_resume_tests;
 #[path = "runtime/selection/select_all.rs"]
 mod select_all;
 #[cfg(test)]
@@ -373,6 +386,8 @@ mod paint_helpers;
 use paint_helpers::*;
 #[path = "runtime/paint/content.rs"]
 mod paint_content;
+#[path = "runtime/paint/grid.rs"]
+mod grid_paint;
 #[path = "runtime/input/hit.rs"]
 mod hit;
 #[path = "runtime/paint/build.rs"]
@@ -399,10 +414,10 @@ pub(crate) use commit_why::CommitWhy;
 #[cfg(debug_assertions)]
 pub(crate) use layout_read::window_read_key;
 pub(crate) use types::{AnimSource, Node};
-use types::{AxisScroll, GlideTo, Inh, NodeCold, RevealState, RowLayout, ScaleMotion, ScrollState, Stack, WidthHold};
+use types::{AxisScroll, GlideTo, Inh, NodeCold, RowLayout, ScaleMotion, ScrollState, Stack, WidthHold};
 #[path = "runtime/motion/tracks.rs"]
 mod tracks;
-use tracks::{SCROLL_DECAY, mark_ancestors, scroll_offsets, word_starts};
+use tracks::{SCROLL_DECAY, mark_ancestors, scroll_offsets};
 mod commit;
 use commit::{Measured, Measurement, Pass, unwrapped_width};
 
@@ -445,6 +460,8 @@ pub struct Runtime<S: 'static> {
     system_reduced_motion: bool,
     titlebar_inset: f32,
     system_accent: crate::SystemAccent,
+    /// What [`Cx::system_contrast`] reports.
+    pub(crate) system_contrast: Option<crate::SystemContrast>,
     scroll_bars: system_settings::ScrollBarHost,
     pub time_scale: f32,
     /// The last view's `Cx::foreground` and `Cx::focus_ring`, for rows built after it and the
@@ -488,6 +505,8 @@ pub struct Runtime<S: 'static> {
     press: capture::Press,
     /// The secondary button's press, held beside it.
     secondary: capture::Secondary,
+    /// The middle button's autoscroll (`runtime/input/autoscroll.rs`).
+    autoscroll: autoscroll::Autoscroll,
     drag_data: f32,
     pub instances: Vec<Instance>,
     /// Per instance, the `El::mark` of its nearest marked node (0 for none). Filled only while
@@ -503,6 +522,10 @@ pub struct Runtime<S: 'static> {
     hits: Vec<(NodeId, [f32; 4])>,
     overlay_hits: Vec<[f32; 4]>,
     glyph_scratch: Vec<GlyphQuad>,
+    /// Each still text's quads as it drew them, by node and layout, and the paint they were last
+    /// used in (`paint_content`): a frame that draws it the same copies them.
+    text_quads: HashMap<(NodeId, usize), (Rc<parley::Layout<crate::text::Ink>>, crate::el::grid::DrawnRow, u64)>,
+    quads_frame: u64,
     deco_scratch: Vec<PaintedDeco>,
     inh_scratch: Vec<Inh>,
     /// `motion_elements`' per-node scratch, kept so a frame doesn't allocate.
@@ -597,9 +620,12 @@ pub struct Runtime<S: 'static> {
     pub(crate) virtual_culled: HashSet<String>,
     /// Fresh view accessors for focused text fields omitted by virtualization.
     virtual_inputs: HashMap<String, Box<InputSpec>>,
-    reveals: HashMap<NodeId, RevealState>,
-    /// When the newest streamed word of any text starts fading: the next text's words follow it.
-    reveal_chain: f64,
+    reveals: HashMap<NodeId, RevealPhase>,
+    /// The reveal states `reveals` keeps for texts that have left the tree, newest first, at
+    /// most `prune::REVEALS_KEPT` of them (see `prune_exited`).
+    reveals_kept: Vec<NodeId>,
+    /// The newest streamed word of any text, which the next text's words queue behind.
+    reveal_chain: RevealChain,
     flights: Vec<TextFlight>,
     /// Per node index this frame: presented row top dy, row height override, and bottom feather mask.
     row_dy: Vec<f32>,
@@ -670,6 +696,8 @@ pub struct Runtime<S: 'static> {
     /// Files dragged over the window from another app (`drop_dispatch`).
     file_drag: drop_dispatch::FileDrag,
     pub ime_area: Option<[f32; 4]>,
+    /// The `El::ime_cursor` that has the input method asks for Option as Alt (`El::ime_option_as_alt`).
+    pub(crate) ime_option_as_alt: bool,
     /// The focused field's caret (path, window rect) the next view sees through `Cx::caret`.
     caret: Option<(String, [f32; 4])>,
     /// The last view read the caret, so it re-runs when the caret moves.
@@ -876,6 +904,7 @@ impl<S: 'static> Runtime<S> {
             system_reduced_motion: false,
             titlebar_inset: 0.0,
             system_accent: crate::SystemAccent::DEFAULT,
+            system_contrast: None,
             scroll_bars: Default::default(),
             time_scale: 1.0,
             defaults: Default::default(),
@@ -906,6 +935,7 @@ impl<S: 'static> Runtime<S> {
             pointer: None,
             press: Default::default(),
             secondary: Default::default(),
+            autoscroll: Default::default(),
             drag_data: 0.0,
             instances: Vec::new(),
             marks: Vec::new(),
@@ -916,6 +946,8 @@ impl<S: 'static> Runtime<S> {
             hits: Vec::new(),
             overlay_hits: Vec::new(),
             glyph_scratch: Vec::new(),
+            text_quads: HashMap::default(),
+            quads_frame: 0,
             deco_scratch: Vec::new(),
             inh_scratch: Vec::new(),
             motion_scratch: Default::default(),
@@ -971,7 +1003,8 @@ impl<S: 'static> Runtime<S> {
             reuse: Default::default(),
             virtual_inputs: HashMap::default(),
             reveals: HashMap::default(),
-            reveal_chain: 0.0,
+            reveals_kept: Vec::new(),
+            reveal_chain: RevealChain::default(),
             flights: Vec::new(),
             launches: Default::default(),
             pixel_snap: Default::default(),
@@ -1011,6 +1044,7 @@ impl<S: 'static> Runtime<S> {
             hover_hold: Default::default(),
             file_drag: Default::default(),
             ime_area: None,
+            ime_option_as_alt: false,
             caret: None,
             caret_watch: false,
             layout_seen: Default::default(),

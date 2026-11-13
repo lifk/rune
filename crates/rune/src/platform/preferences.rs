@@ -72,6 +72,67 @@ unsafe fn gnome_animations() -> Option<bool> {
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 pub(crate) fn reduced_motion() -> bool { false }
 
+/// The colours a system contrast theme asks every app to paint with (Windows' Contrast themes,
+/// CSS `forced-colors`' system colours), in linear sRGB as Rune's colours are.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SystemContrast {
+    /// A window's ground (`Canvas`, `COLOR_WINDOW`).
+    pub window: crate::Color,
+    /// Text on it (`CanvasText`, `COLOR_WINDOWTEXT`).
+    pub text: crate::Color,
+    /// A selection, a focus ring, a checked control (`Highlight`, `COLOR_HIGHLIGHT`).
+    pub highlight: crate::Color,
+    /// Text on [`Self::highlight`] (`HighlightText`, `COLOR_HIGHLIGHTTEXT`).
+    pub highlight_text: crate::Color,
+    /// Disabled text (`GrayText`, `COLOR_GRAYTEXT`).
+    pub disabled: crate::Color,
+    /// A button's face and text (`ButtonFace`, `ButtonText`).
+    pub button: crate::Color,
+    pub button_text: crate::Color,
+    /// A link (`LinkText`, `COLOR_HOTLIGHT`).
+    pub link: crate::Color,
+}
+
+/// The system's contrast theme, when one is on (Windows: Settings > Accessibility > Contrast
+/// themes). Read when a window opens and when Windows says its settings or colours changed.
+#[cfg(target_os = "windows")]
+pub(crate) fn contrast() -> Option<SystemContrast> {
+    if let Some(preset) = contrast_preset() { return Some(preset); }
+    use windows_sys::Win32::Graphics::Gdi::GetSysColor;
+    use windows_sys::Win32::UI::Accessibility::{HCF_HIGHCONTRASTON, HIGHCONTRASTW};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SPI_GETHIGHCONTRAST, SystemParametersInfoW};
+    let mut hc = HIGHCONTRASTW { cbSize: std::mem::size_of::<HIGHCONTRASTW>() as u32, dwFlags: 0, lpszDefaultScheme: std::ptr::null_mut() };
+    // SAFETY: SPI_GETHIGHCONTRAST fills a HIGHCONTRASTW whose size it is told.
+    let read = unsafe { SystemParametersInfoW(SPI_GETHIGHCONTRAST, hc.cbSize, (&mut hc as *mut HIGHCONTRASTW).cast(), 0) } != 0;
+    if !read || hc.dwFlags & HCF_HIGHCONTRASTON == 0 { return None; }
+    // SAFETY: GetSysColor reads a colour index; the indices are Win32's constants.
+    let sys = |index: i32| {
+        let c = unsafe { GetSysColor(index) };
+        let d = |v: u32| crate::color::srgb_decode((v & 0xff) as f32 / 255.0);
+        crate::Color { r: d(c), g: d(c >> 8), b: d(c >> 16), a: 1.0 }
+    };
+    // COLOR_WINDOW 5, WINDOWTEXT 8, HIGHLIGHT 13, HIGHLIGHTTEXT 14, BTNFACE 15, GRAYTEXT 17,
+    // BTNTEXT 18, HOTLIGHT 26.
+    Some(SystemContrast { window: sys(5), text: sys(8), highlight: sys(13), highlight_text: sys(14), disabled: sys(17), button: sys(15), button_text: sys(18), link: sys(26) })
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn contrast() -> Option<SystemContrast> { contrast_preset() }
+
+/// `RUNE_CONTRAST=aquatic|desert|dusk|night-sky`: Windows 11's contrast theme of that name, as
+/// its system colours are, without turning it on for the whole machine: for captures and checks
+/// of an app in each.
+fn contrast_preset() -> Option<SystemContrast> {
+    let name = std::env::var("RUNE_CONTRAST").ok()?;
+    let [window, text, highlight, highlight_text, disabled, link] = match name.to_ascii_lowercase().as_str() {
+        "aquatic" => ["#202020", "#ffffff", "#8ee3f0", "#263b50", "#a6a6a6", "#75e9fc"],
+        "desert" => ["#fffaef", "#3d3d3d", "#903909", "#fff5e3", "#6d6d6d", "#1c5e75"],
+        "dusk" => ["#2d3236", "#ffffff", "#a1bfde", "#212d3b", "#a6a6a6", "#70ebde"],
+        "night-sky" | "nightsky" => ["#000000", "#ffffff", "#d6b4fd", "#2b2b2b", "#a6a6a6", "#8080ff"],
+        _ => return None,
+    }.map(|h| crate::color::hex(h).unwrap_or(crate::Color::BLACK));
+    Some(SystemContrast { window, text, highlight, highlight_text, disabled, button: window, button_text: text, link })
+}
 /// The desktop's light or dark preference where winit reports none (Linux: the XDG desktop
 /// portal's `color-scheme`). None leaves the host's own default.
 #[cfg(all(target_os = "linux", feature = "dbus"))]

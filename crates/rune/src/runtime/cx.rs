@@ -58,6 +58,7 @@ pub struct Cx<S> {
     /// `Cx::set_titlebar` and `Cx::titlebar_height`, read once the view returns.
     pub(super) titlebar: crate::titlebar::TitlebarSet,
     pub(super) system_accent: crate::SystemAccent,
+    pub(super) system_contrast: Option<crate::SystemContrast>,
     pub(super) system_scroll_bars: crate::platform::scroll_bars::SystemScrollBars,
     pub(super) system_reduced_motion: bool,
     pub(super) reduced_motion: bool,
@@ -82,6 +83,7 @@ impl<S> Cx<S> {
             defaults: self.defaults.clone(),
             titlebar: self.titlebar,
             system_accent: self.system_accent,
+            system_contrast: self.system_contrast,
             system_scroll_bars: self.system_scroll_bars,
             system_reduced_motion: self.system_reduced_motion, reduced_motion: self.reduced_motion, time_scale: self.time_scale, zoom: self.zoom,
             caret: self.caret.clone(), caret_read: self.caret_read.clone(),
@@ -237,6 +239,29 @@ impl<S> Cx<S> {
         { crate::platform::web::safe_area() }
         #[cfg(not(target_arch = "wasm32"))]
         { [0.0; 4] }
+    }
+    /// The primary pointer can't hover: a browser's `(hover: none)`, a phone's or tablet's touch
+    /// screen. What a mouse would reveal on hover (a code block's Copy, a row's actions) should
+    /// show without it. False natively. A change re-runs the view.
+    pub fn hover_none(&self) -> bool {
+        #[cfg(target_arch = "wasm32")]
+        { crate::platform::web::hover_none() }
+        #[cfg(not(target_arch = "wasm32"))]
+        { false }
+    }
+    /// A page's primary pointer is coarse and can't hover. Use this for a phone or tablet's
+    /// controls rather than the viewport width: a narrow window can still have a mouse.
+    pub fn touch_controls(&self) -> bool {
+        #[cfg(target_arch = "wasm32")]
+        { crate::platform::web::touch_controls() }
+        #[cfg(not(target_arch = "wasm32"))]
+        { false }
+    }
+    /// The system's contrast theme when one is on (Windows' Contrast themes, high contrast):
+    /// the colours it asks every app to paint with, which a view uses in place of its own
+    /// (CSS `forced-colors: active`). None otherwise. A change re-runs the view.
+    pub fn system_contrast(&self) -> Option<crate::SystemContrast> {
+        self.system_contrast
     }
     /// The host's OS accessibility preference, independent of this commit's override.
     pub fn system_reduced_motion(&self) -> bool {

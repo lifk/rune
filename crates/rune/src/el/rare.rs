@@ -18,7 +18,7 @@ pub(crate) struct ElCold {
     pub(crate) trace_namespace: Option<(&'static str, &'static str)>,
     /// A role outside `RoleTag`'s table, read when the tag is `RoleTag::CUSTOM`.
     pub(crate) role: &'static str,
-    pub(crate) label: Option<String>,
+    pub(crate) label: Option<std::borrow::Cow<'static, str>>,
     pub(crate) live: Vec<crate::live::Bound>,
     pub(crate) above: Option<Anchor>,
     pub(crate) motion: Option<Spring>,
@@ -26,6 +26,8 @@ pub(crate) struct ElCold {
     pub(crate) lead: Option<(Spring, Spring)>,
     /// `El::animated_changes`: an ancestor's `El::instant_changes` stops here.
     pub(crate) animated_changes: bool,
+    /// `El::ime_option_as_alt`.
+    pub(crate) option_as_alt: bool,
     pub(crate) transition: Option<Box<Transition>>,
     pub(crate) matched: Option<Rc<str>>,
     pub(crate) scroll: Option<ScrollSpec>,
@@ -38,6 +40,8 @@ pub(crate) struct ElCold {
     pub(crate) virtual_rows: Option<Rc<crate::el::virtual_rows::RowSource>>,
     /// [`El::virtual_rows_version`](crate::El::virtual_rows_version), hashed.
     pub(crate) virtual_rows_version: Option<u64>,
+    /// The memo this element was expanded from (`El::expand_memo`) to mount virtual rows.
+    pub(crate) expanded_memo: Option<Rc<crate::memo::Built>>,
     pub(crate) glide: Option<crate::growth::FoldGlide>,
     pub(crate) input: Option<Box<InputSpec>>,
     pub(crate) time_scale: f32,
@@ -71,6 +75,7 @@ impl Empty for ElCold {
         opacity_motion: None,
         lead: None,
         animated_changes: false,
+        option_as_alt: false,
         transition: None,
         matched: None,
         scroll: None,
@@ -81,6 +86,7 @@ impl Empty for ElCold {
         virtual_estimate: None,
         virtual_rows: None,
         virtual_rows_version: None,
+        expanded_memo: None,
         glide: None,
         input: None,
         time_scale: 1.0,
@@ -207,6 +213,7 @@ roles! {
     "separator", "tablist", "segment", "window", "navigation", "grid", "none", "img", "tooltip",
     "canvas", "document", "figure", "table", "search", "searchbox", "complementary", "blockquote",
     "menuitemcheckbox", "menuitemradio", "scrollbar", "spinbutton", "tabpanel", "article",
+    "terminal", "banner", "form", "contentinfo", "alertdialog", "log",
 }
 
 impl RoleTag {

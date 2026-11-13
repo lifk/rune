@@ -9,6 +9,8 @@ impl<S: 'static> Runtime<S> {
         one.by_keys = true;
         one.focused = self.focused_key();
         if matches!(ev.key, crate::Key::Modifier { .. }) { return !repeat && self.route_modifier(ev, one); }
+        // Any other key while Ctrl and Shift are down makes them a shortcut, not a direction.
+        self.disarm_direction_chord();
         one.key_repeat = repeat;
         let shown = self.focus.keyboard() || self.focus.hovered();
         if focus::navigates(ev) { self.focus.step(focus_machine::FocusEvent::Navigated); }
@@ -271,6 +273,8 @@ impl<S: 'static> Runtime<S> {
     /// [`Runtime::key`]; `stage` routes it to the open playground's stage, for `Play::press`.
     pub(super) fn queue_key(&mut self, ev: KeyEvent, stage: bool) {
         self.dismiss_help();
+        // A key ends a middle-click autoscroll, and does nothing else.
+        if self.autoscroll_key() { return; }
         // Escape during a drag cancels it and goes no further.
         if ev.key == crate::Key::Escape && self.cancel_drag() { return; }
         self.queue.push(Action::Key { ev, repeat: false, stage });
@@ -334,6 +338,11 @@ impl<S: 'static> Runtime<S> {
     }
     pub(crate) fn read_result(&mut self, id: u64, content: crate::ClipboardContent) {
         self.queue.push(Action::ClipboardRead(id, content));
+    }
+
+    /// The focused field's text around its selection, for the platform's input method.
+    pub(crate) fn ime_text(&self) -> Option<crate::edit::ImeText> {
+        self.focused_input().and_then(|i| i.edit.ime_text())
     }
 
     /// The focused field's open composition and its cursor range, for a script's tree.

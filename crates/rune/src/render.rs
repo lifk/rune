@@ -9,6 +9,10 @@ use crate::text::{ATLAS_SIZE, Atlas};
 
 mod backdrop_blur;
 mod breaker;
+#[cfg(target_os = "windows")]
+mod damaged;
+#[cfg(target_os = "windows")]
+pub(crate) use damaged::MAX_RECTS;
 pub mod cpu_boot;
 mod dxbc;
 mod fill;
@@ -610,6 +614,9 @@ impl Gpu {
         descriptor.flags.remove(wgpu::InstanceFlags::VALIDATION_INDIRECT_CALL);
         // An HWND's DXGI swapchain is opaque only; DirectComposition composites alpha on every GPU.
         descriptor.backend_options.dx12.presentation_system = wgpu::Dx12SwapchainKind::DxgiFromVisual;
+        // A window waits for room in its swap chain itself, in the loop rather than in
+        // `acquire` (`window::slot`).
+        descriptor.backend_options.dx12.latency_waitable_object = wgpu::Dx12UseFrameLatencyWaitableObject::DontWait;
         // FXC ships with Windows (d3dcompiler_47.dll in System32). wgpu's default looks for
         // dxcompiler.dll on PATH, where another app's incompatible copy crashes the first
         // shader compile (Hex #587).
@@ -756,6 +763,8 @@ pub struct Renderer {
     /// text draws subpixel masks.
     lcd: variant::Lcd,
     lcd_frame: bool,
+    /// The window's wake, for work a frame starts on another thread (set_frame_wake).
+    frame_wake: Option<std::sync::Arc<crate::live::Wake>>,
     /// The 1×1 image the base bind group holds until the first image page.
     stand_in: wgpu::Texture,
     /// Secondary glyph atlas pages (`1..`).
@@ -784,6 +793,12 @@ pub struct Renderer {
     fills: std::sync::Mutex<Option<fill::PendingFills>>,
     /// Unique to this renderer, so to the device it was made on (`Frame::device_key`).
     device_key: crate::compose::DeviceKey,
+    /// The one instance per rectangle that clears a damaged one (`arm_damage`), made on first use.
+    #[cfg(target_os = "windows")]
+    clear_quad: std::sync::OnceLock<wgpu::Buffer>,
+    /// The kept frame and the rectangles the next `draw` may redraw alone (`damaged`).
+    #[cfg(target_os = "windows")]
+    damage: std::sync::Mutex<damaged::DamageState>,
 }
 
 impl Renderer {
@@ -1011,6 +1026,8 @@ impl Renderer {
     }
 
     pub fn draw(&self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView, clear: [f32; 4]) {
+        #[cfg(target_os = "windows")]
+        if self.draw_armed(encoder, view) { return; }
         self.draw_timed(encoder, view, clear, None);
     }
 

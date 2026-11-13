@@ -91,6 +91,8 @@ impl<S: 'static> Runtime<S> {
         // would wake the host again every frame interval.
         let due = self.wake_deadlines.partition_point(|t| *t <= self.clock);
         self.wake_deadlines.drain(..due);
+        // A glyph mask cache write that came due while nothing draws (`mask_cache`).
+        let _ = self.text.mask_cache_frame(false);
         let patched = self.patch_pending();
         let Some(poll) = self.poll else { return patched };
         let mut one = self.transaction();
@@ -114,7 +116,8 @@ impl<S: 'static> Runtime<S> {
         if !self.rests() { return None; }
         let stale = self.poll_alone();
         let steps = self.pending.wakes.iter().any(|d| d.is_zero());
-        Some(stale || self.window_frame.is_some() || steps)
+        // A starved fill's wake draws the frame that resumes it; the poll alone never does.
+        Some(stale || self.window_frame.is_some() || steps || self.virtual_fill.resuming(self.clock))
     }
 
     /// Whether the host asked for a frame after `resting_wake`. That frame doesn't poll again

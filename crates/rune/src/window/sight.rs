@@ -33,6 +33,10 @@ pub(crate) enum Sight {
 impl Sight {
     pub(crate) fn covered(self) -> bool { matches!(self, Sight::Covered(_)) }
 
+    /// Whether `cover` is among what covers it.
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    pub(crate) fn has(self, cover: Cover) -> bool { matches!(self, Sight::Covered(set) if set.get() & cover as u8 != 0) }
+
     /// `cover` starts (`on`) or stops covering the window. A notification, either way,
     /// supersedes a refused drawable's guess, which only stood in for one.
     pub(crate) fn step(self, cover: Cover, on: bool) -> Sight {
@@ -63,8 +67,12 @@ impl<S: 'static> Host<S> {
             l.stop_pacing();
             self.rt.cancel_timer_frame();
             self.idle = true;
+            self.rest_step(RestEvent::Unseen);
             return;
         }
+        // Its first frame uncovered draws what a covered one owed.
+        #[cfg(target_os = "windows")]
+        { l.covered_draw = l.covered_draw.step(CoveredDrawEvent::Drawn); }
         sync_chrome(&mut self.rt, l, self.chrome, self.titlebar);
         // A window opened while the displays slept has no display link yet.
         #[cfg(target_os = "macos")]

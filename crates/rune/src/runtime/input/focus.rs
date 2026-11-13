@@ -406,17 +406,30 @@ impl<S: 'static> Runtime<S> {
     /// Where focus goes when the element holding it leaves the tree or can't hold it anymore (a
     /// deleted row, a closed tab, a decided prompt, a pane closed under it) and nothing else
     /// asked for it: the next control after it in the old tree that is still here, else the one
-    /// before it, looking first inside its nearest container that survived and then further
-    /// out, as a native list hands its selection to the neighbour. Focus otherwise fell to
+    /// before it, else that container itself, looking first inside its nearest container that
+    /// survived and then further out, as a native list hands its selection to the neighbour.
+    /// Elements out of the Tab order count (a roving list's other rows take focus by arrows). Focus otherwise fell to
     /// nothing: a screen reader went back to the window and Tab started over at its top. A
     /// modal's own focus is left to the modal machine, which returns it where it was.
     fn focus_fallback(&self, nodes: &[Node], shown: &dyn Fn(usize) -> bool) -> Option<String> {
-        let gone = self.focus.path()?;
-        let at = self.nodes.iter().position(|n| n.path == gone)?;
+        // A field that Escape blurred and that then closed (a comment box cancelled, gone once
+        // its exit ends) counts as focused: the keyboard was on it, and nothing took focus since.
+        let gone = self.focus.path().or_else(|| self.focus.now_or_blurred().or(self.focus.tab_start()).filter(|_| self.focus.keyboard()))?;
+        let Some(at) = self.nodes.iter().position(|n| n.path == gone) else {
+            // An offscreen field had no layout node. Only a moved node lost its path.
+            let old = self.nodes.get(*self.node_index.get(self.path_ids.get(gone)?)?)?;
+            if !old.is_moved_stub() { return None; }
+            return self.fallback_in_new(gone, nodes);
+        };
+        if self.focus.path().is_none() && (self.nodes[at].input.is_none() || nodes.iter().any(|n| n.path == gone)) { return None; }
         if self.active_modal().is_some_and(|m| at >= m && self.modal_member(at)) { return None; }
         let new: rustc_hash::FxHashMap<&str, usize> = nodes.iter().enumerate().map(|(j, n)| (n.path.as_str(), j)).collect();
+        // A node built again this commit has no layout yet: its size is the old node's.
+        let sized = |i: usize| self.nodes[i].local.w > 0.0 && self.nodes[i].local.h > 0.0;
+        let visible = |j: usize| !nodes[j].inert && nodes[j].vis.opacity > 0.0
+            && std::iter::successors(nodes[j].parent, |&p| nodes[p].parent).all(|p| nodes[p].vis.opacity > 0.0);
         let survivor = |i: usize| new.get(self.nodes[i].path.as_str()).copied()
-            .filter(|&j| shown(j) && nodes[j].focus.order >= 0 && (self.takes_focus(&nodes[j]) || nodes[j].input.as_ref().is_some_and(|i| i.access.is_some())));
+            .filter(|&j| (shown(j) || (sized(i) && visible(j))) && (self.takes_focus(&nodes[j]) || nodes[j].input.as_ref().is_some_and(|i| i.access.is_some())));
         let within = |j: usize, s: usize| {
             let (p, root) = (self.nodes[j].path.as_str(), self.nodes[s].path.as_str());
             root.is_empty() || (p.len() > root.len() && p.starts_with(root) && p.as_bytes()[root.len()] == b'/')
@@ -425,11 +438,31 @@ impl<S: 'static> Runtime<S> {
         while let Some(s) = scope {
             if new.contains_key(self.nodes[s].path.as_str()) {
                 let end = (s + 1..self.nodes.len()).find(|&j| !within(j, s)).unwrap_or(self.nodes.len());
-                if let Some(j) = (at + 1..end).find_map(survivor).or_else(|| (s + 1..at).rev().find_map(survivor)) {
+                // Then the container itself, when it takes focus (a list row whose comment box
+                // closed under it).
+                if let Some(j) = (at + 1..end).find_map(survivor).or_else(|| (s + 1..at).rev().find_map(survivor)).or_else(|| survivor(s)) {
                     return Some(nodes[j].path.clone());
                 }
             }
             scope = self.nodes[s].parent;
+        }
+        None
+    }
+    /// [`Self::focus_fallback`] when the old tree holds the part that had focus only as a moved
+    /// stub (a region kept from an earlier commit, a virtual row): the nearest container of it in
+    /// the new tree takes focus when it can (a diff line whose comment box closed), else its first
+    /// control.
+    fn fallback_in_new(&self, gone: &str, nodes: &[Node]) -> Option<String> {
+        if self.active_modal().is_some() || nodes.iter().any(|n| n.path == gone) { return None; }
+        let can = |j: usize| !nodes[j].inert && nodes[j].vis.opacity > 0.0
+            && std::iter::successors(nodes[j].parent, |&p| nodes[p].parent).all(|p| !nodes[p].inert && nodes[p].vis.opacity > 0.0)
+            && (self.takes_focus(&nodes[j]) || nodes[j].input.as_ref().is_some_and(|i| i.access.is_some()));
+        let mut p = gone;
+        while let Some(k) = p.rfind('/') {
+            p = &p[..k];
+            let Some(j) = nodes.iter().position(|n| n.path == p) else { continue };
+            let inside = |m: usize| nodes[m].path.len() > p.len() && nodes[m].path.starts_with(p) && nodes[m].path.as_bytes()[p.len()] == b'/';
+            return std::iter::once(j).chain((j + 1..nodes.len()).take_while(|&m| inside(m))).find(|&m| can(m)).map(|m| nodes[m].path.clone());
         }
         None
     }
@@ -553,8 +586,11 @@ impl<S: 'static> Runtime<S> {
         if ev.mods.shift && !matches!(&ev.key, Key::Text(t) if !t.trim().is_empty()) { return false; }
         // A slider's keys come before its group's arrows.
         if let Some(step) = self.nodes[i].focus.step.clone() {
+            // A right-to-left slider runs from its right: Left raises it.
+            let rtl = self.nodes[i].flow == crate::el::Flow::Rtl;
             let delta = match ev.key {
-                Key::Left | Key::Down => Some(-1), Key::Right | Key::Up => Some(1),
+                Key::Left => Some(if rtl { 1 } else { -1 }), Key::Right => Some(if rtl { -1 } else { 1 }),
+                Key::Down => Some(-1), Key::Up => Some(1),
                 Key::PageDown => Some(-10), Key::PageUp => Some(10),
                 _ => None,
             };
@@ -568,8 +604,10 @@ impl<S: 'static> Runtime<S> {
         // A focused field inside a list row (an inline rename) keeps its letters and arrows.
         if self.nodes[i].input.is_none() && let Some(g) = self.group(i) {
             let vertical = VERTICAL_ROLES.contains(&self.nodes[g].role);
-            let backward = matches!(ev.key, Key::Up) || (!vertical && ev.key == Key::Left);
-            let forward = matches!(ev.key, Key::Down) || (!vertical && ev.key == Key::Right);
+            // A right-to-left row's first item is at its right: Left goes on to the next.
+            let (back, ahead) = if self.nodes[g].flow == crate::el::Flow::Rtl { (Key::Right, Key::Left) } else { (Key::Left, Key::Right) };
+            let backward = matches!(ev.key, Key::Up) || (!vertical && ev.key == back);
+            let forward = matches!(ev.key, Key::Down) || (!vertical && ev.key == ahead);
             let items: Vec<_> = (0..self.nodes.len()).filter(|&j| self.can_focus(j) && self.group(j) == Some(g)).collect();
             let pos = items.iter().position(|&j| j == i).unwrap();
             let page = matches!(ev.key, Key::PageUp | Key::PageDown) && PAGED_ROLES.contains(&self.nodes[g].role);
@@ -728,7 +766,7 @@ mod tests {
         let mut edit = crate::TextEdit::new("committed"); edit.focused = true;
         let mut rt = Runtime::new(edit, view, (200.0, 40.0), Env::new(true, 1.0));
         rt.frame(0.0);
-        rt.ime(crate::Ime::Preedit("pending".into(), None)); rt.frame(0.0);
+        rt.ime(crate::Ime::Preedit("pending".into(), None, Vec::new())); rt.frame(0.0);
         rt.ime_reset = false;
         rt.finish_composition(); rt.frame(0.0);
         assert!(rt.state.preedit().is_none() && rt.state.focused && rt.ime_reset);
@@ -785,7 +823,7 @@ mod tests {
             (300.0, 300.0), Env::new(true, 1.0));
         rt.on_key = Some(|s, _, _| { s.app_keys += 1; true });
         rt.frame(0.0);
-        rt.ime(crate::Ime::Preedit("pending".into(), None)); rt.frame(0.0);
+        rt.ime(crate::Ime::Preedit("pending".into(), None, Vec::new())); rt.frame(0.0);
         rt.state.open = true; rt.state.search.focused = true; rt.invalidate(); rt.frame(0.0);
         assert!(rt.state.search.focused);
         assert!(!rt.state.first.focused);
@@ -798,7 +836,7 @@ mod tests {
         assert_eq!(rt.state.app_keys, 0);
         rt.key(KeyEvent { key: Key::Function(5), mods: Mods::default() }); rt.frame(0.0);
         assert_eq!(rt.state.app_keys, 1);
-        rt.ime(crate::Ime::Preedit("pending".into(), None)); rt.frame(0.0);
+        rt.ime(crate::Ime::Preedit("pending".into(), None, Vec::new())); rt.frame(0.0);
         rt.pointer_down(290.0, 290.0); rt.pointer_up(290.0, 290.0); rt.frame(0.0);
         assert!(rt.focus.path().is_none());
         assert!(!rt.state.search.focused);
@@ -1333,7 +1371,7 @@ mod tests {
         for (field, after) in [("field", "continue"), ("named", "submit")] {
             for _ in 0..4 { if rt.elements().iter().any(|e| e.focused && e.key.as_deref() == Some(field)) { break; } press(&mut rt, Key::Tab); }
             assert_eq!(focused(&rt), field);
-            rt.ime(crate::Ime::Preedit("ka".into(), None)); rt.frame(0.0);
+            rt.ime(crate::Ime::Preedit("ka".into(), None, Vec::new())); rt.frame(0.0);
             press(&mut rt, Key::Enter);
             press(&mut rt, Key::Escape);
             assert!(rt.state.log.is_empty(), "{field}: the composition's Return and Escape: {:?}", rt.state.log);

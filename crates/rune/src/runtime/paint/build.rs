@@ -7,6 +7,12 @@ impl<S: 'static> Runtime<S> {
         let s = self.env.scale;
         let snap_px = |v: f32| grid(v, s) * s;
         self.instances.clear();
+        self.quads_frame += 1;
+        // Quads a text hasn't drawn with for a while go, with the layouts they hold.
+        if self.quads_frame % 64 == 0 {
+            let frame = self.quads_frame;
+            self.text_quads.retain(|_, (_, _, used)| frame - *used < 64);
+        }
         let mut pinned_pages = 0u32;
         for f in &self.flights {
             for q in &f.glyphs {
@@ -15,7 +21,9 @@ impl<S: 'static> Runtime<S> {
                 }
             }
         }
-        self.text.begin_frame_pinned(pinned_pages);
+        if let Some(after) = self.text.begin_frame_pinned(pinned_pages) {
+            self.schedule_wakes([after]);
+        }
         self.marks.clear();
         self.icon_aprons.clear();
         self.surfaces.clear();
@@ -55,6 +63,7 @@ impl<S: 'static> Runtime<S> {
         let sel_ranges = self.selection_ranges();
         let mark_ranges = self.mark_ranges();
         self.ime_area = None;
+        self.ime_option_as_alt = false;
         let now = self.t;
         let vp = [0.0, 0.0, self.viewport.0 * s, self.viewport.1 * s];
         let mut glyph_count = 0usize;
@@ -784,7 +793,7 @@ impl<S: 'static> Runtime<S> {
                 .and_then(|_| input_caret(n, r, sc, s, gliding, &mut self.input_scroll));
             if let Some((_, area)) = input_caret
                 && n.input.as_ref().is_some_and(|input| !input.edit.is_secure()) { self.ime_area = Some(area); }
-            else if n.ime_cursor && self.ime_area.is_none() && self.allowed(i) && !self.subtree_exiting(i) { self.ime_area = Some(app_ime::area(r, s)); }
+            else if n.ime_cursor && self.ime_area.is_none() && self.allowed(i) && !self.subtree_exiting(i) { self.ime_area = Some(app_ime::area(r, s)); self.ime_option_as_alt = n.ime_option_as_alt; }
             let paint_visible = if in_cache {
                 r[2] >= clip[0] - filter_margin - 2.0
                     && r[0] <= clip[2] + filter_margin + 2.0
@@ -1121,6 +1130,7 @@ impl<S: 'static> Runtime<S> {
                         rest: pinh.still.0,
                         gliding,
                         caret: input_caret.map(|(caret, _)| caret),
+                        shown: if node_turn.is_none() && !pinh.in_cache { [clip[1].max(vp[1] - m), clip[3].min(vp[3] + m)] } else { [clip[1], clip[3]] },
                     },
                     &sel_ranges,
                     &mark_ranges,

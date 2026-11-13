@@ -150,6 +150,33 @@ impl AnalysisDataSources {
     }
 }
 
+/// The segmenters an [`Analyzer`] has made, kept for its next texts (Rune:
+/// vendor/parley_engine.patch). Making one looks up its rule data and, with `complex-scripts`,
+/// loads the dictionaries; they're `'static` and `Copy`, so a kept one is the same value a new
+/// one would be.
+#[derive(Default)]
+pub(crate) struct Segmenters {
+    line: Vec<(SegmenterKey, LineSegmenterBorrowed<'static>)>,
+    word: Option<WordSegmenterBorrowed<'static>>,
+}
+
+impl Segmenters {
+    fn line(&mut self, key: SegmenterKey) -> LineSegmenterBorrowed<'static> {
+        if let Some((_, segmenter)) = self.line.iter().find(|(k, _)| *k == key) {
+            return *segmenter;
+        }
+        let segmenter = AnalysisDataSources::new().line_segmenter(key);
+        self.line.push((key, segmenter));
+        segmenter
+    }
+
+    fn word(&mut self) -> WordSegmenterBorrowed<'static> {
+        *self
+            .word
+            .get_or_insert_with(|| AnalysisDataSources::new().word_segmenter())
+    }
+}
+
 #[cfg(feature = "complex-scripts")]
 #[inline(always)]
 fn line_segmenter_impl(opt: LineBreakOptions<'_>) -> LineSegmenterBorrowed<'static> {
@@ -558,8 +585,9 @@ pub(crate) fn analyze_text(
     for (substring_index, (substring, segmenter_key, last)) in contiguous_substrings.enumerate() {
         // Fast path for text with a single segmenter configuration.
         if substring_index == 0 && last {
-            let mut lb_iter = data_sources
-                .line_segmenter(segmenter_key)
+            let mut lb_iter = analyzer
+                .segmenters
+                .line(segmenter_key)
                 .segment_str(substring);
 
             let _first = lb_iter.next();
@@ -580,8 +608,9 @@ pub(crate) fn analyze_text(
             break;
         }
 
-        let line_boundaries_iter = data_sources
-            .line_segmenter(segmenter_key)
+        let line_boundaries_iter = analyzer
+            .segmenters
+            .line(segmenter_key)
             .segment_str(substring);
 
         let mut substring_chars = substring.chars();
@@ -613,8 +642,18 @@ pub(crate) fn analyze_text(
         }
     }
 
+    // Words, and in Thai, Lao, Khmer and Burmese line breaks, that the host's dictionary finds
+    // (`dictionary`; Rune: vendor/parley_engine.patch).
+    let mut dictionary = crate::dictionary::Words::of(text, |c| data_sources.properties(c));
+    let before = line_boundary_positions.len();
+    line_boundary_positions.extend(dictionary.line_breaks());
+    if line_boundary_positions.len() > before {
+        line_boundary_positions.sort_unstable();
+        line_boundary_positions.dedup();
+    }
+
     // Collect boundary byte positions compactly
-    let mut wb_iter = data_sources.word_segmenter().segment_str(text).peekable();
+    let mut wb_iter = analyzer.segmenters.word().segment_str(text).peekable();
     let mut gb_iter = data_sources
         .grapheme_segmenter()
         .segment_str(text)
@@ -679,8 +718,11 @@ pub(crate) fn analyze_text(
         let properties = data_sources.properties(ch);
 
         // For characters requiring a dictionary for deciding word boundaries, apply
-        // UAX #29 Rule WB999 in case there's no dictionary (because ICU4X does not).
-        if !is_word
+        // UAX #29 Rule WB999 in case there's no dictionary (because ICU4X does not); inside a run
+        // the host's dictionary segmented, its boundaries decide.
+        if let Some(bound) = dictionary.word_at(byte_pos) {
+            is_word = bound;
+        } else if !is_word
             && is_grapheme_start
             && properties.needs_dictionary_word_break()
             && !has_word_dictionary(properties.script())

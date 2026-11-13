@@ -152,10 +152,17 @@ impl<S: 'static> Host<S> {
                 self.shell(event_loop);
             }
             WakeEvent::A11y(_) => self.a11y_receive(),
-            WakeEvent::Covered(_, covered) => {
-                if covered { self.land_frame(); }
-                self.set_cover(Cover::Windows, covered);
+            #[cfg(target_os = "windows")]
+            WakeEvent::FrameSlot(_) => {
+                // The frame that waited for room in the swap chain draws now, after the input
+                // that came meanwhile.
+                if let Some(w) = &mut self.win && matches!(w.native.slot, super::slot::Slot::Waiting(_)) {
+                    w.native.slot.came_back();
+                    w.request_redraw();
+                }
             }
+            #[cfg(not(target_os = "windows"))]
+            WakeEvent::FrameSlot(_) => {}
             #[cfg(target_os = "windows")]
             WakeEvent::GpuReady(_) => self.gpu_ready(),
             #[cfg(not(target_os = "windows"))]
@@ -197,6 +204,14 @@ impl<S: 'static> Host<S> {
             return;
         }
         self.a11y_window_event(&event);
+        // What says whether other windows cover it (`look`): the pointer reaching it shows some
+        // of it; its own move, size or focus makes the next frame look.
+        #[cfg(target_os = "windows")]
+        match &event {
+            WindowEvent::CursorMoved { .. } | WindowEvent::CursorEntered { .. } | WindowEvent::MouseInput { .. } | WindowEvent::MouseWheel { .. } => self.sighted(),
+            WindowEvent::Focused(true) | WindowEvent::Moved(_) | WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => self.look_stale(),
+            _ => {}
+        }
         if !matches!(event, WindowEvent::RedrawRequested) && let Some(w) = &mut self.win { w.timer_frame.no_longer_quiet(); }
         #[cfg(target_os = "macos")]
         if matches!(event, WindowEvent::Moved(_) | WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } | WindowEvent::Occluded(_))
@@ -246,6 +261,8 @@ impl<S: 'static> Host<S> {
             _ => false,
         };
         if stops { self.land_frame(); }
+        // Minimised on Windows, where no occlusion event need say so.
+        if matches!(event, WindowEvent::Resized(size) if size.width == 0 || size.height == 0) { self.rest_step(RestEvent::Unseen); }
         if let WindowEvent::Occluded(occluded) = event {
             // Alpha-zero launcher panels remain renderable on explicit invalidation.
             // Their native occlusion transitions must not settle or redraw a reveal.
@@ -360,6 +377,7 @@ impl<S: 'static> Host<S> {
             }
             WindowEvent::Focused(focused) => {
                 rt.set_system_reduced_motion(crate::platform::preferences::reduced_motion());
+            rt.set_system_contrast(crate::platform::preferences::contrast());
                 rt.set_full_keyboard_access(crate::platform::preferences::full_keyboard_access());
                 rt.set_system_scroll_bars_state(crate::platform::scroll_bars::reread().with_override(self.args.scroll_bars));
                 self.secure_input.set(focused && self.life.uncovered() && rt.has_secure_focus());
@@ -415,8 +433,14 @@ impl<S: 'static> Host<S> {
                 if redraw { l.request_redraw(); }
             }
             WindowEvent::Ime(ime) => {
+                // A reconversion the input method confirmed comes first: the composition it
+                // starts replaces that range.
+                if let Some(range) = crate::platform::ime::take_select(&l.window) { rt.ime(Ime::Select(range)); }
                 match ime {
-                    WIme::Preedit(s, cur) => rt.ime(Ime::Preedit(s, cur)),
+                    WIme::Preedit(s, cur) => {
+                        let clauses = crate::platform::ime::take_clauses(&l.window, &s);
+                        rt.ime(Ime::Preedit(s, cur, clauses))
+                    }
                     WIme::Commit(s) => rt.ime(Ime::Commit(s)),
                     WIme::Enabled => rt.ime(Ime::Enabled),
                     WIme::Disabled => rt.ime(Ime::Disabled),
@@ -427,7 +451,11 @@ impl<S: 'static> Host<S> {
                 let shift = crate::runtime::SHIFT_TURNS_WHEEL && self.mods.shift_key();
                 // In window points: a wheel turns as far on screen at any zoom, as Chromium's does,
                 // and a pinch is the same gesture whatever the zoom.
-                let (dx, dy) = crate::runtime::wheel_delta(delta, scale, shift);
+                #[cfg(target_os = "windows")]
+                let points = rt.windows_wheel_points(delta, shift);
+                #[cfg(not(target_os = "windows"))]
+                let points = crate::runtime::LINE_POINTS;
+                let (dx, dy) = crate::runtime::wheel_delta(delta, scale, shift, points);
                 let precise = matches!(delta, winit::event::MouseScrollDelta::PixelDelta(_));
                 let phase = gesture_phase(phase);
                 match rt.pointer() {

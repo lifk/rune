@@ -3823,6 +3823,7 @@ dependencies = [
  "opuscule",
  "parking_lot",
  "parley",
+ "parley_engine",
  "png 0.18.1",
  "pollster",
  "portable-atomic",
@@ -3839,10 +3840,12 @@ dependencies = [
  "serde",
  "serde_json",
  "skrifa",
+ "spellbook",
  "subsecond",
  "swash",
  "symphonia",
  "taffy",
+ "tiny-skia-path 0.11.4",
  "tokio",
  "unicode-segmentation",
  "wasm-bindgen",
@@ -3912,6 +3915,7 @@ dependencies = [
 name = "rune-kit"
 version = "0.0.1"
 dependencies = [
+ "icu_normalizer",
  "procwatch",
  "pulldown-cmark",
  "resvg",
@@ -4420,6 +4424,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "spellbook"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d204abcbdf8e88729306a8d0ca01a79d8a49969fe1f84696909d6dbc4321c1a"
+dependencies = [
+ "foldhash 0.2.0",
+ "hashbrown 0.17.1",
+]
+
+[[package]]
 name = "spirv"
 version = "0.4.0+sdk-1.4.341.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4743,7 +4757,16 @@ dependencies = [
  "cfg-if",
  "log",
  "png 0.17.16",
- "tiny-skia-path",
+ "tiny-skia-path 0.11.4 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "tiny-skia-path"
+version = "0.11.4"
+dependencies = [
+ "arrayref",
+ "bytemuck",
+ "strict-num",
 ]
 
 [[package]]
@@ -4986,7 +5009,7 @@ dependencies = [
  "siphasher",
  "strict-num",
  "svgtypes",
- "tiny-skia-path",
+ "tiny-skia-path 0.11.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "xmlwriter",
 ]
 
