@@ -21,8 +21,14 @@ extern "C" {
     fn destroy(handle: &JsValue);
     #[wasm_bindgen(js_name = pastedImage)]
     fn pasted_image(handle: &JsValue, max: u32) -> js_sys::Promise;
+    #[wasm_bindgen(js_name = announceA11y)]
+    fn announce_a11y(handle: &JsValue, text: &str, assertive: bool);
+    #[wasm_bindgen(js_name = focusA11y)]
+    fn focus_a11y(handle: &JsValue, json: &str);
     #[wasm_bindgen(js_name = scheduleA11y)]
     fn schedule_a11y(handle: &JsValue);
+    #[wasm_bindgen(js_name = scheduleA11yIdle)]
+    fn schedule_a11y_idle(handle: &JsValue);
     #[wasm_bindgen(js_name = syncSecondary)]
     fn sync_secondary(handle: &JsValue, claim: &str);
     #[wasm_bindgen(js_name = syncWheel)]
@@ -64,6 +70,10 @@ pub(super) struct Bridge {
     caret: Option<[f32; 4]>,
     /// When the mirror was last rebuilt, for the scroll throttle (`sync_input`).
     a11y_at: Option<crate::time::Instant>,
+    /// `Tx::announce`'s calls the page's live regions have said.
+    announced: u32,
+    /// The mirror's first build (`sync_input`): not yet asked for, waiting for idle time, built.
+    a11y_first: First,
     /// The slot families the mirror's text was last set in.
     families: (String, String),
 }
@@ -89,7 +99,7 @@ impl Bridge {
         let handle = mount(canvas, callback.as_ref().unchecked_ref(), embedded, fit_height, document);
         Self { handle, _callback: callback, dispose_viewport, mods: ModifiersState::empty(),
             mirror: Default::default(), a11y: Default::default(),
-            copy_cache: String::new(), fit_height, document, page: None, scroll_x: Vec::new(), caret: None, a11y_at: None, families: Default::default() }
+            copy_cache: String::new(), fit_height, document, page: None, scroll_x: Vec::new(), caret: None, a11y_at: None, announced: 0, a11y_first: First::Unasked, families: Default::default() }
     }
 
     /// The first frame is on screen: a page swaps its static export for the live mirror.
@@ -132,13 +142,32 @@ impl<S: 'static> Running<S> {
         // not every frame: rebuilding and restyling every item each frame was most of a scroll
         // frame's JavaScript. A page's mirror is in document coordinates and doesn't move.
         let now = crate::time::Instant::now();
-        if !self.input.document && self.rt.web_a11y_scrolled_only(&self.input.a11y)
+        // An app's first mirror is every item a new element the browser lays out (13 ms of layout
+        // on OpenCode's Home): it waits for the page's idle time, so a click or key that came
+        // with the first frame is handled first. A page's mirror is its document, so it doesn't.
+        if !self.input.document && self.input.a11y_first != First::Built {
+            if self.input.a11y_first == First::Unasked {
+                self.input.a11y_first = First::Waiting;
+                schedule_a11y_idle(&self.input.handle);
+            }
+        } else if !self.input.document && self.rt.web_a11y_scrolled_only(&self.input.a11y)
             && self.input.a11y_at.is_some_and(|at| now.duration_since(at).as_secs_f64() < 0.15)
         {
             schedule_a11y(&self.input.handle);
         } else if let Some(json) = self.rt.web_a11y(&mut self.input.a11y) {
             sync_a11y(&self.input.handle, json);
             self.input.a11y_at = Some(now);
+        }
+        // An app's focus, for a reader: the browser's focus stays on the canvas or its text field.
+        if !self.input.document && let Some(focus) = self.rt.web_a11y_focus(&mut self.input.a11y) {
+            focus_a11y(&self.input.handle, focus);
+        }
+        // `Tx::announce`: the page's own live regions say it, as the native tree's announcer does.
+        if self.rt.announcement.said() != self.input.announced {
+            self.input.announced = self.rt.announcement.said();
+            if let Some((words, how)) = self.rt.announcement.words() {
+                announce_a11y(&self.input.handle, &words, how == crate::LiveRegion::Assertive);
+            }
         }
         if self.input.document {
             let page = (self.rt.page_height().ceil(), self.rt.has_focus());
@@ -159,10 +188,27 @@ impl<S: 'static> Running<S> {
         if focus { activate(&self.input.handle); }
     }
 
+    /// The page's field takes the focused field's context from the model now (web_edit_context);
+    /// false when a whole frame has to run inside this event instead.
+    fn sync_live_edit(&mut self) -> bool {
+        let Some(changed) = self.rt.web_edit_context(&mut self.input.mirror) else { return false };
+        if changed {
+            let m = &self.input.mirror;
+            sync(&self.input.handle, &m.key, &m.text, m.base, m.anchor, m.focus, m.secure);
+        }
+        true
+    }
+
     /// Handles one DOM event. Returns whether a frame must be drawn: a page's scroll only draws
     /// when it moves the band (the browser's compositor scrolls the pixels Rune already drew).
     pub(super) fn input_event(&mut self, event: &mut serde_json::Value, window: &Arc<Window>) -> bool {
+        self.full_redraw = true;
         let mut activate = false;
+        // What a person typed or pressed through the page's own elements is input too, for
+        // `rune::last_input` (an app holds background work while someone types).
+        if matches!(event["kind"].as_str(), Some("edit" | "preedit" | "selection" | "key" | "paste" | "a11y_press" | "a11y_link")) {
+            crate::input::time::typed();
+        }
         match event["kind"].as_str() {
             Some("viewport") => {
                 let insets = std::array::from_fn(|i| event["insets"][i].as_f64().unwrap_or(0.0).max(0.0) as f32);
@@ -208,7 +254,12 @@ impl<S: 'static> Running<S> {
                 self.shared.visible.store(event["visible"].as_bool().unwrap_or(false), Ordering::Release);
                 return true;
             }
-            Some("edit" | "selection" | "preedit") => self.rt.web_edit(event),
+            Some(kind @ ("edit" | "selection" | "preedit")) => {
+                self.rt.web_edit(event);
+                // A typed edit is in the model and the page's field: the display's next frame
+                // draws it, one frame for every key and press that came before it.
+                if kind == "edit" && self.sync_live_edit() { return true; }
+            }
             Some("sync") => self.input.mirror.key.clear(), // Composition's final sync was deferred by the DOM.
             Some("paste") => {
                 let mut content = crate::ClipboardContent::new(event["text"].as_str().unwrap_or_default());
@@ -232,6 +283,7 @@ impl<S: 'static> Running<S> {
             Some("secondary_browser") => { self.rt.secondary_abandon(); return false; }
             // The scroll throttle's last word: the mirror where the scroll stopped.
             Some("a11y_due") => {
+                self.input.a11y_first = First::Built;
                 self.input.a11y_at = None;
                 self.sync_input(false);
                 return false;
@@ -290,8 +342,23 @@ impl<S: 'static> Running<S> {
                 immediate = true;
                 let Some((x, y)) = self.rt.pointer() else { return false };
                 match (button, state) {
-                    (MouseButton::Left, ElementState::Pressed) => { self.rt.pointer_down(x, y); activate = true; }
-                    (MouseButton::Left, ElementState::Released) => self.rt.pointer_up(x, y),
+                    (MouseButton::Left, ElementState::Pressed) => {
+                        self.rt.pointer_down(x, y);
+                        activate = true;
+                        // A press into a text field: the field takes focus now (a key may follow
+                        // before the next frame, and a phone's keyboard opens only inside the
+                        // press); the frame waits for the display's.
+                        if self.rt.web_focus_field() && self.sync_live_edit() {
+                            super::input::activate(&self.input.handle);
+                            return true;
+                        }
+                    }
+                    (MouseButton::Left, ElementState::Released) => {
+                        self.rt.pointer_up(x, y);
+                        // Only a release with a handler runs its frame inside the event. A field's
+                        // own selection step (a move while held) runs as a press into it does.
+                        immediate = self.rt.web_release_needs_frame() && !(self.rt.web_focus_field() && self.sync_live_edit());
+                    }
                     (MouseButton::Right, ElementState::Pressed) => {
                         self.rt.secondary_down(x, y);
                         // The browser's own menu opens where Rune's doesn't (bridge.js).
@@ -331,7 +398,10 @@ impl<S: 'static> Running<S> {
                         key.key = crate::Key::Command(text.chars().next().unwrap().to_ascii_lowercase());
                     }
                 }
-                activate = logical.as_ref().is_some_and(|k| k.key == crate::Key::Tab);
+                // Any key that puts Rune's focus in a field (Tab, or a shortcut such as the
+                // prompt's) hands the page's own field the browser's focus, so a screen reader is
+                // in a real text field with its text, not on the canvas's stand-in for it.
+                activate = pressed;
                 if let winit::keyboard::PhysicalKey::Code(key) = event.physical_key {
                     self.rt.physical_with_fallback(crate::PhysicalInput::Key { key, mods: modifiers(self.input.mods),
                         pressed: event.state == ElementState::Pressed, repeat: event.repeat }, logical);
@@ -365,6 +435,9 @@ impl<S: 'static> Running<S> {
         true
     }
 }
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum First { Unasked, Waiting, Built }
 
 fn modifiers(mods: ModifiersState) -> crate::Mods {
     crate::Mods { shift: mods.shift_key(), alt: mods.alt_key(), ctrl: mods.control_key(),

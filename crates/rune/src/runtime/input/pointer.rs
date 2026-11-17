@@ -73,7 +73,7 @@ impl<S: 'static> Runtime<S> {
     pub(crate) fn observe_pointer(&mut self, x: f32, y: f32) -> bool {
         if self.pointer == Some((x, y)) { return false; }
         let visual_changed = self.nodes.iter().enumerate().any(|(i, n)| {
-            if n.vis.hover().a <= 0.0 && n.vis.press().a <= 0.0 && n.handlers.get().is_none_or(|h| h.press_scale.is_none()) { return false; }
+            if n.vis.hover().a <= 0.0 && !n.vis.tracks_press() && n.handlers.get().is_none_or(|h| h.press_scale.is_none()) { return false; }
             let inside = |p: Option<(f32, f32)>| p.is_some_and(|(x, y)| self.node_contains(i, x, y));
             inside(self.pointer) != inside(Some((x, y)))
         });
@@ -84,7 +84,9 @@ impl<S: 'static> Runtime<S> {
         visual_changed || help_changed || self.queue.len() != queued || self.press.inside() != capture_inside
     }
 
-    pub(crate) fn pointer_captured(&self) -> bool { self.press.is_held() || self.secondary.is_held() }
+    /// A button holds the pointer: the OS keeps sending its moves to this window, and a leave
+    /// waits for the release.
+    pub(crate) fn pointer_captured(&self) -> bool { self.press.is_held() || self.secondary.is_held() || self.tint.path().is_some() }
 
     /// The host's window content top-left in desktop pixels; `None` where it has none.
     pub(crate) fn set_window_pixels(&mut self, pixels: Option<(i32, i32)>) {
@@ -114,6 +116,7 @@ impl<S: 'static> Runtime<S> {
         self.input_click.clear();
         self.drop_press();
         self.secondary = capture::Secondary::Up;
+        self.tint = capture::Tint::Up;
         self.pointer_leave();
         self.drag_files_leave();
     }
@@ -201,6 +204,12 @@ impl<S: 'static> Runtime<S> {
     }
 
     pub fn pointer_down(&mut self, x: f32, y: f32) {
+        self.press_down(x, y, false);
+    }
+
+    /// A primary press at (x, y); `touch`: a finger's, which never runs `on_press` on the way
+    /// down (`El::press_on_down` is a mouse's).
+    pub(super) fn press_down(&mut self, x: f32, y: f32, touch: bool) {
         // A press ends a middle-click autoscroll, and does nothing else.
         if self.autoscroll_press(crate::PointerButton::Primary) { self.pointer = Some((x, y)); return; }
         if self.press.held().is_some_and(|h| h.button != crate::PointerButton::Primary) {
@@ -214,7 +223,7 @@ impl<S: 'static> Runtime<S> {
         // A press is the hand's: hover follows the pointer through moving layout.
         self.release_hover_hold();
         self.focus.step(focus_machine::FocusEvent::Pointed);
-        self.press_help(x, y);
+        self.dismiss_help();
         // A press cancels the waits to report an enter; the next move after it starts them again.
         self.press_hover_delays();
         self.hover_paused = true;
@@ -321,11 +330,17 @@ impl<S: 'static> Runtime<S> {
         if n.handlers.on_drag.is_some() && drag_out.is_none() {
             self.queue.push(Action::Drag(path.clone(), d, crate::PointerButton::Primary));
         }
-        self.press.hold(capture::Held::new(path, d, crate::PointerButton::Primary, (x, y), now, second, drag_out).on_link(link));
+        let on_down = !touch && n.handlers.press_on_down && n.handlers.on_press.is_some();
+        if on_down {
+            self.queue.push(Action::Press(path.clone(), crate::PointerButton::Primary));
+        }
+        self.press.hold(capture::Held::new(path, d, crate::PointerButton::Primary, (x, y), now, second, drag_out).on_link(link).pressed_on_down(on_down));
     }
 
     pub fn pointer_up(&mut self, x: f32, y: f32) {
         if self.autoscroll_release(crate::PointerButton::Primary) { self.pointer = Some((x, y)); return; }
+        #[cfg(target_os = "linux")]
+        self.primary_released();
         if self.press.held().is_some_and(|h| h.button != crate::PointerButton::Primary) {
             self.pointer = Some((x, y));
             return;
@@ -394,7 +409,7 @@ impl<S: 'static> Runtime<S> {
             .then(|| capture::FirstClick { path: h.path.clone(), at: h.down_at, point: h.at });
         let Some(held) = self.press.release(first) else { return };
         let inside = held.inside();
-        let capture::Held { path, drag: d, button, at, down_at, moved, second: double, link, .. } = *held;
+        let capture::Held { path, drag: d, button, at, down_at, moved, second: double, link, pressed_on_down, .. } = *held;
         self.refresh_hover_within();
         if moved { self.press_clicks.clear(); }
         if input_capture { return; }
@@ -411,7 +426,7 @@ impl<S: 'static> Runtime<S> {
             self.queue.push(Action::Drag(path.clone(), Drag { phase: Phase::Up, x: lx, y: ly, dx, dy, window: [x, y], screen: self.screen_at(x, y), ..d }, button));
         }
         if let Some(k) = link.filter(|_| inside) { self.link_up(&path, k, x, y, button); }
-        if has_press && inside && !selected {
+        if has_press && inside && !selected && !pressed_on_down {
             self.queue.push(Action::Press(path.clone(), button));
         }
         if middle_press && inside {
@@ -483,32 +498,60 @@ impl<S: 'static> Runtime<S> {
     }
 
     /// The innermost scroll viewport at (x, y) that moves on the horizontal axis or the vertical.
+    /// One whose content fits on that axis is passed over for the one around it, as Chromium
+    /// skips a scroller with nothing to scroll: a list of sections, each its own viewport as
+    /// tall as its rows, scrolls from over any row.
     pub(super) fn scroll_at_axis(&self, x: f32, y: f32, horizontal: bool) -> Option<NodeId> {
         self.nodes
             .iter()
             .enumerate()
             .rev()
             .filter(|(i, n)| n.scroll.is_some() && n.scroll_axes.has(horizontal) && !self.subtree_exiting(*i) && self.allowed(*i))
+            .filter(|(_, n)| self.scrolls.get(&n.id).is_some_and(|st| if horizontal { st.x.max } else { st.max } > 0.0))
+            .find(|(i, _)| self.node_contains(*i, x, y))
+            .map(|(_, n)| n.id)
+    }
+
+    /// The vertical viewport a delta `dy` at (x, y) starts a run on: the innermost there that can
+    /// still move that way, as Chromium starts a wheel's scroll on the nearest scroller with room
+    /// in its direction. One at its end passes the run to the one around it, so a short region
+    /// inside a page never traps the wheel.
+    pub(super) fn wheel_target(&self, x: f32, y: f32, dy: f32) -> Option<NodeId> {
+        self.nodes
+            .iter()
+            .enumerate()
+            .rev()
+            .filter(|(i, n)| n.scroll.is_some() && n.scroll_axes.has(false) && !self.subtree_exiting(*i) && self.allowed(*i))
+            .filter(|(_, n)| self.scrolls.get(&n.id).is_some_and(|st| if dy > 0.0 { st.offset > 0.0 } else { st.offset < st.max }))
             .find(|(i, _)| self.node_contains(*i, x, y))
             .map(|(_, n)| n.id)
     }
 
     /// Wheel or trackpad delta in points (positive `dy` moves content down, like a browser's
-    /// negative deltaY). Applied 1:1: the platform supplies its own momentum phases.
+    /// negative deltaY). Applied 1:1: the platform supplies its own momentum phases. A run of
+    /// deltas keeps to the viewport it began on (`WheelLock::vertical_run`), even at its end.
     pub fn wheel(&mut self, x: f32, y: f32, dy: f32) {
         self.release_hover_hold();
         self.drop_scroll_holds();
         self.dismiss_help();
-        let Some(id) = self.scroll_at(x, y) else { return };
+        let now = self.now_clock();
+        let held = self.wheel_lock.vertical_run(now, x, y, dy).filter(|id| {
+            self.node_index.get(id).is_some_and(|&i| self.nodes[i].scroll.is_some() && !self.subtree_exiting(i) && self.allowed(i))
+        });
+        let Some(id) = held.or_else(|| self.wheel_target(x, y, dy)) else {
+            self.wheel_lock.end_vertical();
+            return;
+        };
         let stick = self.node_index.get(&id).and_then(|&i| self.nodes[i].scroll).is_some_and(|s| s.stick_bottom);
-        if let Some(st) = self.scrolls.get_mut(&id) {
-            let before = st.offset;
-            st.offset = (st.offset - f64::from(dy)).clamp(0.0, st.max);
-            st.moved();
-            st.land(stick);
-            log_event!(self, "wheel {dy:.1}");
-            if st.offset != before { self.scroll_cancels_press(id); }
-        }
+        let Some(st) = self.scrolls.get_mut(&id) else { return };
+        let before = st.offset;
+        st.offset = (st.offset - f64::from(dy)).clamp(0.0, st.max);
+        st.moved();
+        st.land(stick);
+        log_event!(self, "wheel {dy:.1}");
+        let moved = st.offset != before;
+        if moved { self.scroll_cancels_press(id); }
+        self.wheel_lock.ran_vertical(id, now, x, y, dy, moved, held.is_some());
     }
 
     /// Releases a scroll with `velocity` (points per second, positive moves content down);

@@ -19,7 +19,8 @@ pub enum FontSmoothing {
     /// Text that matches CoreText's with font smoothing on (macOS's default): the pipeline plus
     /// font smoothing's outline dilation, which grows outlines by a radius set by the text
     /// colour's luminance and the device ppem ([`ApplePipeline::SMOOTHED`]). The default on
-    /// macOS, and on the web in a Mac's browser, which draws the page's own text this way.
+    /// macOS, and on the web in a Mac's browser, which draws the page's own text this way. On
+    /// macOS it draws as `Off` when the user turned smoothing off (`AppleFontSmoothing` 0).
     On,
     /// Text that matches CoreText with font smoothing off, which is what macOS browsers draw
     /// for `-webkit-font-smoothing: antialiased`: the pipeline without the dilation
@@ -108,11 +109,25 @@ pub(crate) fn browser_default(platform: &str, touch_points: u32) -> FontSmoothin
     if mac && touch_points <= 1 { FontSmoothing::On } else { FontSmoothing::Off }
 }
 
+/// `AppleFontSmoothing` read once (`text::macos::smoothing_allowed_by_user`); true off macOS.
+fn smoothing_allowed_by_user() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        static ALLOWED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *ALLOWED.get_or_init(super::macos::smoothing_allowed_by_user)
+    }
+    #[cfg(not(target_os = "macos"))]
+    true
+}
+
 impl FontSmoothing {
     /// The CoreGraphics stages glyphs rasterise with: all of them for `On`, all but the
-    /// dilation for `Off` (and for `DirectWrite` where DirectWrite can't draw a glyph).
+    /// dilation for `Off` (and for `DirectWrite` where DirectWrite can't draw a glyph). On macOS
+    /// `On` draws as `Off` when the user turned smoothing off (`AppleFontSmoothing` 0), as AppKit
+    /// and SwiftUI then do.
     pub fn pipeline(self) -> ApplePipeline {
         match self {
+            FontSmoothing::On if !smoothing_allowed_by_user() => ApplePipeline::UNSMOOTHED,
             FontSmoothing::On | FontSmoothing::Windfoil => ApplePipeline::SMOOTHED,
             _ => ApplePipeline::UNSMOOTHED,
         }
@@ -227,27 +242,53 @@ pub(crate) fn glyph_x(x: f32, ppem: f32) -> (f32, u8) {
 }
 
 /// Coverage exponents for black and for white text with font smoothing off: the curve Skia's
-/// text gamma (sRGB, contrast 1) draws grayscale text with, for outlines rasterised elsewhere.
-const TEXT_GAMMA: [f32; 2] = [1.12, 0.45];
+/// text gamma draws a grayscale Chromium's text with, for outlines rasterised elsewhere. On Windows
+/// Chromium configures it with sRGB and a contrast of 1 (`skia_gamma.rs`): light text on a dark
+/// page draws much heavier than its coverage.
+const WINDOWS_GAMMA: [f32; 2] = [1.12, 0.45];
+/// On Linux and ChromeOS Chromium builds Skia with `SK_GAMMA_EXPONENT=1.2` and
+/// `SK_GAMMA_CONTRAST=0.2`: the same tables, fitted, give light text on a dark page only a little
+/// more ink. With Windows' curve, light-on-dark text drew 7-14% more ink than Linux Chromium's.
+const LINUX_GAMMA: [f32; 2] = [1.02, 0.83];
 
-/// A Mac browser draws unsmoothed type with the same coverage as native macOS.
-/// Use the platform decision that selects its smoothing default, not the WASM
-/// target OS. Cache the decision: this runs during glyph placement.
+/// A browser on a Mac, an iPhone or an iPad draws unsmoothed type with the same coverage as
+/// native Apple text: WebKit and Chrome there draw through CoreText. Decided by the platform the
+/// browser reports, not the WASM target OS, nor the smoothing default (an iPad's is Off, and it
+/// still draws as is). Cached: this runs during glyph placement.
 pub(super) fn apple_coverage() -> bool {
     #[cfg(target_arch = "wasm32")]
     {
-        thread_local! { static MAC: bool = FontSmoothing::classic() == FontSmoothing::On; }
-        MAC.with(|mac| *mac)
+        thread_local! { static APPLE: bool = crate::platform::web::platform::browser_platform().is_some_and(|p| apple_platform(&p.0)); }
+        APPLE.with(|apple| *apple)
     }
     #[cfg(not(target_arch = "wasm32"))]
     { cfg!(any(target_os = "macos", target_os = "ios")) }
 }
 
+/// Whether a browser's `navigator` platform is an Apple one: `MacIntel`, `iPhone`, `iPad`,
+/// `iPod` (an iPad in desktop mode says `MacIntel`), or `macOS` from `userAgentData`.
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn apple_platform(platform: &str) -> bool {
+    ["mac", "iphone", "ipad", "ipod"].iter().any(|p| platform.get(..p.len()).is_some_and(|q| q.eq_ignore_ascii_case(p)))
+}
+
+/// Whether text takes Windows' Chromium gamma rather than Linux's: on Windows, and in a browser
+/// on Windows, whose platform name the page reads once.
+pub(super) fn windows_gamma() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        thread_local! { static WIN: bool = crate::platform::web::platform::browser_platform().is_some_and(|p| p.0.get(..3).is_some_and(|w| w.eq_ignore_ascii_case("win"))); }
+        WIN.with(|win| *win)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    { cfg!(target_os = "windows") }
+}
+
 /// The exponent glyph coverage in `mode` is raised to when drawn in premultiplied `fill`, on
-/// Apple platforms (`apple`) or Windows (`windows`) or neither. With smoothing off on Linux,
-/// Windows and the web it stands in for the text gamma a browser's grayscale antialiasing
-/// applies there: light text on a dark page draws heavier and dark text on a light one a little
-/// lighter than coverage blended as is, keyed by the text's luminance. On macOS and iOS coverage
+/// Apple platforms (`apple`), Windows (`windows`, Chromium's Windows gamma) or neither (Linux's).
+/// With smoothing off on Linux, Windows and the web it stands in for the text gamma a browser's
+/// grayscale antialiasing applies there: light text on a dark page draws heavier and dark text on
+/// a light one a little lighter than coverage blended as is, keyed by the text's luminance. On macOS and iOS coverage
 /// is drawn as is in every mode: CoreText with smoothing off, and Safari and Chrome with
 /// `-webkit-font-smoothing: antialiased`, apply no text gamma (measured on macOS 15.3 with
 /// Chrome 156: the same ink as CoreText, where the gamma drew light-on-dark text up to 24%
@@ -261,8 +302,11 @@ pub(crate) fn coverage_exponent(mode: FontSmoothing, fill: [f32; 4], apple: bool
     if (apple && !chromium) || direct_write || matches!(mode, FontSmoothing::On | FontSmoothing::Windfoil) || fill[3] <= 0.0 {
         return 1.0;
     }
+    // Linux's curve is for `Off` only (a fit, not yet a Linux capture); Chromium-weight outline
+    // modes keep the curve they were drawn with everywhere.
+    let [black, white] = if windows || apple || mode != FontSmoothing::Off { WINDOWS_GAMMA } else { LINUX_GAMMA };
     let luma = (0.2126 * fill[0] + 0.7152 * fill[1] + 0.0722 * fill[2]) / fill[3];
-    TEXT_GAMMA[0] + (TEXT_GAMMA[1] - TEXT_GAMMA[0]) * luma.clamp(0.0, 1.0)
+    black + (white - black) * luma.clamp(0.0, 1.0)
 }
 
 #[cfg(test)]

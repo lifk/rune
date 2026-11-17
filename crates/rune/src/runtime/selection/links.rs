@@ -14,7 +14,7 @@ pub(super) struct LinkState {
 /// Where node `n`'s text starts inside its border box `rect` (points, x0 y0 x1 y1), its text
 /// drawn `k` times its size.
 pub(super) fn origin(n: &Node, spec: &TextSpec, layout: &Layout<Ink>, rect: [f32; 4], s: f32, k: f32) -> [f32; 2] {
-    let x = text_x(spec, rect[0] + n.inset[0] * k, rect[2] - n.inset[2] * k, (layout.full_width() * k).ceil() / s, crate::el::Flow::of_layout(layout));
+    let x = text_x(spec, rect[0] + n.inset[0] * k, rect[2] - n.inset[2] * k, text_width(layout.full_width() * k) / s, crate::el::Flow::of_layout(layout));
     [x, rect[1] + n.inset[1] * k]
 }
 
@@ -368,16 +368,18 @@ impl<S: 'static> Runtime<S> {
 
     pub(super) fn highlight_boxes_in(&self, nodes: &[Node], i: usize, rect: [f32; 4], z: f32) -> Vec<(usize, [f32; 4])> {
         let n = &nodes[i];
-        let (Some(spec), Some(layout)) = (&n.text, n.text_layout.as_ref().and_then(TextLayout::single)) else { return Vec::new() };
-        if spec.cold.highlights.is_empty() { return Vec::new(); }
+        let (Some(spec), Some(layout)) = (&n.text, &n.text_layout) else { return Vec::new() };
+        if spec.cold.highlights.is_empty() || n.is_secure() { return Vec::new(); }
         let s = self.env.scale;
-        let [ox, oy] = origin(n, spec, layout, rect, s, z);
+        let flow = layout.view();
+        let ox = text_x(spec, rect[0] + n.inset[0] * z, rect[2] - n.inset[2] * z, text_width(flow.full_width() * z) / s, flow.flow());
+        let oy = rect[1] + n.inset[1] * z;
         let px = s / z.max(1e-4);
         let len = layout_len(n, spec);
         let mut out = Vec::new();
         for (k, h) in spec.cold.highlights.iter().enumerate() {
             let (a, b) = drawn(n, h.start, h.end);
-            for (bb, _) in boxes(layout, len, a, b) {
+            for (bb, _) in flow.range_boxes((a as usize).min(len), (b as usize).min(len), false) {
                 out.push((k, [ox + bb.x0 as f32 / px, oy + bb.y0 as f32 / px, ox + bb.x1 as f32 / px, oy + bb.y1 as f32 / px]));
             }
         }

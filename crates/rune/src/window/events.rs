@@ -9,7 +9,7 @@ impl<S: 'static> Host<S> {
             return;
         }
         // Updates queued before launch (the link that launched the app) show in the first frame.
-        for f in self.shared.take_updates() { self.rt.update_if(f); self.menus.drain(); }
+        startup_updates(&self.shared, &self.shortcuts, |f| { self.rt.update_if(f); self.menus.drain(); });
         if self.launcher() {
             self.create(event_loop, None, false);
             if self.open_at_start && self.options.visible { self.reveal_launcher(event_loop); }
@@ -378,6 +378,7 @@ impl<S: 'static> Host<S> {
             WindowEvent::Focused(focused) => {
                 rt.set_system_reduced_motion(crate::platform::preferences::reduced_motion());
             rt.set_system_contrast(crate::platform::preferences::contrast());
+                rt.set_system_increased_contrast(crate::platform::preferences::increased_contrast());
                 rt.set_full_keyboard_access(crate::platform::preferences::full_keyboard_access());
                 rt.set_system_scroll_bars_state(crate::platform::scroll_bars::reread().with_override(self.args.scroll_bars));
                 self.secure_input.set(focused && self.life.uncovered() && rt.has_secure_focus());
@@ -410,6 +411,7 @@ impl<S: 'static> Host<S> {
             }
             WindowEvent::KeyboardInput { event, is_synthetic: false, .. } => {
                 let pressed = event.state == ElementState::Pressed;
+                if pressed { crate::marks::input_arrived(true); }
                 // A release's logical key only matters to `on_key_up` handlers.
                 let logical = (pressed || rt.wants_key_up()).then(|| map_key_event(&event, self.mods)).flatten();
                 let mut redraw = false;
@@ -513,6 +515,7 @@ impl<S: 'static> Host<S> {
             }
             WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
                 if state == ElementState::Pressed {
+                    crate::marks::input_arrived(false);
                     self.control_click = cfg!(target_os = "macos") && self.mods.control_key();
                 }
                 if let Some((x, y)) = button_at(rt, &l.window) {
@@ -523,6 +526,7 @@ impl<S: 'static> Host<S> {
                             #[cfg(target_os = "macos")]
                             rt.set_native_titlebar_band(mac::native_titlebar_band(&l.window));
                             rt.pointer_down(x, y);
+                            crate::marks::input_handled(false);
                             rt.physical_input(crate::PhysicalInput::Modifiers(map_mods(self.mods)));
                             // AppKit needs the drag started inside this mouse-down.
                             match rt.take_titlebar_action() {
@@ -564,6 +568,13 @@ impl<S: 'static> Host<S> {
             _ => {}
         }
     }
+}
+
+/// Runs the updates queued before launch with `run`, as the host `shortcuts` guards, as every
+/// later drain does, so an activation queued before launch runs in its place among them.
+pub(super) fn startup_updates<S: 'static>(shared: &Shared<S>, shortcuts: &crate::shortcuts::Guard, run: impl FnMut(crate::app::Update<S>)) {
+    let _receiving = shortcuts.receiving();
+    shared.take_updates().into_iter().for_each(run);
 }
 
 /// Whether the mouse message being handled is one Windows made up from a touch or a pen

@@ -198,6 +198,11 @@ export function viewport(canvas, callback, embedded) {
     window.visualViewport?.addEventListener('resize', update);
     window.visualViewport?.addEventListener('scroll', update);
     window.addEventListener('resize', update);
+    // The safe area can change with no resize (Safari settles nv() after a rotation's resize;
+    // a Home Screen app's status bar): the probe's padding is the insets, so its border box follows
+    // them (its content box is always empty, which is what an observer watches by default).
+    const insets = new ResizeObserver(update);
+    insets.observe(probe, { box: 'border-box' });
     motion.addEventListener('change', reduced);
     hoverNone.addEventListener('change', pointer);
     coarse.addEventListener('change', pointer);
@@ -212,6 +217,7 @@ export function viewport(canvas, callback, embedded) {
         window.visualViewport?.removeEventListener('resize', update);
         window.visualViewport?.removeEventListener('scroll', update);
         window.removeEventListener('resize', update);
+        insets.disconnect();
         motion.removeEventListener('change', reduced);
         hoverNone.removeEventListener('change', pointer);
         coarse.removeEventListener('change', pointer);

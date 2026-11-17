@@ -37,12 +37,14 @@ pub(super) struct Entry<T> {
     pub(super) cost: u32,
     /// The [`shape_key`](super::shape_key) it lays out, or 0 for a run.
     shape: u64,
+    /// The `Tx::prepare_text` pass that made it, numbered from 1; 0 when a view made it.
+    prepared: u32,
 }
 
 impl<T> Entry<T> {
     pub(super) fn new(value: T, used: u32, text_len: usize, shape: u64) -> Self {
         let cost = (text_len * LAYOUT_PER_BYTE + LAYOUT_BASE).min(u32::MAX as usize) as u32;
-        Entry { value, used, cost, shape }
+        Entry { value, used, cost, shape, prepared: 0 }
     }
 }
 
@@ -61,9 +63,14 @@ pub(super) const STALE_BYTES: usize = 3 << 20;
 /// least recently used first. A view's layouts all share the commit it was last shown in, so
 /// that commit's are kept while the budget lasts rather than all dropped together.
 fn evict<T>(cache: &mut Cache<T>, g: u32) {
+    evict_to(cache, g, STALE_BYTES);
+}
+
+/// [`evict`] to `budget` bytes of stale layouts.
+fn evict_to<T>(cache: &mut Cache<T>, g: u32, budget: usize) {
     let stale = |used: u32| g.wrapping_sub(used) >= 2;
     let total: usize = cache.values().filter(|e| stale(e.used)).map(|e| e.cost as usize).sum();
-    if total <= STALE_BYTES {
+    if total <= budget {
         return;
     }
     let mut ages: Vec<(u32, usize)> = cache.values().filter(|e| stale(e.used)).map(|e| (g.wrapping_sub(e.used), e.cost as usize)).collect();
@@ -72,12 +79,12 @@ fn evict<T>(cache: &mut Cache<T>, g: u32) {
     for (i, &(age, cost)) in ages.iter().enumerate() {
         if i > 0 && ages[i - 1].0 != age { younger = kept; }
         kept += cost;
-        if kept > STALE_BYTES {
+        if kept > budget {
             cutoff = age;
             break;
         }
     }
-    let mut room = STALE_BYTES - younger;
+    let mut room = budget - younger;
     cache.retain(|_, e| {
         let (age, cost) = (g.wrapping_sub(e.used), e.cost as usize);
         age < cutoff || age == cutoff && cost <= room && { room -= cost; true }
@@ -93,6 +100,13 @@ impl TextSystem {
     }
 
     /// Drops replaced layouts this commit didn't use, then keeps layouts used in the last two
+    /// A layout pass begins: a text compared before it may have gone, and another taken its
+    /// address.
+    pub(crate) fn forget_diff(&mut self) {
+        self.last_diff = None;
+        self.line_scan = None;
+    }
+
     /// commits, and older ones, most recently used first, while they fit in [`STALE_BYTES`].
     pub fn end_commit(&mut self) {
         let g = self.generation;
@@ -106,11 +120,58 @@ impl TextSystem {
         evict(&mut self.layouts, g);
         evict(&mut self.paragraphs, g);
         self.last_paragraphs = None;
+        self.last_diff = None;
+        self.line_scan = None;
         let layouts = &self.layouts;
         self.shapes.retain(|_, key| layouts.contains_key(key));
         evict(&mut self.elisions, g);
         evict(&mut self.runs, g);
         self.generation = g.wrapping_add(1);
+    }
+
+    /// A window at rest (`window::rest`): drops every layout the last two commits didn't use,
+    /// and the glyph runs drawn from them. A view shown again after it shapes afresh, as one
+    /// shown for the first time does.
+    pub(crate) fn rest(&mut self) {
+        // `end_commit` moved the generation on after the last commit.
+        let g = self.generation.wrapping_sub(1);
+        evict_to(&mut self.layouts, g, 0);
+        evict_to(&mut self.paragraphs, g, 0);
+        evict_to(&mut self.elisions, g, 0);
+        evict_to(&mut self.runs, g, 0);
+        let layouts = &self.layouts;
+        self.shapes.retain(|_, key| layouts.contains_key(key));
+        self.glyph_cache.drop_orphans();
+    }
+
+    /// The keys of the layouts held now, for [`Self::keep_prepared`].
+    pub(crate) fn layout_keys(&self) -> std::collections::HashSet<u64> {
+        self.layouts.keys().copied().collect()
+    }
+
+    /// Marks the layouts made since `before` was read as prepared, then keeps at most `budget`
+    /// bytes of prepared layouts no view holds, by the cache's own count: past it the oldest pass's
+    /// go first, and never one a mounted text holds. How many this pass added.
+    pub(crate) fn keep_prepared(&mut self, before: &std::collections::HashSet<u64>, budget: usize) -> usize {
+        thread_local! { static PASS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) }; }
+        let pass = PASS.with(|p| { p.set(p.get().wrapping_add(1).max(1)); p.get() });
+        let mut added = 0;
+        for (k, e) in self.layouts.iter_mut() {
+            if !before.contains(k) { e.prepared = pass; added += 1; }
+        }
+        let held = |e: &Entry<Rc<Layout<Ink>>>| Rc::strong_count(&e.value) > 1;
+        let mut loose: Vec<(u32, u64, usize)> = self.layouts.iter().filter(|(_, e)| e.prepared != 0 && !held(e)).map(|(k, e)| (pass.wrapping_sub(e.prepared), *k, e.cost as usize)).collect();
+        let mut total: usize = loose.iter().map(|l| l.2).sum();
+        // Oldest pass first: the largest age.
+        loose.sort_unstable_by(|a, b| b.0.cmp(&a.0).then(b.2.cmp(&a.2)));
+        for (_, k, cost) in loose {
+            if total <= budget { break; }
+            self.layouts.remove(&k);
+            total -= cost;
+        }
+        let layouts = &self.layouts;
+        self.shapes.retain(|_, key| layouts.contains_key(key));
+        added
     }
 
     #[inline]

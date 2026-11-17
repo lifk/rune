@@ -56,6 +56,10 @@ pub(crate) struct A11yTree {
     stamp: Option<Stamp>,
     /// The next update must hold the whole tree (activation, or the adapter asked again).
     full: bool,
+    /// The last whole tree held back the announcer's words: an adapter raises no events for the
+    /// tree it starts from, so words said as a reader attached (a request arriving as it starts)
+    /// would never be spoken. The next update sends them as a change.
+    held: bool,
     /// The root's name when the runtime has no window title (an overlay's name).
     pub(crate) name: String,
     /// What the last update changed, beyond what AccessKit announces itself.
@@ -157,7 +161,7 @@ impl<S: 'static> Runtime<S> {
         if self.a11y.is_none() || self.drawn.len() != self.nodes.len() || self.nodes.is_empty() { return None; }
         let stamp = self.a11y_stamp();
         let tree = self.a11y.as_ref()?;
-        if !tree.full && tree.stamp.as_ref() == Some(&stamp) { return None; }
+        if !tree.full && !tree.held && tree.stamp.as_ref() == Some(&stamp) { return None; }
         // Only scrolled: the rows keep their bounds in their viewport's content space, so only
         // the viewports' offsets change. Sticky elements move against the content; they don't.
         let scrolled_only = !tree.full && !self.has_sticky
@@ -166,11 +170,17 @@ impl<S: 'static> Runtime<S> {
         let found = self.a11y_walk();
         let tree = self.a11y.as_ref()?;
         let full = tree.full;
-        let changed: Vec<bool> = found.slots.iter().map(|s| full || tree.sent.get(&s.id.0).is_none_or(|old| old.print != s.print)).collect();
-        let nodes = self.a11y_build(&found, &changed, &tree.name);
+        let hold = full && self.announcement.recent();
+        // Held words go out with the root, whose node carries the announcer.
+        let held = tree.held;
+        let changed: Vec<bool> = found.slots.iter().enumerate()
+            .map(|(k, s)| full || (held && k == 0) || tree.sent.get(&s.id.0).is_none_or(|old| old.print != s.print)).collect();
+        let nodes = self.a11y_build(&found, &changed, &tree.name, hold);
+        if hold { self.dirty = true; }
         let tree = self.a11y.as_mut()?;
         tree.stamp = Some(stamp);
         tree.full = false;
+        tree.held = hold;
         tree.pass = tree.pass.wrapping_add(1);
         let pass = tree.pass;
         for s in &found.slots {
@@ -266,7 +276,7 @@ impl<S: 'static> Runtime<S> {
     pub fn accessibility_tree(&self) -> TreeUpdate {
         let found = self.a11y_walk();
         let name = self.a11y.as_ref().map_or("", |t| t.name.as_str());
-        let nodes = self.a11y_build(&found, &vec![true; found.slots.len()], name).into_iter().map(|(id, n, _)| (id, n)).collect();
+        let nodes = self.a11y_build(&found, &vec![true; found.slots.len()], name, false).into_iter().map(|(id, n, _)| (id, n)).collect();
         TreeUpdate { nodes, tree: Some(self.a11y_info()), tree_id: TreeId::ROOT, focus: found.focus }
     }
 
@@ -299,6 +309,36 @@ impl<S: 'static> Runtime<S> {
         }
     }
 
+    /// Whether node `i`, inside the control at `slot`, would only say again what that control
+    /// says: a text its name already holds, or a nameless part. Chromium makes a button's or a
+    /// link's content one leaf; a reader moving item by item would hear its words twice. What
+    /// adds words, or takes a press or focus, stays.
+    fn a11y_repeats_control(&self, i: usize, slot: &Slot, spoken: &mut rustc_hash::FxHashMap<usize, Option<String>>) -> bool {
+        let Some(c) = slot.element.filter(|_| crate::a11y::roles::leaf_control(slot.role)) else { return false };
+        let n = &self.nodes[i];
+        if n.input.is_some() || self.can_focus(i) || n.handlers.get().is_some_and(|h| h.has_primary()) { return false; }
+        let Some(name) = spoken.entry(c).or_insert_with(|| self.a11y_control_words(c, slot.role)).as_deref() else { return false };
+        match n.text.as_deref() {
+            Some(t) => {
+                let words = t.source_text();
+                let words = words.trim();
+                !words.is_empty() && t.cold.links.is_empty() && name.contains(words)
+            }
+            None => n.label.as_deref().is_none_or(|l| l.trim().is_empty() || name.contains(l.trim())) && n.vis.grid.is_none(),
+        }
+    }
+
+    /// What control `c` says as its name, when the tree doesn't need its content to say it
+    /// (AccessKit names an unlabelled button from the texts inside it, so those stay).
+    fn a11y_control_words(&self, c: usize, role: Role) -> Option<String> {
+        let n = &self.nodes[c];
+        if n.is_secure() { return None; }
+        n.label.as_deref().filter(|l| !l.trim().is_empty()).map(str::to_owned)
+            .or_else(|| n.a11y.more.as_deref().and_then(|m| m.labelled_by.as_deref()).and_then(|k| self.a11y_keyed(c, k)).map(|j| self.a11y_words(j)))
+            .or_else(|| crate::a11y::roles::named_from_content(role).then(|| self.a11y_words(c)))
+            .filter(|w| !w.trim().is_empty())
+    }
+
     /// One pass over the elements: which are nodes, where they sit, and their fingerprints.
     fn a11y_walk(&self) -> Found {
         let n_nodes = self.nodes.len();
@@ -310,6 +350,7 @@ impl<S: 'static> Runtime<S> {
         let mut focus = ROOT;
         let focused = self.focused_index();
         let content = self.a11y_content_prints();
+        let mut spoken = rustc_hash::FxHashMap::default();
         // Behind an open modal the tree holds only the modal and what contains it.
         let mut holds_modal = Vec::new();
         let modal = self.active_modal().is_some();
@@ -336,7 +377,8 @@ impl<S: 'static> Runtime<S> {
                 w.gone = n.is_moved_stub() || n.a11y.hidden || n.vis.opacity <= 0.01 || self.is_exiting(n.id)
                     || !self.scene.contains(n.id) || (modal && !self.modal_member(i) && !holds_modal[i]);
             }
-            if !w.gone && let Some(role) = self.a11y_role(i) {
+            let role = if w.gone { None } else { self.a11y_role(i) };
+            if let Some(role) = role.filter(|_| !self.a11y_repeats_control(i, &slots[w.slot], &mut spoken)) {
                 let id = element_id(n.id);
                 let mut print = mix(self.a11y_print(i, role, &w), content.get(i).copied().unwrap_or(0));
                 if let Some(index) = self.a11y_index_in_list(i) { print = mix(print, index as u64 + 1); }
@@ -368,8 +410,8 @@ impl<S: 'static> Runtime<S> {
     }
 
     /// The nodes of `found` whose `changed` flag is set, built, with their lines and links:
-    /// (id, node, fingerprint).
-    fn a11y_build(&self, found: &Found, changed: &[bool], fallback_name: &str) -> Vec<(AkId, AkNode, u64)> {
+    /// (id, node, fingerprint). `hold_words`: the announcer goes without its words for now.
+    fn a11y_build(&self, found: &Found, changed: &[bool], fallback_name: &str, hold_words: bool) -> Vec<(AkId, AkNode, u64)> {
         let mut children: Vec<Vec<AkId>> = vec![Vec::new(); found.slots.len()];
         for &(parent, id) in &found.kids {
             if changed[parent] { children[parent].push(id); }
@@ -395,7 +437,7 @@ impl<S: 'static> Runtime<S> {
                 // that appeared.
                 let mut node = AkNode::new(Role::Status);
                 let (words, how) = self.announcement.words().unwrap_or_default();
-                if !words.is_empty() { node.set_label(words); }
+                if !words.is_empty() && !hold_words { node.set_label(words); }
                 node.set_live(if how == crate::LiveRegion::Assertive { accesskit::Live::Assertive } else { accesskit::Live::Polite });
                 node.set_bounds(AkRect { x0: 0.0, y0: 0.0, x1: 1.0, y1: 1.0 });
                 kids.push(ANNOUNCER);

@@ -7,6 +7,12 @@ use crate::time::Instant;
 use super::{Renderer, backdrop_blur::BackdropBlur, layer_blur, surface_alpha::AlphaSurface};
 
 impl Renderer {
+    /// Makes and drops a backdrop blur with its composite for this renderer's format, for regen_dxbc.
+    #[doc(hidden)]
+    pub fn make_backdrop_blur(&self, device: &wgpu::Device) {
+        BackdropBlur::new(device, &self.bind_layout).ensure_composite(device, self.format);
+    }
+
     /// Makes, times and drops what a first backdrop blur, layer blur, video frame, transparent
     /// window and spring-driven renderer build, in milliseconds each.
     #[doc(hidden)]
@@ -26,6 +32,19 @@ impl Renderer {
             ("springs", ms(|| drop(Renderer::with_springs(device, self.format, &[node], &[0])))),
         ]
     }
+}
+
+/// Makes and drops the straight-alpha pass from its WGSL, for regen_dxbc to take the HLSL wgpu
+/// generates for it.
+#[doc(hidden)]
+pub fn make_straight_alpha(device: &wgpu::Device, format: wgpu::TextureFormat) {
+    drop(AlphaSurface::new(device, format, (16, 16)));
+}
+
+/// Makes and drops the layer blur's pipelines from their WGSL, for regen_dxbc.
+#[doc(hidden)]
+pub fn make_layer_blur(device: &wgpu::Device) {
+    drop(layer_blur::Pipeline::new(device, super::layers::FORMAT));
 }
 
 /// How many pipelines Rune's Metal backend compiled at runtime because its precompiled library

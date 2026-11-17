@@ -21,6 +21,12 @@ const PHASED_IDLE: f64 = 1.0;
 /// A gesture that begins within this many seconds of one ending is its momentum (AppKit
 /// reports momentum as a phase of its own), so it keeps the axis.
 const MOMENTUM_GAP: f64 = 0.05;
+/// A run of vertical deltas stays with the viewport it began on while each comes within this
+/// many seconds of the last and the pointer within this many points of where it began, as
+/// Chromium latches a wheel's scroll (`content/browser/renderer_host/input/
+/// mouse_wheel_phase_handler.cc`: `kDefaultMouseWheelLatchingTransaction`, `kWheelLatchingSlopRegion`).
+const RUN_IDLE: f64 = 0.5;
+const RUN_SLOP: f32 = 10.0;
 
 /// The wheel or trackpad gesture in progress, and who has it. Its phase carries when its last
 /// delta came and, once the platform ended it, when that was: one fact, in one place.
@@ -34,6 +40,23 @@ pub(super) struct WheelLock {
     /// while deltas of it still wait in the queue for `on_wheel` handlers.
     run: WheelRun,
     phase: WheelPhase,
+    /// The vertical viewport the current run of deltas scrolls, once one has.
+    vertical: Option<VerticalRun>,
+}
+
+/// A run of vertical deltas and the viewport it keeps to: cc scrolls only the latched scroller,
+/// so one that reaches its end mid-run takes the rest of the run, and the one around it moves
+/// from the next run on. `down` is its first delta's direction; `moved`, whether that delta
+/// moved the viewport: only a run whose first delta moved nothing ends when the wheel turns
+/// (`ShouldBreakLatchingDueToDirectionChange`).
+#[derive(Clone, Copy, Debug)]
+struct VerticalRun {
+    id: NodeId,
+    at: f64,
+    x: f32,
+    y: f32,
+    down: bool,
+    moved: bool,
 }
 
 /// Who has the deltas still to run, keyed by the gesture each belongs to: the gesture arriving
@@ -262,11 +285,31 @@ impl WheelLock {
         self.phase = self.phase.moving(now);
     }
 
+    /// The viewport a vertical delta `dy` at (x, y) at `now` keeps to, when it continues the run.
+    pub(super) fn vertical_run(&self, now: f64, x: f32, y: f32, dy: f32) -> Option<NodeId> {
+        let run = self.vertical?;
+        let continues = now - run.at <= RUN_IDLE && (x - run.x).hypot(y - run.y) < RUN_SLOP && (run.moved || (dy < 0.0) == run.down);
+        continues.then_some(run.id)
+    }
+
+    /// A vertical delta `dy` at (x, y) at `now` scrolled viewport `id` (`moved`: it moved it);
+    /// `continued`, as part of the run, or else starting one.
+    pub(super) fn ran_vertical(&mut self, id: NodeId, now: f64, x: f32, y: f32, dy: f32, moved: bool, continued: bool) {
+        match &mut self.vertical {
+            Some(run) if continued => run.at = now,
+            _ => self.vertical = Some(VerticalRun { id, at: now, x, y, down: dy < 0.0, moved }),
+        }
+    }
+
+    /// No viewport takes the run: the next delta starts afresh.
+    pub(super) fn end_vertical(&mut self) { self.vertical = None; }
+
     /// The platform began a gesture at `now`: its first delta picks the axis afresh, unless it
     /// is the momentum of one that just ended.
     fn began(&mut self, now: f64, active: bool, queued: bool, pending: Option<Attempt>) {
         let momentum = !self.phase.momentum() && (active || queued) && self.phase.ended().is_some_and(|e| now - e <= MOMENTUM_GAP);
-        if !momentum { self.restart(pending); }
+        // A new touch is a new run; its momentum keeps the one it has.
+        if !momentum { self.restart(pending); self.vertical = None; }
         self.phase = if momentum { WheelPhase::Momentum { at: now } } else { WheelPhase::Phased { at: now } };
     }
 
@@ -282,7 +325,7 @@ impl WheelLock {
     }
 
     /// The window lost the pointer or focus: a gesture in progress won't report its end here.
-    fn lost(&mut self, pending: Option<Attempt>) { self.restart(pending); }
+    fn lost(&mut self, pending: Option<Attempt>) { self.restart(pending); self.vertical = None; }
 }
 
 /// A wheel event's delta in points, positive moving content right and down. With Shift, a delta
@@ -563,6 +606,28 @@ mod tests {
         let wheel_gesture = rt.wheel_lock.gesture;
         rt.wheel_xy(100.0, 100.0, -10.0, 0.0);
         assert_ne!(rt.wheel_lock.gesture, wheel_gesture, "without phases, a delta wholly on the other axis starts another");
+    }
+
+    /// A viewport whose content fits is passed over: the wheel over a section that is its own
+    /// viewport, as tall as its rows, scrolls the list around it, on either axis.
+    #[test]
+    fn the_wheel_over_a_viewport_with_nothing_to_scroll_scrolls_the_one_around_it() {
+        fn view(_: &(), _: &mut Cx<()>) -> El {
+            let fits = crate::col().key("section").w_full().h(200.0).scroll(crate::ScrollSpec { stick_bottom: false }).child(crate::el().w_full().h(200.0));
+            let fits_x = crate::row().key("chips").w_full().h(40.0).scroll_x().child(crate::el().w(100.0).h(40.0));
+            let list = crate::col().w_full().child(fits_x).child(fits).child(crate::el().w_full().h(2000.0));
+            crate::col().key("list").w_full().h(300.0).scroll(crate::ScrollSpec { stick_bottom: false }).child(list)
+        }
+        let mut rt = Runtime::new((), view, (300.0, 300.0), Env::default());
+        rt.frame(0.0);
+        rt.frame(1.0 / 60.0);
+        let id = |rt: &Runtime<()>, key: &str| rt.nodes.iter().find(|n| n.key.as_deref() == Some(key)).unwrap().id;
+        let (list, section) = (id(&rt, "list"), id(&rt, "section"));
+        // The strip that fits sideways is no horizontal viewport for the wheel, and over it the list scrolls.
+        assert_eq!(rt.scroll_at_axis(100.0, 20.0, true), None);
+        assert_eq!(rt.scroll_at(100.0, 20.0), Some(list));
+        rt.wheel_xy(100.0, 100.0, 0.0, -30.0);
+        assert_eq!((rt.scrolls[&list].offset, rt.scrolls[&section].offset), (30.0, 0.0));
     }
 
     #[test]

@@ -1,6 +1,7 @@
 //! View-to-scene commit orchestration (`Runtime::commit`, `Measurement`, `Measured`).
 use super::*;
 
+mod prepare;
 pub(super) mod remount;
 
 /// Which measurement pass a commit is on. The first pass trusts the last commit's geometry; a
@@ -61,6 +62,7 @@ pub(super) struct Measurement<'a, S: 'static> {
     pub(super) caption: Option<crate::titlebar::Caption>,
     pub(super) system_accent: crate::SystemAccent,
     pub(super) system_contrast: Option<crate::SystemContrast>,
+    pub(super) system_increased_contrast: bool,
     pub(super) system_scroll_bars: crate::platform::scroll_bars::SystemScrollBars,
     pub(super) reduced_motion: bool,
     pub(super) time_scale: f32,
@@ -167,6 +169,8 @@ impl<S: 'static> Runtime<S> {
         self.scene.keep_flights(false);
         self.memo.keep_since(self.memo_since);
         self.track_focused_rows();
+        #[cfg(debug_assertions)]
+        if COMMITS.get() % 16 == 1 { self.a11y_warn_nameless(); }
         self.prune_text_selection();
         budget.end(self.watch.cause);
     }

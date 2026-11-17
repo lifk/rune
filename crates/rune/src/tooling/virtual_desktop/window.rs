@@ -267,6 +267,7 @@ impl<S: 'static> Member for Window<S> {
         let mut changes = Changes::default();
         self.shortcuts.drain();
         self.menus.drain();
+        let _receiving = self.shortcuts.receiving();
         let requests = self.shared.drain(|f| {
             self.rt.update_if(f);
             self.menus.drain();
@@ -394,7 +395,7 @@ impl<S: 'static> Member for Window<S> {
             };
             c.render(&mut f);
         } else {
-            renderer.prepare(&gpu.device, &gpu.queue, &mut self.rt.text.atlas, &self.rt.instances, px);
+            renderer.prepare_ui(&gpu.device, &gpu.queue, &mut self.rt.text.atlas, &self.rt.instances, px);
             renderer.draw(&mut enc, view, self.rt.clear_color());
         }
         renderer.submit(&gpu.queue, enc);

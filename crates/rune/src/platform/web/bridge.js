@@ -31,9 +31,20 @@ function browserShortcut(event) {
     if (event.key === 'F5' || event.key === 'F12') return true;
     if (!chord) return false;
     const k = event.key.toLowerCase();
+    // With Alt only the developer tools' chords are the browser's: Ctrl+Alt+W and the like are
+    // the app's (its Close tab, where the browser keeps Ctrl+W).
+    if (event.altKey) return ['i', 'j', 'u'].includes(k);
+    // An installed app's window gives the page every key first (Chromium: "In Apps mode, no keys
+    // are reserved"), and closes itself on a Ctrl+W the page lets through: there the tab, window
+    // and new-session keys are the app's, as in its desktop build.
+    if (['t', 'w', 'n'].includes(k) && appWindow()) return false;
     // Leave copy ('c') un-prevented too so the browser fires its synchronous `copy` event.
-    return ['c', 'r', 'l', 't', 'w', 'n', 'f', 'g', '=', '+', '-', '0'].includes(k)
-        || (event.altKey && ['i', 'j', 'u'].includes(k));
+    return ['c', 'r', 'l', 't', 'w', 'n', 'f', 'g', '=', '+', '-', '0'].includes(k);
+}
+
+function appWindow() {
+    return navigator.standalone === true
+        || matchMedia('(display-mode: standalone), (display-mode: window-controls-overlay), (display-mode: minimal-ui)').matches;
 }
 
 // Keys that scroll a page when nothing in Rune has focus.
@@ -50,6 +61,9 @@ export function mount(canvas, callback, embedded, fitHeight, page) {
     const textarea = document.createElement('textarea');
     textarea.setAttribute('aria-label', 'Text input');
     textarea.setAttribute('autocapitalize', 'sentences');
+    // It is 1 px wide: wrapped, its every character would be a line to a screen reader reading by
+    // line. Unwrapped, a line is what a line break ends.
+    textarea.wrap = 'off';
     const password = document.createElement('input');
     password.type = 'password';
     password.setAttribute('aria-label', 'Password input');
@@ -725,6 +739,8 @@ export function syncA11y(h, json) {
         const css = itemStyle(h, item, parent ? parent.r : [0, 0]);
         if (el._css !== css) { el._css = css; el.style.cssText = css; }
         if (item.i) el.id = item.i; else el.removeAttribute('id');
+        // `El::description` and `El::described_by`'s words: what a reader says after the name.
+        if (item.d) el.setAttribute('aria-description', item.d); else el.removeAttribute('aria-description');
         // A table's parts: the role says what the div is (`aria_role`).
         if ((el.getAttribute('role') ?? undefined) !== item.o && item.k === 'group') {
             if (item.o) el.setAttribute('role', item.o); else el.removeAttribute('role');
@@ -732,6 +748,13 @@ export function syncA11y(h, json) {
         if (tag === 'button') {
             if (item.x === true || item.x === false) el.setAttribute('aria-expanded', String(item.x));
             else el.removeAttribute('aria-expanded');
+            // A control's role and states (a palette's option, a tab, a switch): `control_role`.
+            const states = [['role', item.o], ['aria-selected', item.se === undefined ? undefined : String(item.se)], ['aria-checked', item.c],
+                ['aria-posinset', item.n ? String(item.n[0]) : undefined], ['aria-setsize', item.n ? String(item.n[1]) : undefined]];
+            for (const [name, value] of states) {
+                if (value === undefined) el.removeAttribute(name);
+                else if (el.getAttribute(name) !== value) el.setAttribute(name, value);
+            }
         }
         if (item.k === 'group' || item.k === 'image') {
             if (item.t) el.setAttribute('aria-label', item.t); else el.removeAttribute('aria-label');
@@ -763,7 +786,79 @@ export function syncA11y(h, json) {
     }
 }
 
+// An app's focus (`Runtime::web_a11y_focus`), for a reader: the browser's own focus stays on the
+// canvas (where keys go) or its text field, so the canvas is an `application` whose active
+// descendant is a proxy in its fallback content saying the focused element's role, name and
+// states. Two proxies, taking turns, so every move is a change of active descendant a reader
+// follows, even between two elements alike. A text field's name goes on the field the browser
+// edits.
+export function focusA11y(h, json) {
+    if (h.disposed || h.page) return;
+    const f = json ? JSON.parse(json) : null;
+    if (!h.focusProxies) {
+        h.focusProxies = [0, 1].map(n => {
+            const el = document.createElement('div');
+            el.id = `rune-focus-${n}`;
+            el.tabIndex = -1;
+            h.canvas.append(el);
+            return el;
+        });
+        h.focusTurn = 0;
+        h.canvas.setAttribute('role', 'application');
+        if (document.title) h.canvas.setAttribute('aria-label', document.title);
+    }
+    if (!f) {
+        h.canvas.removeAttribute('aria-activedescendant');
+        return;
+    }
+    if (f.o === 'textbox') h.textarea.setAttribute('aria-label', f.t || 'Text input');
+    if (f.f) h.textarea.setAttribute('aria-label', f.f);
+    h.focusTurn ^= 1;
+    const el = h.focusProxies[h.focusTurn];
+    for (const a of [...el.attributes]) if (a.name === 'role' || a.name.startsWith('aria-')) el.removeAttribute(a.name);
+    el.setAttribute('role', f.o);
+    el.setAttribute('aria-label', f.t ?? '');
+    if (f.d) el.setAttribute('aria-description', f.d);
+    if (f.c) el.setAttribute('aria-checked', f.c);
+    if (f.s !== undefined) el.setAttribute('aria-selected', String(f.s));
+    if (f.x !== undefined) el.setAttribute('aria-expanded', String(f.x));
+    if (f.n) { el.setAttribute('aria-posinset', String(f.n[0])); el.setAttribute('aria-setsize', String(f.n[1])); }
+    if (f.l) el.setAttribute('aria-level', String(f.l));
+    h.canvas.setAttribute('aria-activedescendant', el.id);
+    // Typing in a field whose highlighted row this is (the palette): the field says it too.
+    if (f.o !== 'textbox') h.textarea.setAttribute('aria-activedescendant', el.id);
+    else h.textarea.removeAttribute('aria-activedescendant');
+}
+
+// `Tx::announce`: two live regions in the mirror, polite and assertive, made the first time
+// something is said (a region must be in the page before its text changes for a reader to say
+// it). The words go in on the next frame, after the region is emptied, so the same words said
+// twice are said twice.
+export function announceA11y(h, text, assertive) {
+    if (h.disposed) return;
+    h.live ??= {};
+    const kind = assertive ? 'assertive' : 'polite';
+    let el = h.live[kind];
+    if (!el) {
+        el = document.createElement('div');
+        el.setAttribute('aria-live', kind);
+        el.setAttribute('aria-atomic', 'true');
+        if (!assertive) el.setAttribute('role', 'status');
+        el.style.cssText = 'position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;';
+        h.a11y.parentNode.insertBefore(el, h.a11y);
+        h.live[kind] = el;
+    }
+    el.textContent = '';
+    requestAnimationFrame(() => { if (!h.disposed) el.textContent = text; });
+}
+
 // Rune skipped rebuilding the mirror while it scrolls: it asks again once the scroll has rested.
+// The mirror's first build, in the page's idle time (its first frame's input goes first).
+export function scheduleA11yIdle(h) {
+    const due = () => { if (!h.disposed) h.send({ kind: 'a11y_due' }); };
+    if (globalThis.requestIdleCallback) requestIdleCallback(due, { timeout: 100 }); else setTimeout(due, 0);
+}
+
 export function scheduleA11y(h) {
     clearTimeout(h.a11yTimer);
     h.a11yTimer = setTimeout(() => { h.a11yTimer = 0; if (!h.disposed) h.send({ kind: 'a11y_due' }); }, 160);

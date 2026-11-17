@@ -104,9 +104,12 @@ pub(crate) fn unit_at(text: &str, i: usize, unit: Unit) -> (usize, usize) {
 }
 
 /// Where each of `text`'s words ends, in order, the last at `text.len()`: ICU4X's dictionaries
-/// natively, the browser's (`Intl.Segmenter`) in a page, which links none.
+/// natively, the browser's (`Intl.Segmenter`) in a page and Windows' own (`icu.dll`) on Windows,
+/// which link none.
 fn word_ends(text: &str) -> impl Iterator<Item = usize> {
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(target_os = "windows", not(feature = "segmenter-dictionaries")))]
+    return crate::platform::win32::segmenter::words(text).into_iter();
+    #[cfg(not(any(target_arch = "wasm32", all(target_os = "windows", not(feature = "segmenter-dictionaries")))))]
     {
         use icu_segmenter::{WordSegmenter, options::WordBreakInvariantOptions};
         WordSegmenter::new_dictionary(WordBreakInvariantOptions::default()).segment_str(text).filter(|&b| b > 0)
@@ -127,7 +130,7 @@ pub(crate) fn extend(origin: (usize, usize), at: (usize, usize)) -> (usize, usiz
 pub(super) fn push_selection(out: &mut Vec<Instance>, layout: &Layout<Ink>, a: usize, b: usize, origin: [f32; 2], k: f32,
     fill: [f32; 4], s: f32, clip: [f32; 4], fade: [f32; 4]) {
     for (bb, _) in crate::text::range_boxes(layout, a, b, true) {
-        let rect = [origin[0] + bb.x0 as f32 * k, origin[1] + bb.y0 as f32 * k, (bb.x1 - bb.x0) as f32 * k, (bb.y1 - bb.y0) as f32 * k];
+        let rect = super::text_marks::pixel_rect(origin, bb, k);
         let radius = 2.0 * s * k;
         extend_run(out, rect, fill, radius, clip, fade, 40.0 * s * k);
     }
@@ -138,8 +141,7 @@ pub(super) fn push_selection(out: &mut Vec<Instance>, layout: &Layout<Ink>, a: u
 pub(super) fn push_field_selection(out: &mut Vec<Instance>, layout: TextFlow<'_>, a: usize, b: usize, origin: [f32; 2], k: f32,
     fill: [f32; 4], s: f32, clip: [f32; 4], fade: [f32; 4]) {
     for (bb, _) in layout.range_boxes(a, b, true) {
-        let rect = [origin[0] + bb.x0 as f32 * k, origin[1] + bb.y0 as f32 * k, (bb.x1 - bb.x0) as f32 * k, (bb.y1 - bb.y0) as f32 * k];
-        out.push(rect_inst(rect, fill, 2.0 * s * k, clip, fade));
+        out.push(rect_inst(super::text_marks::pixel_rect(origin, bb, k), fill, 2.0 * s * k, clip, fade));
     }
 }
 

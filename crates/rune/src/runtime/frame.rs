@@ -159,16 +159,38 @@ impl<S: 'static> Runtime<S> {
     /// Returning false after changing state the view reads leaves the screen stale until the
     /// next change.
     pub fn update_if(&mut self, f: impl FnOnce(&mut S, &mut Tx) -> bool) -> bool {
+        self.update_inner(f, false).0
+    }
+
+    /// `update_if` for an update a window drain runs: a minimize it asked for comes back instead
+    /// of reaching the minimize machine, so the drain can order it against the handle requests it
+    /// took. A pick callback that replaces its `Tx` discards the minimize, as running the
+    /// callbacks before reading `Tx::minimize` does; one the callback asks for itself still
+    /// latches. Returns stale, then the minimize's order when it survived.
+    pub(crate) fn update_if_ordered(&mut self, f: impl FnOnce(&mut S, &mut Tx) -> bool) -> (bool, Option<std::num::NonZeroU64>) {
+        self.update_inner(f, true)
+    }
+
+    fn update_inner(&mut self, f: impl FnOnce(&mut S, &mut Tx) -> bool, ordered: bool) -> (bool, Option<std::num::NonZeroU64>) {
         // Its wakes count from now (`schedule_pending_wakes`), so its clock reads now too.
         let mut one = Tx { clock: self.now_clock(), ..self.transaction() };
         let changed = crate::tooling::perf_warn::timed("an `update` closure", || f(&mut self.state, &mut one));
         let stale = changed || one.frame_work() || one.window_frame.is_some() || one.srgb_blend.is_some_and(|b| b != self.srgb_blend) || one.font_smoothing.is_some_and(|m| m != self.text.font_smoothing())
             || self.changes_families(&one)
             || (one.blur && self.focus.path().is_some());
-        self.latch_requests(&mut one);
+        let minimize = if ordered {
+            let asked = one.minimize_order;
+            self.run_pick_reads(&mut one);
+            let survived = if asked.is_some() && one.minimize_order == asked { one.minimize_order.take() } else { None };
+            self.latch_after_picks(&mut one);
+            survived
+        } else {
+            self.latch_requests(&mut one);
+            None
+        };
         merge(&mut self.pending, one);
         self.dirty |= changed;
-        stale
+        (stale, minimize)
     }
 
     /// Takes a `Tx::minimize` that `what` can't carry out, saying so in debug builds.
@@ -185,8 +207,13 @@ impl<S: 'static> Runtime<S> {
     /// memory clipboard at once. A secret clear drops an earlier secret copy not yet written.
     pub(super) fn latch_requests(&mut self, tx: &mut Tx) {
         self.run_pick_reads(tx);
+        self.latch_after_picks(tx);
+    }
+
+    /// [`Self::latch_requests`] once the pick callbacks have run.
+    fn latch_after_picks(&mut self, tx: &mut Tx) {
         self.shell_request = self.shell_request.max(tx.shell.take());
-        if std::mem::take(&mut tx.minimize) { self.minimize_step(crate::window::MinimizeEvent::Asked); }
+        if tx.minimize_order.take().is_some() { self.minimize_step(crate::window::MinimizeEvent::Asked); }
         self.titlebar.toggle_maximized |= std::mem::take(&mut tx.toggle_maximized);
         self.titlebar.toggle_full_screen |= std::mem::take(&mut tx.toggle_full_screen);
         if let Some(fullscreen) = tx.fullscreen.take() {
@@ -235,7 +262,9 @@ impl<S: 'static> Runtime<S> {
                 self.set_focus(None, self.focus.keyboard());
                 self.dirty = true;
             }
-            // An explicit blur is not the temporary pointer-down blur of a scrim.
+            // An explicit blur is not the temporary pointer-down blur of a scrim, and nothing
+            // hands focus on from it: only a control the user blurred and then left does.
+            self.focus.step(focus_machine::FocusEvent::Dropped);
             self.focus.step(focus_machine::FocusEvent::Settled);
         }
         if let Some(request) = tx.focus_to.take() {
@@ -293,7 +322,7 @@ impl<S: 'static> Runtime<S> {
 
     pub(super) fn transaction(&self) -> Tx {
         Tx { trace: self.tracing().then(crate::el::TraceCalls::default), mods: self.held_mods, selection: self.selection_snapshot(),
-            input_time: crate::input::time::current(), clock: self.clock, focus_visible: self.focus.keyboard(), focused: self.focused_key(), assistive: self.a11y.is_some(), ..Tx::default() }
+            input_time: crate::input::time::current(), clock: self.clock, focus_visible: self.focus.keyboard(), focused: self.focused_key(), assistive: self.a11y.is_some() || cfg!(target_arch = "wasm32"), ..Tx::default() }
     }
 
     /// A scalar from the actual draw path (e.g. `shell.width`). Values hold until resampled.
@@ -384,6 +413,17 @@ impl<S: 'static> Runtime<S> {
         self.poll_hidden()
     }
 
+    /// [`Runtime::hidden_wake`] for a shown window that can't draw (covered, minimised, on a
+    /// locked or sleeping display). While an assistive client reads its tree, what changed is
+    /// built at once, without drawing or motion, so the tree it reads and focus asked of what
+    /// the change shows (a permission's card) are current whatever the window's motion does.
+    /// Returns what `hidden_wake` does.
+    pub(crate) fn covered_wake(&mut self) -> bool {
+        let stale = self.hidden_wake();
+        if self.a11y.is_some() && self.needs_commit() { self.hidden_timer_frame(); }
+        stale
+    }
+
     /// One frame in one pass that steps `catch_up + dt` seconds. Motion already running advances
     /// `catch_up` before this frame's handlers and commit, so they retarget it from its pose at
     /// the frame's time. Then everything, including what the commit started, steps `dt`. A late
@@ -445,7 +485,7 @@ impl<S: 'static> Runtime<S> {
         }
         let mut tx = std::mem::take(&mut self.pending);
         let mut ran = false;
-        let mut why = 0;
+        let mut why = if tx.polled_change && self.dirty { CommitWhy::POLL } else { 0 };
         #[cfg(debug_assertions)]
         let commits0 = self.commits;
         let shaped0 = self.text.shaped;
@@ -488,6 +528,7 @@ impl<S: 'static> Runtime<S> {
         if let Some(at) = wake { self.schedule_wakes([std::time::Duration::from_secs_f64((at - self.clock).max(0.0))]); }
         if let Some(poll) = self.poll.filter(|_| !polled) {
             let mut one = self.transaction();
+            one.input_waiting = self.queue.has_input();
             // Scheduling does not imply a model change.
             if self.idle_meter.polled(crate::tooling::perf_warn::timed("poll", || app_call!(poll, &mut self.state, self.clock, &mut one))) {
                 ran = true;
@@ -520,9 +561,13 @@ impl<S: 'static> Runtime<S> {
         #[cfg(debug_assertions)]
         let mut ran_other = ran;
         let mut pointer_hover = false;
-        for Queued { action, at } in queue {
-            let _input = crate::input::time::scope(at);
+        for Queued { action, at, input } in queue {
+            if matches!(action, Action::Key { stage: false, .. } | Action::Physical(crate::PhysicalInput::Key { pressed: true, .. }, _)) { crate::marks::input_handled(true); }
             pointer_hover |= matches!(action, Action::Hover(_));
+            // The user's own key or press takes over from a `Tx::focus_when_shown` still waiting.
+            if matches!(action, Action::Key { stage: false, .. } | Action::Physical(crate::PhysicalInput::Key { pressed: true, .. }, _) | Action::Press(..) | Action::Focus(..)) {
+                self.focus_owed = None;
+            }
             // State may have requested focus on a newly mounted field. Resolve the
             // new tree before routing this frame's text, not after it has gone to
             // the previous field. The same boundary covers an earlier handler, and lets a
@@ -531,7 +576,16 @@ impl<S: 'static> Runtime<S> {
             let routed = matches!(&action, Action::Key { .. } | Action::KeyUp(_) | Action::Physical(..) | Action::Ime(_) | Action::FinishIme | Action::Paste(..) | Action::Files(_));
             // So is a playground an earlier handler opened or moved.
             if routed { self.latch_playground(&mut tx); }
-            if (ran || self.dirty || !tx.scroll_to.is_empty()) && routed {
+            // Both callbacks see ordinary &mut S. After the next mutation a single view
+            // cannot tell which one introduced a row. Observe the poll's tree now, without
+            // drawing it or advancing time. A key already needed this same routing boundary.
+            let split = self.motion_needs_cause && why & CommitWhy::POLL != 0 && (input || routed);
+            if split || (ran || self.dirty || !tx.scroll_to.is_empty()) && routed {
+                if split {
+                    let links = std::mem::take(&mut tx.open_urls);
+                    self.latch_requests(&mut tx);
+                    tx.open_urls = links;
+                }
                 if ran || self.dirty {
                     self.capture_flights(&mut tx);
                     if self.settle { tx.settle(); }
@@ -540,19 +594,34 @@ impl<S: 'static> Runtime<S> {
                     if ran_other || self.dirty || ran_layout { self.live_check = None; }
                     self.capture_keeps(&mut tx);
                     tx.unprompted = self.motion_needs_cause && why & CommitWhy::INPUT == 0 && !tx.asked_motion;
-                    self.commit_for(&tx, std::mem::take(&mut why) | CommitWhy::ROUTE | if self.dirty { CommitWhy::DIRTY } else { 0 });
+                    if split && tx.unprompted { tx.commit = tx.commit.without_input(); }
+                    if routed { why |= CommitWhy::ROUTE; }
+                    if self.dirty { why |= CommitWhy::DIRTY; }
+                    self.commit_for(&tx, std::mem::take(&mut why));
                     #[cfg(debug_assertions)]
                     { let check = self.live_check.take(); self.compare_live_check(check); ran_other = false; }
                     self.apply_keeps();
                     ran = false;
                 }
-                if !tx.scroll_to.is_empty() {
+                if split {
+                    self.finish_scroll_requests(&mut tx, false);
+                    // The poll's motion policy belongs to the tree just applied, not to
+                    // the handler about to run. Shell requests and timers still go out once.
+                    tx.commit = Commit::Animate;
+                    tx.unprompted = false;
+                    tx.asked_motion = false;
+                    tx.live_growth.clear(); tx.tail_rooms.clear();
+                    tx.motion = None;
+                    tx.color_motion = None;
+                    tx.follow_edge = false;
+                    tx.unclipped_flights = false;
+                    ran_layout = false;
+                } else if !tx.scroll_to.is_empty() {
                     self.drop_scroll_holds();
-                    for r in std::mem::take(&mut tx.scroll_to) {
-                        self.reveal_row(&r, tx.commit.snaps());
-                    }
+                    for r in tx.scroll_to.drain(..) { self.reveal_row(&r, tx.commit.snaps()); }
                 }
             }
+            let _input = crate::input::time::scope(at);
             // A selection an earlier handler asked for is what this key copies.
             if matches!(action, Action::Key { .. } | Action::Physical(..)) && let Some(request) = tx.select.take() {
                 let from_change = std::mem::take(&mut tx.select_from_change);
@@ -567,7 +636,7 @@ impl<S: 'static> Runtime<S> {
                 #[cfg(debug_assertions)]
                 { ran_other |= r && checks == self.live_checks; }
                 ran |= r;
-                if r { why |= CommitWhy::INPUT; }
+                if r { why |= if input { CommitWhy::INPUT } else { CommitWhy::DIRTY }; }
             }
             self.run_pick_reads(&mut tx);
         }
@@ -578,8 +647,10 @@ impl<S: 'static> Runtime<S> {
             let r = self.run_action(action, &mut tx);
             #[cfg(debug_assertions)]
             { ran_other |= r && checks == self.live_checks; }
-            if r { ran = true; why |= CommitWhy::INPUT; }
+            if r { ran = true; why |= CommitWhy::DIRTY; }
         }
+        #[cfg(target_os = "linux")]
+        self.note_primary_selection();
         let mut open_urls = std::mem::take(&mut tx.open_urls);
         self.latch_requests(&mut tx);
         // A handler asked for a menu: the hover it takes ends in this commit, not a frame later.
@@ -591,7 +662,7 @@ impl<S: 'static> Runtime<S> {
                 let r = self.run_action(queued.action, &mut tx);
                 #[cfg(debug_assertions)]
                 { ran_other |= r && checks == self.live_checks; }
-                if r { ran = true; why |= CommitWhy::INPUT; }
+                if r { ran = true; why |= if queued.input { CommitWhy::INPUT } else { CommitWhy::DIRTY }; }
             }
             open_urls.extend(std::mem::take(&mut tx.open_urls));
             self.latch_requests(&mut tx);
@@ -625,7 +696,7 @@ impl<S: 'static> Runtime<S> {
             tx.unprompted = self.motion_needs_cause && why & CommitWhy::INPUT == 0 && !tx.asked_motion;
             // Its layout lands too, as an instant change's does: a container that grows to fit what a
             // server brought doesn't ease to its height (motion already running keeps on).
-            if tx.unprompted { tx.commit = tx.commit.instant(); }
+            if tx.unprompted { tx.commit = tx.commit.without_input(); }
             self.commit_for(&tx, why | flag(self.dirty, CommitWhy::DIRTY) | flag(self.relayout, CommitWhy::RELAYOUT) | flag(self.settle, CommitWhy::SETTLE)
                 | flag(shifted, CommitWhy::VIRTUAL) | flag(ran_layout, CommitWhy::LAYOUT) | flag(read_moved, CommitWhy::READ));
             #[cfg(debug_assertions)]
@@ -635,13 +706,13 @@ impl<S: 'static> Runtime<S> {
         #[cfg(debug_assertions)]
         { self.live_check = None; }
         tx.keep_on_screen.clear();
-        let mut scroll_to = std::mem::take(&mut tx.scroll_to);
+        // Focus requests are scrolls: a caller that names a control expects it in view.
+        // Quiet focus places focus without moving the viewport (the app already placed it).
         for key in std::mem::take(&mut tx.focus_keys) {
             if let Some(path) = self.focus_by_key(&key) {
-                scroll_to.push(ScrollReveal::into_view(None, path));
+                tx.scroll_to.push(ScrollReveal::into_view(None, path));
             }
         }
-        // Quiet focus: the app placed the viewport itself, so no instant reveal here.
         for key in std::mem::take(&mut tx.focus_keys_quiet) {
             self.focus_by_key(&key);
         }
@@ -651,33 +722,13 @@ impl<S: 'static> Runtime<S> {
                 // intercept the reveal, including when this row is still virtual.
                 let scope = path.split('/').filter(|seg| !seg.starts_with('#')).collect::<Vec<_>>().join("/");
                 let key = if scope.is_empty() { key } else { format!("{scope}/{key}") };
-                scroll_to.push(ScrollReveal::into_view(None, key));
+                tx.scroll_to.push(ScrollReveal::into_view(None, key));
             }
         }
-        let mut scroll_bottom = std::mem::take(&mut tx.scroll_bottom);
-        let scroll_pages = std::mem::take(&mut tx.scroll_pages);
-        let mut scroll_offsets = std::mem::take(&mut tx.scroll_offsets);
-        if tx.commit.snaps() {
-            for (_, animated) in &mut scroll_bottom { *animated = false; }
-            for r in &mut scroll_offsets { r.glide = None; }
-        }
         #[cfg(debug_assertions)]
-        self.watch_frame(commits0, scroll_offsets.iter().find(|r| r.glide.is_none()).map(|r| r.key.as_str()));
+        self.watch_frame(commits0, tx.scroll_offsets.iter().find(|r| tx.commit.snaps() || r.glide.is_none()).map(|r| r.key.as_str()));
         let follow = std::mem::take(&mut self.caret_follow);
-        let destination = !scroll_bottom.is_empty() || !scroll_pages.is_empty() || !scroll_offsets.is_empty();
-        if !scroll_to.is_empty() || destination || follow {
-            self.drop_scroll_holds();
-        }
-        for r in &scroll_to { self.reveal_row(r, tx.commit.snaps()); }
-        if destination || follow {
-            self.step_scroll(0.0);
-        }
-        if follow { self.follow_caret(); }
-        if !scroll_bottom.is_empty() { self.scroll_to_bottom(scroll_bottom); }
-        if !scroll_pages.is_empty() { self.scroll_pages(scroll_pages); }
-        if !scroll_offsets.is_empty() { self.scroll_to_offsets(scroll_offsets); }
-        // Explicit destinations processed after a reveal win for its entire lifetime.
-        if destination { self.requests.step(requests::Event::Destination); }
+        self.finish_scroll_requests(&mut tx, follow);
         // Those scrolls moved the caret after the commit a view placed from it saw.
         if self.caret_watch && self.caret_moved(None) { self.commit(&Tx { commit: Commit::Instant, ..Tx::default() }); }
         if let Some(request) = tx.select.take() {
@@ -717,6 +768,7 @@ impl<S: 'static> Runtime<S> {
     /// frame then runs at exactly that time, however long the host slept. A hidden window
     /// sleeps through it; showing it settles.
     fn wake_for_motion(&mut self, at: f64) {
+        self.paint_keep.cycles.other_deadline();
         if !self.live.visible() || self.time_scale <= 0.0 { return; }
         let wake = self.clock + (at - self.t).max(0.0) / self.time_scale as f64;
         if self.loop_wake.is_none_or(|w| wake < w.0) { self.loop_wake = Some((wake, at)); }
@@ -765,6 +817,7 @@ impl<S: 'static> Runtime<S> {
         self.end_unseen_exits();
         let out = self.scene.frame();
         let (mut animating, exited) = (out.animating, !out.exited.is_empty());
+        self.paint_keep.frame += 1;
         // Tracks that only wait for a delayed start (`El::enter_delay`, a delayed `Anim`)
         // draw nothing new until it: sleep, and wake for it after the build.
         let mut waits = if animating { self.scene.store().waiting_until() } else { None };
@@ -804,6 +857,8 @@ impl<S: 'static> Runtime<S> {
             animating = sources != 0;
             self.scene.present();
         }
+        self.paint_keep.moved.extend(self.scene.changed().iter().map(|p| p.node));
+        if self.fill_text() { animating = true; sources |= AnimSource::TEXT_FILL; }
         let mut source = |on: bool, bit: u16| { if on { sources |= bit; } on };
         self.begin_exit_mask();
         animating |= self.build();

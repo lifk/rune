@@ -4,7 +4,13 @@ use super::*;
 pub(super) struct LeafBox {
     pub r: [f32; 4],
     pub r_exact: [f32; 4],
+    /// Where its exact box rests against where its snapped box rests (device px), its paint
+    /// containment's rounding in: Blink's text lays out from the exact place.
+    pub exact_off: [f32; 2],
     pub raw_size: [f32; 2],
+    /// The paint containment's origin above (`El::paint_contained`), device px: what draws
+    /// from its exact box's origin rounds against it, as Blink rounds inside it.
+    pub contain: [f32; 2],
     pub radii: [f32; 4],
     pub sc: f32,
     pub o: f32,
@@ -12,6 +18,9 @@ pub(super) struct LeafBox {
     pub clip: [f32; 4],
     pub fade: [f32; 4],
     pub group: f32,
+    /// The nearest `El::press_color` (here or above) and how far a press on it is held.
+    pub pressed: f32,
+    pub press_to: Option<Color>,
     pub loop_value: Option<f32>,
     pub cover: Option<(f32, [f32; 2])>,
     pub scale_motion: ScaleMotion,
@@ -23,6 +32,13 @@ pub(super) struct LeafBox {
     /// window's unless it draws into a layer turned or cached first. A long text draws its
     /// lines there and no others.
     pub shown: [f32; 2],
+}
+
+/// `v` (device px) on the device grid inside a paint containment at `c`: the containment's
+/// origin and the offset in it each round half up, as Blink rounds them.
+fn on_grid(v: f32, c: f32) -> f32 {
+    let round = |x: f32| (x + 0.5).floor();
+    round(v - c) + round(c)
 }
 
 impl<S: 'static> Runtime<S> {
@@ -40,7 +56,9 @@ impl<S: 'static> Runtime<S> {
         let LeafBox {
             r,
             r_exact,
+            exact_off,
             raw_size,
+            contain,
             radii,
             sc,
             o,
@@ -48,6 +66,8 @@ impl<S: 'static> Runtime<S> {
             clip,
             fade,
             group,
+            pressed,
+            press_to,
             loop_value,
             cover,
             scale_motion,
@@ -69,7 +89,7 @@ impl<S: 'static> Runtime<S> {
             self.paint_grid(i, &g, r, r_exact, clip, fade, o, glyph_count);
         }
         let n = &self.nodes[i];
-        let text_tint = |c: Color| paint_tracks::group_tint(n, c, group);
+        let text_tint = |c: Color| paint_tracks::press_tint(paint_tracks::group_tint(n, c, group), press_to, pressed);
         if let Some(shape) = &n.vis.shape {
             // At rest a shape draws from its exact box's origin rounded to the device grid, at its
             // exact scale, as Chromium draws a canvas or an inline SVG: what it holds keeps its
@@ -79,7 +99,7 @@ impl<S: 'static> Runtime<S> {
             // a glide or a swap to an icon doesn't wobble. A view-boxed shape stretches to the box.
             let still = cover.is_none() && scale_motion == ScaleMotion::Still && !gliding && (sc - 1.0).abs() < 1e-5;
             let at = if still {
-                [(r_exact[0] + 0.5).floor(), (r_exact[1] + 0.5).floor()]
+                [on_grid(r_exact[0], contain[0]), on_grid(r_exact[1], contain[1])]
             } else {
                 [r[0] + (w - w_exact) * 0.5, r[1] + (h - h_exact) * 0.5]
             };
@@ -107,6 +127,7 @@ impl<S: 'static> Runtime<S> {
             // window: off screen it isn't painted, so it asks for nothing.
             if let Some((_, Some(at))) = placed && self.live.visible() && self.time_scale > 0.0 {
                 let wake = self.clock + (at - now).max(0.0) / self.time_scale as f64;
+                self.paint_keep.cycles.other_deadline();
                 if self.loop_wake.is_none_or(|w| wake < w.0) { self.loop_wake = Some((wake, at)); }
             }
             if let Some((image, _)) = placed {
@@ -167,8 +188,7 @@ impl<S: 'static> Runtime<S> {
             let exact = w_exact.min(h_exact);
             if resting && exact > 1e-4 && !self.text.is_color_icon(ic) {
                 let canvas = (exact - 1.0 / 64.0).ceil().max(1.0) as u32;
-                let grid = |v: f32| (v + 0.5).floor();
-                let at = [grid(r_exact[0] + (w_exact - exact) * 0.5), grid(r_exact[1] + (h_exact - exact) * 0.5)];
+                let at = [on_grid(r_exact[0] + (w_exact - exact) * 0.5, contain[0]), on_grid(r_exact[1] + (h_exact - exact) * 0.5, contain[1])];
                 if let Some(q) = self.text.icon_quad_sized(ic, (canvas, exact), at, facing) {
                     self.push_icon(icon_inst(&q, at, canvas as f32, 0.0, premul(color, o, srgb), clip, fade));
                 }
@@ -221,10 +241,24 @@ impl<S: 'static> Runtime<S> {
             }
             let direct = self.text.emit() == crate::text::outline::Emit::Outline;
             let ins = n.inset.map(|v| v * zk * s);
+            // Text lays out from its box's place moved by how far its exact resting box sits from its
+            // snapped one (inside its paint containment), as Blink paints a text fragment from its
+            // exact place: its glyphs then round as Skia rounds them (the baseline half up, pens to
+            // a quarter pixel) where Chromium has them, rather than from a box already snapped. A
+            // gliding box carries its rest's offset, so the frame a glide ends or
+            // a flight lands places glyphs exactly as the resting frame after it. A field keeps its
+            // snapped box, which its caret and selection share.
+            let zr = if scale_motion == ScaleMotion::Still && (sc - 1.0).abs() < 1e-5 && n.input.is_none() {
+                let by = exact_off;
+                [zr[0] + by[0], zr[1] + by[1], zr[2] + by[0], zr[3] + by[1]]
+            } else {
+                zr
+            };
             let (x0, x1) = (zr[0] + ins[0], zr[2] - ins[2]);
-            let mut origin = [text_x(spec, x0, x1, (flow.full_width() * tk).ceil(), flow.flow()), zr[1] + ins[1]];
-            // A gliding box's glyphs and decorations lay out from its nearest whole pixel and move the rest.
-            // Within a 64th of a pixel they don't move, but still lay out from that pixel, as at rest.
+            let mut origin = [text_x(spec, x0, x1, text_width(flow.full_width() * tk), flow.flow()), zr[1] + ins[1]];
+            // A gliding box's glyphs and decorations lay out from its nearest whole pixel (plus its rest's
+            // fraction, above) and move the rest. Within a 64th of a pixel they don't move, but still lay
+            // out from that pixel, as at rest.
             let (glide, off) = if gliding && cover.is_none() && scale_motion == ScaleMotion::Still {
                 ([pixel_snap::text_glide(r[0]), pixel_snap::text_glide(r[1])], [r[0] - r[0].round(), r[1] - r[1].round()])
             } else {
@@ -286,14 +320,14 @@ impl<S: 'static> Runtime<S> {
                         crate::el::TextDir::Fixed(f) if !own => Some(f),
                         _ => None,
                     });
-                    let pl = self.text.layout_rich_with(&inp.placeholder, &[], spec.style, s, wrap, options);
+                    let pl = self.text.layout_rich_with(&inp.placeholder, &[], inp.placeholder_style.unwrap_or(spec.style), s, wrap, options);
                     let pl_flow = crate::el::Flow::of_layout(&pl);
                     let start = if own && pl_flow != n.flow { rest_origin[0] + ins[2] - ins[0] } else { rest_origin[0] };
                     // Right to left it ends at the field's start edge, its right.
                     let pl_x = match (pl_flow, wrap) {
                         (crate::el::Flow::Ltr, _) => start + pl_indent,
                         (crate::el::Flow::Rtl, Some(_)) => start,
-                        (crate::el::Flow::Rtl, None) => start - pl_indent - (pl.full_width() * tk).ceil(),
+                        (crate::el::Flow::Rtl, None) => start - pl_indent - text_width(pl.full_width() * tk),
                     };
                     let pl_origin = [pl_x, rest_origin[1]];
                     let pl_r_origin = if scale_motion == ScaleMotion::Still { pl_origin } else { [0.0, 0.0] };
@@ -346,9 +380,19 @@ impl<S: 'static> Runtime<S> {
                 }
                 // Misspelled words (`El::spellcheck`), but the one the caret is typing.
                 if inp.spellcheck && !e.is_secure() && e.preedit().is_none() && !departing {
-                    let found = crate::spell::misspelled(&e.text, Some(self.live.waker()));
+                    // Windows and the web check word by word, so the paragraphs shown are checked
+                    // alone: a 20,000-line draft hashes and walks only what's on screen. macOS
+                    // finds each text's language from the whole of it.
+                    let (from, to) = (shown_a.min(e.text.len()), shown_b.min(e.text.len()));
+                    let found = if cfg!(any(target_os = "windows", target_arch = "wasm32")) && (from > 0 || to < e.text.len()) && e.text.is_char_boundary(from) && e.text.is_char_boundary(to) {
+                        std::rc::Rc::new(crate::spell::misspelled(&e.text[from..to], Some(self.live.waker())).iter().map(|&(a, b)| (a + from, b + from)).collect::<Vec<_>>())
+                    } else {
+                        crate::spell::misspelled(&e.text, Some(self.live.waker()))
+                    };
                     // The word typing left the caret in waits unmarked until the pause ends (`spell::pause`).
-                    let caret = if e.focused { crate::spell::pause::observe(&mut self.spell_watch, &n.path, &e.text, e.range(), self.clock) } else { None };
+                    // Typing shows in the paragraphs shown, the caret's among them.
+                    let watched = if e.text.is_char_boundary(from) && e.text.is_char_boundary(to) { &e.text[from..to] } else { e.text.as_str() };
+                    let caret = if e.focused { crate::spell::pause::observe(&mut self.spell_watch, &n.path, watched, e.range(), self.clock) } else { None };
                     let color = premul(SPELLING, o, srgb);
                     for &(a, b) in found.iter().filter(|&&(a, b)| caret.is_none_or(|c| c < a || c > b)) {
                         let (da, db) = e.display_selection_range(a, b);
@@ -368,6 +412,9 @@ impl<S: 'static> Runtime<S> {
             let em = spec.spans.iter().filter_map(|sp| sp.size).fold(spec.style.size.max(spec.style.line_px()), f32::max);
             let pad = 2.0 * em * s + 2.0 / raster.max(1e-4);
             let rows = if tk > 1e-4 { (shown[0] - rest_origin[1]) / tk - pad..(shown[1] - rest_origin[1]) / tk + pad } else { f32::NEG_INFINITY..f32::INFINITY };
+            if let crate::text::TextLayout::Paragraphs(p) = laid && p.waiting() {
+                self.text_rows.insert(n.id, (rows.start, rows.end));
+            }
             for piece in flow.pieces_in(rows.start, rows.end) {
                 let layout = piece.layout;
                 let (origin, rest_origin) = ([origin[0], origin[1] + piece.y * tk], [rest_origin[0], rest_origin[1] + piece.y * tk]);
@@ -387,7 +434,17 @@ impl<S: 'static> Runtime<S> {
                 let drawn_len = n.elided.map_or(spec.content.len(), |e| e.drawn_len(spec.content.len()));
                 if !spec.cold.highlights.is_empty() {
                     let drawn = n.elided.map(|e| e.highlights(&spec.cold.highlights));
-                    self.text.highlight_decorations(layout, drawn.as_deref().unwrap_or(&spec.cold.highlights), drawn_len, s, d_origin, &mut self.deco_scratch);
+                    let marks = drawn.as_deref().unwrap_or(&spec.cold.highlights);
+                    let local;
+                    let marks = if piece.is_whole() { marks } else {
+                        local = marks.iter().filter_map(|h| {
+                            let (a, b) = piece.clip(h.start as usize, h.end as usize)?;
+                            Some(crate::TextHighlight { start: a as u32, end: b as u32, ..h.clone() })
+                        }).collect::<Vec<_>>();
+                        &local
+                    };
+                    let len = if piece.is_whole() { drawn_len } else { piece.shaped(piece.end) };
+                    self.text.highlight_decorations(layout, marks, len, s, d_origin, &mut self.deco_scratch);
                 }
                 if !strikes.is_empty() {
                     let drawn = n.elided.map(|e| e.strikes(&strikes));
@@ -516,7 +573,7 @@ impl<S: 'static> Runtime<S> {
                 // A still text whose quads this frame would draw as the last one did copies them,
                 // as `El::grid` rows do: `quads` is the entry to record them under otherwise.
                 let mut copied = false;
-                let mut quads: Option<((NodeId, usize), Rc<parley::Layout<crate::text::Ink>>, u64, usize, usize)> = None;
+                let mut quads: Option<((NodeId, crate::text::LayoutId), u64, usize, usize)> = None;
                 let mut pages: Option<Vec<(u16, u32)>> = None;
                 let zoom = if let (Some(r), Some((_, at))) = (&n.run_layout, &spec.cold.advance_in)
                     && let Some(x) = r.x(*at)
@@ -546,7 +603,10 @@ impl<S: 'static> Runtime<S> {
                     let shared = piece.shared.or(laid.single());
                     let still = scale_motion == ScaleMotion::Still && glide == [0.0; 2] && !bytes && !place_masks
                         && !self.flights.iter().any(|f| f.lands(&n.path, n.key.as_deref()));
-                    if let Some(l) = shared.filter(|_| still && !direct && !secret) {
+                    // A layout whose stamp the id table dropped draws from its glyphs, uncopied.
+                    if let Some(l) = shared.filter(|_| still && !direct && !secret)
+                        && let Some(layout_id) = self.text.layout_id(l)
+                    {
                         use std::hash::{Hash, Hasher};
                         let mut h = rune_motion::Fx::default();
                         (origin.map(f32::to_bits), clip.map(f32::to_bits), fade.map(f32::to_bits), shown.map(f32::to_bits), [tk, raster, s].map(f32::to_bits)).hash(&mut h);
@@ -554,17 +614,21 @@ impl<S: 'static> Runtime<S> {
                         for sp in spans_here.iter() {
                             sp.color.map(|c| premul(c, o, srgb).map(f32::to_bits)).hash(&mut h);
                         }
-                        let (id, key) = ((n.id, Rc::as_ptr(l) as usize), h.finish());
-                        match self.text_quads.get_mut(&id).filter(|(held, d, _)| Rc::ptr_eq(held, l) && d.key == key) {
-                            Some((_, d, used)) => {
+                        let (id, key) = ((n.id, layout_id), h.finish());
+                        match self.text_quads.get_mut(&id).filter(|(d, _)| d.key == key) {
+                            Some((d, used)) => {
                                 *used = self.quads_frame;
                                 self.instances.extend_from_slice(&d.instances);
                                 d.pages.iter().for_each(|&(page, texels)| self.text.touch_quad(page, texels));
                                 *glyph_count += d.glyphs;
                                 copied = true;
+                                #[cfg(test)]
+                                {
+                                    self.quads_copied += 1;
+                                }
                             }
                             None => {
-                                quads = Some((id, l.clone(), key, self.instances.len(), *glyph_count));
+                                quads = Some((id, key, self.instances.len(), *glyph_count));
                                 pages = Some(Vec::new());
                             }
                         }
@@ -610,7 +674,7 @@ impl<S: 'static> Runtime<S> {
                     if has_hl_fg
                         && let Some(c) = spec.cold.highlights.iter().rev().find_map(|h| {
                             let (a, b) = n.elided.map_or((h.start as usize, h.end as usize), |e| e.mark(h.start as usize, h.end as usize, false));
-                            ((q.byte as usize) >= a && (q.byte as usize) < b).then_some(h.fg).flatten()
+                            (a..b).contains(&piece.content(q.byte as usize)).then_some(h.fg).flatten()
                         })
                     {
                         f = premul(c, o, srgb);
@@ -639,9 +703,9 @@ impl<S: 'static> Runtime<S> {
                         }
                     }
                 }
-                if let (Some((id, layout, key, start, glyphs)), Some(pages)) = (quads, pages) {
+                if let (Some((id, key, start, glyphs)), Some(pages)) = (quads, pages) {
                     let d = crate::el::grid::DrawnRow { key, instances: self.instances[start..].to_vec(), pages, glyphs: *glyph_count - glyphs };
-                    self.text_quads.insert(id, (layout, d, self.quads_frame));
+                    self.text_quads.insert(id, (d, self.quads_frame));
                 }
             }
             if let (Some(c), Some(inp)) = (caret, &n.input) {

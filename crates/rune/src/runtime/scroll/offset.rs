@@ -76,7 +76,8 @@ impl<S: 'static> Runtime<S> {
         // Landing mounts the virtual rows there, which measure and can move the end it clamped to.
         for _ in 0..3 {
             if !self.virtual_window_changed() { break; }
-            self.commit(&Tx::default());
+            // A jump is at once, and so are the rows it mounts: none fades in where it lands.
+            self.commit(&Tx { commit: Commit::Instant, ..Tx::default() });
             self.step_scroll(0.0);
             for (j, key, at) in &anchors {
                 if let Some((_, to)) = self.anchor_offset(key, *at) { jumps[*j].2 = to; }
@@ -110,15 +111,31 @@ impl<S: 'static> Runtime<S> {
 
     /// The vertical viewport around the element or `TextHighlight` `key` and the offset that puts
     /// its top `at` points below the viewport's top, before clamping.
+    /// A virtual row not mounted yet stands where its list's estimates put it: the jump there
+    /// mounts it, and is placed again from its laid-out top once it has (`scroll_to_offsets`).
     fn anchor_offset(&self, key: &str, at: f32) -> Option<(usize, f64)> {
-        let top = self.nodes.iter().enumerate()
-            .find_map(|(i, n)| (n.named(key) && !self.subtree_exiting(i)).then_some(n.target[1]))
-            .or_else(|| {
-                let (i, [_, y0, _, _]) = self.highlight_target_in(&self.nodes, None, key)?;
-                (!self.subtree_exiting(i)).then_some(y0)
-            })?;
-        let v = self.scroll_viewport_on(key, false, true)?;
-        Some((v, f64::from(top - self.nodes[v].target[1] - at).max(0.0)))
+        let found = |scope: Option<&str>, key: &str| {
+            self.nodes.iter().enumerate()
+                .find_map(|(i, n)| (n.named(key) && n.parent.is_none_or(|p| in_scope(&self.nodes[p].path, scope)) && !self.subtree_exiting(i)).then_some((i, n.target[1])))
+                .or_else(|| {
+                    let (i, [_, y0, _, _]) = self.highlight_target_in(&self.nodes, scope, key)?;
+                    (!self.subtree_exiting(i)).then_some((i, y0))
+                })
+        };
+        // `"row/mark"`: element or highlight `mark` anywhere inside the element keyed `row`.
+        let top = found(None, key).or_else(|| key.split_once('/').and_then(|(row, mark)| found(Some(row), mark)));
+        if let Some((i, top)) = top {
+            let v = std::iter::successors(Some(i), |&p| self.nodes[p].parent).find(|&p| self.nodes[p].scroll.is_some() && self.nodes[p].scroll_axes.y())?;
+            return Some((v, f64::from(top - self.nodes[v].target[1] - at).max(0.0)));
+        }
+        self.nodes.iter().find_map(|n| {
+            let list = self.virtuals.get(&n.path)?;
+            // A row that isn't mounted stands where the estimates put it; the jump mounts it and
+            // `scroll_to_offsets` places `mark` once it has.
+            let index = list.index_of(key).or_else(|| list.index_of(key.split_once('/')?.0))?;
+            let v = *self.node_index.get(self.path_ids.get(&list.scroll_path)?)?;
+            Some((v, f64::from(list.top + list.pad_top + list.prefix(index) - at).max(0.0)))
+        })
     }
 
     /// The viewport keyed (or pathed) `key`, or the nearest one around it, that scrolls

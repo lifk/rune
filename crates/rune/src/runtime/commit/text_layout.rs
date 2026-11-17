@@ -11,6 +11,19 @@ impl CeilTo for f32 {
     }
 }
 
+/// `px` device pixels rounded up to a 64th of one, the unit Chromium's layout keeps a text
+/// run's width in (`LayoutUnit`): a label is as wide as its glyphs, so what follows it sits
+/// where Chromium puts it, never up to a pixel further on.
+pub(crate) fn text_width(px: f32) -> f32 {
+    ((px - 1e-3) * 64.0).ceil().max(0.0) / 64.0
+}
+
+/// Device px a text may run past the width it wraps at and still fit: [`text_width`] can round
+/// a box up to 1e-3 px under its text, and points to device px and back loses a little more, so
+/// a text laid out again in its own shrink-to-fit box would otherwise wrap its last word. Blink
+/// compares both in the same `LayoutUnit`s, where they're equal.
+pub(crate) const FIT_SLACK: f32 = 1.0 / 256.0;
+
 /// How far a single-line field's text shifts left (device px) so its caret stays inside
 /// `visible` device px. Unfocused fields rest at their start, like a native text field.
 pub(super) fn single_line_scroll(scrolls: &mut HashMap<String, f32>, path: &str, inp: &crate::el::InputSpec, content: &str, layout: &Layout<Ink>, s: f32, visible: f32) -> f32 {
@@ -324,14 +337,16 @@ pub(super) fn release_kept_layouts(
 /// half the longer one.
 pub(super) fn edited(was: &str, now: &str) -> bool {
     let (a, b) = (was.as_bytes(), now.as_bytes());
-    let prefix = a.iter().zip(b).take_while(|(x, y)| x == y).count();
-    let suffix = a[prefix..].iter().rev().zip(b[prefix..].iter().rev()).take_while(|(x, y)| x == y).count();
-    a != b && 2 * (prefix + suffix) >= a.len().max(b.len())
+    // Compared in blocks: a long draft's keystroke compares it in a few dozen memcmps.
+    let prefix = crate::text::common_start(a, b);
+    let suffix = crate::text::common_end(a, b).min(a.len().min(b.len()) - prefix);
+    prefix + suffix < a.len().max(b.len()) && 2 * (prefix + suffix) >= a.len().max(b.len())
 }
 
 /// Lays out the flattened tree in `room`, measuring text leaves. Not generic over the app state,
 /// so Taffy's layout code is instantiated once, not once per `Runtime<S>`.
 pub(super) fn compute_layout(taffy: &mut LayoutEngine, root: SlotId, room: Size<AvailableSpace>, nodes: &[Node], text: &mut TextSystem, scale: f32) {
+    text.forget_diff();
     taffy.compute_layout(root, room, |inputs, ctx, style| {
         taffy::compute_leaf_layout(inputs, style, |_, _| 0.0, |known, avail| {
             let Some(i) = ctx else { return Size::ZERO };
@@ -358,10 +373,10 @@ pub(super) fn compute_layout(taffy: &mut LayoutEngine, root: SlotId, room: Size<
                     };
                 }
             }
-            let laid = text.layout_text(spec, nodes[i].input.is_some(), scale, w.map(|w| w * scale), parley::Alignment::Start, nodes[i].text_layout.as_ref());
+            let laid = text.layout_text(spec, nodes[i].input.is_some(), scale, w.map(|w| w * scale + FIT_SLACK), parley::Alignment::Start, nodes[i].text_layout.as_ref());
             let l = laid.view();
             // Spaces hanging past a wrapped line's end take no room, as in CSS.
-            let mut lw = ((if w.is_some() { l.width() } else { l.full_width() }) / scale).ceil_to(scale);
+            let mut lw = text_width(if w.is_some() { l.width() } else { l.full_width() }) / scale;
             if (spec.truncate || spec.truncate_fade || spec.max_lines > 0)
                 && let AvailableSpace::Definite(a) = avail.width
             {

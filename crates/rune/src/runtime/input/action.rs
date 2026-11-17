@@ -71,6 +71,7 @@ pub(super) enum Action {
 pub(super) struct Queued {
     pub(super) action: Action,
     pub(super) at: Option<Instant>,
+    pub(super) input: bool,
 }
 
 /// The actions waiting for the next frame, in order, each with its input's arrival time.
@@ -79,12 +80,27 @@ pub(super) struct ActionQueue(Vec<Queued>);
 
 impl ActionQueue {
     /// Queues `action` stamped with the input being dispatched now, if any.
-    pub(super) fn push(&mut self, action: Action) { self.0.push(Queued { action, at: crate::input::time::current() }); }
+    pub(super) fn push(&mut self, action: Action) {
+        // A host can dispatch input without a timestamp. Layout and state observers, on the
+        // other hand, don't become input just because they have a queued callback.
+        let at = crate::input::time::current();
+        let input = !matches!(action, Action::Layout(..) | Action::ScreenLayout(..) | Action::DrawnLayout(..)
+            | Action::Visible(..) | Action::VisibleRows(..) | Action::AtBottom(..) | Action::FarFromBottom(..)
+            | Action::WindowFocus(_) | Action::Physical(crate::PhysicalInput::FocusLost, _) | Action::FinishIme
+            | Action::ClipboardRead(..) | Action::SelectionChange(..)) || at.is_some();
+        self.0.push(Queued { action, at, input });
+    }
+    /// A stationary pointer was re-hit after layout; no pointer event asked for that hover.
+    pub(super) fn observe_since(&mut self, start: usize) {
+        for q in &mut self.0[start..] { q.input = false; }
+    }
     /// Queues an action again with its own stamp.
     pub(super) fn push_queued(&mut self, queued: Queued) { self.0.push(queued); }
     /// Puts `queued` ahead of everything queued.
     pub(super) fn prepend(&mut self, queued: Vec<Queued>) { self.0.splice(0..0, queued); }
     pub(super) fn iter(&self) -> impl Iterator<Item = &Action> { self.0.iter().map(|q| &q.action) }
+    /// Whether any of them came from the user's input (they carry its arrival time).
+    pub(super) fn has_input(&self) -> bool { self.0.iter().any(|q| q.at.is_some()) }
     pub(super) fn len(&self) -> usize { self.0.len() }
     pub(super) fn is_empty(&self) -> bool { self.0.is_empty() }
     pub(super) fn retain(&mut self, mut keep: impl FnMut(&Action) -> bool) { self.0.retain(|q| keep(&q.action)); }
@@ -208,7 +224,7 @@ pub(crate) fn merge(tx: &mut Tx, one: Tx) {
     tx.clear_secret |= one.clear_secret;
     if one.copy.is_some() { tx.copy = one.copy; }
     tx.shell = tx.shell.max(one.shell);
-    tx.minimize |= one.minimize;
+    tx.minimize_order = tx.minimize_order.max(one.minimize_order);
     tx.toggle_maximized |= one.toggle_maximized;
     tx.toggle_full_screen |= one.toggle_full_screen;
     tx.keys.extend(one.keys);
@@ -234,6 +250,8 @@ pub(crate) fn merge(tx: &mut Tx, one: Tx) {
     tx.commit = tx.commit.merge(one.commit);
     tx.follow_edge |= one.follow_edge;
     tx.asked_motion |= one.asked_motion;
+    for (stack, ink) in one.live_growth { tx.request_live_growth(stack, ink); }
+    tx.tail_rooms.extend(one.tail_rooms);
     tx.motion = one.motion.or(tx.motion);
     tx.color_motion = one.color_motion.or(tx.color_motion);
 }
@@ -242,7 +260,7 @@ pub(crate) fn merge(tx: &mut Tx, one: Tx) {
 /// runs at a time and hosts report ends in order, so each belongs to the oldest open drag: it
 /// runs before any later drag's start, and after its own start when both are queued.
 pub(super) fn order_drag_ends(queue: ActionQueue, ended: Vec<(String, crate::DragOutcome)>, open: &mut usize) -> ActionQueue {
-    let mut ended = ended.into_iter().map(|(path, outcome)| Queued { action: Action::DragEnd(path, outcome), at: None });
+    let mut ended = ended.into_iter().map(|(path, outcome)| Queued { action: Action::DragEnd(path, outcome), at: None, input: true });
     let mut out = Vec::with_capacity(queue.len() + ended.len());
     for queued in queue {
         match &queued.action {
@@ -302,6 +320,9 @@ impl<S: 'static> Runtime<S> {
     }
 
     fn dispatch_action(&mut self, action: Action, tx: &mut Tx) -> bool {
+        // A caret key or a press reads the field's layout where it lands: a long paste's
+        // paragraphs still waiting there are shaped first. Typing at the caret needs none.
+        if !self.text_rows.is_empty() && reads_text_layout(&action) { self.fill_text_near(); }
         let mut one = self.transaction();
         // Debug builds name the element too, for the stale-view warning.
         #[cfg(debug_assertions)]
@@ -356,13 +377,11 @@ impl<S: 'static> Runtime<S> {
             }
             Action::AtBottom(path, at) => {
                 let Some(f) = self.node(&path).and_then(|n| n.handlers.on_at_bottom.clone()) else { return false };
-                f(states!(self), at);
-                true
+                f(states!(self), at)
             }
             Action::FarFromBottom(path, far) => {
                 let Some((_, _, f)) = self.node(&path).and_then(|n| n.handlers.on_far_from_bottom.clone()) else { return false };
-                f(states!(self), far);
-                true
+                f(states!(self), far)
             }
             Action::VisibleRows(path, range) => {
                 let Some(f) = self.node(&path).and_then(|n| n.handlers.on_visible_rows.clone()) else { return false };
@@ -542,5 +561,20 @@ impl<S: 'static> Runtime<S> {
             return self.skip_view(label);
         }
         ran
+    }
+}
+
+/// Whether `action` reads a text's layout away from its caret: caret movement, a press or a
+/// drag. Text typed, deleted or composed at the caret doesn't.
+fn reads_text_layout(action: &Action) -> bool {
+    use crate::Key;
+    match action {
+        Action::Key { ev, .. } => match &ev.key {
+            Key::Text(_) | Key::Backspace | Key::Delete => ev.mods.cmd || ev.mods.ctrl || ev.mods.alt,
+            Key::Modifier { .. } => false,
+            _ => true,
+        },
+        Action::Press(..) | Action::DoublePress(..) | Action::MiddlePress(..) | Action::SecondaryPress(..) | Action::Drag(..) | Action::DragStart(..) => true,
+        _ => false,
     }
 }

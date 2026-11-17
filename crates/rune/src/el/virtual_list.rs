@@ -9,19 +9,57 @@ use taffy::style::{Display, FlexDirection, FlexWrap, LengthPercentage, LengthPer
 use crate::El;
 use crate::runtime::{HashMap, HashSet};
 
-/// What a row keeps while its key stays.
-#[derive(Debug, Clone, Copy)]
-struct Row {
-    index: usize,
-    /// Its measured height, once it has been laid out.
-    height: Option<f32>,
+/// Each row's place in `keys`, found by its key's hash: a table of indices, not a second copy
+/// of every key, so a list of 100,000 rows takes new keys without 100,000 allocations. A key whose
+/// hash another key took first is kept by name.
+#[derive(Debug, Default)]
+struct Places {
+    by_hash: HashMap<u64, usize>,
+    collided: HashMap<String, usize>,
+}
+
+impl Places {
+    fn hash(key: &str) -> u64 {
+        use std::hash::{BuildHasher, Hash, Hasher};
+        let mut h = rustc_hash::FxBuildHasher.build_hasher();
+        key.hash(&mut h);
+        h.finish()
+    }
+
+    /// The places of `keys`, which must be unique.
+    fn of(keys: &[String]) -> Places {
+        let mut places = Places { by_hash: HashMap::with_capacity_and_hasher(keys.len(), Default::default()), collided: HashMap::default() };
+        for (i, key) in keys.iter().enumerate() {
+            match places.by_hash.entry(Self::hash(key)) {
+                std::collections::hash_map::Entry::Vacant(e) => {
+                    e.insert(i);
+                }
+                std::collections::hash_map::Entry::Occupied(e) => {
+                    assert!(keys[*e.get()] != *key, "virtual row keys must be unique");
+                    assert!(places.collided.insert(key.clone(), i).is_none(), "virtual row keys must be unique");
+                }
+            }
+        }
+        places
+    }
+
+    /// Where `key` is in `keys` (those `self` was made of).
+    fn get(&self, keys: &[String], key: &str) -> Option<usize> {
+        match self.by_hash.get(&Self::hash(key)) {
+            Some(&i) if keys[i] == key => Some(i),
+            _ if self.collided.is_empty() => None,
+            _ => self.collided.get(key).copied(),
+        }
+    }
 }
 
 #[derive(Debug, Default)]
 pub(crate) struct VirtualList {
     /// Row keys in order; replace them with [`VirtualList::set_keys`].
     pub keys: Vec<String>,
-    rows: HashMap<String, Row>,
+    places: Places,
+    /// Each row's measured height, once it has been laid out, in `keys` order.
+    measured: Vec<Option<f32>>,
     /// The commit each row in `keys` first appeared in.
     born: Vec<u64>,
     /// `keys` changed since the frame began ([`VirtualList::frame_begins`]).
@@ -60,6 +98,17 @@ pub(crate) struct VirtualList {
     pub scroll_path: String,
     pub viewport: f32,
     pub top: f32,
+    /// The list lies in a row of another virtual list with the same scroll viewport (an open
+    /// section of a long list, itself long): it windows against that viewport where the row
+    /// places it ([`VirtualList::top`]), and only that viewport, not this list, is pinned to its
+    /// end ([`VirtualList::locate`]).
+    pub nested: bool,
+    /// How far the viewport's content runs on under a nested list, as last laid out: where its
+    /// window stands while the viewport is pinned to its end.
+    pub tail: f32,
+    /// A nested list wholly above the viewport's top holds no reader, so it anchors nothing:
+    /// its rows changing height move the rows under it, which the list around it anchors.
+    passed: bool,
     pub pad_top: f32,
     pub pad_bottom: f32,
     gap: f32,
@@ -190,15 +239,15 @@ const PINNED_ROWS: usize = 32;
 
 impl VirtualList {
     pub fn height(&self, key: &str) -> f32 {
-        self.rows.get(key).and_then(|r| r.height).unwrap_or(self.estimate)
+        self.index_of(key).and_then(|i| self.measured[i]).unwrap_or(self.estimate)
     }
 
     pub fn has(&self, key: &str) -> bool {
-        self.rows.contains_key(key)
+        self.index_of(key).is_some()
     }
 
     pub fn index_of(&self, key: &str) -> Option<usize> {
-        self.rows.get(key).map(|r| r.index)
+        self.places.get(&self.keys, key)
     }
 
     /// Whether row `i`, mounting in `commit`, skips its insertion transition. A row scrolled into
@@ -234,30 +283,63 @@ impl VirtualList {
     /// at `commit`. Returns the first row visible at `offset` (when given) that stays, with its
     /// top before the change, to anchor the reader to: none when no row in view stays.
     pub fn set_keys(&mut self, keys: Vec<String>, commit: u64, offset: Option<f32>) -> Option<(String, f32)> {
-        let mut rows = HashMap::with_capacity_and_hasher(keys.len(), Default::default());
+        let places = Places::of(&keys);
         let mut born = Vec::with_capacity(keys.len());
         let mut heights = Vec::with_capacity(keys.len());
-        for (index, key) in keys.iter().enumerate() {
-            let old = self.rows.get(key);
-            let height = old.and_then(|r| r.height);
-            born.push(old.map_or(commit, |r| self.born[r.index]));
+        let mut measured = Vec::with_capacity(keys.len());
+        for key in &keys {
+            let old = self.index_of(key);
+            let height = old.and_then(|i| self.measured[i]);
+            born.push(old.map_or(commit, |i| self.born[i]));
             heights.push(height.unwrap_or(self.estimate));
-            assert!(rows.insert(key.clone(), Row { index, height }).is_none(), "virtual row keys must be unique");
+            measured.push(height);
         }
+        let stays = |k: &str| places.get(&keys, k).is_some();
         // A change that keeps none of the rows in view (a filter) leaves nothing to hold.
-        let anchor = offset.and_then(|offset| self.first_visible(offset, |k| rows.contains_key(k)))
+        let anchor = offset.and_then(|offset| self.first_visible(offset, &stays))
             .filter(|(_, top)| offset.is_some_and(|offset| *top < offset + self.viewport));
         if keys != self.keys {
             self.keys_fresh = true;
-            self.held = if offset.is_some() { anchor.is_some() } else { self.keys.iter().any(|k| rows.contains_key(k)) };
+            self.held = if offset.is_some() { anchor.is_some() } else { self.keys.iter().any(|k| stays(k)) };
         }
-        self.rows = rows;
+        self.places = places;
+        self.measured = measured;
         self.born = born;
         self.keys = keys;
         self.row_heights = heights;
         self.sums_stale.set(true);
         self.reported_visible = None;
         anchor
+    }
+
+    /// The list's own scroll offset, and whether its window is pinned to its end, for its
+    /// viewport scrolled to `scroll` (`pinned`: the viewport holds its end). A nested list
+    /// is never pinned itself: it stands where the viewport's end leaves it.
+    pub fn at(&self, scroll: f32, pinned: bool) -> (f32, bool) {
+        if !self.nested {
+            return ((scroll - self.top).max(0.0), pinned);
+        }
+        let offset = if pinned { self.extent() + self.tail - self.viewport } else { scroll - self.top };
+        (offset.max(0.0), false)
+    }
+
+    /// [`VirtualList::at`], noting whether a nested list lies wholly above the viewport's top
+    /// and so anchors nothing (`select`, `hold` and the commits that anchor the reader).
+    pub fn locate(&mut self, scroll: f32, pinned: bool) -> (f32, bool) {
+        let at = self.at(scroll, pinned);
+        self.passed = self.nested && at.0 >= self.extent();
+        at
+    }
+
+    /// Whether the list is nested and wholly above the viewport's top, so it anchors nothing
+    /// ([`VirtualList::locate`]).
+    pub fn passed(&self) -> bool {
+        self.passed
+    }
+
+    /// The rows' extent, their padding included.
+    fn extent(&self) -> f32 {
+        self.pad_top + self.prefix(self.keys.len()) + self.pad_bottom
     }
 
     pub fn set_estimate(&mut self, estimate: f32) {
@@ -276,9 +358,8 @@ impl VirtualList {
     }
 
     pub fn set_height(&mut self, key: &str, height: f32) {
-        let Some(row) = self.rows.get_mut(key) else { return };
-        row.height = Some(height);
-        let i = row.index;
+        let Some(i) = self.index_of(key) else { return };
+        self.measured[i] = Some(height);
         if self.row_heights[i] != height {
             self.row_heights[i] = height;
             self.sums_stale.set(true);
@@ -383,7 +464,7 @@ impl VirtualList {
         (start, end) = (lo, hi);
         // A row still at its estimate grows or shrinks once measured; anchoring to it would move
         // the measured rows below, such as the reader's row under a page that just landed.
-        self.anchor = if pinned { None } else { self.anchor_at(offset) };
+        self.anchor = if pinned || self.passed { None } else { self.anchor_at(offset) };
         if pinned { start = start.min(end.saturating_sub(PINNED_ROWS)); }
         end = end.max(start);
         self.place(start..end);
@@ -393,7 +474,7 @@ impl VirtualList {
     /// [`select`](Self::select) does, and re-derives the space above and below them.
     pub fn hold(&mut self, offset: f32, pinned: bool) {
         let offset = if pinned { self.max_offset() } else { offset.min(self.max_offset()) };
-        self.anchor = if pinned { None } else { self.anchor_at(offset) };
+        self.anchor = if pinned || self.passed { None } else { self.anchor_at(offset) };
         let len = self.keys.len();
         self.place(self.range.start.min(len)..self.range.end.min(len));
     }
@@ -409,7 +490,7 @@ impl VirtualList {
     fn anchor_at(&self, offset: f32) -> Option<(String, f32)> {
         let range = self.visible_range(offset, false);
         let sums = self.sums();
-        range.into_iter().find(|&i| self.rows[&self.keys[i]].height.is_some())
+        range.into_iter().find(|&i| self.measured[i].is_some())
             .map(|i| (self.keys[i].clone(), self.pad_top + sums[i]))
             .or_else(|| self.first_visible(offset, |_| true))
     }

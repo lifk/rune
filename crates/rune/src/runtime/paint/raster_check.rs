@@ -7,7 +7,9 @@
 use super::*;
 
 pub(super) fn on() -> bool {
-    cfg!(debug_assertions) && std::env::var_os("RUNE_RASTER_CHECK").is_some_and(|v| v != "0")
+    // Read once: a frame at rest asks, and reading the environment allocates on Windows.
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    cfg!(debug_assertions) && *ON.get_or_init(|| std::env::var_os("RUNE_RASTER_CHECK").is_some_and(|v| v != "0"))
 }
 
 impl<S: 'static> Runtime<S> {
@@ -16,6 +18,7 @@ impl<S: 'static> Runtime<S> {
     pub(super) fn check_resting_raster(&mut self) {
         let settled = glyphs(&self.instances);
         self.text.forget_raster_state();
+        self.paint_keep.off_once = true;
         self.build();
         let fresh = glyphs(&self.instances);
         let differ: Vec<_> = settled.iter().zip(&fresh).filter(|(a, b)| a != b).collect();

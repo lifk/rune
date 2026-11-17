@@ -28,10 +28,17 @@ pub(super) struct Uploads {
     has_layers: bool,
     /// The viewport last written to globals (`width << 32 | height`, `u64::MAX` before any).
     viewport: AtomicU64,
-    /// The sRGB flag last written to globals.
-    srgb: Option<bool>,
+    /// Gamma-space blend and byte-source flags last written to globals.
+    srgb: Option<(bool, bool)>,
     /// `Staging::lost` as last seen by `prepare` and by `upload_images`.
     lost: (u64, u64),
+    /// The paint the next `prepare`'s instances come from, and which of them alone changed
+    /// since the last `prepare` of that paint (`Renderer::next_instances`).
+    next: Option<(u64, Option<Vec<u32>>)>,
+    /// The paint `instances` came from, when the last `prepare` was told it.
+    held_paint: Option<u64>,
+    /// The last `prepare` wrote only a loop-only frame's slots.
+    patched: bool,
     #[cfg(test)]
     pub(super) globals_writes: u64,
     #[cfg(test)]
@@ -40,7 +47,7 @@ pub(super) struct Uploads {
 
 impl Default for Uploads {
     fn default() -> Uploads {
-        Uploads { staging: None, frame_writes: None, instances: Vec::new(), batched: false, has_layers: false, viewport: AtomicU64::new(u64::MAX), srgb: None, lost: (0, 0),
+        Uploads { staging: None, frame_writes: None, instances: Vec::new(), batched: false, has_layers: false, viewport: AtomicU64::new(u64::MAX), srgb: None, lost: (0, 0), next: None, held_paint: None, patched: false,
             #[cfg(test)] globals_writes: 0, #[cfg(test)] batch_runs: 0 }
     }
 }
@@ -50,6 +57,7 @@ impl Uploads {
     fn forget_instances(&mut self) {
         self.instances.clear();
         self.batched = false;
+        self.held_paint = None;
     }
 
     pub(super) fn staging(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> Staging {
@@ -200,6 +208,20 @@ impl Renderer {
         instances: &[Instance],
         viewport: (u32, u32),
     ) {
+        // A caller may draw these lists into several different formats with draw_range.
+        self.prepare_with_precision(device, queue, atlas, instances, viewport, false);
+    }
+
+    /// The default UI pass draws the root into one known target. Its float intermediate layers
+    /// have their own projection and keep their source precision in the shader.
+    pub(crate) fn prepare_ui(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, atlas: &mut Atlas,
+        instances: &[Instance], viewport: (u32, u32)) {
+        let bytes = self.srgb_blend && matches!(self.format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Rgba8Unorm);
+        self.prepare_with_precision(device, queue, atlas, instances, viewport, bytes);
+    }
+
+    fn prepare_with_precision(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, atlas: &mut Atlas,
+        instances: &[Instance], viewport: (u32, u32), byte_source: bool) {
         if self.springs.is_some() { assert_eq!(instances.len(), self.spring_instances); }
         let staging = self.uploads.staging(device, queue);
         if staging.lost() != self.uploads.lost.0 {
@@ -209,8 +231,17 @@ impl Renderer {
         // The Windfoil shader, built the first time text draws from outlines (render/variant.rs),
         // fills atlas pages on the GPU, so the pages are made again as ones it can draw into.
         if atlas.outlines.has_records() && self.select(device, variant::Event::OutlinesWanted) {
-            self.atlas = Self::atlas_texture(device, true);
-            for page in &mut self.atlas_pages { page.0 = Self::atlas_texture(device, true); }
+            self.atlas = Self::atlas_texture(device, true, self.atlas.height());
+            for page in &mut self.atlas_pages { page.0 = Self::atlas_texture(device, true, ATLAS_SIZE); }
+            self.rebind_all(device);
+            atlas.invalidate();
+        }
+        // The first page's texture grows with what its shelves hold; a new one starts empty, so
+        // every placed row goes up again and every GPU-filled mask is filled again (`invalidate`).
+        let rows = atlas.page_rows(0);
+        if rows > self.atlas.height() {
+            let height = rows.next_power_of_two().clamp(ATLAS_START_ROWS, ATLAS_SIZE);
+            self.atlas = Self::atlas_texture(device, self.uber.outlines().is_some(), height);
             self.rebind_all(device);
             atlas.invalidate();
         }
@@ -225,7 +256,7 @@ impl Renderer {
         let filled = self.uber.outlines().is_some();
         for index in 0..atlas.pages.len() {
             if index >= self.atlas_pages.len() {
-                let texture = Self::atlas_texture(device, filled);
+                let texture = Self::atlas_texture(device, filled, ATLAS_SIZE);
                 let bind = Self::bind_group(device, &self.bind_layout, &self.globals, self.uber.outlines(), &texture, &texture, None);
                 self.atlas_pages.push((texture, bind));
                 atlas_changed = true;
@@ -249,8 +280,9 @@ impl Renderer {
             staging.write_buffer(&self.globals, 0, bytemuck::cast_slice(&[viewport.0 as f32, viewport.1 as f32]));
             #[cfg(test)] { self.uploads.globals_writes += 1; }
         }
-        if self.uploads.srgb.replace(self.srgb_blend) != Some(self.srgb_blend) {
-            let flags: [f32; 4] = [if self.srgb_blend { 1.0 } else { 0.0 }, 0.0, 0.0, 0.0];
+        let mode = (self.srgb_blend, byte_source);
+        if self.uploads.srgb.replace(mode) != Some(mode) {
+            let flags: [f32; 4] = [self.srgb_blend as u8 as f32, byte_source as u8 as f32, 0.0, 0.0];
             staging.write_buffer(&self.globals, 16, bytemuck::cast_slice(&flags));
             #[cfg(test)] { self.uploads.globals_writes += 1; }
         }
@@ -262,9 +294,15 @@ impl Renderer {
             for (at, effect) in &mut self.effects { *effect = instances[*at as usize]; }
         }
         let has_layers = self.uploads.has_layers;
-        self.prepare_layers(device, queue, if has_layers { instances } else { &[] }, viewport);
+        // A loop-only frame that draws no layer leaves them as the last frame drew them.
+        #[cfg(target_arch = "wasm32")]
+        let layers_kept = self.uploads.patched && self.cycle_leaves_layers();
+        #[cfg(not(target_arch = "wasm32"))]
+        let layers_kept = false;
+        if !layers_kept { self.prepare_layers(device, queue, if has_layers { instances } else { &[] }, viewport); }
         self.sync_resident_caches(&mut atlas.resident_caches);
-        if self.effects.iter().any(|(_, i)| i.params[0] != 0.0 || i.params[1] == KIND_BACKDROP_BLUR) {
+        self.backdrop_used = self.effects.iter().any(|(_, i)| i.params[0] != 0.0 || i.params[1] == KIND_BACKDROP_BLUR);
+        if self.backdrop_used {
             self.ensure_backdrop(device, self.format, viewport);
             for index in 0..self.extra.len() {
                 self.ensure_backdrop(device, self.extra[index].0, viewport);
@@ -402,6 +440,13 @@ impl Renderer {
     /// where a few instances move writes only those. A span whose `params` changed asks `prepare`
     /// to batch again.
     fn write_instances(&mut self, staging: &Staging, instances: &[Instance]) {
+        let next = self.uploads.next.take();
+        self.uploads.patched = false;
+        if let Some((paint, Some(patched))) = &next && self.uploads.held_paint == Some(*paint) && instances.len() == self.uploads.instances.len() {
+            self.uploads.patched = true;
+            return self.write_patched(staging, instances, patched);
+        }
+        self.uploads.held_paint = next.map(|n| n.0);
         let held = &mut self.uploads.instances;
         let shared = instances.len().min(held.len());
         let mut rebatch = instances.len() != held.len();
@@ -420,6 +465,36 @@ impl Renderer {
         if instances.len() > shared { rebatch |= Self::join(&self.instances, held, staging, instances, &mut open, shared..instances.len()); }
         if let Some(span) = open { rebatch |= Self::write_span(&self.instances, held, staging, instances, span); }
         self.uploads.batched &= !rebatch;
+    }
+
+    /// Writes only `patched` (ascending): the instances a loop-only frame changed in colour since
+    /// the buffer was written from the same paint, so nothing else needs comparing. Only a change
+    /// of kind, or of an instance that isn't a plain box, can move a batch.
+    fn write_patched(&mut self, staging: &Staging, instances: &[Instance], patched: &[u32]) {
+        let held = &mut self.uploads.instances;
+        debug_assert!(held.iter().zip(instances).enumerate().all(|(n, (h, i))| patched.binary_search(&(n as u32)).is_ok() || same(std::slice::from_ref(h), std::slice::from_ref(i))),
+            "a loop-only frame changed an instance that isn't one of its slots");
+        let mut rebatch = false;
+        let mut k = 0;
+        while k < patched.len() {
+            let start = patched[k] as usize;
+            let mut end = start + 1;
+            while k + 1 < patched.len() && patched[k + 1] as usize == end { k += 1; end += 1; }
+            k += 1;
+            if end > instances.len() || same(&instances[start..end], &held[start..end]) { continue; }
+            rebatch |= held[start..end].iter().zip(&instances[start..end]).any(|(h, i)| h.params[1] != i.params[1] || i.params[1] != KIND_RECT);
+            held[start..end].copy_from_slice(&instances[start..end]);
+            let offset = (start * std::mem::size_of::<Instance>()) as u64;
+            staging.write_buffer(&self.instances, offset, bytemuck::cast_slice(&instances[start..end]));
+        }
+        self.uploads.batched &= !rebatch;
+    }
+
+    /// The next `prepare`'s instances are paint `paint`'s (`runtime/paint/cycle.rs`). With
+    /// `patched`, only those instances changed since the last `prepare` of the same paint.
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    pub(crate) fn next_instances(&mut self, paint: u64, patched: Option<Vec<u32>>) {
+        self.uploads.next = Some((paint, patched));
     }
 
     /// Adds `span` to the open span if it is less than a block past it, or writes the open span

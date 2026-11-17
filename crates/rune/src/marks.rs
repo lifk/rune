@@ -134,10 +134,30 @@ static INPUT_READY: AtomicBool = AtomicBool::new(false);
 pub(crate) fn presented() {
     if !TOTALS_DONE.swap(true, Ordering::Relaxed) {
         mark("frame.first.presented");
+        // Windows' word dictionaries load once the first frame is out (platform/win32/segmenter.rs).
+        #[cfg(all(target_os = "windows", not(feature = "segmenter-dictionaries")))]
+        crate::platform::win32::segmenter::first_frame_presented();
     }
     if !MISSED.swap(false, Ordering::Relaxed) {
         mark_once(&TEXT_COMPLETE, "text.complete");
     }
+}
+
+static KEY_ARRIVED: AtomicBool = AtomicBool::new(false);
+static KEY_HANDLED: AtomicBool = AtomicBool::new(false);
+static PRESS_ARRIVED: AtomicBool = AtomicBool::new(false);
+static PRESS_HANDLED: AtomicBool = AtomicBool::new(false);
+
+/// The launch's first key press and first mouse button press: `input.key.arrived` and
+/// `input.press.arrived` as the window hears them, `input.key.handled` and `input.press.handled`
+/// as a frame runs them, so a trace says how long the first input waited.
+pub(crate) fn input_arrived(key: bool) {
+    if key { mark_once(&KEY_ARRIVED, "input.key.arrived") } else { mark_once(&PRESS_ARRIVED, "input.press.arrived") }
+}
+
+/// See [`input_arrived`].
+pub(crate) fn input_handled(key: bool) {
+    if key { mark_once(&KEY_HANDLED, "input.key.handled") } else { mark_once(&PRESS_HANDLED, "input.press.handled") }
 }
 
 /// The event loop is about to wait for input: after the first present, `input.ready`.

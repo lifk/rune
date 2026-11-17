@@ -98,7 +98,10 @@ pub(super) fn build<S: 'static>(item: TabItem<'_, S>, at: Place, prev: Option<&s
         true => row().key("avatar").size(16.0, 16.0),
         false => lead(item.avatar, item.icon, at.active, icon_only && dotted, status, k),
     };
-    let title = (!icon_only).then(|| title(&item.title, item.editor, &at, vertical, emphasized, k));
+    // Without hover every closable tab shows its slot: the title fades 24 before the tab's end, 44 with a status mark beside the close button.
+    let touch = st.hover_none && closable && !icon_only;
+    let room = if touch && status.is_some() { 44.0 } else { 24.0 };
+    let title = (!icon_only).then(|| title(&item.title, item.editor, &at, vertical, emphasized || touch, room, k));
     pill = match (item.subtitle, title) {
         (Some(sub), Some(t)) if vertical => {
             let sub = text(sub.into_owned()).key("subtitle").font(k.ty.ui_compact).color(c.text_muted).truncate_fade_width(FADE / k.ty.ui_compact.size).a11y_hidden();
@@ -110,7 +113,7 @@ pub(super) fn build<S: 'static>(item: TabItem<'_, S>, at: Place, prev: Option<&s
     };
     // What the pointer lays over the slot's ground where the tab has no overlay of its own.
     let hover_overlay = (overlay == Color::TRANSPARENT).then_some(c.hover);
-    let look = SlotLook { status, active: at.active, vertical, icon_only, hover_overlay, closable, composite, h, width: at.width };
+    let look = SlotLook { status, active: at.active, vertical, icon_only, hover_overlay, closable, composite, h, width: at.width, touch };
     if let Some(slot) = status_slot(look, st, &id, k) {
         pill = pill.child(slot);
     }
@@ -136,7 +139,7 @@ pub(super) fn build<S: 'static>(item: TabItem<'_, S>, at: Place, prev: Option<&s
     let mut slot = el()
         .key(format!("t-{id}"))
         .label(item.title.into_owned())
-        .description(status_words(status))
+        .description_static(status_words(st.words, status))
         // `:is(:hover, :has(:focus-visible))`: Tab reaching it shows its close button and wash.
         .hover_group_focus()
         // The separator after it hides with it.
@@ -236,7 +239,7 @@ fn lead(avatar: Option<El>, glyph: Option<&'static rune::Icon>, active: bool, ba
 }
 
 /// The title: clipped, never ellipsised, fading out before the status and close slot.
-fn title(title: &str, editor: Option<El>, at: &Place, vertical: bool, emphasized: bool, k: &Kit) -> El {
+fn title(title: &str, editor: Option<El>, at: &Place, vertical: bool, emphasized: bool, room: f32, k: &Kit) -> El {
     let c = &k.c;
     // `text-[13px] font-medium` with no tracking, where the kit's compact UI type has -0.04.
     let font = rune::TextStyle { weight: k.ty.ui_medium.weight, tracking: 0.0, ..k.ty.ui_compact };
@@ -259,7 +262,7 @@ fn title(title: &str, editor: Option<El>, at: &Place, vertical: bool, emphasized
     // never hiding its first word under the slot (as Desktop's `flex-1` title does).
     let faded = |label: El| label.truncate_fade_width(FADE / font.size);
     if emphasized {
-        return wrap.mr(24.0).child(faded(label));
+        return wrap.mr(room).child(faded(label));
     }
     // At rest it fades only an overflowing title, 4 points from a horizontal tab's end. A compact
     // tab's hover hides it; a wider tab's hover shows it faded clear of the slot instead, in the
@@ -288,12 +291,14 @@ struct SlotLook {
     composite: [Color; 2],
     h: f32,
     width: Option<f32>,
+    /// `TabStrip::hover_none`: the close button and its ground show at rest.
+    touch: bool,
 }
 
 /// The status mark and close button, which share one slot: the close button shows in the
 /// mark's place while the pointer is on the tab, at once.
 fn status_slot<S: 'static>(look: SlotLook, st: &Strip<S>, id: &str, k: &Kit) -> Option<El> {
-    let SlotLook { status, active, vertical, icon_only, hover_overlay, closable, composite, h, width } = look;
+    let SlotLook { status, active, vertical, icon_only, hover_overlay, closable, composite, h, width, touch } = look;
     let busy = status == Some(TabItemStatus::Busy);
     // An icon-only tab carries its dots on the avatar; only a busy ring takes the slot.
     let mark = match status {
@@ -301,15 +306,17 @@ fn status_slot<S: 'static>(look: SlotLook, st: &Strip<S>, id: &str, k: &Kit) -> 
         Some(s) if !icon_only => Some(el().size(DOT, DOT).radius(DOT / 2.0).fill(dot_color(Some(s), k))),
         _ => None,
     };
-    // A busy icon-only tab that isn't active keeps spinning over its avatar instead of closing.
-    let close = closable && !(icon_only && busy && !active);
+    // An icon-only tab that isn't active has no close button, even under the pointer: a press
+    // on it selects it (`tab-nav.css`'s `@container (max-width: 44px)`); a busy one keeps
+    // spinning over its avatar. A middle click still closes it.
+    let close = closable && !(icon_only && !active);
     if mark.is_none() && !close {
         return None;
     }
     // The slot paints the tab under it so a long title never shows through.
     // A vertical tab's slot is clear unless the pointer or a status is on it.
     // Under the pointer it's always painted, in the hover's overlay where the tab has none.
-    let painted = (status.is_some() || (active && !vertical)) && !(icon_only && !busy);
+    let painted = touch || ((status.is_some() || (active && !vertical)) && !(icon_only && !busy));
     let top = (h - SLOT) / 2.0;
     let mut slot = row().key("status").size(SLOT, SLOT).center();
     let ground = |key: &'static str, fill: Color| hidden(el().key(key).pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).fill(fill).group_opacity(0.0, 1.0));
@@ -335,7 +342,8 @@ fn status_slot<S: 'static>(look: SlotLook, st: &Strip<S>, id: &str, k: &Kit) -> 
     if let Some(m) = mark {
         let keep = icon_only && busy && !active;
         let m = row().key("status-mark").size(SLOT, SLOT).absolute(0.0, 0.0).center().child(m).a11y_hidden();
-        slot = slot.child(if close && !keep { hidden(m.group_opacity(1.0, 0.0)) } else { m });
+        // Without hover the mark stays, beside the close button (`tab-status`'s `inset-inline-end: 20px`).
+        slot = slot.child(if touch { m.absolute(-16.0, 0.0) } else if close && !keep { hidden(m.group_opacity(1.0, 0.0)) } else { m });
     }
     if close {
         let lock = width.filter(|_| st.horizontal_lock).unwrap_or(0.0);
@@ -343,7 +351,7 @@ fn status_slot<S: 'static>(look: SlotLook, st: &Strip<S>, id: &str, k: &Kit) -> 
         let button = IconButton::new(st.close_icon.unwrap_or(k.glyph.close))
             .control_size(ControlSize::Small)
             .variant(IconButtonVariant::GhostMuted)
-            .label("Close tab")
+            .label(st.words.close)
             .on_press_tx(move |s: &mut S, tx: &mut Tx| {
                 if let Some(a) = access.filter(|_| lock > 0.0) {
                     a(s).width_lock = Some(lock);
@@ -357,7 +365,8 @@ fn status_slot<S: 'static>(look: SlotLook, st: &Strip<S>, id: &str, k: &Kit) -> 
         // and keyboard focus on the tab shows it without a ring of its own.
         let button = if st.close_tab_stop { button } else { button.focusable(false).no_focus_ring() };
         // Its glyph enters with it, unseen until the pointer comes, so the wrapper lands it at once.
-        slot = slot.child(hidden(row().key("close").absolute(0.0, 0.0).group_opacity(0.0, 1.0).instant_changes().child(button)));
+        let close = row().key("close").absolute(0.0, 0.0).instant_changes().child(button);
+        slot = slot.child(if touch { close } else { hidden(close.group_opacity(0.0, 1.0)) });
     }
     Some(slot)
 }
@@ -367,6 +376,7 @@ fn handlers<S: 'static>(mut slot: El, id: &str, at: &Place, closable: bool, st: 
     let (access, lane, vertical) = (st.access, at.lane, at.width.is_none());
     let lock = at.width.filter(|_| st.horizontal_lock).unwrap_or(0.0);
     let select_early = st.select_on_drag_start;
+    let active = at.active;
     let reveal = (st.scroll_key.clone(), format!("t-{id}"));
     if let Some(close) = h.close.clone().filter(|_| closable) {
         let id = id.to_owned();
@@ -383,6 +393,7 @@ fn handlers<S: 'static>(mut slot: El, id: &str, at: &Place, closable: bool, st: 
             if let Some(a) = access
                 && a(s).take_swallowed_click()
             {
+                tx.live_only();
                 return;
             }
             if let Some(f) = &select {
@@ -417,11 +428,20 @@ fn handlers<S: 'static>(mut slot: El, id: &str, at: &Place, closable: bool, st: 
         match d.phase {
             Phase::Down => {
                 access(s).press(&lane, [d.x, d.y], super::auto_scroll::offset(&auto, vertical));
-                if select_early && let Some(f) = &select {
-                    f(s, &id, tx);
-                    tx.scroll_into_view_in(reveal.0.clone(), reveal.1.clone());
+                // The button going down switches to the tab, in this frame (`tab-nav.tsx`'s
+                // `onMouseDown`); a press on the selected tab changes nothing that shows.
+                match &select {
+                    Some(f) if select_early && !active => {
+                        f(s, &id, tx);
+                        tx.scroll_into_view_in(reveal.0.clone(), reveal.1.clone());
+                    }
+                    Some(_) if select_early => tx.live_only(),
+                    _ => {}
                 }
             }
+            // A strip that neither reorders nor lets a tab tear out (`TabStrip::tear_out`) only
+            // selects: its tabs stay put under a drag.
+            Phase::Move if reorder.is_none() && lane.tear.is_none() => tx.live_only(),
             Phase::Move => {
                 // Near an end the strip scrolls under the dragged tab, which keeps to the pointer.
                 if access(s).reordering() {
@@ -442,10 +462,16 @@ fn handlers<S: 'static>(mut slot: El, id: &str, at: &Place, closable: bool, st: 
                 }
             }
             Phase::Up => {
-                tx.animated();
                 let on_tab = (0.0..=d.w).contains(&d.x) && (0.0..=d.h).contains(&d.y);
                 // A press already selected the tab; its click needn't again.
-                match access(s).release(d.cancelled(), on_tab, select_early && on_tab) {
+                let release = access(s).release(d.cancelled(), on_tab, select_early && on_tab);
+                // A press that never moved a tab leaves the strip as it drew it.
+                if matches!(release, Release::Click) {
+                    tx.live_only();
+                } else {
+                    tx.animated();
+                }
+                match release {
                     Release::Click => {}
                     Release::Reorder { from, to } => {
                         if let Some(f) = &reorder {
@@ -485,12 +511,12 @@ fn dot_color(status: Option<TabItemStatus>, k: &Kit) -> Color {
     }
 }
 
-fn status_words(status: Option<TabItemStatus>) -> &'static str {
+fn status_words(w: super::TabWords, status: Option<TabItemStatus>) -> &'static str {
     match status {
-        Some(TabItemStatus::Busy) => "Working",
-        Some(TabItemStatus::Attention) => "Needs attention",
-        Some(TabItemStatus::Unread) => "Unread",
-        Some(TabItemStatus::Failed) => "Failed",
+        Some(TabItemStatus::Busy) => w.busy,
+        Some(TabItemStatus::Attention) => w.attention,
+        Some(TabItemStatus::Unread) => w.unread,
+        Some(TabItemStatus::Failed) => w.failed,
         None => "",
     }
 }

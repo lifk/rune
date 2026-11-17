@@ -32,6 +32,25 @@ const VERTEX_DUAL: &[u8] = include_bytes!("../../uber.vs-dual.dxbc");
 #[cfg(target_os = "windows")]
 const FRAGMENT_DUAL: &[u8] = include_bytes!("../../uber.fs-dual.dxbc");
 
+// The built-in passes besides the uber shader, compiled by regen_dxbc from their WGSL as wgpu
+// would, and the BLAKE3 of the WGSL each came from (`uber/pass_dxbc_hash.rs`).
+#[cfg(target_os = "windows")]
+include!("uber/pass_dxbc_hash.rs");
+#[cfg(target_os = "windows")]
+const ALPHA_VERTEX: &[u8] = include_bytes!("../../alpha.vs.dxbc");
+#[cfg(target_os = "windows")]
+const ALPHA_FRAGMENT: &[u8] = include_bytes!("../../alpha.fs.dxbc");
+#[cfg(target_os = "windows")]
+const LAYER_BLUR_VERTEX: &[u8] = include_bytes!("../../layer_blur.vs.dxbc");
+#[cfg(target_os = "windows")]
+#[cfg(target_os = "windows")]
+const BACKDROP_BLUR: [&[u8]; 3] = [include_bytes!("../../backdrop_blur.vs.dxbc"), include_bytes!("../../backdrop_blur.fs_down.dxbc"), include_bytes!("../../backdrop_blur.fs_up.dxbc")];
+#[cfg(target_os = "windows")]
+const BACKDROP_COMPOSITE: [&[u8]; 2] = [include_bytes!("../../backdrop_composite.vs.dxbc"), include_bytes!("../../backdrop_composite.fs.dxbc")];
+#[cfg(target_os = "windows")]
+const LAYER_BLUR_FRAGMENTS: [&[u8]; 5] = [include_bytes!("../../layer_blur.fs0.dxbc"), include_bytes!("../../layer_blur.fs1.dxbc"),
+    include_bytes!("../../layer_blur.fs2.dxbc"), include_bytes!("../../layer_blur.fs3.dxbc"), include_bytes!("../../layer_blur.fs4.dxbc")];
+
 /// The uber shader's modules: one WGSL (or metallib) module for both stages, or one
 /// precompiled module per stage.
 #[derive(Clone)]
@@ -79,48 +98,114 @@ impl Layout<false> {
 /// matches Windfoil's WGSL and layout and the driver takes it.
 #[cfg(target_os = "windows")]
 pub(super) fn uber<T>(device: &wgpu::Device, make_pipeline: impl FnOnce(&Shaders) -> T) -> Option<(Shaders, T)> {
-    load(device, (VERTEX, FRAGMENT), "uber", make_pipeline)
+    load(device, (VERTEX, FRAGMENT), "uber", uber_fresh, make_pipeline)
 }
 
 /// [`uber`] for the subpixel variant.
 #[cfg(target_os = "windows")]
 pub(super) fn uber_dual<T>(device: &wgpu::Device, make_pipeline: impl FnOnce(&Shaders) -> T) -> Option<(Shaders, T)> {
-    load(device, (VERTEX_DUAL, FRAGMENT_DUAL), "subpixel uber", make_pipeline)
+    load(device, (VERTEX_DUAL, FRAGMENT_DUAL), "subpixel uber", uber_fresh, make_pipeline)
+}
+
+/// The straight-alpha pass (render/surface_alpha.rs) from its precompiled stages, when they were
+/// compiled from `wgsl` and the driver takes them.
+#[cfg(target_os = "windows")]
+pub(super) fn surface_alpha<T>(device: &wgpu::Device, wgsl: &str, make_pipeline: impl FnOnce(&Shaders) -> T) -> Option<(Shaders, T)> {
+    load(device, (ALPHA_VERTEX, ALPHA_FRAGMENT), "straight alpha", || compiled_from(wgsl, ALPHA_DXBC_WGSL_BLAKE3, "straight alpha"), make_pipeline)
+}
+
+/// Whether a pass's bytecode came from `wgsl` (its `\r\n` read as `\n`, as build.rs reads the
+/// uber shader's); says so when it didn't.
+#[cfg(target_os = "windows")]
+fn compiled_from(wgsl: &str, recorded: &str, what: &str) -> bool {
+    let now = blake3::hash(wgsl.replace("\r\n", "\n").as_bytes()).to_hex();
+    if now.as_str() == recorded { return true; }
+    eprintln!("rune: the precompiled DX12 {what} shader was built from other WGSL (blake3 {recorded}, now {now}); compiling WGSL. Rebuild it with `cargo run -p rune --example regen_dxbc` on Windows");
+    false
 }
 
 #[cfg(target_os = "windows")]
-fn load<T>(device: &wgpu::Device, (vertex, fragment): (&'static [u8], &'static [u8]), what: &str, make_pipeline: impl FnOnce(&Shaders) -> T) -> Option<(Shaders, T)> {
+fn load<T>(device: &wgpu::Device, (vertex, fragment): (&'static [u8], &'static [u8]), what: &str, fresh: impl FnOnce() -> bool, make_pipeline: impl FnOnce(&Shaders) -> T) -> Option<(Shaders, T)> {
+    load_modules(device, &[(vertex, "vs"), (fragment, "fs")], what, fresh, |modules| {
+        let shaders = Shaders { vertex: modules[0].clone(), fragment: modules[1].clone() };
+        let pipeline = make_pipeline(&shaders);
+        (shaders, pipeline)
+    })
+}
+
+/// Makes a passthrough module from each `(bytecode, entry point)` and hands them to
+/// `make_pipelines`, when this is a DX12 device that takes bytecode and `fresh` says it's this
+/// build's; `None` (so the caller compiles WGSL) when not, or when the driver refuses it.
+#[cfg(target_os = "windows")]
+fn load_modules<T>(device: &wgpu::Device, blobs: &[(&'static [u8], &'static str)], what: &str, fresh: impl FnOnce() -> bool, make_pipelines: impl FnOnce(&[wgpu::ShaderModule]) -> T) -> Option<T> {
     if device.adapter_info().backend != wgpu::Backend::Dx12 || !device.features().contains(wgpu::Features::PASSTHROUGH_SHADERS) || !enabled() {
         return None;
     }
-    if !WGSL_MATCHES || !ABI_MATCHES {
-        stale();
-        return None;
-    }
+    if !fresh() { return None; }
     let module = |blob: &'static [u8], entry: &'static str| {
-        // SAFETY: the bytecode is FXC's compile of the HLSL wgpu generates for `wgsl` with the
-        // uber layout (checked by `uber_dxbc_is_fresh`), so it binds what the layout declares.
+        // SAFETY: the bytecode is FXC's compile of the HLSL wgpu generates for this pass's WGSL with
+        // its layout (regen_dxbc; `fresh` checked it's that WGSL), so it binds what the layout declares.
         unsafe {
             device.create_shader_module_passthrough(wgpu::ShaderModuleDescriptorPassthrough {
-                label: Some("uber"),
+                label: Some(what),
                 entry_points: std::borrow::Cow::Owned(vec![wgpu::PassthroughShaderEntryPoint { name: entry.into(), workgroup_size: (0, 0, 0) }]),
                 dxil: Some(std::borrow::Cow::Borrowed(blob)),
                 ..Default::default()
             })
         }
     };
+    let modules: Vec<wgpu::ShaderModule> = blobs.iter().map(|&(blob, entry)| module(blob, entry)).collect();
+    checked(device, what, || make_pipelines(&modules))
+}
+
+/// `make`'s pipelines from precompiled modules, or `None` (said once on stderr) when the driver
+/// refuses them, so the caller compiles WGSL instead.
+#[cfg(target_os = "windows")]
+pub(super) fn checked<T>(device: &wgpu::Device, what: &str, make: impl FnOnce() -> T) -> Option<T> {
     let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
-    let shaders = Shaders { vertex: module(vertex, "vs"), fragment: module(fragment, "fs") };
-    let pipeline = make_pipeline(&shaders);
+    let made = make();
     let refused = pollster::block_on(internal.pop()).or(pollster::block_on(validation.pop()));
     match refused {
-        None => Some((shaders, pipeline)),
+        None => Some(made),
         Some(error) => {
             eprintln!("rune: the precompiled {what} shader was refused ({error}); compiling WGSL");
             None
         }
     }
+}
+
+/// The backdrop blur's down and up passes (render/backdrop_blur.rs): its vertex stage and its
+/// `fs_down` and `fs_up` fragment stages, when they were compiled from `wgsl`.
+#[cfg(target_os = "windows")]
+pub(super) fn backdrop_blur<T>(device: &wgpu::Device, wgsl: &str, make_pipelines: impl FnOnce(&[wgpu::ShaderModule]) -> T) -> Option<T> {
+    let blobs = [(BACKDROP_BLUR[0], "vs"), (BACKDROP_BLUR[1], "fs_down"), (BACKDROP_BLUR[2], "fs_up")];
+    load_modules(device, &blobs, "backdrop blur", || compiled_from(wgsl, BACKDROP_BLUR_DXBC_WGSL_BLAKE3, "backdrop blur"), make_pipelines)
+}
+
+/// The backdrop blur's composite stages, which bind the uber shader's group 0: when they were
+/// compiled from `wgsl` and for this build's uber layout. Its pipelines are made per target format
+/// later, each through [`checked`].
+#[cfg(target_os = "windows")]
+pub(super) fn backdrop_composite(device: &wgpu::Device, wgsl: &str) -> Option<Shaders> {
+    let fresh = || ABI_MATCHES && compiled_from(wgsl, BACKDROP_COMPOSITE_DXBC_WGSL_BLAKE3, "backdrop blur composite");
+    load_modules(device, &[(BACKDROP_COMPOSITE[0], "vs"), (BACKDROP_COMPOSITE[1], "fs")], "backdrop blur composite", fresh,
+        |m| Shaders { vertex: m[0].clone(), fragment: m[1].clone() })
+}
+
+/// The layer blur's vertex stage and its five fragment variants (render/layer_blur.rs `MODES`, the
+/// WGSL's `MODE` and `ADDITIVE` overrides each compiled in), when they were compiled from `wgsl`.
+#[cfg(target_os = "windows")]
+pub(super) fn layer_blur<T>(device: &wgpu::Device, wgsl: &str, make_pipelines: impl FnOnce(&[wgpu::ShaderModule]) -> T) -> Option<T> {
+    let blobs = [(LAYER_BLUR_VERTEX, "vs"), (LAYER_BLUR_FRAGMENTS[0], "fs"), (LAYER_BLUR_FRAGMENTS[1], "fs"), (LAYER_BLUR_FRAGMENTS[2], "fs"),
+        (LAYER_BLUR_FRAGMENTS[3], "fs"), (LAYER_BLUR_FRAGMENTS[4], "fs")];
+    load_modules(device, &blobs, "layer gaussian", || compiled_from(wgsl, LAYER_BLUR_DXBC_WGSL_BLAKE3, "layer gaussian"), make_pipelines)
+}
+/// Whether the uber bytecode matches this build's Windfoil WGSL and layout; says why once when not.
+#[cfg(target_os = "windows")]
+fn uber_fresh() -> bool {
+    if !WGSL_MATCHES || !ABI_MATCHES { stale(); }
+    WGSL_MATCHES && ABI_MATCHES
 }
 
 /// Says once why the shipped bytecode can't be used, and how to rebuild it.

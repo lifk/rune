@@ -193,7 +193,7 @@ fn same_visual_cold(a: &crate::el::VisualCold, b: &crate::el::VisualCold) -> boo
         grid, pixels, pixels_fit, effect, backdrop_blur, hover_motion, hover_within,
         group_opacity, group_color, hover_alone, hover_share, icon_turn, cache_key, offset_motion, scale_motion,
         origin, rotate_motion, child_exit, enter_delay, motion_intent, instant_motion, clip_to_content, flight_crop,
-        hold_landing, offset, paint_alpha, layer_opacity, blur, rotate, mark, mirror_rtl, paint_order,
+        hold_landing, row_face, press_color, paint_contain, motion_snaps, offset, paint_alpha, layer_opacity, blur, rotate, mark, mirror_rtl, paint_order,
     } = b;
     (match (&a.surface, surface) {
         (None, None) => true,
@@ -232,7 +232,7 @@ fn same_visual_cold(a: &crate::el::VisualCold, b: &crate::el::VisualCold) -> boo
         && a.motion_intent == *motion_intent && a.instant_motion == *instant_motion
         && a.clip_to_content == *clip_to_content
         && a.flight_crop == *flight_crop
-        && a.hold_landing == *hold_landing
+        && a.row_face == *row_face && a.hold_landing == *hold_landing && a.press_color == *press_color && a.paint_contain == *paint_contain && a.motion_snaps == *motion_snaps
         && a.offset == *offset && a.paint_alpha == *paint_alpha && a.layer_opacity == *layer_opacity
         && a.blur == *blur && a.rotate == *rotate && a.mark == *mark && a.mirror_rtl == *mirror_rtl && a.paint_order == *paint_order
 }
@@ -248,7 +248,7 @@ fn same_el_cold(a: &crate::el::ElCold, b: &crate::el::ElCold) -> bool {
     let crate::el::ElCold {
         focus, looping, trace_name, trace_namespace, role, label, live, above, motion, opacity_motion, lead,
         animated_changes, option_as_alt, transition, matched, scroll, scroll_axes, sticky, scroll_edges, growth, virtual_estimate, virtual_rows,
-        virtual_rows_version, glide, input, time_scale, help, help_cut, help_side, material, aspect_fit, a11y,
+        virtual_rows_version, glide, input, time_scale, help, help_cut, help_side, material, aspect_fit, list_disc, a11y,
         expanded_memo: _,
         #[cfg(debug_assertions)]
         scroll_source: _,
@@ -286,6 +286,7 @@ fn same_el_cold(a: &crate::el::ElCold, b: &crate::el::ElCold) -> bool {
         && a.help == *help
         && a.help_cut == *help_cut
         && a.help_side == *help_side
+        && a.list_disc == *list_disc
         && a.material == *material
         && a.aspect_fit == *aspect_fit
         && a.a11y == *a11y
@@ -351,6 +352,8 @@ fn same_handlers(
         on_drag,
         drag_out,
         drag_threshold,
+        touch_at_once,
+        press_on_down,
         on_drag_start,
         on_drag_end,
         drop,
@@ -396,6 +399,8 @@ fn same_handlers(
         && opt_rc_eq(&a.on_drag, on_drag)
         && opt_rc_eq(&a.drag_out, drag_out)
         && a.drag_threshold == *drag_threshold
+        && a.touch_at_once == *touch_at_once
+        && a.press_on_down == *press_on_down
         && opt_rc_eq(&a.on_drag_start, on_drag_start)
         && opt_rc_eq(&a.on_drag_end, on_drag_end)
         && same_drop(&a.drop, drop)

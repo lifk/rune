@@ -98,6 +98,7 @@ impl<S: 'static> Runtime<S> {
         let mut one = self.transaction();
         let changed = self.idle_meter.polled(crate::tooling::perf_warn::timed("poll", || app_call!(poll, &mut self.state, self.clock, &mut one)));
         self.dirty |= changed;
+        self.pending.polled_change |= changed;
         let asks_frame = one.srgb_blend.is_some_and(|b| b != self.srgb_blend) || one.font_smoothing.is_some_and(|m| m != self.text.smoothing) || self.changes_families(&one) || (one.blur && self.focus.path().is_some());
         self.latch_requests(&mut one);
         let stale = changed || one.frame_work() || patched || asks_frame;
@@ -143,9 +144,14 @@ impl<S: 'static> Runtime<S> {
 
     /// Nothing but a timer asks this runtime for a frame.
     pub(crate) fn rests(&self) -> bool {
+        self.loop_wake.is_none() && self.rests_except_loop()
+    }
+
+    /// `rests`, apart from a loop's own wake (`paint_cycle_tick`).
+    pub(super) fn rests_except_loop(&self) -> bool {
         #[cfg(feature = "hot")]
         if self.hot.is_some() { return false; }
-        !self.animating && !self.stale() && !self.settle && self.loop_wake.is_none() && self.window_frame.is_none()
+        !self.animating && !self.stale() && !self.settle && self.window_frame.is_none()
             && !self.hover_delays.waiting() && !self.tooltip_waiting() && !self.press_repeat_waiting() && !self.drag_ends_pending()
             && self.drag_out_request.is_none() && !self.files_held() && !self.live_pending()
             && self.surfaces.is_empty() && !self.steps_frames()

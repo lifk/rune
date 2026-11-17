@@ -146,6 +146,9 @@ pub(crate) struct Node {
     pub(super) ime_option_as_alt: bool,
     /// Placeholder left in `self.nodes` after `try_reuse_memo` moves a node into the new pass.
     pub(super) moved_stub: bool,
+    /// A new one each time it's built from its element; a node a region keeps keeps it
+    /// (`paint_keep`).
+    pub(super) epoch: u32,
 }
 
 impl std::ops::Deref for Node {
@@ -213,6 +216,7 @@ impl Node {
             ime_cursor: false,
             ime_option_as_alt: false,
             moved_stub: true,
+            epoch: 0,
         }
     }
 
@@ -259,8 +263,9 @@ impl AnimSource {
     pub const TEXT_FLIGHT: u16 = 128;
     pub const LIVE: u16 = 256;
     pub const VIRTUAL_FILL: u16 = 512;
-    pub const NAMES: [&'static str; 10] =
-        ["tracks", "growth", "scroll", "reveal", "loop", "scale-settle", "video", "text-flight", "live", "virtual-fill"];
+    pub const TEXT_FILL: u16 = 1024;
+    pub const NAMES: [&'static str; 11] =
+        ["tracks", "growth", "scroll", "reveal", "loop", "scale-settle", "video", "text-flight", "live", "virtual-fill", "text-fill"];
 
     pub fn names(bits: u16) -> Vec<&'static str> {
         Self::NAMES.iter().enumerate().filter(|(i, _)| bits & (1 << i) != 0).map(|(_, n)| *n).collect()
@@ -297,8 +302,11 @@ pub(super) struct Inh {
     /// The clip, fade and fade origin outside the nearest flight above, for a flight nested in it.
     pub(super) outer: Option<[[f32; 4]; 3]>,
     pub(super) mark: u32,
-    /// The nearest hover group's hover amount (0–1), for `group_*` styles.
+    /// The nearest hover group's hover amount (0-1), for `group_*` styles.
     pub(super) group: f32,
+    /// The nearest `El::press_color` above or here, and how far a press on it is held (0-1).
+    pub(super) pressed: f32,
+    pub(super) press_to: Option<Color>,
     /// `opacity` with each `El::group_opacity` at its hovered level: a press where the pointer
     /// hovers the group finds what the hover shows, before a frame has drawn it.
     pub(super) hit_opacity: f32,
@@ -351,7 +359,7 @@ impl Default for Inh {
     fn default() -> Self {
         Inh { opacity: 1.0, paint_opacity: 1.0, first_fade: 1.0, clip: NO_CLIP, fade: [0.0; 4], fade_origin: NO_CLIP,
             paint_clip: NO_CLIP, paint_fade: [0.0; 4], paint_fade_origin: NO_CLIP, rounded: None,
-            scale: 1.0, anchor: [0.0; 2], anchor_to: [0.0; 2], blur: 0.0, dy: 0.0, dx: 0.0, cover: [0.0; 2], outer: None, mark: 0, group: 0.0,
+            scale: 1.0, anchor: [0.0; 2], anchor_to: [0.0; 2], blur: 0.0, dy: 0.0, dx: 0.0, cover: [0.0; 2], outer: None, mark: 0, group: 0.0, pressed: 0.0, press_to: None,
             hit_opacity: 1.0, group_rect: [f32::NEG_INFINITY, f32::NEG_INFINITY, f32::INFINITY, f32::INFINITY],
             scale_motion: ScaleMotion::Still, still: (1.0, [0.0; 2], [0.0; 2]), in_cache: false, skip_paint: false, turn: 0,
             snap: Default::default() }
@@ -457,6 +465,9 @@ pub(super) struct Stack {
     pub(super) pending_heights: HashMap<NodeId, f32>,
     /// The window size at the last commit.
     pub(super) window: (f32, f32),
+    /// The list viewport in the last layout, apart from the window (e.g. above a dock).
+    pub(super) viewport_height: f32,
+    pub(super) handoff: row_reorder::handoff::Handoff,
     /// How far its rows grew (positive steps only) this frame.
     pub(super) grown: f32,
     /// Whether any row in the stack still has height left to grow.
@@ -464,6 +475,7 @@ pub(super) struct Stack {
     /// Whether any row in the stack is still animating.
     pub(crate) moving: bool,
     pub(super) reorder: row_reorder::Reorder,
+    pub(super) seams: Vec<row_reorder::joined::Seam>,
     pub(super) slides: content_slide::ContentSlides,
     /// Fold rows opening or shutting together as one block.
     pub(super) runs: Vec<growth_runs::GrowthRun>,

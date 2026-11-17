@@ -20,6 +20,11 @@ use crate::render::Instance;
 
 /// Above this share of the window, a frame draws all of it.
 const MOST: f32 = 0.6;
+/// Past this many instances the new list has that the old doesn't, a frame draws all of it without
+/// looking for where they are: a scroll moves every row, and checking the order of thousands of
+/// instances and bounding them only to find they cover the window costs a list's frame hundreds of
+/// microseconds. A typed glyph, a streamed line or a hover changes far fewer.
+const MANY: usize = 256;
 /// Rectangles a change is gathered into, at most.
 pub(super) const RECTS: usize = crate::render::MAX_RECTS;
 
@@ -40,6 +45,8 @@ pub(super) enum Area {
     /// Everything (or not known).
     #[default]
     All,
+    /// More than `MANY` instances.
+    Many,
     Rects(Vec<[u32; 4]>),
 }
 
@@ -61,10 +68,11 @@ impl Damage {
             (_, false) => (Area::All, "new size or colour"),
             _ => {
                 let now = changed(&self.last, instances, size, &mut self.scratch);
-                self.seen = match &now { Area::Rects(r) => r.iter().copied().reduce(join), Area::All => None };
+                self.seen = match &now { Area::Rects(r) => r.iter().copied().reduce(join), Area::All | Area::Many => None };
                 match now {
                     Area::Rects(r) if r.iter().map(|r| area(*r)).sum::<u32>() as f32 > MOST * (size.0 * size.1) as f32 => (Area::All, "most of it changed"),
                     Area::All => (Area::All, "reordered"),
+                    Area::Many => (Area::All, "many changed"),
                     other => (other, ""),
                 }
             }
@@ -73,7 +81,7 @@ impl Damage {
         self.last.extend_from_slice(instances);
         self.shape = Some((size, clear));
         match now {
-            Area::All => Plan::All(why),
+            Area::All | Area::Many => Plan::All(why),
             // Nothing changed: one pixel keeps the present, which DWM composes again as is.
             Area::Rects(r) if r.is_empty() => Plan::Part { draw: vec![[0, 0, 1, 1]], present: vec![[0, 0, 1, 1]] },
             Area::Rects(r) => Plan::Part {
@@ -94,14 +102,24 @@ fn whole_frames() -> bool {
 
 type Counts = HashMap<u64, (i32, usize), BuildHasherDefault<Hashed>>;
 
-/// The map's keys are hashes already.
+/// The map's keys are hashes already, mixed once more: FNV's multiply carries only upward, so its
+/// low bits, which pick the bucket, come from the words' low bits alone, and most instances share
+/// those (whole-pixel rects and clips). Unmixed, a scrolled list's thousands of instances fell in
+/// a few long probe chains.
 #[derive(Default)]
 struct Hashed(u64);
 
 impl Hasher for Hashed {
     fn finish(&self) -> u64 { self.0 }
     fn write(&mut self, _: &[u8]) { unreachable!("keys are u64") }
-    fn write_u64(&mut self, v: u64) { self.0 = v; }
+    fn write_u64(&mut self, v: u64) {
+        // MurmurHash3's 64-bit finaliser.
+        let mut h = v ^ (v >> 33);
+        h = h.wrapping_mul(0xff51_afd7_ed55_8ccd);
+        h ^= h >> 33;
+        h = h.wrapping_mul(0xc4ce_b9fe_1a85_ec53);
+        self.0 = h ^ (h >> 33);
+    }
 }
 
 /// FNV-1a over an instance's 32 words: a few ns, against SipHash's ~100.
@@ -131,7 +149,13 @@ fn changed(old: &[Instance], new: &[Instance], size: (u32, u32), s: &mut Scratch
     s.new.clear();
     s.new.extend(new.iter().map(hash));
     for (i, h) in s.old.iter().enumerate() { s.counts.entry(*h).or_insert((0, i)).0 += 1; }
-    for (i, h) in s.new.iter().enumerate() { s.counts.entry(*h).or_insert((0, old.len() + i)).0 -= 1; }
+    let mut added = 0;
+    for (i, h) in s.new.iter().enumerate() {
+        let count = &mut s.counts.entry(*h).or_insert((0, old.len() + i)).0;
+        *count -= 1;
+        if *count < 0 { added += 1; }
+        if added > MANY { return Area::Many; }
+    }
     // The instances both lists have, in order: drawn in another order, anything may have changed.
     let counts = &s.counts;
     if !s.old.iter().filter(|h| counts[h].0 == 0).eq(s.new.iter().filter(|h| counts[h].0 == 0)) { return Area::All; }
@@ -139,6 +163,11 @@ fn changed(old: &[Instance], new: &[Instance], size: (u32, u32), s: &mut Scratch
     s.each.clear();
     s.each.extend(counts.values().filter(|(n, _)| *n != 0)
         .filter_map(|(_, at)| bounds(if *at < old.len() { &old[*at] } else { &new[*at - old.len()] }, size)));
+    // A scrolled list changes thousands of instances over most of the window: their union says
+    // so (the plan draws whole above `MOST`) without gathering them into rectangles.
+    if s.each.len() > 256 && let Some(all) = s.each.iter().copied().reduce(join) && area(all) as f32 > MOST * (size.0 * size.1) as f32 {
+        return Area::Rects(vec![all]);
+    }
     s.each.sort_unstable_by_key(|r| (r[1], r[0]));
     let mut rects = Vec::new();
     for r in s.each.iter().copied() { add(&mut rects, r); }

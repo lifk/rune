@@ -98,6 +98,21 @@ impl El {
     /// # struct App;
     /// el().drag_out(|_: &App| Some(DragItem::new().text("row"))).drag_threshold(3.0);
     /// ```
+    /// A finger on this [`El::on_drag`] element drags it from where it lands: no 8-point slop,
+    /// no long press (a finger held still keeps dragging, as a game's paddle wants), and never a
+    /// pan of the page under it. A mouse is unchanged.
+    pub fn touch_drags_at_once(mut self) -> Self {
+        self.handlers.touch_at_once = true;
+        self
+    }
+    /// A menu button: a mouse's primary button runs [`El::on_press`] as it goes down, and that
+    /// press's release runs nothing (the web's Kobalte `Menu.Trigger` opens on `pointerdown`).
+    /// A press that's then cancelled or released elsewhere has already run it. A key, a screen
+    /// reader's Invoke and a finger's tap run it on the click, as without this.
+    pub fn press_on_down(mut self) -> Self {
+        self.handlers.press_on_down = true;
+        self
+    }
     pub fn drag_threshold(mut self, points: f32) -> Self {
         self.handlers.drag_threshold = Some(points.max(0.0));
         self

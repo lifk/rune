@@ -6,10 +6,13 @@ use bytemuck::{Pod, Zeroable};
 
 use crate::pixels::ImageAtlas;
 use crate::text::{ATLAS_SIZE, Atlas};
+/// Rows the first glyph atlas page's texture starts with: a window that shows a few labels holds
+/// 512 KiB of it, not 4 MiB. It doubles as its shelves fill, up to `ATLAS_SIZE` (`prepare`).
+pub(crate) const ATLAS_START_ROWS: u32 = 256;
 
 mod backdrop_blur;
 mod breaker;
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_arch = "wasm32"))]
 mod damaged;
 #[cfg(target_os = "windows")]
 pub(crate) use damaged::MAX_RECTS;
@@ -36,7 +39,7 @@ mod variant;
 #[cfg(target_os = "macos")]
 mod windfoil_metallib;
 pub use backdrop_blur::MAX_BACKDROP_BLURS;
-pub use first_use::precompiled_misses;
+pub use first_use::{make_layer_blur, make_straight_alpha, precompiled_misses};
 pub use layers::LayerStats;
 
 /// Rounded rect in `fill` with a `params.x`-wide `border` ring drawn over it, as CSS paints a
@@ -413,6 +416,8 @@ pub struct Gpu {
 }
 
 /// The most views and buffers a device binds at once (`Limits::max_non_sampler_bindings`).
+/// D3D12 sizes its shader-visible heap from it and can't grow it: each layer target holds about
+/// five of these, so 4,096 ran out at 1,024 layers in one frame.
 const MAX_VIEWS: u32 = 65_536;
 
 /// Vulkan loaders crash when two threads create instances or devices at once (seen with
@@ -784,6 +789,8 @@ pub struct Renderer {
     /// Pooled viewport-sized backdrop copies, allocated only when a slot sets `effect_backdrop`
     /// or an element sets `backdrop_blur`.
     backdrops: Vec<Backdrop>,
+    /// The last prepared frame had an effect reading the backdrop: a rest keeps the copies.
+    backdrop_used: bool,
     /// Pipelines and pyramid for backdrop blur records, built on the first one.
     backdrop_blur: Option<backdrop_blur::BackdropBlur>,
     /// Which lazily built pipelines the device took (`breaker`).
@@ -793,11 +800,14 @@ pub struct Renderer {
     fills: std::sync::Mutex<Option<fill::PendingFills>>,
     /// Unique to this renderer, so to the device it was made on (`Frame::device_key`).
     device_key: crate::compose::DeviceKey,
+    /// The device's largest 2D texture, read once: in a browser each `Device::limits` reads every
+    /// limit from JavaScript (about 35 µs), which a frame's layers used to pay.
+    max_texture_dim: u32,
     /// The one instance per rectangle that clears a damaged one (`arm_damage`), made on first use.
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_arch = "wasm32"))]
     clear_quad: std::sync::OnceLock<wgpu::Buffer>,
     /// The kept frame and the rectangles the next `draw` may redraw alone (`damaged`).
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_arch = "wasm32"))]
     damage: std::sync::Mutex<damaged::DamageState>,
 }
 
@@ -1026,8 +1036,8 @@ impl Renderer {
     }
 
     pub fn draw(&self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView, clear: [f32; 4]) {
-        #[cfg(target_os = "windows")]
-        if self.draw_armed(encoder, view) { return; }
+        #[cfg(any(target_os = "windows", target_arch = "wasm32"))]
+        if self.armed() && self.draw_armed(encoder, &view.texture()) { return; }
         self.draw_timed(encoder, view, clear, None);
     }
 

@@ -15,13 +15,17 @@ const NAME_MAX: usize = 400;
 
 impl<S: 'static> Runtime<S> {
     /// Node `i`'s role in the tree, or `None` when it joins its parent.
-    pub(super) fn a11y_role(&self, i: usize) -> Option<Role> {
+    pub(crate) fn a11y_role(&self, i: usize) -> Option<Role> {
         let n = &self.nodes[i];
         let handlers = n.handlers.get();
         let input = n.input.as_deref();
         let text = n.text.as_deref().filter(|_| input.is_none());
+        // A group that takes its own keys and no press (a game's surface: arrows, Space) is
+        // no button even when it steers by drag: Return or Space doesn't press it. As the web
+        // mirror has it, a labelled one stays a group.
+        let owns_keys = n.role == "group" && n.focus.key.is_some() && handlers.is_none_or(|h| h.on_press.is_none() && h.on_double_press.is_none());
         let cx = RoleCtx {
-            pressable: handlers.is_some_and(|h| h.has_primary()),
+            pressable: handlers.is_some_and(|h| h.has_primary()) && !owns_keys,
             focusable: self.takes_focus(n),
             input: input.is_some(),
             multiline: input.is_some_and(|i| !i.single_line),
@@ -250,7 +254,7 @@ impl<S: 'static> Runtime<S> {
     }
 
     /// The element node `i`'s `El::active_descendant` names, if it is in the tree.
-    fn a11y_active_descendant(&self, i: usize) -> Option<usize> {
+    pub(crate) fn a11y_active_descendant(&self, i: usize) -> Option<usize> {
         let key = self.nodes[i].a11y.more.as_deref()?.active.as_deref()?;
         // Its own rows first: a row id may also key something elsewhere.
         let inside = |j: &usize| std::iter::successors(self.nodes[*j].parent, |&p| self.nodes[p].parent).any(|p| p == i);
@@ -258,10 +262,38 @@ impl<S: 'static> Runtime<S> {
         own.or_else(|| self.nodes.iter().position(|n| n.named(key))).filter(|&j| !self.subtree_exiting(j))
     }
 
+    /// Debug builds: warns once per site about a control a screen reader would say only by its
+    /// role ("button", "edit"): focusable, shown, and named by nothing (no `El::label`, no
+    /// `El::labelled_by` that finds words, no text of its own or, for a role named from its
+    /// content, inside it; a text field's placeholder isn't a name). Runs after a commit, every
+    /// sixteenth, so it costs a debug build little and a release build nothing.
+    /// `RUNE_A11Y_WARN=0` silences it.
+    #[cfg(debug_assertions)]
+    pub(crate) fn a11y_warn_nameless(&self) {
+        use std::{collections::HashSet, sync::{Mutex, OnceLock}};
+        static ON: OnceLock<bool> = OnceLock::new();
+        static WARNED: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+        if !*ON.get_or_init(|| std::env::var_os("RUNE_A11Y_WARN").is_none_or(|v| v != "0")) { return; }
+        const NAMED: &[&str] = &["button", "toggle", "swatch", "sidebar-toggle", "checkbox", "switch", "radio", "segment", "link", "tab",
+            "menuitem", "menuitemcheckbox", "menuitemradio", "option", "treeitem", "slider", "combobox", "spinbutton"];
+        for i in 0..self.nodes.len() {
+            let n = &self.nodes[i];
+            let field = n.input.is_some();
+            if n.path.is_empty() || n.a11y.hidden || n.inert || !(field || NAMED.contains(&n.role)) || !self.can_focus(i) { continue; }
+            if n.label.as_deref().is_some_and(|l| !l.trim().is_empty()) { continue; }
+            let more = n.a11y.more.as_deref();
+            if more.and_then(|m| m.labelled_by.as_deref()).and_then(|k| self.a11y_keyed(i, k)).is_some_and(|j| !self.a11y_words(j).is_empty()) { continue; }
+            if !field && (n.text.as_deref().is_some_and(|t| !t.source_text().trim().is_empty()) || !self.a11y_content_name(i).is_empty()) { continue; }
+            let site: String = n.path.chars().map(|c| if c.is_ascii_digit() { '#' } else { c }).collect();
+            if !WARNED.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_default().insert(site) { continue; }
+            let what = if field { "text field" } else { n.role };
+            eprintln!("rune: a focusable {what} has no name a screen reader can say (give it El::label or El::labelled_by): {} (debug builds only; RUNE_A11Y_WARN=0 silences)", n.path);
+        }
+    }
     /// The element keyed `key` nearest node `i`, which isn't leaving: the first inside its
     /// parent, else inside its grandparent, and so on out, as a component's own `"title"` is
     /// the one a control inside it means. What `El::labelled_by` and `El::described_by` name.
-    fn a11y_keyed(&self, i: usize, key: &str) -> Option<usize> {
+    pub(crate) fn a11y_keyed(&self, i: usize, key: &str) -> Option<usize> {
         let mut scope = self.nodes[i].parent;
         while let Some(s) = scope {
             let inside = |j: &usize| std::iter::successors(self.nodes[*j].parent, |&p| self.nodes[p].parent).any(|p| p == s);
@@ -274,7 +306,7 @@ impl<S: 'static> Runtime<S> {
     }
 
     /// Node `j`'s words as a name: its label, else its text, else the text inside it.
-    fn a11y_words(&self, j: usize) -> String {
+    pub(crate) fn a11y_words(&self, j: usize) -> String {
         let n = &self.nodes[j];
         if n.is_secure() { return String::new(); }
         n.label.as_deref().filter(|l| !l.trim().is_empty()).map(str::to_owned)

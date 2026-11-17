@@ -60,13 +60,24 @@ fn sync_input_focus(input: &mut crate::el::InputSpec, states: crate::states::Sta
         edit.break_history_group();
         changed = true;
     }
+    // Into the copy's own buffer: a long draft's field is copied without a new allocation, and
+    // without wiping the old one.
+    let mut text = std::mem::take(&mut input.edit.text);
+    let kept = std::mem::take(&mut edit.text);
     input.edit = edit.clone();
+    edit.text = kept;
+    text.clone_from(&edit.text);
+    input.edit.text = text;
     changed
 }
 
 impl<S: 'static> Runtime<S> {
     pub(super) fn active_modal(&self) -> Option<usize> {
         self.modal_scope.as_ref().map(|m| m.index)
+    }
+    /// Node `i` (its subtree ending before `end`) holds the open modal.
+    pub(crate) fn modal_ancestor(&self, i: usize, end: usize) -> bool {
+        self.modal_scope.as_ref().is_some_and(|m| m.index > i && m.index < end)
     }
     /// Node `i` is inside the open modal's scope, or no modal is open.
     pub(crate) fn modal_member(&self, i: usize) -> bool {
@@ -262,6 +273,7 @@ impl<S: 'static> Runtime<S> {
         for (p, input) in &mut self.virtual_inputs {
             changed |= sync_input_focus(input, states!(self), path.as_deref() == Some(p.as_str()));
         }
+        let shown = (self.focus.keyboard(), self.focus.shown());
         for effect in self.focus.step(focus_machine::FocusEvent::Set { path, keyboard }) {
             match effect {
                 focus_machine::FocusEffect::Moved => {
@@ -277,7 +289,10 @@ impl<S: 'static> Runtime<S> {
         }
         self.sync_side_focus();
         // A hover group keyboard focus enters or leaves hovers or rests now (`El::hover_group`).
-        if self.nodes.iter().any(|n| n.vis_flags.hover_group()) {
+        // Focus that stayed where it was, shown as it was (every commit's focus pass, most of
+        // the time), moves no group: the frame's own interaction pass sees the rest.
+        let regrouped = moved || shown != (self.focus.keyboard(), self.focus.shown());
+        if regrouped && self.nodes.iter().any(|n| n.vis_flags.hover_group()) {
             changed |= self.update_interaction(None);
         }
         changed
@@ -295,7 +310,11 @@ impl<S: 'static> Runtime<S> {
     }
 
     pub(super) fn sync_requested_focus(&mut self, nodes: &mut Vec<Node>) -> bool {
-        let asked = self.focus_request.take();
+        // A `Tx::focus_when_shown` still owed stands until the user's own input or another ask,
+        // whatever focus did meanwhile (a closing palette leaves it nowhere, then on the prompt).
+        let owed = self.focus_owed.take().map(|(key, ring)| (key, ring, crate::el::FocusAsk::WhenShown));
+        let asked = self.focus_request.take().or(owed);
+        let waits = asked.as_ref().filter(|(.., ask)| *ask == crate::el::FocusAsk::WhenShown).map(|(key, ring, _)| (key.clone(), *ring));
         for old in &self.nodes {
             if let Some(input) = &old.input
                 && input.edit.focused
@@ -385,6 +404,7 @@ impl<S: 'static> Runtime<S> {
             _ => self.focus.keyboard(),
         };
         self.focus_returned = matches!(&asked, Some((p, _, crate::el::FocusAsk::Return)) if next.as_deref() == Some(p.as_str()));
+        if asked.is_none() && let Some(owed) = waits { self.focus_owed = Some(owed); }
         std::mem::swap(&mut self.nodes, nodes);
         self.nodes_replaced();
         let changed = self.set_focus(next, keyboard);
@@ -415,28 +435,48 @@ impl<S: 'static> Runtime<S> {
         // A field that Escape blurred and that then closed (a comment box cancelled, gone once
         // its exit ends) counts as focused: the keyboard was on it, and nothing took focus since.
         let gone = self.focus.path().or_else(|| self.focus.now_or_blurred().or(self.focus.tab_start()).filter(|_| self.focus.keyboard()))?;
+        // `Tx::blur` says nothing has focus: it hands nothing on, unlike Escape or a deleted row.
+        if self.focus.path().is_none() && !self.focus.handoff() { return None; }
         let Some(at) = self.nodes.iter().position(|n| n.path == gone) else {
             // An offscreen field had no layout node. Only a moved node lost its path.
             let old = self.nodes.get(*self.node_index.get(self.path_ids.get(gone)?)?)?;
             if !old.is_moved_stub() { return None; }
             return self.fallback_in_new(gone, nodes);
         };
-        if self.focus.path().is_none() && (self.nodes[at].input.is_none() || nodes.iter().any(|n| n.path == gone)) { return None; }
+        // The control that held it is still in the tree, even when a model cleared its flag or a
+        // commit hid it: nothing takes its keyboard.
+        if nodes.iter().any(|n| n.path == gone) { return None; }
+        if self.focus.path().is_none() && self.nodes[at].input.is_none() { return None; }
         if self.active_modal().is_some_and(|m| at >= m && self.modal_member(at)) { return None; }
         let new: rustc_hash::FxHashMap<&str, usize> = nodes.iter().enumerate().map(|(j, n)| (n.path.as_str(), j)).collect();
-        // A node built again this commit has no layout yet: its size is the old node's.
+        // Building the new tree hands an old node's path and id to the node that replaces it and
+        // leaves it without a path, so a control still here can look absent. Resolve those by id.
+        let at_new = |i: usize| -> Option<usize> {
+            let n = &self.nodes[i];
+            if !n.path.is_empty() { return new.get(n.path.as_str()).copied(); }
+            self.node_index.get(&n.id).copied()
+                .filter(|&j| nodes.get(j).is_some_and(|m| m.id == n.id))
+        };
+        // A node built this commit may have no box yet, and is judged by the size its old node
+        // had; one laid out keeps its own box, so a collapsed or hidden control takes no focus.
         let sized = |i: usize| self.nodes[i].local.w > 0.0 && self.nodes[i].local.h > 0.0;
+        let unlaid = |j: usize| nodes[j].local.w <= 0.0 && nodes[j].local.h <= 0.0;
         let visible = |j: usize| !nodes[j].inert && nodes[j].vis.opacity > 0.0
             && std::iter::successors(nodes[j].parent, |&p| nodes[p].parent).all(|p| nodes[p].vis.opacity > 0.0);
-        let survivor = |i: usize| new.get(self.nodes[i].path.as_str()).copied()
-            .filter(|&j| (shown(j) || (sized(i) && visible(j))) && (self.takes_focus(&nodes[j]) || nodes[j].input.as_ref().is_some_and(|i| i.access.is_some())));
+        let survivor = |i: usize| at_new(i)
+            .filter(|&j| (shown(j) || (unlaid(j) && sized(i) && visible(j))) && (self.takes_focus(&nodes[j]) || nodes[j].input.as_ref().is_some_and(|i| i.access.is_some())));
         let within = |j: usize, s: usize| {
-            let (p, root) = (self.nodes[j].path.as_str(), self.nodes[s].path.as_str());
+            // Compare in the new tree where both ends are in it; a node that left keeps its old
+            // path, so the scan still reaches the siblings after it.
+            let (p, root) = match (at_new(j), at_new(s)) {
+                (Some(p), Some(r)) => (nodes[p].path.as_str(), nodes[r].path.as_str()),
+                _ => (self.nodes[j].path.as_str(), self.nodes[s].path.as_str()),
+            };
             root.is_empty() || (p.len() > root.len() && p.starts_with(root) && p.as_bytes()[root.len()] == b'/')
         };
         let mut scope = self.nodes[at].parent;
         while let Some(s) = scope {
-            if new.contains_key(self.nodes[s].path.as_str()) {
+            if at_new(s).is_some() {
                 let end = (s + 1..self.nodes.len()).find(|&j| !within(j, s)).unwrap_or(self.nodes.len());
                 // Then the container itself, when it takes focus (a list row whose comment box
                 // closed under it).
@@ -646,7 +686,7 @@ impl<S: 'static> Runtime<S> {
         }
         // Space presses the focused control. Return presses only rows and links; for a button
         // it goes on to the default button (`default_button_key`, which ran first) or `on_key`.
-        let space = ev.key == Key::Text(" ".into());
+        let space = ev.key == Key::Text(" ".into()) && !self.scrolls_on_space(i);
         if self.nodes[i].input.is_none() && (space || (ev.key == Key::Enter && self.takes_return(i))) {
             // A row the user cannot see highlighted (the pointer left it) chooses nothing.
             if self.nodes[i].focus.highlight.is_some() && !shown { self.focus.step(focus_machine::FocusEvent::Pointed); return true; }
@@ -1591,5 +1631,78 @@ mod tests {
             assert_eq!(focused(&rt), want, "after {key:?}");
             assert!(shown(&rt, want), "{want} scrolled into view");
         }
+    }
+
+    #[test]
+    fn a_blurred_field_that_leaves_hands_focus_to_the_button_after_it() {
+        struct Form { open: bool, field: crate::TextEdit }
+        fn view(s: &Form, _: &mut Cx<Form>) -> El {
+            col().size(200.0, 100.0)
+                .children(s.open.then(|| crate::text_input(&s.field, crate::TextStyle::new(14.0, 400.0))
+                    .key("field").size(200.0, 40.0).on_edit(|s: &mut Form| &mut s.field)))
+                .child(button("next"))
+        }
+        let mut rt = Runtime::new(Form { open: true, field: crate::TextEdit::new("") }, view,
+            (200.0, 100.0), Env::new(true, 1.0));
+        rt.set_tab_visits_controls(true);
+        rt.frame(0.0);
+        press(&mut rt, Key::Tab);
+        assert_eq!(focused(&rt), "field");
+        press(&mut rt, Key::Escape);
+        assert!(!rt.has_focus(), "Escape blurs the field");
+        rt.update(|s, _| s.open = false);
+        rt.frame(0.0);
+        assert_eq!(focused(&rt), "next", "the button after the field takes the keyboard");
+    }
+
+    /// Three stacked fields, the first of them removable, for the fallback's guard tests.
+    struct Fields { open: bool, zero: bool, a: crate::TextEdit, b: crate::TextEdit, c: crate::TextEdit }
+    fn fields_view(s: &Fields, _: &mut Cx<Fields>) -> El {
+        let style = || crate::TextStyle::new(14.0, 400.0);
+        col().size(200.0, 150.0)
+            .children(s.open.then(|| crate::text_input(&s.a, style()).key("a").size(200.0, 35.0)
+                .on_edit(|s: &mut Fields| &mut s.a)))
+            .child(crate::text_input(&s.b, style()).key("b").size(200.0, if s.zero { 0.0 } else { 35.0 })
+                .on_edit(|s: &mut Fields| &mut s.b))
+            .child(crate::text_input(&s.c, style()).key("c").size(200.0, 35.0).on_edit(|s: &mut Fields| &mut s.c))
+    }
+    fn fields(open: bool) -> Runtime<Fields> {
+        let mut rt = Runtime::new(Fields { open, zero: false, a: crate::TextEdit::new(""), b: crate::TextEdit::new(""),
+            c: crate::TextEdit::new("") }, fields_view, (200.0, 150.0), Env::new(true, 1.0));
+        rt.set_tab_visits_controls(true);
+        rt.frame(0.0);
+        press(&mut rt, Key::Tab);
+        assert_eq!(focused(&rt), "a");
+        rt
+    }
+
+    #[test]
+    fn a_field_the_model_blurs_while_it_stays_hands_no_focus_on() {
+        let mut rt = fields(true);
+        rt.update(|s, _| s.a.focused = false);
+        rt.frame(0.0);
+        assert!(!rt.has_focus(), "the field is still here: clearing its flag focuses nothing else");
+        assert!(!rt.state.b.focused && !rt.state.c.focused);
+    }
+
+    #[test]
+    fn a_fallback_skips_a_candidate_the_commit_collapsed() {
+        let mut rt = fields(true);
+        rt.update(|s, tx| { tx.instant(); s.open = false; s.zero = true; });
+        rt.frame(0.0);
+        assert_eq!(focused(&rt), "c", "a control the commit collapsed to no height takes no focus");
+        assert!(!rt.state.b.focused, "the collapsed field has none");
+        assert!(rt.state.c.focused);
+    }
+
+    #[test]
+    fn an_explicit_blur_hands_no_focus_on_when_its_field_goes() {
+        let mut rt = fields(true);
+        let was = rt.focus.owned();
+        rt.update(|s, tx| { tx.blur(); s.open = false; });
+        rt.frame(0.0);
+        assert!(!rt.has_focus(), "Tx::blur says nothing has focus, even as the field leaves");
+        assert!(!rt.state.b.focused && !rt.state.c.focused);
+        assert_eq!(rt.focus.tab_start(), was.as_deref(), "Tab still starts from where the keyboard was");
     }
 }

@@ -26,7 +26,7 @@ use rune_taffy::prelude::*;
 use crate::color::{Color, over, srgb_encode};
 use crate::edit::{EditOutcome, Ime, KeyEvent};
 use crate::el::{Align, Commit, Drag, El, GrowthSpec, InputSpec, MotionSource, Phase, PointerEvent, ScrollSpec, Shell, TextSpec, Tx, Visual};
-use crate::growth::{GrowTrack, SUBSTEP};
+use crate::growth::GrowTrack;
 // Half-open, like overlays, NSPointInRect and PtInRect: a shared edge belongs to one side.
 use crate::overlay::options::contains;
 use crate::flight::{TextFlight, transformed};
@@ -194,6 +194,9 @@ mod scroll_watch;
 pub use scroll_watch::scroll_watch_state;
 #[path = "runtime/input/autoscroll.rs"]
 mod autoscroll;
+#[cfg(target_os = "linux")]
+#[path = "runtime/input/primary_selection.rs"]
+mod primary_selection;
 #[path = "runtime/input/gesture.rs"]
 mod gesture_dispatch;
 #[path = "runtime/input/key_releases.rs"]
@@ -331,6 +334,7 @@ pub(crate) mod web_export;
 #[path = "runtime/commit/text_layout.rs"]
 mod text_layout;
 use text_layout::*;
+pub(crate) use text_layout::text_width;
 #[path = "runtime/commit/flatten.rs"]
 mod flatten;
 use flatten::*;
@@ -392,6 +396,10 @@ mod grid_paint;
 mod hit;
 #[path = "runtime/paint/build.rs"]
 mod build;
+#[path = "runtime/paint/keep.rs"]
+mod paint_keep;
+#[path = "runtime/text_fill.rs"]
+mod text_fill;
 #[path = "runtime/input/keys.rs"]
 mod keys;
 #[path = "runtime/input/pointer.rs"]
@@ -462,6 +470,8 @@ pub struct Runtime<S: 'static> {
     system_accent: crate::SystemAccent,
     /// What [`Cx::system_contrast`] reports.
     pub(crate) system_contrast: Option<crate::SystemContrast>,
+    /// What [`Cx::system_increased_contrast`] reports.
+    pub(crate) system_increased_contrast: bool,
     scroll_bars: system_settings::ScrollBarHost,
     pub time_scale: f32,
     /// The last view's `Cx::foreground` and `Cx::focus_ring`, for rows built after it and the
@@ -505,6 +515,11 @@ pub struct Runtime<S: 'static> {
     press: capture::Press,
     /// The secondary button's press, held beside it.
     secondary: capture::Secondary,
+    /// The middle or secondary button's pressed look (`capture::Tint`).
+    tint: capture::Tint,
+    /// Linux's primary selection (`runtime/input/primary_selection.rs`).
+    #[cfg(target_os = "linux")]
+    pub(crate) primary: primary_selection::PrimarySelection,
     /// The middle button's autoscroll (`runtime/input/autoscroll.rs`).
     autoscroll: autoscroll::Autoscroll,
     drag_data: f32,
@@ -522,10 +537,17 @@ pub struct Runtime<S: 'static> {
     hits: Vec<(NodeId, [f32; 4])>,
     overlay_hits: Vec<[f32; 4]>,
     glyph_scratch: Vec<GlyphQuad>,
-    /// Each still text's quads as it drew them, by node and layout, and the paint they were last
-    /// used in (`paint_content`): a frame that draws it the same copies them.
-    text_quads: HashMap<(NodeId, usize), (Rc<parley::Layout<crate::text::Ink>>, crate::el::grid::DrawnRow, u64)>,
+    /// What the last paint painted, for subtrees that would paint it again (`paint_keep`).
+    paint_keep: paint_keep::PaintKeep,
+    /// The device rows of each field with waiting paragraphs its last paint showed (`text_fill`).
+    text_rows: HashMap<NodeId, (f32, f32)>,
+    /// Each still text's quads as it drew them, by node and layout id, and the paint they were
+    /// last used in (`paint_content`): a frame that draws it the same copies them.
+    text_quads: HashMap<(NodeId, crate::text::LayoutId), (crate::el::grid::DrawnRow, u64)>,
     quads_frame: u64,
+    /// Still texts that copied their quads, for tests.
+    #[cfg(test)]
+    quads_copied: u64,
     deco_scratch: Vec<PaintedDeco>,
     inh_scratch: Vec<Inh>,
     /// `motion_elements`' per-node scratch, kept so a frame doesn't allocate.
@@ -637,7 +659,6 @@ pub struct Runtime<S: 'static> {
     fold_headers: HashMap<NodeId, String>,
     /// What this frame's commits held at their landing width (`El::hold_landing_width`).
     landing_holds: landing_hold::LandingHolds,
-    grow_acc: f32,
     caught_up: f32,
     slack_dt: f32,
     /// What has focus, how it shows and where Tab starts (`runtime/input/focus_machine.rs`).
@@ -662,6 +683,8 @@ pub struct Runtime<S: 'static> {
     focus_before_commit: Option<String>,
     /// `Tx::focus`: the key the next commit focuses, and whether its ring shows.
     focus_request: Option<(String, bool, crate::el::FocusAsk)>,
+    /// `Tx::focus_when_shown` still waiting for its element: the key and whether its ring shows.
+    focus_owed: Option<(String, bool)>,
     /// This commit's focus is a `Tx::return_focus` hand-back, which a modal opening in it
     /// doesn't take as where focus was.
     focus_returned: bool,
@@ -905,6 +928,7 @@ impl<S: 'static> Runtime<S> {
             titlebar_inset: 0.0,
             system_accent: crate::SystemAccent::DEFAULT,
             system_contrast: None,
+            system_increased_contrast: false,
             scroll_bars: Default::default(),
             time_scale: 1.0,
             defaults: Default::default(),
@@ -935,6 +959,9 @@ impl<S: 'static> Runtime<S> {
             pointer: None,
             press: Default::default(),
             secondary: Default::default(),
+            tint: Default::default(),
+            #[cfg(target_os = "linux")]
+            primary: Default::default(),
             autoscroll: Default::default(),
             drag_data: 0.0,
             instances: Vec::new(),
@@ -946,8 +973,12 @@ impl<S: 'static> Runtime<S> {
             hits: Vec::new(),
             overlay_hits: Vec::new(),
             glyph_scratch: Vec::new(),
+            paint_keep: Default::default(),
+            text_rows: HashMap::default(),
             text_quads: HashMap::default(),
             quads_frame: 0,
+            #[cfg(test)]
+            quads_copied: 0,
             deco_scratch: Vec::new(),
             inh_scratch: Vec::new(),
             motion_scratch: Default::default(),
@@ -1014,7 +1045,6 @@ impl<S: 'static> Runtime<S> {
             row_lifts: Vec::new(),
             fold_headers: HashMap::default(),
             landing_holds: Default::default(),
-            grow_acc: 0.0,
             caught_up: 0.0,
             slack_dt: 0.0,
             focus: Default::default(),
@@ -1026,6 +1056,7 @@ impl<S: 'static> Runtime<S> {
             modal_focus: modal_focus::ModalFocus::Closed,
             focus_before_commit: None,
             focus_request: None,
+            focus_owed: None,
             focus_returned: false,
             unmounted_focused: Vec::new(),
             modal_scope: None,

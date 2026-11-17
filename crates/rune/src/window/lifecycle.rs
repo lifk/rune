@@ -183,9 +183,10 @@ impl<S: 'static> Host<S> {
         self.shortcuts.drain();
         self.menus.drain();
         let (mut had_updates, mut updated) = (false, false);
-        let requests = self.shared.drain(|f| {
+        let _receiving = self.shortcuts.receiving();
+        let requests = self.shared.drain_window(&mut self.rt, |changed| {
             had_updates = true;
-            updated |= self.rt.update_if(f);
+            updated |= changed;
             self.menus.drain();
         });
         let changed = clipboard || answered || updated || self.rt.drag_ends_pending();
@@ -367,11 +368,20 @@ impl<S: 'static> Host<S> {
         self.secure_input.set(false);
         if !self.closes() { return; }
         crate::marks::mark("window.close");
+        // The last window of an app that ends fast goes as a bare window's close does: its hook,
+        // then the window destroyed at once, with no hide before it. The quit runs after it and
+        // the process ends without dropping the window.
+        let ends = std::mem::take(&mut self.ends_app) && !self.keep_running && cfg!(target_os = "windows");
         // Off the screen first: the close looks done at once and `on_close` runs unseen.
-        if let Some(w) = self.shown_win() { w.hide(); }
+        if !ends && let Some(w) = self.shown_win() { w.hide(); }
         crate::marks::mark("window.close.hidden");
         self.close_hook();
         crate::marks::mark("window.close.hooked");
+        #[cfg(target_os = "windows")]
+        if ends && let Some(w) = &self.win {
+            crate::platform::win32::destroy_window_now(&w.window);
+            crate::marks::mark("window.destroyed");
+        }
         self.rt.set_live_visible(false);
         // While the window still shows its last frames.
         if let Some(trace) = &mut self.trace { trace.settle_presents(crate::frame::present_time::SETTLE); }
@@ -389,7 +399,7 @@ impl<S: 'static> Host<S> {
             self.file_dialog.cancel(&mut self.rt);
             self.rt.cancel_pointer();
             self.files = FileDrop::default();
-            if let Some(w) = &mut self.win { w.apply_cursor(&self.rt, false); w.hide(); }
+            if !ends && let Some(w) = &mut self.win { w.apply_cursor(&self.rt, false); w.hide(); }
             crate::marks::mark("window.hidden");
             self.life.finish();
             return;

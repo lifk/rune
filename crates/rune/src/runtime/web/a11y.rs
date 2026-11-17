@@ -14,8 +14,19 @@ pub(crate) struct A11yMirror {
     commits: u64,
     viewport: (u32, u32),
     scroll_digest: u64,
+    /// Whether motion ran at the last build, and when (clock seconds) it was.
+    moving: bool,
+    built_at: f64,
     json: String,
+    /// The focus proxy last sent (`web_a11y_focus`), and the commit and focus it was read at.
+    focus_at: (u64, String),
+    focus_json: String,
 }
+
+/// While motion runs (a sheet sliding in, a panel opening), how often the mirror follows what's
+/// drawn. Its boxes are the drawn ones, so a build at the commit alone keeps a sliding element
+/// where it started: off screen for a sheet, under a reader's focus ring.
+const MOVING_EVERY: f64 = 0.1;
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct A11yItem {
@@ -44,6 +55,14 @@ pub(crate) struct A11yItem {
     /// Text the browser selects and copies, in a page: `El::selectable` text, and text outside
     /// anything that takes the pointer (`Runtime::page_text_selects`).
     pub selectable: bool,
+    /// What describes it beyond its name (`El::description`, `El::described_by`'s words):
+    /// `aria-description`.
+    pub description: String,
+    /// A control's states, for a button carrying a control's role (`role`): `aria-selected`,
+    /// `aria-checked`, and its place in its set (`El::position_in_set`).
+    pub selected: Option<bool>,
+    pub checked: Option<&'static str>,
+    pub set: Option<(usize, usize)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -69,7 +88,7 @@ pub(crate) struct A11yRun {
 impl A11yItem {
     fn new(kind: &'static str, path: &str, rect: [f32; 4]) -> Self {
         A11yItem { kind, path: path.to_owned(), rect, font_size: 0.0, level: None, expanded: None, text: String::new(),
-            runs: Vec::new(), tag: None, role: None, parent: None, id: None, href: None, font: None, selectable: false }
+            runs: Vec::new(), tag: None, role: None, parent: None, id: None, href: None, font: None, selectable: false, description: String::new(), selected: None, checked: None, set: None }
     }
 
     fn to_json(&self) -> Value {
@@ -81,6 +100,10 @@ impl A11yItem {
         if let Some(l) = self.level { obj.insert("l".into(), json!(l)); }
         if let Some(x) = self.expanded { obj.insert("x".into(), json!(x)); }
         if !self.text.is_empty() { obj.insert("t".into(), json!(self.text)); }
+        if !self.description.is_empty() { obj.insert("d".into(), json!(self.description)); }
+        if let Some(s) = self.selected { obj.insert("se".into(), json!(s)); }
+        if let Some(c) = self.checked { obj.insert("c".into(), json!(c)); }
+        if let Some((pos, size)) = self.set { obj.insert("n".into(), json!([pos, size])); }
         if let Some(g) = self.tag { obj.insert("g".into(), json!(g)); }
         if let Some(o) = self.role { obj.insert("o".into(), json!(o)); }
         if let Some(a) = self.parent { obj.insert("a".into(), json!(a)); }
@@ -119,6 +142,9 @@ pub(crate) fn container_tag(role: &str) -> Option<&'static str> {
         "list" => "ul",
         "listitem" => "li",
         "figure" => "figure",
+        // A list of options (the palette's), and a dialog: role-carrying divs, so the options
+        // inside read as one list of places and the dialog by its name.
+        "listbox" | "dialog" | "alertdialog" => "div",
         // A table's parts are divs with their ARIA roles: the mirror places every element itself,
         // and an HTML table's semantics follow its CSS display.
         "table" | "row" | "cell" | "columnheader" | "rowheader" => "div",
@@ -134,6 +160,26 @@ pub(crate) fn aria_role(role: &str) -> Option<&'static str> {
         "cell" => "cell",
         "columnheader" => "columnheader",
         "rowheader" => "rowheader",
+        "listbox" => "listbox",
+        "dialog" => "dialog",
+        "alertdialog" => "alertdialog",
+        _ => return None,
+    })
+}
+
+/// The ARIA role a mirrored button carries when Rune's role is a control's: a palette's option,
+/// a tab, a switch, a checkbox, a radio, a menu's item, a tree's item.
+fn control_role(role: &str) -> Option<&'static str> {
+    Some(match role {
+        "option" => "option",
+        "tab" => "tab",
+        "switch" => "switch",
+        "checkbox" => "checkbox",
+        "radio" => "radio",
+        "menuitem" => "menuitem",
+        "menuitemcheckbox" => "menuitemcheckbox",
+        "menuitemradio" => "menuitemradio",
+        "treeitem" => "treeitem",
         _ => return None,
     })
 }
@@ -339,6 +385,13 @@ impl<S: 'static> Runtime<S> {
             let parent = open.last().map(|&(_, item)| item);
             let n = &self.nodes[i];
             let end = ends[i];
+            // An open modal's ancestors (the root among them) are outside its scope but hold it:
+            // go into them, saying nothing of them, so the modal is mirrored and the rest isn't.
+            if !n.inert && !self.modal_member(i) && self.modal_ancestor(i, end) {
+                i += 1;
+                last_flow_parent = None;
+                continue;
+            }
             if !self.allowed(i) || self.subtree_exiting(i) || n.vis.opacity <= 0.01 || n.a11y.hidden
                 || matches!(n.role, "none" | "presentation")
             {
@@ -373,12 +426,16 @@ impl<S: 'static> Runtime<S> {
                 out.push(item);
             };
 
-            if let Some(tag) = container_tag(n.role) {
+            // A labelled `group` (a game's surface naming its keys, a set of controls) is a div
+            // with the role and its label; an unlabelled one adds nothing a reader would say.
+            let labelled_group = n.role == "group" && self.mirror_name(i).is_some();
+            if let Some(tag) = container_tag(n.role).or(labelled_group.then_some("div")) {
                 let mut item = A11yItem::new("group", &n.path, rect);
                 item.tag = Some(tag);
-                item.role = aria_role(n.role);
+                item.role = aria_role(n.role).or(labelled_group.then_some("group"));
                 item.id = anchor_id(n.key.as_deref());
-                item.text = n.label.as_deref().map(str::to_owned).filter(|s| !s.trim().is_empty()).unwrap_or_default();
+                item.text = self.mirror_name(i).unwrap_or_default();
+                item.description = self.mirror_description(i);
                 push(&mut out, item);
                 open.push((end, out.len() - 1));
                 last_flow_parent = None;
@@ -386,7 +443,7 @@ impl<S: 'static> Runtime<S> {
                 continue;
             }
             if let Some(href) = n.a11y.more.as_ref().and_then(|m| m.href.clone()) {
-                let label = n.label.as_deref().map(str::to_owned).filter(|s| !s.trim().is_empty()).unwrap_or_else(|| self.descendant_label(i, end));
+                let label = self.mirror_name(i).unwrap_or_else(|| self.descendant_label(i, end));
                 if !label.is_empty() && rect[2] > 0.0 && rect[3] > 0.0 {
                     let mut item = A11yItem::new("link", &n.path, rect);
                     item.text = label;
@@ -398,7 +455,7 @@ impl<S: 'static> Runtime<S> {
                 last_flow_parent = None;
                 continue;
             }
-            if matches!(n.role, "image" | "img") && let Some(label) = n.label.as_deref().map(str::to_owned).filter(|s| !s.trim().is_empty()) {
+            if matches!(n.role, "image" | "img") && let Some(label) = self.mirror_name(i) {
                 let mut item = A11yItem::new("image", &n.path, rect);
                 item.text = label;
                 push(&mut out, item);
@@ -411,11 +468,19 @@ impl<S: 'static> Runtime<S> {
             // multi-block section with independent buttons inside.
             let nested_press = (i + 1..end).any(|j| self.nodes[j].handlers.on_press.is_some() || self.nodes[j].role == "button");
             if button_like && !nested_press && rect[2] > 0.0 && rect[3] > 0.0 {
-                let label = n.label.as_deref().map(str::to_owned).filter(|s| !s.trim().is_empty()).unwrap_or_else(|| self.descendant_label(i, end));
+                let label = self.mirror_name(i).unwrap_or_else(|| self.descendant_label(i, end));
                 if !label.is_empty() {
                     let mut item = A11yItem::new("button", &n.path, rect);
                     item.expanded = n.a11y.expanded;
                     item.text = label;
+                    item.description = self.mirror_description(i);
+                    if let Some(role) = control_role(n.role) {
+                        item.role = Some(role);
+                        if self.a11y_role(i).is_some_and(crate::a11y::roles::selectable_item) { item.selected = Some(n.focus.selected); }
+                        item.checked = n.a11y.checked.map(|c| match c { crate::el::Checked::True => "true", crate::el::Checked::False => "false", crate::el::Checked::Mixed => "mixed" })
+                            .or_else(|| (n.role == "radio").then_some(if n.focus.selected { "true" } else { "false" }));
+                        item.set = n.a11y.more.as_ref().and_then(|m| m.set);
+                    }
                     push(&mut out, item);
                     i = end;
                     last_flow_parent = None;
@@ -497,7 +562,7 @@ impl<S: 'static> Runtime<S> {
                         selectable,
                     });
                 }
-            } else if n.role == "heading" && let Some(lbl) = n.label.as_deref().map(str::to_owned).filter(|s| !s.trim().is_empty()) {
+            } else if n.role == "heading" && let Some(lbl) = self.mirror_name(i) {
                 let mut item = A11yItem::new("heading", &n.path, rect);
                 item.font_size = 16.0;
                 item.level = Some(n.a11y.level.unwrap_or(2).clamp(1, 6));
@@ -509,6 +574,26 @@ impl<S: 'static> Runtime<S> {
             i += 1;
         }
         out
+    }
+
+    /// Node `i`'s name in the mirror, as the native tree names it: its label, else the words of
+    /// the element `El::labelled_by` names.
+    fn mirror_name(&self, i: usize) -> Option<String> {
+        let n = &self.nodes[i];
+        n.label.as_deref().filter(|s| !s.trim().is_empty()).map(str::to_owned).or_else(|| {
+            let key = n.a11y.more.as_deref()?.labelled_by.as_deref()?;
+            Some(self.a11y_words(self.a11y_keyed(i, key)?)).filter(|w| !w.trim().is_empty())
+        })
+    }
+
+    /// Node `i`'s description in the mirror: `El::description`, else the words of the element
+    /// `El::described_by` names.
+    fn mirror_description(&self, i: usize) -> String {
+        let Some(more) = self.nodes[i].a11y.more.as_deref() else { return String::new() };
+        more.description.as_deref().map(str::to_owned)
+            .or_else(|| more.described_by.as_deref().and_then(|k| self.a11y_keyed(i, k)).map(|j| self.a11y_words(j)))
+            .filter(|w| !w.trim().is_empty())
+            .unwrap_or_default()
     }
 
     /// The page's horizontal scroll viewports: their paths and how far each is scrolled right.
@@ -532,9 +617,14 @@ impl<S: 'static> Runtime<S> {
     pub(crate) fn web_a11y<'a>(&self, mirror: &'a mut A11yMirror) -> Option<&'a str> {
         let vp = (self.viewport.0.to_bits(), if self.page.is_some() { 0 } else { self.viewport.1.to_bits() });
         let sd = self.scroll_digest();
-        if mirror.commits == self.commits && mirror.viewport == vp && mirror.scroll_digest == sd && !mirror.json.is_empty() {
+        // Motion moves drawn boxes without a commit: follow it while it runs, and once more where it stops.
+        let moving = self.animating;
+        let follow = moving != mirror.moving || (moving && self.clock - mirror.built_at >= MOVING_EVERY);
+        if mirror.commits == self.commits && mirror.viewport == vp && mirror.scroll_digest == sd && !follow && !mirror.json.is_empty() {
             return None;
         }
+        mirror.moving = moving;
+        mirror.built_at = self.clock;
         mirror.commits = self.commits;
         mirror.viewport = vp;
         mirror.scroll_digest = sd;
@@ -545,6 +635,50 @@ impl<S: 'static> Runtime<S> {
         }
         mirror.json = next;
         Some(&mirror.json)
+    }
+
+    /// An app's focus, for the canvas's focus proxy (`focusA11y` in `bridge.js`): the page keeps
+    /// the browser's focus on the canvas (keys go there) or its text field, so without this a
+    /// reader heard nothing as Tab, arrows or a request moved Rune's focus. The focused
+    /// element's ARIA role, name, description and states; empty when nothing has focus. `None`
+    /// when unchanged since the last call.
+    pub(crate) fn web_a11y_focus<'a>(&self, mirror: &'a mut A11yMirror) -> Option<&'a str> {
+        let at = (self.commits, self.focus.path().unwrap_or_default().to_owned());
+        if mirror.focus_at == at { return None; }
+        mirror.focus_at = at;
+        // A field naming a highlighted row (`El::active_descendant`, the palette's): the row is
+        // what a reader is told about, as the native trees hand it focus.
+        let next = self.focused_index().map(|i| match self.a11y_active_descendant(i) {
+            Some(row) => {
+                let mut item = self.web_focus_item(row);
+                if let Some(o) = item.as_object_mut() { o.insert("f".into(), json!(self.mirror_name(i).unwrap_or_default())); }
+                item.to_string()
+            }
+            None => self.web_focus_item(i).to_string(),
+        }).unwrap_or_default();
+        if mirror.focus_json == next { return None; }
+        mirror.focus_json = next;
+        Some(&mirror.focus_json)
+    }
+
+    fn web_focus_item(&self, i: usize) -> Value {
+        let n = &self.nodes[i];
+        let role = self.a11y_role(i);
+        let mut o = serde_json::Map::new();
+        o.insert("o".into(), json!(role.map_or("group", focus_role)));
+        let name = self.mirror_name(i).unwrap_or_else(|| self.descendant_label(i, self.subtree_end(i)));
+        o.insert("t".into(), json!(name));
+        let description = self.mirror_description(i);
+        if !description.is_empty() { o.insert("d".into(), json!(description)); }
+        let checked = n.a11y.checked.or_else(|| (role == Some(accesskit::Role::RadioButton)).then_some(if n.focus.selected { crate::el::Checked::True } else { crate::el::Checked::False }));
+        if let Some(c) = checked {
+            o.insert("c".into(), json!(match c { crate::el::Checked::True => "true", crate::el::Checked::False => "false", crate::el::Checked::Mixed => "mixed" }));
+        }
+        if role.is_some_and(crate::a11y::roles::selectable_item) { o.insert("s".into(), json!(n.focus.selected)); }
+        if let Some(open) = n.a11y.expanded { o.insert("x".into(), json!(open)); }
+        if let Some((pos, size)) = n.a11y.more.as_ref().and_then(|m| m.set) { o.insert("n".into(), json!([pos, size])); }
+        if let Some(level) = n.a11y.level { o.insert("l".into(), json!(level)); }
+        Value::Object(o)
     }
 
     /// Dispatches assistive-tech activation of a mirrored button or inline link.
@@ -655,3 +789,33 @@ fn join_inline(prev: &mut A11yItem, rect: [f32; 4], mut runs: Vec<A11yRun>, gap:
 #[cfg(test)]
 #[path = "a11y_tests.rs"]
 mod tests;
+
+/// The ARIA role a browser's reader knows for an AccessKit role, for the focus proxy.
+fn focus_role(role: accesskit::Role) -> &'static str {
+    use accesskit::Role as R;
+    match role {
+        R::Button | R::DefaultButton => "button",
+        R::CheckBox => "checkbox",
+        R::Switch => "switch",
+        R::RadioButton => "radio",
+        R::Tab => "tab",
+        R::ListBoxOption | R::MenuListOption => "option",
+        R::TreeItem => "treeitem",
+        R::MenuItem => "menuitem",
+        R::MenuItemCheckBox => "menuitemcheckbox",
+        R::MenuItemRadio => "menuitemradio",
+        R::Link => "link",
+        R::TextInput | R::MultilineTextInput | R::SearchInput | R::PasswordInput | R::Terminal => "textbox",
+        R::Slider => "slider",
+        R::ComboBox | R::EditableComboBox => "combobox",
+        R::Row => "row",
+        R::GridCell | R::Cell => "gridcell",
+        R::ListItem => "listitem",
+        R::Dialog => "dialog",
+        R::AlertDialog => "alertdialog",
+        R::Region => "region",
+        R::Heading => "heading",
+        R::Image => "img",
+        _ => "group",
+    }
+}

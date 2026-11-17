@@ -42,6 +42,9 @@ pub mod fill_bench;
 pub(crate) mod full_faces;
 mod language;
 pub use language::set_language;
+mod layout_id;
+pub(crate) use layout_id::LayoutId;
+use layout_id::LayoutIds;
 mod line_break;
 mod ltr_units;
 pub use ltr_units::ltr_units;
@@ -116,7 +119,7 @@ use glyph_emit::Face;
 use hidden_axes::hidden_axes;
 use layout_cache::{Cache, Entry};
 pub(crate) use layout_cache::Keep;
-pub(crate) use paragraphs::{ParagraphLayout, Piece, TextFlow, TextLayout};
+pub(crate) use paragraphs::{ParagraphLayout, Piece, TextFlow, TextLayout, common_end, common_start};
 #[cfg(test)]
 use layout_cache::STALE_BYTES;
 pub use icon::{Icon, icon_coverage, icon_coverage_placed, set_icon_swap, set_icon_swap_size};
@@ -193,8 +196,17 @@ pub struct TextSystem {
     paragraphs: Cache<Rc<ParagraphLayout>>,
     /// The last by-paragraph layout made this commit, which its text at another width breaks from.
     last_paragraphs: Option<Rc<ParagraphLayout>>,
+    /// The bytes the last two texts compared this commit share at their start and end, and the
+    /// two texts (address and length): measuring a field at its two widths compares it once.
+    last_diff: Option<([usize; 4], usize, usize)>,
+    /// A long paste's lines as one width's keying read them this layout pass, for the other's.
+    line_scan: Option<paragraphs::LineScan>,
+    /// Printable ASCII's advances and line height per style and scale (`paragraphs::AsciiLine`).
+    ascii: HashMap<u64, Option<Rc<paragraphs::AsciiLine>>>,
     runs: Cache<Rc<RunLayout>>,
     generation: u32,
+    /// The id of the layout at each address one was built or re-broken at (`layout_id`).
+    layout_ids: LayoutIds,
     /// The slots' families as named; `sans` and `mono` are the lists text asks for.
     families: (String, String),
     /// The `choose_families` change these slots follow.
@@ -294,6 +306,9 @@ impl TextSystem {
     /// bundled sans and mono fallbacks, since there are no system fonts to discover.
     /// `families` names the sans and mono slots; others are selectable with `Family::Named`.
     pub fn new(fonts: &[&'static [u8]], families: (&str, &str)) -> Self {
+        // Windows' own word dictionaries for the scripts that need one (loaded when first asked).
+        #[cfg(all(target_os = "windows", not(feature = "segmenter-dictionaries")))]
+        crate::platform::win32::segmenter::install();
         measure::note_fonts(fonts, families);
         let mut collection = Collection::new(CollectionOptions { shared: false, system_fonts: false });
         let list: &[&'static [u8]] = if fonts.is_empty() { DEFAULT_FONTS } else { fonts };
@@ -334,8 +349,12 @@ impl TextSystem {
             elisions: Default::default(),
             paragraphs: Default::default(),
             last_paragraphs: None,
+            last_diff: None,
+            line_scan: None,
+            ascii: HashMap::default(),
             runs: Default::default(),
             generation: 0,
+            layout_ids: LayoutIds::default(),
             families: (families.0.to_owned(), families.1.to_owned()),
             chosen: 0,
             language: None,
@@ -515,7 +534,7 @@ impl TextSystem {
     /// elsewhere.
     pub fn coverage_exponent(&self, fill: [f32; 4]) -> f32 {
         let apple = coretext_match::apple_coverage();
-        coretext_match::coverage_exponent(self.smoothing, fill, apple, cfg!(target_os = "windows"))
+        coretext_match::coverage_exponent(self.smoothing, fill, apple, coretext_match::windows_gamma())
     }
 
     /// Rasterise and place glyphs in `mode` from the next placement on, with its CoreGraphics
@@ -658,6 +677,8 @@ impl TextSystem {
             let layout = Rc::make_mut(&mut l);
             break_lines(layout);
             layout.align(align, AlignmentOptions::default());
+            // Re-broken, in place or as a copy: whatever it draws now is its own.
+            self.layout_ids.build(&l);
             self.layouts.insert(key, Entry::new(l.clone(), g, text.len(), shape_key));
             self.shapes.insert(shape_key, key);
             return l;
@@ -955,6 +976,7 @@ impl TextSystem {
         }
         layout.align(align, AlignmentOptions::default());
         let l = Rc::new(layout);
+        self.layout_ids.build(&l);
         if cache {
             self.layouts.insert(key, Entry::new(l.clone(), g, text.len(), shape_key));
             self.shapes.insert(shape_key, key);
@@ -968,7 +990,7 @@ impl TextSystem {
     /// Size in points, rounded up to whole device pixels so layout stays on the pixel grid.
     pub fn measure(&mut self, text: &str, style: TextStyle, scale: f32) -> (f32, f32) {
         let l = self.layout_rich(text, &[], style, scale, None);
-        (l.full_width().ceil() / scale, layout_height(&l, style, scale) / scale)
+        (crate::runtime::text_width(l.full_width()) / scale, layout_height(&l, style, scale) / scale)
     }
 
     /// The atlas quad for `icon` at `px` device pixels square, top-left at `origin`.

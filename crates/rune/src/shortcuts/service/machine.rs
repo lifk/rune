@@ -13,7 +13,8 @@ pub(super) type Registrations = HashMap<ShortcutId, Shortcut>;
 pub(super) enum Attachment<J> {
     /// No host has attached yet.
     Detached,
-    Attached { owner: ThreadId, wake: Waker, jobs: Vec<J> },
+    /// `host` is the routed host's generation: the wake is its, and only it takes `jobs`.
+    Attached { owner: ThreadId, wake: Waker, host: u64, jobs: Vec<J> },
     /// The host closed. Calls are refused, and a later host can still attach.
     Closed,
 }
@@ -21,12 +22,13 @@ pub(super) enum Attachment<J> {
 // Linux calls reach the engine directly, so nothing posts or drains there.
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 pub(super) enum AttachEvent<J> {
-    Attach { owner: ThreadId, wake: Waker },
+    Attach { owner: ThreadId, wake: Waker, host: u64 },
     /// A call from `from`. When `shared`, any thread can reach the engine, so none waits.
     Call { from: ThreadId, shared: bool },
     /// The job of a call told to `Wait`, sent under the same lock.
     Post(J),
-    Drain,
+    /// The host of generation `host` asks for the waiting calls. Only the routed host gets them.
+    Drain { host: u64 },
     Close,
 }
 
@@ -47,11 +49,13 @@ pub(super) enum AttachEffect<J> {
 
 pub(super) fn step_attachment<J>(state: &mut Attachment<J>, event: AttachEvent<J>) -> Effects<AttachEffect<J>> {
     match event {
-        AttachEvent::Attach { owner, wake } => {
-            // Callers already waiting stay queued for the new host.
+        AttachEvent::Attach { owner, wake, host } => {
+            // Callers already waiting stay queued for the new host, which only its own wake
+            // brings to them: the old host's wake now drains nothing.
             let jobs = match state { Attachment::Attached { jobs, .. } => mem::take(jobs), _ => Vec::new() };
-            *state = Attachment::Attached { owner, wake, jobs };
-            Effects::none()
+            let effects = if jobs.is_empty() { Effects::none() } else { Effects::one(AttachEffect::Wake(wake.clone())) };
+            *state = Attachment::Attached { owner, wake, host, jobs };
+            effects
         }
         AttachEvent::Call { from, shared } => match state {
             Attachment::Attached { owner, wake, .. } if shared || *owner == from => Effects::one(AttachEffect::Run { wake: wake.clone() }),
@@ -65,8 +69,8 @@ pub(super) fn step_attachment<J>(state: &mut Attachment<J>, event: AttachEvent<J
             }
             _ => Effects::none(),
         },
-        AttachEvent::Drain => match state {
-            Attachment::Attached { jobs, .. } if !jobs.is_empty() => Effects::one(AttachEffect::Jobs(mem::take(jobs))),
+        AttachEvent::Drain { host: asking } => match state {
+            Attachment::Attached { host, jobs, .. } if *host == asking && !jobs.is_empty() => Effects::one(AttachEffect::Jobs(mem::take(jobs))),
             _ => Effects::none(),
         },
         AttachEvent::Close => match mem::replace(state, Attachment::Closed) {

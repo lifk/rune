@@ -136,6 +136,42 @@ pub mod pace {
 
 pub const SUBSTEP: f32 = 1.0 / 240.0;
 
+/// The steps that advance growth by `dt` seconds: whole `SUBSTEP`s, then what is left, so a
+/// frame shows the motion at its own time rather than at the last whole substep before it (at
+/// 144 or 165 Hz a frame would otherwise advance one substep or two, unevenly). At most a second.
+pub(crate) fn substeps(dt: f32) -> Substeps {
+    let dt = dt.clamp(0.0, 1.0);
+    let whole = (dt / SUBSTEP + 1e-4).floor();
+    let left = dt - whole * SUBSTEP;
+    Substeps { whole: whole as u32, left: if left > 1e-6 { left } else { 0.0 } }
+}
+
+/// [`substeps`]: a frame's growth steps, copied to each track that takes them.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Substeps {
+    whole: u32,
+    left: f32,
+}
+
+/// `n` whole substeps.
+impl From<usize> for Substeps {
+    fn from(n: usize) -> Substeps { Substeps { whole: n as u32, left: 0.0 } }
+}
+
+impl Iterator for Substeps {
+    type Item = f32;
+    fn next(&mut self) -> Option<f32> {
+        if self.whole > 0 {
+            self.whole -= 1;
+            Some(SUBSTEP)
+        } else if self.left > 0.0 {
+            Some(std::mem::take(&mut self.left))
+        } else {
+            None
+        }
+    }
+}
+
 /// How fast a fold's feather deepens once its edge starts moving (points per second): 28 pt in
 /// under 50 ms, so the edge softens as the spring picks up rather than in its first frame.
 const FOLD_FEATHER_GROW: f32 = 600.0;
@@ -210,23 +246,12 @@ pub(crate) enum Lift {
     None,
     /// A fold shutting under a header held stuck to its viewport's top: contents ride its bottom
     /// edge from the height `pinned` they were cut at, so what shows slides up under the header
-    /// on the fold's spring rather than racing past. Nothing to feather.
+    /// on the fold's spring rather than racing past. Nothing to feather. Only
+    /// [`GrowTrack::hide_above`] cuts a fold to this; a slope computed from a lift and a distance
+    /// is [`Lift::Easing`] however it lands.
     Riding { pinned: f32 },
     /// Easing back to their layout over what is left of the glide, `a + b × h` points up.
     Easing { a: f32, b: f32 },
-}
-
-impl Lift {
-    /// The lift that draws `a + b × h` points up from the layout.
-    ///
-    /// A slope of exactly -1.0 draws the contents on the row's bottom edge, which is what
-    /// [`Lift::Riding`] is, and dev's feather branch read that one value as riding wherever it
-    /// came from, so a computed slope landing on it is riding here too: the state says which it
-    /// is once, instead of the reader testing a float. (That a computed slope can reach it is a
-    /// separate bug, filed on its own: it suppresses a fold's feather.)
-    fn slope(a: f32, b: f32) -> Lift {
-        if b == -1.0 { Lift::Riding { pinned: a } } else { Lift::Easing { a, b } }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -238,6 +263,8 @@ pub struct GrowTrack {
     pub age: f32,
     /// Presented feather height (points).
     pub mask: f32,
+    /// A live tail grows under a linear ramp (negative width in the renderer).
+    pub(crate) linear_edge: bool,
     /// `El::streaming`: this row climbs on its stream's pace, which overrides its whole or fold
     /// kind until it rests off the stream.
     pub streaming: bool,
@@ -278,7 +305,7 @@ const SETTLE_V: f32 = 1.5;
 
 impl GrowTrack {
     pub fn settled(h: f32) -> GrowTrack {
-        GrowTrack { h, v: 0.0, target: h, age: 0.0, mask: 0.0, streaming: false, whole: false, duration: 0.0, span: 0.0, motion: Motion::Spring, stage: Stage::Free, lift: Lift::None, restore: 0.0, give: None, pace: Pace::Rest, rate: 0.0 }
+        GrowTrack { h, v: 0.0, target: h, age: 0.0, mask: 0.0, linear_edge: false, streaming: false, whole: false, duration: 0.0, span: 0.0, motion: Motion::Spring, stage: Stage::Free, lift: Lift::None, restore: 0.0, give: None, pace: Pace::Rest, rate: 0.0 }
     }
 
     pub fn moving(&self) -> bool {
@@ -320,10 +347,12 @@ impl GrowTrack {
                 }
                 self.span = (target - self.h).abs();
             }
-            // Lifted contents ease back to their layout over what's left of the glide.
+            // Lifted contents ease back to their layout over what's left of the glide. A fold cut
+            // by N points and reopened by exactly N draws on its bottom edge by arithmetic, with
+            // a slope of exactly -1.0: that's still an easing, and its edge still feathers.
             let d = target - self.h;
             self.lift = if lift > 1.0 / 64.0 && d.abs() > 1.0 / 64.0 {
-                Lift::slope(lift * target / d, -lift / d)
+                Lift::Easing { a: lift * target / d, b: -lift / d }
             } else {
                 Lift::None
             };
@@ -362,7 +391,7 @@ impl GrowTrack {
         let stage = (h + rise.max(0.0)).min(self.target);
         let (d, end) = (stage - h, self.target - stage);
         let b = if d > 1.0 / 64.0 { (end - from) / d } else { 0.0 };
-        self.lift = Lift::slope(if d > 1.0 / 64.0 { from - b * h } else { end }, b);
+        self.lift = Lift::Easing { a: if d > 1.0 / 64.0 { from - b * h } else { end }, b };
         self.stage = Stage::StopAt(stage);
         self.span = d;
     }
@@ -451,7 +480,11 @@ impl GrowTrack {
 
     /// Advance one fixed substep.
     pub fn step(&mut self, spring: Spring, edge: &StreamEdge, carrying_tail: bool) {
-        let dt = SUBSTEP;
+        self.step_by(SUBSTEP, spring, edge, carrying_tail);
+    }
+
+    /// [`Self::step`] for `dt` seconds, at most a `SUBSTEP`.
+    pub(crate) fn step_by(&mut self, dt: f32, spring: Spring, edge: &StreamEdge, carrying_tail: bool) {
         let spring = spring.with_duration(spring.duration.max(self.duration) * edge.duration.max(0.05));
         let aim = self.stage.aim(self.target);
         let rem = aim - self.h;
@@ -467,7 +500,7 @@ impl GrowTrack {
             self.h = self.target;
             self.v = 0.0;
         } else if matches!(self.pace, Pace::Climbing { .. }) && rem > 0.0 {
-            self.climb(rem, carrying_tail);
+            self.climb(rem, carrying_tail, dt);
         } else if !self.streaming && let Motion::Fold { spring: own, .. } = self.motion {
             // A fold: its own spring for its own time, however far, from the velocity it has.
             let (x, v) = own.sample(self.h, self.v, aim, dt);
@@ -525,6 +558,7 @@ impl GrowTrack {
             // A fold's edge feathers both ways, opening and shutting: it softens as the spring
             // picks up, holds through a reversal, and goes crisp as the glide lands.
             // Contents riding the bottom edge (`hide_above`) aren't cut by it: nothing to soften.
+            // Riding is the state that says so, not a slope that happens to land on -1.0.
             let left = (self.target - self.h).abs();
             let riding = matches!(self.lift, Lift::Riding { .. });
             let aim = if left > 0.25 && !riding { feather.unwrap_or(edge.mask_max).min(1.5 * left) } else { 0.0 };
@@ -546,8 +580,7 @@ impl GrowTrack {
     }
 
     /// One substep of a streaming row's climb `rem` points short of its target (see [`pace`]).
-    fn climb(&mut self, rem: f32, carrying_tail: bool) {
-        let dt = SUBSTEP;
+    fn climb(&mut self, rem: f32, carrying_tail: bool, dt: f32) {
         let Pace::Climbing { ended } = &mut self.pace else { return };
         *ended = if self.streaming { 0.0 } else { *ended + dt };
         let landing = (*ended / pace::LAND_RAMP).min(1.0);
@@ -812,6 +845,32 @@ mod tests {
         assert!(masks.windows(2).all(|w| (w[1] - w[0]).abs() < 3.0), "{masks:?}");
         assert_eq!(*masks.last().unwrap(), 0.0);
         assert!(!t.moving() && t.h == 640.0, "settles within 0.5 s: {} at {} pt/s", t.h, t.v);
+    }
+
+    #[test]
+    fn a_fold_reopened_by_what_it_was_cut_by_still_feathers() {
+        // Cut by 12 pt under its stuck header and reopened by exactly 12, a fold's contents ride
+        // its bottom edge by arithmetic: the slope lands on -1.0 without the row ever being in
+        // riding's state, so the glide is an easing and its moving edge feathers like any other.
+        let cut = || {
+            let mut t = GrowTrack::settled(640.0);
+            t.set_kind(false, false, Some((FoldGlide { spring: FOLD, feather: None }, 900.0)));
+            t.retarget(120.0);
+            t.hide_above(12.0);
+            t
+        };
+        // Riding: the contents aren't cut by the edge, so there's nothing to soften.
+        let mut riding = cut();
+        assert!(matches!(riding.lift, Lift::Riding { .. }));
+        riding.step(GROWTH, &edge::FEATHER, false);
+        assert_eq!(riding.mask, 0.0, "riding feathers nothing");
+        // Reopened by exactly what it was cut by: the same 12 pt, on its edge by the numbers.
+        let mut t = cut();
+        t.retarget(640.0);
+        assert_eq!(t.lift, Lift::Easing { a: 640.0, b: -1.0 }, "pinned by the numbers, not by state");
+        assert_eq!(t.lift(), 12.0);
+        t.step(GROWTH, &edge::FEATHER, false);
+        assert!(t.mask > 2.4, "the moving edge softens at once: {} pt", t.mask);
     }
 
     #[test]

@@ -66,8 +66,9 @@ pub(super) fn motion(p: &Presented, rest: Option<Rect>, s: f32, anchored: bool, 
 }
 
 /// How far a gliding box's top (device px) sits below its nearest whole pixel: its glyphs lay
-/// out from that pixel, as at rest, and move down by this ([`crate::text::TextSystem::set_glide`]),
-/// so they keep their place against the box instead of stepping a pixel at a time.
+/// out from that pixel (moved by the fraction its resting box sits off the grid, as at rest) and
+/// move down by this ([`crate::text::TextSystem::set_glide`]), so they keep their place against
+/// the box instead of stepping a pixel at a time, and its last frame lays out as rest does.
 pub(super) fn text_glide(top: f32) -> f32 {
     let g = top - top.round();
     if g.abs() < 1.0 / 64.0 { 0.0 } else { g }
@@ -112,12 +113,64 @@ pub(super) struct Inherit {
     /// The translation in points from scrolls, sticky shifts and growth rows above, which
     /// snaps as a whole.
     pub rigid: [f32; 2],
+    /// `rigid` less the growth rows' offsets (`row_dy`, which settle to zero). A text lays out
+    /// from its exact place against this, so while rows glide it moves in whole pixels with its
+    /// box, as one piece with the lines and borders beside it, and lands where it rests.
+    pub steady: [f32; 2],
+    /// The origin in points of the paint containment above (`El::paint_contained`), which is
+    /// part of `rigid`: what draws from its own exact box rounds against it too.
+    pub contain: [f32; 2],
+    /// `El::motion_snaps` here or above: a moving box snaps where it is each frame.
+    pub steps: bool,
+    /// An `El::offset` here or above comes to rest away from zero: a translation, as a CSS
+    /// transform is, which moves a text with its box rather than laying it out again from its
+    /// exact place (`LeafBox::exact_off` is zero under it).
+    pub shifted: bool,
     /// The nearest scaled layer above or here, as an index into this frame's layers plus one
     /// (0: none).
     pub layer: u32,
     /// The parent's edges, for centring. None when it paints nothing to centre against, its
     /// children don't share its rigid translation, or it doesn't snap on the plain grid.
     pub parent: Option<Parent>,
+}
+
+impl Inherit {
+    /// Moves the subtree `by` points on `axis`: a scroll, a sticky shift or a stack's window,
+    /// which a text lays out against.
+    pub(super) fn shift(&mut self, axis: usize, by: f32) {
+        self.rigid[axis] += by;
+        self.steady[axis] += by;
+    }
+
+    /// A growth offset `dy`: a stack's own (`stack`) is its virtual window's, which holds still
+    /// like a scroll's; a row's glides, which moves its boxes but not what its text lays out
+    /// against.
+    pub(super) fn grow(&mut self, dy: f32, stack: bool) {
+        if stack { self.shift(1, dy) } else { self.rigid[1] += dy }
+    }
+
+    /// `El::paint_contained` at `o` (points): its children snap against it, rounded on its own.
+    pub(super) fn contain_at(&mut self, o: [f32; 2]) {
+        let c = self.contain;
+        self.rigid = [self.rigid[0] - c[0] + o[0], self.rigid[1] - c[1] + o[1]];
+        self.steady = [self.steady[0] - c[0] + o[0], self.steady[1] - c[1] + o[1]];
+        self.contain = o;
+    }
+
+    /// Its bits, for `paint_keep`'s comparison of what a subtree inherits.
+    pub(super) fn hash_bits(&self, h: &mut impl std::hash::Hasher) {
+        h.write_u8(self.off as u8);
+        h.write_u8(self.shifted as u8);
+        for v in self.rigid.iter().chain(&self.steady).chain(&self.contain) { h.write_u32(v.to_bits()); }
+        h.write_u32(self.layer);
+        match &self.parent {
+            Some(p) => {
+                h.write_u8(1);
+                for v in p.rest.exact.iter().chain(&p.rest.at).chain(&p.now.exact).chain(&p.now.at).chain(&p.left) { h.write_u32(v.to_bits()); }
+            }
+            None => h.write_u8(0),
+        }
+    }
 }
 
 /// A box's edges (device px, less its rigid translation): `exact`, and `at` where it draws them.
@@ -135,6 +188,14 @@ pub(super) struct Parent {
     rest: Rest,
     now: Rest,
     left: [f32; 4],
+}
+
+impl Parent {
+    /// How far its exact resting top-left sits from where it rests snapped (device px), `rigid`
+    /// as it was snapped with: where a text inside lays out from, at rest and through a glide alike.
+    pub(super) fn exact_off(&self, rigid: [f32; 2]) -> [f32; 2] {
+        core::array::from_fn(|a| self.rest.exact[a] + rigid[a] - self.rest.at[a] - round(rigid[a]))
+    }
 }
 
 /// The glides of the nodes moving now and the scaled layers, owned by the runtime.

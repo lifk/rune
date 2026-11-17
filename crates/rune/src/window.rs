@@ -37,6 +37,8 @@ mod create;
 #[cfg(target_os = "windows")]
 mod cpu_frame;
 #[cfg(target_os = "windows")]
+mod post_frame;
+#[cfg(target_os = "windows")]
 mod video_layer;
 mod native;
 use native::Native;
@@ -75,7 +77,7 @@ use covered_draw::{CoveredDraw, CoveredDrawEvent};
 #[cfg(target_os = "windows")]
 mod look;
 #[cfg(target_os = "windows")]
-mod slot;
+pub(crate) mod slot;
 #[cfg(target_os = "windows")]
 mod damage;
 use redraw::{Redraw, RedrawEffect, RedrawEvent};
@@ -150,7 +152,7 @@ pub(crate) enum WakeEvent {
     Position(usize, (i32, i32)), Level(usize, bool),
     Place(usize, crate::windows::PlaceRequest),
     Frame(usize, crate::window::frame::FrameRequest),
-    /// Windows: the window's swap chain can take the frame it waits for (`slot`).
+    /// Windows: the window's or an overlay's swap chain can take the frame it waits for (`slot`).
     #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     FrameSlot(usize),
     /// The app was reopened (macOS: its Dock icon clicked; Windows: launched again while it
@@ -192,6 +194,8 @@ pub(crate) trait AnyHost {
     fn quit_hook(&mut self) {}
     /// The app quits: off the screen now, before any hook runs.
     fn vanish(&mut self) {}
+    /// The close about to come ends the app (`Host::close`).
+    fn closing_ends_app(&mut self) {}
     /// Ends a tracking pop-up menu and answers waiting ones `None`, before the host drops or
     /// the loop exits.
     fn cancel_menus(&mut self) {}
@@ -259,8 +263,10 @@ impl Windows {
         for mut overlay in overlays {
             let (slot, proxy) = (self.hosts.len(), self.proxy.clone());
             let frame_proxy = proxy.clone();
+            let slot_proxy = proxy.clone();
             overlay.connect(Arc::new(move || { let _ = proxy.send_event(WakeEvent::App(slot)); }),
-                Arc::new(move || { let _ = frame_proxy.send_event(WakeEvent::DisplayTick(slot)); }), self.gpu.clone());
+                Arc::new(move || { let _ = frame_proxy.send_event(WakeEvent::DisplayTick(slot)); }),
+                Arc::new(move || { let _ = slot_proxy.send_event(WakeEvent::FrameSlot(slot)); }), self.gpu.clone());
             overlay.resumed(event_loop);
             self.hosts.push(Some(overlay));
         }
@@ -407,6 +413,14 @@ impl ApplicationHandler<WakeEvent> for Windows {
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         let _handling = crate::quit::handling();
+        // The last window's close ends a fast-exiting app: the window can go at once.
+        #[cfg(not(target_arch = "wasm32"))]
+        if matches!(event, WindowEvent::CloseRequested) && crate::quit::fast_exit_hook().is_some()
+            && !self.hosts.iter().flatten().any(|h| !h.owns(id) && !h.finished() && h.keeps_loop())
+            && let Some(host) = self.hosts.iter_mut().flatten().find(|h| h.owns(id) && h.keeps_loop())
+        {
+            host.closing_ends_app();
+        }
         if let Some(host) = self.hosts.iter_mut().flatten().find(|h| h.owns(id)) {
             let _input = crate::input::time::arrived(&event);
             host.window_event(event_loop, id, event);
@@ -490,7 +504,14 @@ struct Host<S: 'static> {
     spec: AppSpec<S>,
     args: Args,
     keep_running: bool,
+    /// What the window still owes after its first frame (`post_frame`).
+    #[cfg(target_os = "windows")]
+    chores: post_frame::Chores,
+    /// Its close ends the app (`Windows::window_event`): the last window of a fast-exiting app.
+    ends_app: bool,
     on_close: Option<fn(&mut S, &mut Tx)>,
+    /// `App::on_rest`.
+    on_rest: Option<fn(&mut S, &mut Tx) -> bool>,
     on_quit: Option<fn(&mut S, &mut Tx)>,
     /// `App::turn_scope`, and whether a turn is in it now.
     turn_scope: Option<crate::app::TurnScope<S>>,
@@ -583,6 +604,7 @@ impl<S: 'static> Host<S> {
             let _ = proxy.send_event(WakeEvent::App(slot));
         });
         let (open, keep_running, on_close, release_gpu) = (app.open, app.keep_running, app.on_close, app.release_gpu);
+        let on_rest = app.on_rest;
         let (on_reopen, on_quit, turn_scope) = (app.on_reopen, app.on_quit, app.turn_scope);
         #[cfg(target_os = "macos")]
         let present_log = args.trace.as_ref().map(|_| Arc::default());
@@ -596,7 +618,9 @@ impl<S: 'static> Host<S> {
         let tab_visits_controls = app.tab_visits_controls;
         let fit_height = app.fit_content_height;
         let float_on_open = app.float_on_open;
-        let (open_inactive, open_as) = (app.open_inactive, app.open_as);
+        // `RUNE_OPEN_INACTIVE`: a tool's launch (an accessibility probe, a capture) leaves the user's
+        // focus and keyboard where they are, as `App::open_inactive` does.
+        let (open_inactive, open_as) = (app.open_inactive || std::env::var_os("RUNE_OPEN_INACTIVE").is_some(), app.open_as);
         let app_stats = app.dev_stats;
         let (playground, attach_playground) = (app.playground.take(), app.attach_playground);
         let (mut spec, state, shared) = app.into_parts(args.scene.as_deref());
@@ -623,6 +647,7 @@ impl<S: 'static> Host<S> {
         rt.set_srgb_blend(srgb_blend); rt.set_font_smoothing(font_smoothing);
         rt.set_system_reduced_motion(crate::platform::preferences::reduced_motion());
         rt.set_system_contrast(crate::platform::preferences::contrast());
+        rt.set_system_increased_contrast(crate::platform::preferences::increased_contrast());
         rt.set_full_keyboard_access(crate::platform::preferences::full_keyboard_access());
         rt.set_tab_visits_controls(tab_visits_controls);
         crate::platform::accent::watch();
@@ -664,7 +689,11 @@ impl<S: 'static> Host<S> {
             spec,
             args,
             keep_running,
+            #[cfg(target_os = "windows")]
+            chores: Default::default(),
+            ends_app: false,
             on_close,
+            on_rest,
             on_quit,
             turn_scope,
             turn: any_host::Turn::Between,
@@ -720,10 +749,11 @@ fn setup_waker<S: 'static>(shared: &Arc<crate::app::Shared<S>>) -> Waker {
 /// What a shown window that can't draw runs for an update, a wake, a due timer or a redraw:
 /// covered (an occlusion event, or a drawable refused as occluded), minimised, or waiting out
 /// a missed frame. `poll`, due timers and queued input run now, as for a hidden window
-/// (`Runtime::hidden_wake`); the view and layout wait, dirty, for the frame that uncovers it.
+/// (`Runtime::hidden_wake`); the view and layout wait, dirty, for the frame that uncovers it,
+/// unless an assistive client reads the window (`Runtime::covered_wake`).
 /// Uncovering settles first, so that frame builds once and paints motion where it would have
 /// ended, as Core Animation's time-based motion has by the time a covered window shows again.
-pub(crate) fn covered_step<S: 'static>(rt: &mut Runtime<S>) { rt.hidden_wake(); }
+pub(crate) fn covered_step<S: 'static>(rt: &mut Runtime<S>) { rt.covered_wake(); }
 
 /// Frames a window's swap chain may hold that the compositor hasn't shown. Windows: one, so a
 /// frame shows at the first composition after it's done, and the window waits for room itself

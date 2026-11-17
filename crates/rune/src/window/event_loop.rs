@@ -66,12 +66,13 @@ fn run_configured(factory: Factory, args: Args, accessory: bool) -> Result<(), S
     #[allow(unused_mut)]
     let mut builder = EventLoop::<WakeEvent>::with_user_event();
     #[cfg(target_os = "macos")]
-    if accessory {
+    // `RUNE_OPEN_INACTIVE` (a tool's launch): the app doesn't take activation at launch either.
+    if accessory || std::env::var_os("RUNE_OPEN_INACTIVE").is_some() {
         use winit::platform::macos::{ActivationPolicy, EventLoopBuilderExtMacOS};
-        builder
-            .with_activation_policy(ActivationPolicy::Accessory)
-            .with_default_menu(false)
-            .with_activate_ignoring_other_apps(false);
+        if accessory {
+            builder.with_activation_policy(ActivationPolicy::Accessory).with_default_menu(false);
+        }
+        builder.with_activate_ignoring_other_apps(false);
     }
     let event_loop = builder.build().inspect_err(|_| crate::render::discard_prewarm()).map_err(event_loop_error)?;
     crate::marks::mark("loop.built");
@@ -80,6 +81,14 @@ fn run_configured(factory: Factory, args: Args, accessory: bool) -> Result<(), S
     // it 1,134 µs slower.
     #[cfg(target_os = "windows")]
     crate::gpu::pick::find_display_vendor_soon();
+    // winit's table for the keyboard layout, which the first key or mouse message would build on
+    // this thread (8-10 ms, every virtual key through `ToUnicodeEx`): built beside the launch.
+    #[cfg(target_os = "windows")]
+    {
+        // SAFETY: no arguments; this thread runs the loop.
+        let thread = unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() };
+        let _ = std::thread::Builder::new().name("rune-keyboard-layout".into()).spawn(move || winit::platform::windows::warm_keyboard_layout(thread));
+    }
     event_loop.set_control_flow(ControlFlow::Wait);
     #[cfg(target_os = "macos")]
     crate::platform::app_icon::launched();

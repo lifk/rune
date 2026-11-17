@@ -49,18 +49,24 @@ pub(crate) struct Held {
     pub(crate) left: bool,
     /// The link of its text it began on: a release on the same link activates it.
     pub(crate) link: Option<usize>,
+    /// It ran its element's `on_press` as it went down (`El::press_on_down`): its release
+    /// runs nothing.
+    pub(crate) pressed_on_down: bool,
 }
 
 impl Held {
     /// A press that just went down at `at`, inside its element and still.
     pub(crate) fn new(path: String, drag: Drag, button: PointerButton, at: (f32, f32), down_at: f64, second: bool, drag_out: Option<f32>) -> Self {
-        Self { path, drag, button, at, down_at, hit: Hit::Inside, moved: false, second, drag_out, left: false, link: None }
+        Self { path, drag, button, at, down_at, hit: Hit::Inside, moved: false, second, drag_out, left: false, link: None, pressed_on_down: false }
     }
 
     pub(crate) fn inside(&self) -> bool { self.hit == Hit::Inside }
 
     /// Began on link `link` of its text.
     pub(crate) fn on_link(self, link: Option<usize>) -> Self { Self { link, ..self } }
+
+    /// Ran its element's `on_press` as it went down.
+    pub(crate) fn pressed_on_down(self, pressed_on_down: bool) -> Self { Self { pressed_on_down, ..self } }
 }
 
 #[derive(Clone, Debug)]
@@ -133,6 +139,31 @@ pub(crate) enum Secondary {
     #[default]
     Up,
     Held { path: String, link: Option<usize>, left: bool },
+}
+
+/// The middle or secondary button held where the primary isn't: the element it shows pressed
+/// ([`El::press`](crate::El::press)) while the pointer is over it, as a browser sets `:active`
+/// for a press of any button. It's the element a primary press there would take; it hears
+/// nothing, and the release lets go of it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) enum Tint {
+    #[default]
+    Up,
+    Held { path: String, button: PointerButton },
+}
+
+impl Tint {
+    pub(crate) fn path(&self) -> Option<&str> {
+        match self {
+            Self::Held { path, .. } => Some(path),
+            Self::Up => None,
+        }
+    }
+
+    /// `button` came up: it lets go if it's the one holding.
+    pub(crate) fn release(&mut self, button: PointerButton) {
+        if matches!(self, Self::Held { button: b, .. } if *b == button) { *self = Self::Up; }
+    }
 }
 
 impl Secondary {

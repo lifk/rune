@@ -6,12 +6,13 @@ impl<S: 'static> Runtime<S> {
         let (_paint_time, _blend) = (crate::frame::profile::Scope::new(crate::frame::profile::Phase::Paint), crate::theme::scope(self.srgb_blend));
         let s = self.env.scale;
         let snap_px = |v: f32| grid(v, s) * s;
+        self.keep_swap();
         self.instances.clear();
         self.quads_frame += 1;
         // Quads a text hasn't drawn with for a while go, with the layouts they hold.
         if self.quads_frame % 64 == 0 {
             let frame = self.quads_frame;
-            self.text_quads.retain(|_, (_, _, used)| frame - *used < 64);
+            self.text_quads.retain(|_, (_, used)| frame - *used < 64);
         }
         let mut pinned_pages = 0u32;
         for f in &self.flights {
@@ -110,9 +111,13 @@ impl<S: 'static> Runtime<S> {
                 || self.scene.presented(n.id).is_some_and(|p| (p.opacity > 0.0 && p.opacity < 1.0) || p.blur > 0.0 || p.transform.rotate.abs() > 1e-6))
         });
         let default_ring = self.default_ring_owner();
+        self.keep_begin(tree_order, vp, default_ring, &sel_ranges, &mark_ranges);
         let mut active_cache: Option<ActiveCache> = None;
         self.pixel_snap.begin_frame(self.t, [vp[2], vp[3]]);
+        // One past the subtree the last one copied from the last paint.
+        let mut skip_to = 0;
         for paint_index in 0..n_nodes {
+            if paint_index < skip_to { continue; }
             let i = if tree_order { self.layer_paint_order[paint_index] } else { paint_index };
             if let Some(rank) = self.paint_rank.as_mut() {
                 rank.resize(n_nodes, 0);
@@ -133,6 +138,7 @@ impl<S: 'static> Runtime<S> {
                     }
                 }
             }
+            self.keep_close(Some(node_parent), &mut layers, &mut active_cache, &mut glyph_count);
             while let Some(&(ancestor, start, surface_start)) = layers.last() {
                 let mut parent = node_parent;
                 while parent.is_some_and(|p| p != ancestor) { parent = self.nodes[parent.unwrap()].parent; }
@@ -145,6 +151,7 @@ impl<S: 'static> Runtime<S> {
                 }
                 layers.pop();
             }
+            self.keep_open(i, glyph_count, &sel_ranges, &mark_ranges);
             let n = &self.nodes[i];
             let Some(p) = self.scene.presented(n.id) else { continue };
             let mut pinh = n.parent.map_or_else(|| self.root_inh(), |pr| self.inh_scratch[pr]);
@@ -164,7 +171,7 @@ impl<S: 'static> Runtime<S> {
                 pinh.paint_opacity *= shown;
             }
             pinh.dy += self.row_dy[i];
-            pinh.snap.rigid[1] += self.row_dy[i];
+            pinh.snap.grow(self.row_dy[i], n.growth.is_some());
             if let Some(a) = &n.above
                 && let Some(j) = anchor_index(&self.nodes, i, a)
             {
@@ -188,7 +195,7 @@ impl<S: 'static> Runtime<S> {
                     pinh.paint_clip[1] = top;
                 }
                 if edge == crate::el::StickyEdge::Left { pinh.dx += shift } else { pinh.dy += shift }
-                pinh.snap.rigid[(edge != crate::el::StickyEdge::Left) as usize] += shift;
+                pinh.snap.shift((edge != crate::el::StickyEdge::Left) as usize, shift);
                 // A sticky element stays crisp against the viewport edge it sticks to while rows
                 // scrolling under its fill fade out.
                 let slot = match edge {
@@ -205,6 +212,11 @@ impl<S: 'static> Runtime<S> {
                     pinh.paint_fade_origin[slot] = origin;
                 }
             }
+            if let Some(len) = self.keep_or_paint(i, &pinh, &mut glyph_count) {
+                skip_to = paint_index + len;
+                continue;
+            }
+            let n = &self.nodes[i];
             if raised {
                 // Out of its ancestors' layers: their opacity applies directly instead.
                 pinh.paint_opacity = pinh.opacity;
@@ -284,6 +296,10 @@ impl<S: 'static> Runtime<S> {
                 self.scene.get(n.id, P_HOVER).unwrap_or(0.0).clamp(0.0, 1.0)
             } else {
                 pinh.group
+            };
+            let (pressed, press_to) = match n.vis.cold.get().and_then(|c| c.press_color) {
+                Some(c) => (self.scene.get(n.id, P_PRESS).unwrap_or(0.0).clamp(0.0, 1.0), Some(c)),
+                None => (pinh.pressed, pinh.press_to),
             };
             // Loops and reveals run on the node's clock (`El::time_scale`).
             let track = self.loops.get(&n.id);
@@ -439,7 +455,8 @@ impl<S: 'static> Runtime<S> {
             } else {
                 pinh.snap.layer
             };
-            let rest = if snaps && animating { self.scene.rest(n.id) } else { None };
+            let steps = pinh.snap.steps || n.vis.cold.get().is_some_and(|c| c.motion_snaps);
+            let rest = if snaps && animating && !steps { self.scene.rest(n.id) } else { None };
             let gliding = snaps && (rest.is_some() || !unscaled);
             let (r, snap_rest) = if !snaps {
                 (r_exact, None)
@@ -553,6 +570,7 @@ impl<S: 'static> Runtime<S> {
                 }
                 if self.time_scale > 0.0 && node_k > 0.0 && let Some(start) = track.pending_start(lnow) {
                     let window_start = now + (start - lnow) / node_k;
+                    self.paint_keep.cycles.other_deadline();
                     let wake = self.clock + (window_start - now) / self.time_scale as f64;
                     if self.loop_wake.is_none_or(|w| wake < w.0) { self.loop_wake = Some((wake, window_start)); }
                 }
@@ -879,12 +897,13 @@ impl<S: 'static> Runtime<S> {
                         overlay = over(premul(self.color(n.id, P_PRESS_C, n.vis.press()), prs_v, srgb), overlay);
                     }
                 }
+                let layered = n.vis.gradient.is_some() || n.vis.radial.is_some() || n.vis.surface.is_some();
+                let base_color = |c: Color| super::blend::flat_base(c, srgb, !layered && n.vis.border_width() == 0.0 && c.a * o < 1.0);
                 let base = match n.material {
                     _ if native_material.is_some() => [0.0; 4],
-                    Some(_) => premul(self.color(n.id, P_FILL, crate::system_material::fallback_fill(n.vis.fill, self.env.system_dark)), 1.0, srgb),
-                    None => premul(self.color(n.id, P_FILL, n.vis.fill), 1.0, srgb),
+                    Some(_) => base_color(self.color(n.id, P_FILL, crate::system_material::fallback_fill(n.vis.fill, self.env.system_dark))),
+                    None => base_color(self.color(n.id, P_FILL, n.vis.fill)),
                 };
-                let layered = n.vis.gradient.is_some() || n.vis.radial.is_some() || n.vis.surface.is_some();
                 let fill = if layered { base } else { over(overlay, base) }.map(|c| c * o);
                 let bw = pixel_snap::line_width(n.vis.border_width() * s) * sc;
                 let border = if bw > 0.0 { premul(self.color(n.id, P_BORDER, n.vis.border()), o, srgb) } else { [0.0; 4] };
@@ -1041,6 +1060,7 @@ impl<S: 'static> Runtime<S> {
                             match wait {
                                 Some(wait) if pulled.active && wait > crate::video::WAKE_MIN => {
                                     let wake = self.clock + wait;
+                                    self.paint_keep.cycles.other_deadline();
                                     if self.loop_wake.is_none_or(|w| wake < w.0) {
                                         self.loop_wake = Some((wake, now + wait * self.time_scale as f64));
                                     }
@@ -1066,6 +1086,19 @@ impl<S: 'static> Runtime<S> {
                     if fill == [0.0; 4] && border_kind == KIND_RECT && bw > 0.0 && sides.is_none() {
                         bands::push_ring(&mut self.instances, ring);
                     } else {
+                        if let Some(rune_motion::LoopKind::OpacityCycle(curve)) = n.looping.as_ref().map(|l| l.kind)
+                            && n.a11y.hidden && !next.is_some_and(|j| self.nodes[j].parent == Some(i))
+                            && !isolate && !in_cache && !skip_paint && loop_vis && base_opacity == 1.0
+                            && pinh.paint_opacity == 1.0 && pinh.hit_opacity == 1.0 && n.vis.layer_opacity == 1.0
+                            && n.vis.paint_alpha == 1.0 && bw == 0.0 && overlay == [0.0; 4]
+                            && self.instances.len() == primitive_start && n.text.is_none() && n.input.is_none()
+                            && n.vis.shape.is_none() && n.vis.pixels.is_none() && n.vis.effect.is_none()
+                            && n.vis.shadows.is_empty() && n.handlers.get().is_none() && n.focus.get().is_none()
+                            && !n.vis_flags.hit() && node_turn.is_none() && cover.is_none() && n.help.is_none()
+                            && curve.stops.iter().all(|&(_, a)| a.is_finite() && a > 0.001 && a <= 1.0 && base[3] * a > 0.0005)
+                        {
+                            self.paint_keep.cycles.record(i, self.instances.len(), curve, base, ring.rect);
+                        }
                         self.instances.push(Instance { fill, ..ring });
                     }
                 }
@@ -1116,7 +1149,18 @@ impl<S: 'static> Runtime<S> {
                     paint_content::LeafBox {
                         r,
                         r_exact,
+                        // Its exact resting place against its snapped one, inside its containment's
+                        // own rounding (`LeafBox::exact_off`).
+                        // Under an offset (`El::offset`, a translation as CSS transforms are) it moves
+                        // with its box, as it did before this: a glide toward a moving offset keeps
+                        // the text on its card, and lands as a card that never moved draws.
+                        exact_off: if pinh.snap.shifted || n.vis.offset != [0.0; 2] { [0.0; 2] } else {
+                            let o = snap_rest.map_or([0.0; 2], |p| p.exact_off(pinh.snap.steady.map(|v| v * s)));
+                            let c = pinh.snap.contain.map(|v| v * s);
+                            [o[0] + (c[0] + 0.5).floor() - c[0], o[1] + (c[1] + 0.5).floor() - c[1]]
+                        },
                         raw_size: [raw_edges[2] - raw_edges[0], raw_edges[3] - raw_edges[1]],
+                        contain: pinh.snap.contain.map(|v| v * s),
                         radii,
                         sc,
                         o,
@@ -1124,6 +1168,8 @@ impl<S: 'static> Runtime<S> {
                         clip,
                         fade,
                         group: pinh.group,
+                        pressed,
+                        press_to,
                         loop_value,
                         cover,
                         scale_motion,
@@ -1169,11 +1215,16 @@ impl<S: 'static> Runtime<S> {
                 clip[3] = clip[3].min(r[3]);
                 // A fold's lifted contents (`GrowTrack::hide_above`) never draw above its top.
                 if self.row_lifts.iter().any(|&(ri, _)| ri == i) { clip[1] = clip[1].max(r[1]); }
-                inherit_fade(&mut fade, &mut fade_origin, r, [0.0, 0.0, 0.0, mask * s]);
+                inherit_fade(&mut fade, &mut fade_origin, r, [0.0, 0.0, 0.0, self.growth_feather(i)]);
             }
             let mut dy = pinh.dy;
             let snap_off = pinh.snap.off || n.vis_flags.no_pixel_snap() || turn_index != 0;
-            let mut snap_rigid = pinh.snap.rigid;
+            let mut snap = pinh.snap;
+            // `El::paint_contained`: its children snap against the containing box's origin,
+            // rounded on its own, as a translation that snaps as a whole.
+            if let Some(o) = n.vis.cold.get().and_then(|c| c.paint_contain) {
+                snap.contain_at(o);
+            }
             if n.scroll.is_some()
                 && let Some(st) = self.scrolls.get(&n.id)
             {
@@ -1182,14 +1233,14 @@ impl<S: 'static> Runtime<S> {
                 let exact = offset as f32 + st.slack.height();
                 let (drawn, hold) = st.drawn.draw(exact, st.offset as f32, st.pinned(), s);
                 dy -= drawn;
-                snap_rigid[1] -= drawn;
+                snap.shift(1, -drawn);
                 if let Some(st) = self.scrolls.get_mut(&self.nodes[i].id) { (st.held, st.drawn) = (held, hold); }
             }
             let (mut scale, mut anchor, mut anchor_to, mut dx) = (sc, anchor, anchor_to, pinh.dx);
             if n.scroll_axes.x() && let Some(st) = self.scrolls.get_mut(&self.nodes[i].id) {
                 st.drawn_x = grid(st.x.shift() as f32, s);
                 dx -= st.drawn_x;
-                snap_rigid[0] -= st.drawn_x;
+                snap.shift(0, -st.drawn_x);
             }
             if open_cache && sc > 1e-4 {
                 dx += (r_exact[0] / s - rect_pt[0]) / sc;
@@ -1220,11 +1271,11 @@ impl<S: 'static> Runtime<S> {
             self.inh_scratch[i] = Inh { opacity: effective_opacity, paint_opacity: o, first_fade: kids_fade,
                 clip: full_clip, fade: hit_fade, fade_origin: hit_origin,
                 paint_clip: clip, paint_fade: fade, paint_fade_origin: fade_origin, rounded, scale, anchor, anchor_to, blur, dy, dx,
-                cover: cover_offset, outer, mark, group,
+                cover: cover_offset, outer, mark, group, pressed, press_to,
                 hit_opacity: hit_opacity * kids_fade, group_rect: if hover_owner { rect_pt } else { pinh.group_rect },
                 scale_motion, still: if scale_motion == ScaleMotion::Still { (scale, anchor, anchor_to) } else { pinh.still },
                 in_cache, skip_paint, turn: turn_index,
-                snap: pixel_snap::Inherit { off: snap_off, rigid: snap_rigid, layer: if cover.is_some() { 0 } else { snap_layer }, parent: snap_rest.filter(|_| cover.is_none() && snap_rigid == pinh.snap.rigid && pixel_snap::frames(&n.vis)) } };
+                snap: pixel_snap::Inherit { off: snap_off, steps, shifted: pinh.snap.shifted || n.vis.offset != [0.0; 2], layer: if cover.is_some() { 0 } else { snap_layer }, parent: snap_rest.filter(|_| cover.is_none() && snap.rigid == pinh.snap.rigid && pixel_snap::frames(&n.vis)), ..snap } };
             // Shown only under its group's hover, it takes presses where the pointer hovers the
             // group: a press in the same frame as the move that reveals it finds it, as a page's
             // `:hover` applies before the press does.
@@ -1233,7 +1284,10 @@ impl<S: 'static> Runtime<S> {
             if self.has_sticky {
                 self.fade_below_header(i, s);
             }
+            self.keep_painted(i, own_turn.is_none() && !opens_snap_layer && snap_layer == 0 && !in_cache && !skip_paint && cover.is_none() && !lift && !raised);
         }
+        self.keep_close(None, &mut layers, &mut active_cache, &mut glyph_count);
+        self.keep_end();
         while let Some((_, start, surface_start)) = layers.pop() {
             if active_cache.is_some_and(|ac| ac.instance_start == start) {
                 let ac = active_cache.take().unwrap();
@@ -1247,6 +1301,7 @@ impl<S: 'static> Runtime<S> {
         // follow the hold this decides.
         let queued = self.queue.len();
         let held = self.pointer.map(|(x, y)| self.refresh_hover(x, y));
+        self.queue.observe_since(queued);
         self.update_help();
         self.layer_scratch = layers;
         self.built = true;

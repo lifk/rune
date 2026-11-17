@@ -548,5 +548,14 @@ fn fs(i: Out) -> @location(0) vec4<f32> {
             col = i.fill * pow(cov, i.params.w);
         }
     }
-    return col * clip_alpha(clip_p, i.clip, i.fade);
+    let source = col * clip_alpha(clip_p, i.clip, i.fade);
+    // On a direct byte surface cpu_boot::blend converts the source *after* mask gamma,
+    // colour, shape coverage and clipping. The mask texel itself isn't the blend source.
+    let flat_fill = kind == 0.0 && i.params.x == 0.0 && i.fill.a > 0.0 && i.fill.a < 1.0;
+    let gray_mask = kind == 2.0 && i.radii.w == 0.0 && i.radii.x == 0.0 && i.params.x == 0.0 && i.uv.z == 0.0 && i.params.w >= 0.0;
+    // Keep float layers, dual-source, outline/filtered glyphs and atlas population unchanged.
+    if (g.flags.y > 0.5 && projection.z == 0.0 && (flat_fill || gray_mask)) {
+        return round(clamp(source, vec4<f32>(0.0), vec4<f32>(1.0)) * 255.0) / 255.0;
+    }
+    return source;
 }

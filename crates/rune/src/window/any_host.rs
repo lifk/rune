@@ -8,6 +8,7 @@ impl<S: 'static> AnyHost for Host<S> {
     }
     fn finished(&self) -> bool { self.life.finished() }
     fn keeps_loop(&self) -> bool { self.keeps_loop }
+    fn closing_ends_app(&mut self) { self.ends_app = true; }
     fn key(&self) -> Option<&str> { Some(self.native_handle.key()) }
     fn reopen_candidate(&self) -> crate::platform::reopen::Candidate {
         let shown = self.shown_win();
@@ -283,13 +284,13 @@ impl<S: 'static> Host<S> {
         }
         self.hidden_input(event_loop);
         self.a11y_turn();
-        // The first idle turn after a CPU-drawn window's first frame starts its GPU.
+        // After the first frame: its on_ready, hooks, the GPU's start and the accessibility
+        // adapter, one a turn, none while input waits; the loop turns again while some are owed.
         #[cfg(target_os = "windows")]
-        {
-            self.cpu_idle();
-            self.a11y_after_frame();
-        }
-        false
+        return self.post_frame_turn();
+        // Elsewhere `on_ready` ran with the first frame; a view asked to be prepared since runs now.
+        #[cfg(not(target_os = "windows"))]
+        { !crate::marks::counting() && self.rt.text_idle_owed() && self.rt.text_idle_turn() }
     }
 
     fn resumed_in_turn(&mut self, event_loop: &ActiveEventLoop) {

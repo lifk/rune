@@ -309,7 +309,12 @@ fn a_call_that_reaches_the_new_engine_wakes_its_host_and_lets_the_old_one_go() {
         let (old, seen) = (old.clone(), seen.clone());
         Arc::new(move || { *seen.lock().unwrap() = Some(old.upgrade().is_some()); })
     };
-    *control.engine.lock().unwrap() = Some(Slot { engine: second.clone(), wake: b_wake.clone() });
+    let generation = next_generation();
+    {
+        let mut slot = control.engine.lock().unwrap();
+        control.generation.store(generation, Ordering::Relaxed);
+        *slot = Some(Slot { engine: second.clone(), wake: b_wake.clone(), generation });
+    }
 
     // The call captures routing's wake (the first host) and the newer engine, then runs on it.
     let (entered, enter) = mpsc::channel();
@@ -321,7 +326,7 @@ fn a_call_that_reaches_the_new_engine_wakes_its_host_and_lets_the_old_one_go() {
     enter.recv_timeout(PATIENCE).unwrap();
     // The newer host finishes its attach, so routing lets the first host's wake go; the call still
     // holds the copy it captured.
-    step_attachment(&mut control.attachment.lock().unwrap(), AttachEvent::Attach { owner: std::thread::current().id(), wake: b_wake });
+    step_attachment(&mut control.attachment.lock().unwrap(), AttachEvent::Attach { owner: std::thread::current().id(), wake: b_wake, host: generation });
     finish.send(()).unwrap();
     caller.join().unwrap().unwrap();
 

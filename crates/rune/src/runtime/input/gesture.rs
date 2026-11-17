@@ -191,6 +191,10 @@ impl<S: 'static> Runtime<S> {
         if self.autoscroll_press(button) { self.pointer = Some((x, y)); return; }
         if self.press.is_held() { return; }
         self.pointer = Some((x, y));
+        if button == PointerButton::Middle { self.tint_down(x, y, button); }
+        // On Linux a middle click in a text field pastes the primary selection there.
+        #[cfg(target_os = "linux")]
+        if button == PointerButton::Middle && self.primary_paste_down(x, y) { return; }
         self.dismiss_help();
         let hit = self.hits.iter().rev().find(|&&(id, r)| self.hit_contains(id, r, x, y)).and_then(|(id, _)| self.node_index.get(id).copied());
         let middle = button == PointerButton::Middle;
@@ -238,6 +242,7 @@ impl<S: 'static> Runtime<S> {
 
     /// A mouse button came up at (x, y): the release of [`Self::button_down`].
     pub fn button_up(&mut self, x: f32, y: f32, button: PointerButton) {
+        self.tint.release(button);
         if !matches!(button, PointerButton::Primary | PointerButton::Secondary) && self.autoscroll_release(button) { self.pointer = Some((x, y)); return; }
         match button {
             PointerButton::Primary => self.pointer_up(x, y),
@@ -552,5 +557,41 @@ mod tests {
         rt.wheel_began();
         rt.frame(1.0 / 60.0);
         assert_eq!(rt.state.heard, ["a", "b"], "each delta goes to the handler its own gesture found");
+    }
+
+    /// Three gestures begin inside one frame, each with a delta queued for the handler under the
+    /// pointer: each delta reaches its own gesture's handler.
+    #[test]
+    fn three_gestures_queued_before_one_frame_each_reach_their_own_handler() {
+        let mut rt = Runtime::new(Two::default(), two_handlers, (300.0, 300.0), Env::default());
+        rt.frame(0.0);
+        rt.frame(1.0 / 60.0);
+        rt.wheel_event(crate::WheelEvent::new(0.0, -10.0).at(30.0, 50.0));
+        rt.wheel_began();
+        rt.wheel_event(crate::WheelEvent::new(0.0, -10.0).at(210.0, 50.0));
+        rt.wheel_began();
+        rt.wheel_event(crate::WheelEvent::new(0.0, -10.0).at(30.0, 50.0));
+        rt.frame(1.0 / 60.0);
+        assert_eq!(rt.state.heard, ["a", "b", "a"], "each delta goes to the handler its own gesture found");
+        let id = rt.nodes.iter().find(|n| n.key.as_deref() == Some("list")).unwrap().id;
+        assert_eq!(rt.scrolls[&id].offset, 0.0, "every delta reached a handler");
+    }
+
+    /// The third gesture scrolls at once outside every handler: the deltas queued for the first
+    /// two gestures still reach their own handlers, and only the third scrolls.
+    #[test]
+    fn a_third_gesture_scrolling_before_the_frame_keeps_both_queued_owners() {
+        let mut rt = Runtime::new(Two::default(), two_handlers, (300.0, 300.0), Env::default());
+        rt.frame(0.0);
+        rt.frame(1.0 / 60.0);
+        rt.wheel_event(crate::WheelEvent::new(0.0, -10.0).at(30.0, 50.0));
+        rt.wheel_began();
+        rt.wheel_event(crate::WheelEvent::new(0.0, -10.0).at(210.0, 50.0));
+        rt.wheel_began();
+        rt.wheel_event(crate::WheelEvent::new(0.0, -10.0).at(290.0, 50.0));
+        rt.frame(1.0 / 60.0);
+        assert_eq!(rt.state.heard, ["a", "b"], "the first two gestures' deltas still reach their handlers");
+        let id = rt.nodes.iter().find(|n| n.key.as_deref() == Some("list")).unwrap().id;
+        assert_eq!(rt.scrolls[&id].offset, 10.0, "only the third gesture's own delta scrolled");
     }
 }

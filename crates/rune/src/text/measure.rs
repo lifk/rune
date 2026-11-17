@@ -15,6 +15,18 @@ mod ink;
 pub use ink::{TextInk, ink};
 use crate::tok::TextStyle;
 
+impl crate::El {
+    /// A filled disc in a list's outside marker column. The column's inline end is where the
+    /// item's text begins; its top is the top of the first line. Its width, and thus wrapping,
+    /// is up to the caller. The disc's diameter and inset resolve from the primary font's
+    /// metrics in whole device pixels during layout, also after a zoom or display change.
+    pub fn outside_list_disc(mut self, font: TextStyle) -> Self {
+        let (a, d) = with_text(|t| t.primary_extents(font.family, font.weight, font.italic)).unwrap_or((0.8, 0.2));
+        self.cold_mut().list_disc = Some([a * font.size, d.abs() * font.size, font.line_px()]);
+        self.radius(999.0).a11y_hidden()
+    }
+}
+
 struct Fonts {
     /// Bumped by any change, of fonts or families.
     generation: u64,
@@ -190,7 +202,7 @@ pub fn with_families(sans: &str, mono: &str) -> FamiliesGuard {
 
 /// The size in points of `text` (with `spans`, as [`crate::rich`] takes them) set in `style`,
 /// wrapped at `max_width` points when given, as the runtime will lay it out. Widths round up
-/// to whole points; heights are the lines' own, as a text lays out unless it asks for
+/// to a 64th of a point, as Chromium keeps a text run's width; heights are the lines' own, as a text lays out unless it asks for
 /// [`El::rounded_lines`](crate::El::rounded_lines). `max_width: Some(0.0)` gives the widest unbreakable run (CSS min-content).
 ///
 /// The first call on a thread loads the fonts (a few milliseconds); later calls cost a hash
@@ -213,7 +225,7 @@ pub fn measure_with(
         let l = t.layout_rich_with(text, spans, style, 1.0, max_width, options);
         // Spaces hanging past a wrapped line's end take no room, as the runtime measures them.
         let w = if max_width.is_some() { l.width() } else { l.full_width() };
-        (w.ceil(), super::line_metrics::spec_height(&l, style, 1.0, true))
+        (crate::runtime::text_width(w), super::line_metrics::spec_height(&l, style, 1.0, true))
     })
 }
 

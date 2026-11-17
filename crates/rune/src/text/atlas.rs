@@ -244,6 +244,12 @@ impl Atlas {
         }
     }
 
+    /// Rows of `page` its shelves have placed masks in, with the gutter below: what a texture of
+    /// that page must hold.
+    pub(crate) fn page_rows(&self, page: usize) -> u32 {
+        self.shelf(page).used_rows().map_or(0, |(_, y1)| y1)
+    }
+
     /// Number of allocated 2048×2048 shelf pages (at least 1).
     pub fn page_count(&self) -> usize {
         1 + self.pages.len()
@@ -268,7 +274,7 @@ impl Atlas {
     #[cfg(test)]
     pub(crate) fn glyph_entries(&self) -> usize { self.map.len() }
 
-    pub(super) fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Atlas {
             // Made with the first mask (`alloc`).
             data: Vec::new(),
