@@ -208,10 +208,11 @@ x11rb = { version = "0.13", features = ["shape", "xinput", "randr", "allow-unsaf
 xkbcommon = "0.9"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-# `dictionary::set_dictionary_segmenter` (vendor/parley_engine), for `icu.dll`'s words, and
-# `line-dictionaries`: Thai, Lao, Khmer and Burmese line breaks from ICU4X's baked line dictionaries,
-# so no line ever waits for `icu.dll`.
-parley_engine = { version = "0.12", default-features = false, features = ["line-dictionaries"] }
+# `dictionary::set_dictionary_segmenter` (vendor/parley_engine), for `icu.dll`'s words.
+# The `line-dictionaries` feature belongs to Rune's vendored parley_engine, which a dependency's
+# `[patch.crates-io]` cannot reach: an external app resolves crates.io parley_engine, which has no
+# such feature. Windows line breaks fall back to `icu.dll`; Runefin does not target Windows.
+parley_engine = { version = "0.12", default-features = false }
 # D3D12 shared textures for `NativeSurface` (`native_surface::windows`), on wgpu-hal's version.
 # Media Foundation, D3D11 and WASAPI for video playback (`video::windows`): COM interfaces only;
 # their DLLs load on the first clip, through `GetProcAddress`, so the import table gains nothing.
