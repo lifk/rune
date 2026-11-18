@@ -732,3 +732,51 @@ fn a_new_gpus_device_equals_the_old_one_but_its_key_differs() {
     let (old, new) = (crate::render::Renderer::new(&old, format), crate::render::Renderer::new(&new, format));
     assert_ne!(old.device_key(), new.device_key());
 }
+
+fn caps(formats: &[wgpu::TextureFormat], spaces: wgpu::SurfaceColorSpaces) -> wgpu::SurfaceCapabilities {
+    wgpu::SurfaceCapabilities {
+        formats: formats.to_vec(),
+        format_capabilities: formats.iter().map(|format| wgpu::SurfaceFormatCapabilities { format: *format, color_spaces: spaces }).collect(),
+        present_modes: vec![wgpu::PresentMode::Fifo],
+        alpha_modes: vec![wgpu::CompositeAlphaMode::Opaque],
+        usages: wgpu::TextureUsages::RENDER_ATTACHMENT,
+    }
+}
+
+#[test]
+fn hdr_needs_a_float_surface_in_scrg() {
+    use wgpu::TextureFormat::{Bgra8Unorm, Bgra8UnormSrgb, Rgba16Float};
+    let with_scrg = caps(&[Bgra8UnormSrgb, Rgba16Float], wgpu::SurfaceColorSpaces::SRGB | wgpu::SurfaceColorSpaces::EXTENDED_SRGB_LINEAR);
+    let out = choose_output(&with_scrg, true, Hdr::Auto);
+    assert!(out.hdr);
+    assert_eq!(out.format, Rgba16Float);
+    assert_eq!(out.color_space, wgpu::SurfaceColorSpace::ExtendedSrgbLinear);
+    assert_eq!(out.target(true), Rgba16Float, "an HDR target keeps its float format");
+
+    // The same surface with HDR off is the SDR gamma-blend path: the sRGB format, with its
+    // non-sRGB twin as the renderer target (a view format when the surface has no twin format).
+    let off = choose_output(&with_scrg, true, Hdr::Off);
+    assert!(!off.hdr);
+    assert_eq!(off.format, Bgra8UnormSrgb);
+    assert_eq!(off.target(true), Bgra8Unorm);
+}
+
+#[test]
+fn hdr_is_not_invented_without_the_extended_colour_space() {
+    use wgpu::TextureFormat::{Bgra8UnormSrgb, Rgba16Float};
+    // A float surface that only offers sRGB is not HDR: an sRGB 16F target would clamp.
+    let srgb_only = caps(&[Bgra8UnormSrgb, Rgba16Float], wgpu::SurfaceColorSpaces::SRGB);
+    assert!(!choose_output(&srgb_only, false, Hdr::Auto).hdr);
+    // Nor is a PQ-only surface, which would need a PQ pass in every shader.
+    let pq_only = caps(&[Bgra8UnormSrgb], wgpu::SurfaceColorSpaces::SRGB | wgpu::SurfaceColorSpaces::BT2100_PQ);
+    assert!(!choose_output(&pq_only, false, Hdr::Auto).hdr);
+}
+
+#[test]
+fn sdr_linear_blending_uses_the_srgb_format() {
+    use wgpu::TextureFormat::Bgra8UnormSrgb;
+    let one = caps(&[Bgra8UnormSrgb], wgpu::SurfaceColorSpaces::SRGB);
+    let out = choose_output(&one, false, Hdr::Off);
+    assert_eq!((out.format, out.hdr), (Bgra8UnormSrgb, false));
+    assert_eq!(out.target(false), Bgra8UnormSrgb);
+}

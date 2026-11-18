@@ -188,13 +188,14 @@ impl<S: 'static> Host<S> {
         l.set_live_resize(resizing && live_resize);
         // Acquire before latching live values so a drawable wait cannot age the input.
         l.backoff_step(BackoffEvent::Lapsed);
-        if renderer.srgb_blend() != self.rt.srgb_blend() {
+        if renderer.srgb_blend() != self.rt.srgb_blend() || l.hdr_pref != self.rt.hdr() {
             let Some(surface) = l.surface.as_ref() else { return };
             if !reblend(surface, gpu, &mut l.config, renderer, &mut l.alpha, &mut self.rt) {
                 // A surface that won't take the new format is replaced before the next frame.
                 l.surface_ok = false;
                 return;
             }
+            l.hdr_pref = self.rt.hdr();
         }
         #[cfg(target_os = "macos")]
         { self.rt.native_materials = l.native.materials.native(); }
@@ -311,13 +312,14 @@ impl<S: 'static> Host<S> {
             frame
         } else { frame };
         // A handler switched blending (`Tx::set_srgb_blend`): this drawable has the old format.
-        let frame = if renderer.srgb_blend() != rt.srgb_blend() {
+        let frame = if renderer.srgb_blend() != rt.srgb_blend() || l.hdr_pref != rt.hdr() {
             drop(frame);
             let Some(surface) = l.surface.as_ref() else { return };
             if !reblend(surface, gpu, &mut l.config, renderer, &mut l.alpha, rt) {
                 l.surface_ok = false;
                 return;
             }
+            l.hdr_pref = rt.hdr();
             let frame = match acquire(surface, gpu, &l.config, l.surface_ok, 1, &mut self.meter) {
                 Ok(frame) => frame,
                 Err(Missed::Unconfigured) => {

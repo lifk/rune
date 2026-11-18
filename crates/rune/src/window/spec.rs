@@ -254,6 +254,8 @@ impl<S> WindowSpec<S> {
     /// (gamma) space instead of linear light, matching CSS and Core Animation. With a
     /// `Compositor`, `Frame::srgb_blend` says which encoding its passes must match.
     pub fn srgb_blend(mut self, enabled: bool) -> Self { self.app = self.app.srgb_blend(enabled); self }
+    /// This window may present extended-range HDR (`App::hdr`).
+    pub fn hdr(mut self, hdr: crate::window::Hdr) -> Self { self.app = self.app.hdr(hdr); self }
     /// This window's font smoothing (`App::font_smoothing`).
     pub fn font_smoothing(mut self, mode: crate::FontSmoothing) -> Self { self.app = self.app.font_smoothing(mode); self }
     pub fn on_focus(mut self, f: fn(&mut S, bool, &mut crate::Tx)) -> Self { self.app = self.app.on_focus(f); self }

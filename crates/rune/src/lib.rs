@@ -378,6 +378,10 @@ pub use video::PlayerState;
 pub use video::Video;
 pub use window::WindowHandle;
 pub use window::set_design_height;
+pub use window::Hdr;
+pub use window::HdrStatus;
+pub use window::HDR_WHITE_SCALE;
+pub use window::hdr_status;
 pub use window::spec as windows;
 
 /// Return activates any focused control that takes a press, not only rows and links. A TV

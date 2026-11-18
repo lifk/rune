@@ -47,7 +47,11 @@ impl Renderer {
                 let make_pipeline = |shader: &dxbc::Shaders| Self::pipeline(device, &layout, shader, format, vertex_entry, Blend::SourceOver);
                 let (shader, pipeline) = match spring_shader {
                     Some(shader) => { let shader = dxbc::Shaders::one(shader); let pipeline = make_pipeline(&shader); (shader, pipeline) }
-                    None => metallib::uber_shader_and_pipeline(device, make_pipeline),
+                    None => metallib::uber_shader_and_pipeline(
+                        device,
+                        format == wgpu::TextureFormat::Rgba16Float,
+                        make_pipeline,
+                    ),
                 };
                 (bgl, layout, shader, pipeline)
             }
@@ -87,6 +91,7 @@ impl Renderer {
             spring_instances,
             layers: Default::default(),
             srgb_blend: false,
+            output_scale: 1.0,
             effects: Vec::new(),
             backdrops: Vec::new(),
             backdrop_used: false,
@@ -234,6 +239,7 @@ impl Renderer {
         }
         if let Some(s) = &mut self.surfaces {
             s.set_srgb_blend(self.srgb_blend);
+            s.set_output_scale(self.output_scale);
             s.add_format(device, format);
         }
     }

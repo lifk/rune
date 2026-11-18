@@ -12,6 +12,23 @@ impl<S: 'static> Runtime<S> {
     /// headless snapshot) then draws with `Renderer::set_srgb_blend(true)` into a non-sRGB
     /// target (`format.remove_srgb_suffix()`), cleared to `clear_color()`.
     pub fn set_srgb_blend(&mut self, enabled: bool) {
+        self.blend_preference = enabled;
+        self.set_effective_blend(enabled);
+    }
+
+    /// The blend mode the app asked for, before HDR forced linear light.
+    pub(crate) fn blend_preference(&self) -> bool {
+        self.blend_preference
+    }
+
+    /// Puts the window into the mode a surface needs without changing the app's preference: an
+    /// HDR surface always blends in linear light, and a switch back to SDR returns to
+    /// [`Self::blend_preference`].
+    pub(crate) fn force_srgb_blend(&mut self, enabled: bool) {
+        self.set_effective_blend(enabled);
+    }
+
+    fn set_effective_blend(&mut self, enabled: bool) {
         if self.srgb_blend != enabled {
             self.srgb_blend = enabled;
             self.dirty = true;
@@ -20,6 +37,38 @@ impl<S: 'static> Runtime<S> {
 
     pub fn srgb_blend(&self) -> bool {
         self.srgb_blend
+    }
+
+    /// Whether this window may present extended-range (scRGB) output, as
+    /// [`App::hdr`](crate::App::hdr) set it and `Tx::set_hdr` can change it.
+    pub fn hdr(&self) -> Hdr {
+        self.hdr
+    }
+
+    /// Asks for HDR output from the next frame. A window reconfigures its surface on the frame
+    /// that changes; an unsupported surface stays SDR and [`crate::hdr_status`] says so. Turning
+    /// HDR off returns the window to the blend mode the app asked for.
+    pub fn set_hdr(&mut self, hdr: Hdr) {
+        if self.hdr != hdr {
+            self.hdr = hdr;
+            self.dirty = true;
+            if hdr == Hdr::Off {
+                self.set_effective_blend(self.blend_preference);
+            }
+        }
+    }
+
+    /// The linear-light multiplier the window target applies when HDR is active.
+    pub(crate) fn output_scale(&self) -> f32 {
+        self.output_scale
+    }
+
+    pub(crate) fn set_output_scale(&mut self, scale: f32) {
+        let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
+        if self.output_scale != scale {
+            self.output_scale = scale;
+            self.dirty = true;
+        }
     }
 
     /// Rasterise and place glyphs in `mode` from the next frame, as `App::font_smoothing` does
@@ -43,7 +92,8 @@ impl<S: 'static> Runtime<S> {
             if self.srgb_blend {
                 [srgb_encode(c.r), srgb_encode(c.g), srgb_encode(c.b), 1.0]
             } else {
-                [c.r, c.g, c.b, 1.0]
+                let k = self.output_scale;
+                [c.r * k, c.g * k, c.b * k, 1.0]
             }
         })
     }
