@@ -4,6 +4,20 @@
 
 include!(concat!(env!("OUT_DIR"), "/uber_wgsl.rs"));
 
+/// The uber fragment's last line. An HDR window's shader variant replaces it; the canonical WGSL
+/// stays byte-for-byte what the precompiled Metal and DX12 libraries were built from, so only an
+/// HDR renderer compiles its variant at run time.
+pub(crate) const FINAL_RETURN: &str = "    return source;\n}";
+
+/// The HDR window variant of an uber WGSL source: the window pass (`projection.z == 0`) scales
+/// linear light by `g.flags.z` (SDR white in the surface's 80 cd/m² scRGB unit). An isolated
+/// layer (`projection.z != 0`) keeps 1.0 = SDR white and is scaled when it is composited.
+/// `None` when the fragment's final return moved, which a test catches.
+pub(crate) fn hdr(base: &str) -> Option<String> {
+    const SCALED: &str = "    // HDR (scRGB) window target: `g.flags.z` is SDR white in the surface's\n    // 80 cd/m² unit. An isolated layer keeps 1.0 = SDR white and is scaled when\n    // composited, so only the window pass applies it.\n    let scale = select(1.0, g.flags.z, projection.z == 0.0);\n    return vec4<f32>(source.rgb * scale, source.a);\n}";
+    (base.matches(FINAL_RETURN).count() == 1).then(|| base.replacen(FINAL_RETURN, SCALED, 1))
+}
+
 /// Whether two strings are equal, for constants.
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub(super) const fn same(a: &str, b: &str) -> bool {
@@ -15,4 +29,28 @@ pub(super) const fn same(a: &str, b: &str) -> bool {
         i += 1;
     }
     true
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_hdr_variant_replaces_the_window_return_once() {
+        let base = crate::render::variant::windfoil_wgsl();
+        let out = hdr(base).expect("the uber fragment's final return moved");
+        assert_eq!(out.matches(FINAL_RETURN).count(), 0);
+        assert_eq!(
+            out.matches("let scale = select(1.0, g.flags.z, projection.z == 0.0);")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn a_source_without_the_return_is_refused() {
+        assert!(hdr("fn fs() {}").is_none());
+        assert!(hdr(&format!("{FINAL_RETURN}{FINAL_RETURN}")).is_none(), "an ambiguous source is refused");
+    }
 }

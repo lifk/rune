@@ -65,6 +65,9 @@ pub(super) struct Win {
     /// drew with.
     pub(super) surface: Option<wgpu::Surface<'static>>,
     pub(super) config: wgpu::SurfaceConfiguration,
+    /// The HDR preference this surface was configured with. A frame whose runtime asks for
+    /// another reconfigures (`reblend`).
+    pub(super) hdr_pref: Hdr,
     /// Whether the surface's last configuration took. False after a refused one, and for a lost
     /// device: no drawable can be taken from it (`acquire`), and its next frame replaces the
     /// surface and the device it drew with (`Host::reattach`).

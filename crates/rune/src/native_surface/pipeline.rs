@@ -19,6 +19,9 @@ struct Uniforms {
     sampling: [f32; 4],
     // `Orient`: centred upright to centred buffer coordinates.
     orient: [f32; 4],
+    // Window linear-light scale, HDR flag (keeps absolute light instead of tone mapping), and
+    // two unused lanes.
+    output: [f32; 4],
 }
 /// A renderer whose pipeline compiles on a thread of its own (`SurfaceRenderer::build`).
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
@@ -44,6 +47,11 @@ struct Prepared {
     before: u32,
     bind: wgpu::BindGroup,
     uniform: wgpu::Buffer,
+    /// The same draw bound for an isolated layer: its uniform's output scale is 1.0 because the
+    /// layer's unscaled light is scaled when the layer is composited into an HDR window. Present
+    /// only while the window scales its output.
+    bind_layer: Option<wgpu::BindGroup>,
+    uniform_layer: Option<wgpu::Buffer>,
     imported: Arc<Imported>,
     surface: NativeSurface,
     /// Bind groups this draw made for other textures, newest last: a decoder cycles a few, so
@@ -110,6 +118,9 @@ pub struct SurfaceRenderer {
     punch: Option<wgpu::RenderPipeline>,
     punch_building: Option<std::sync::mpsc::Receiver<wgpu::RenderPipeline>>,
     srgb_blend: bool,
+    /// Linear-light multiplier the window pass applies (`Renderer::set_output_scale`); an isolated
+    /// layer draws unscaled. Above 1.0 the shader also keeps HDR video's absolute light.
+    output_scale: f32,
     /// The owning `Renderer`'s uploads, when it has one; queue writes otherwise.
     staging: Option<rune_staging::Staging>,
     #[cfg(target_os = "linux")]
@@ -256,6 +267,7 @@ impl SurfaceRenderer {
             punch: None,
             punch_building: None,
             srgb_blend: false,
+            output_scale: 1.0,
             staging: None,
             #[cfg(target_os = "linux")]
             adapter: None,
@@ -297,6 +309,10 @@ impl SurfaceRenderer {
 
     pub fn set_srgb_blend(&mut self, enabled: bool) {
         self.srgb_blend = enabled;
+    }
+
+    pub fn set_output_scale(&mut self, scale: f32) {
+        self.output_scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
     }
 
     pub(crate) fn set_staging(&mut self, staging: rune_staging::Staging) {
@@ -406,6 +422,7 @@ impl SurfaceRenderer {
                 && (image[3] - upright[1] as f32).abs() < 0.001
                 && (image[0] - image[0].round()).abs() < 0.001
                 && (image[1] - image[1].round()).abs() < 0.001;
+            let hdr = self.output_scale != 1.0;
             let u = Uniforms {
                 viewport: [viewport.0 as f32, viewport.1 as f32, 0.0, 0.0],
                 node: d.rect,
@@ -438,6 +455,7 @@ impl SurfaceRenderer {
                 ],
                 sampling: [if exact { 1.0 } else { 0.0 }, f.size[0] as f32, f.size[1] as f32, if mirrored { 1.0 } else { 0.0 }],
                 orient: f.orient.0.map(f32::from),
+                output: [self.output_scale, if hdr { 1.0 } else { 0.0 }, 0.0, 0.0],
             };
             // The same draw with a new picture keeps its uniform buffer, and its bind group too
             // when the picture is in textures it bound before.
@@ -447,6 +465,30 @@ impl SurfaceRenderer {
                     Some(s) => s.write_buffer(&p.uniform, 0, bytemuck::bytes_of(&u)),
                     None => queue.write_buffer(&p.uniform, 0, bytemuck::bytes_of(&u)),
                 }
+                // A layer draws the same picture unscaled and is scaled when composited.
+                if hdr {
+                    let mut layer = u;
+                    layer.output[0] = 1.0;
+                    let buffer = match p.uniform_layer.take() {
+                        Some(buffer) => buffer,
+                        None => device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("video node layer"),
+                            contents: bytemuck::bytes_of(&layer),
+                            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                        }),
+                    };
+                    match &self.staging {
+                        Some(s) => s.write_buffer(&buffer, 0, bytemuck::bytes_of(&layer)),
+                        None => queue.write_buffer(&buffer, 0, bytemuck::bytes_of(&layer)),
+                    }
+                    if p.bind_layer.is_none() {
+                        p.bind_layer = Some(bind_group(device, &self.layout, &self.sampler, &buffer, &imported.textures));
+                    }
+                    p.uniform_layer = Some(buffer);
+                } else {
+                    p.uniform_layer = None;
+                    p.bind_layer = None;
+                }
                 if !Arc::ptr_eq(&p.imported, &imported) && p.imported.textures != imported.textures {
                     let old = std::mem::replace(&mut p.bind, match p.binds.iter().position(|(t, _)| *t == imported.textures) {
                         Some(i) => p.binds.remove(i).1,
@@ -455,6 +497,9 @@ impl SurfaceRenderer {
                     p.binds.push((p.imported.textures.clone(), old));
                     if p.binds.len() > KEPT_BINDS {
                         p.binds.remove(0);
+                    }
+                    if let Some(uniform_layer) = &p.uniform_layer {
+                        p.bind_layer = Some(bind_group(device, &self.layout, &self.sampler, uniform_layer, &imported.textures));
                     }
                 }
                 p.imported = imported;
@@ -467,11 +512,26 @@ impl SurfaceRenderer {
                     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 });
                 let bind = bind_group(device, &self.layout, &self.sampler, &uniform, &imported.textures);
+                let (uniform_layer, bind_layer) = if hdr {
+                    let mut layer = u;
+                    layer.output[0] = 1.0;
+                    let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("video node layer"),
+                        contents: bytemuck::bytes_of(&layer),
+                        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                    });
+                    let bind = bind_group(device, &self.layout, &self.sampler, &buffer, &imported.textures);
+                    (Some(buffer), Some(bind))
+                } else {
+                    (None, None)
+                };
                 let p = Prepared {
                     drawn: std::sync::atomic::AtomicBool::new(false),
                     before: d.before_instance,
                     bind,
                     uniform,
+                    bind_layer,
+                    uniform_layer,
                     imported,
                     surface: d.surface.clone(),
                     binds: Vec::new(),
@@ -641,10 +701,11 @@ impl SurfaceRenderer {
         }
     }
 
-    /// Draws `index` inside an isolated layer.
+    /// Draws `index` inside an isolated layer: unscaled light, scaled once when the layer is
+    /// composited into an HDR window.
     pub(crate) fn draw_isolated(&self, pass: &mut wgpu::RenderPass<'_>, index: usize, format: wgpu::TextureFormat, blend: Blend) {
         self.draws[index].isolated.store(true, std::sync::atomic::Ordering::Relaxed);
-        self.draw_blended(pass, index, format, blend);
+        self.draw_into(pass, index, format, blend, true);
     }
 
     pub fn before_instance(&self, index: usize) -> u32 {
@@ -661,6 +722,10 @@ impl SurfaceRenderer {
         self.draw_blended(pass, index, format, Blend::SourceOver);
     }
     pub(crate) fn draw_blended(&self, pass: &mut wgpu::RenderPass<'_>, index: usize, format: wgpu::TextureFormat, blend: Blend) {
+        self.draw_into(pass, index, format, blend, false);
+    }
+
+    fn draw_into(&self, pass: &mut wgpu::RenderPass<'_>, index: usize, format: wgpu::TextureFormat, blend: Blend, layer: bool) {
         self.draws[index].drawn.store(true, std::sync::atomic::Ordering::Relaxed);
         pass.set_pipeline(if blend == Blend::PlusLighter {
             let (f, pipeline) = self.additive.as_ref().expect("prepared dissolve surface");
@@ -669,7 +734,8 @@ impl SurfaceRenderer {
         } else if format == self.format { &self.pipeline } else {
             &self.extra.iter().find(|(f, _)| *f == format).expect("SurfaceRenderer::add_format first").1
         });
-        pass.set_bind_group(0, &self.draws[index].bind, &[]);
+        let bind = if layer { self.draws[index].bind_layer.as_ref().unwrap_or(&self.draws[index].bind) } else { &self.draws[index].bind };
+        pass.set_bind_group(0, bind, &[]);
         pass.draw(0..4, 0..1);
     }
     #[cfg(target_arch = "wasm32")]

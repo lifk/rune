@@ -104,6 +104,8 @@ pub struct App<S: 'static> {
     pub(crate) modifier_keys: bool,
     pub(crate) tab_visits_controls: bool,
     pub(crate) srgb_blend: bool,
+    /// `App::hdr`: whether a window may present scRGB output.
+    pub(crate) hdr: crate::window::Hdr,
     pub(crate) font_smoothing: crate::FontSmoothing,
     pub(crate) dev_stats: Option<fn() -> String>,
     pub(crate) playground: Option<crate::Playground<S>>,
@@ -162,6 +164,7 @@ impl<S: 'static> App<S> {
             modifier_keys: false,
             tab_visits_controls: false,
             srgb_blend: true,
+            hdr: crate::window::Hdr::Off,
             font_smoothing: crate::FontSmoothing::default(),
             dev_stats: None,
             playground: None,
@@ -175,6 +178,18 @@ impl<S: 'static> App<S> {
     /// says which encoding its passes must match.
     pub fn srgb_blend(mut self, enabled: bool) -> Self {
         self.srgb_blend = enabled;
+        self
+    }
+
+    /// Present extended-range HDR when the surface supports it (`Hdr::Auto`), or always present
+    /// SDR (`Hdr::Off`, the default). An HDR window uses the `Rgba16Float` surface in
+    /// `ExtendedSrgbLinear` (scRGB): the renderer writes linear light with SDR white at
+    /// [`HDR_WHITE_SCALE`](crate::window::HDR_WHITE_SCALE), HDR video keeps highlight detail above
+    /// it, and the compositor maps gamut, tone and HDR metadata for the display. Where the surface
+    /// has no such colour space the window stays SDR; [`crate::hdr_status`] says which it got.
+    /// A handler can switch it while running with `Tx::set_hdr`. Off by default.
+    pub fn hdr(mut self, hdr: crate::window::Hdr) -> Self {
+        self.hdr = hdr;
         self
     }
 

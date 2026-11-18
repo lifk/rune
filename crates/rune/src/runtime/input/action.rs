@@ -238,6 +238,7 @@ pub(crate) fn merge(tx: &mut Tx, one: Tx) {
     tx.playground.extend(one.playground);
     tx.open_urls.extend(one.open_urls);
     tx.srgb_blend = one.srgb_blend.or(tx.srgb_blend);
+    tx.hdr = one.hdr.or(tx.hdr);
     tx.font_smoothing = one.font_smoothing.or(tx.font_smoothing);
     if one.font_families.is_some() { tx.font_families = one.font_families; }
     if one.rewind.is_some() { tx.rewind = one.rewind; }

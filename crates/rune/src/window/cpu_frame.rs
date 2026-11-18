@@ -296,6 +296,7 @@ impl<S: 'static> Host<S> {
             first_frame: FirstFrame::opened(Instant::now()),
             surface: None,
             config,
+            hdr_pref: Hdr::Off,
             surface_ok: true,
             surface_retries: SurfaceRetries::default(),
             window,

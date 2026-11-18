@@ -101,6 +101,8 @@ pub struct Tx {
     /// Modifier keys held as the handler runs.
     pub(crate) mods: crate::Mods,
     pub(crate) srgb_blend: Option<bool>,
+    /// `Tx::set_hdr`: the window's HDR preference from the next frame.
+    pub(crate) hdr: Option<crate::window::Hdr>,
     /// `Tx::record_rewind`.
     pub(crate) rewind: Option<Option<crate::rewind::Rewind>>,
     pub(crate) font_smoothing: Option<crate::text::FontSmoothing>,
@@ -626,6 +628,15 @@ impl Tx {
     /// Windows, overlays, the web canvas and headless runs all follow.
     pub fn set_srgb_blend(&mut self, enabled: bool) {
         self.srgb_blend = Some(enabled);
+    }
+
+    /// Ask this window for HDR (`scRGB`) output from the next frame, or turn it off, as if it
+    /// had launched with [`App::hdr`](crate::App::hdr). The window reconfigures its surface and
+    /// rebuilds its renderer once, on the frame that changes. A surface without an extended-range
+    /// colour space stays on SDR; [`crate::hdr_status`] reports which it got. HDR always blends in
+    /// linear light, and turning it off returns to the mode [`Self::set_srgb_blend`] last set.
+    pub fn set_hdr(&mut self, hdr: crate::window::Hdr) {
+        self.hdr = Some(hdr);
     }
 
     /// Record this window's presented frames into `rewind` from the next frame, or stop with

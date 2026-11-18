@@ -34,6 +34,7 @@ use crate::render::{Instance, KIND_DASHED, KIND_EFFECT, KIND_GLYPH, KIND_GRADIEN
 use crate::shape::{LineCap, Op, Shape};
 use crate::text::{Deco, PaintedDeco, GlyphQuad, Ink, TextFlow, TextLayout, TextSystem};
 use crate::tok::motion;
+use crate::window::Hdr;
 use event_log::log_event;
 
 /// The states a handler call can reach: the app's (`$self.state`), or while the playground is
@@ -457,6 +458,14 @@ pub struct Runtime<S: 'static> {
     pub transparent: bool,
     /// Opt-in gamma-space (sRGB) blending for translucent fills, shadows and blurs.
     pub(crate) srgb_blend: bool,
+    /// The blend mode the app asked for, before an HDR surface forces linear light. A switch
+    /// back to SDR returns to this (`Runtime::set_srgb_blend`).
+    pub(crate) blend_preference: bool,
+    /// Whether this window may present extended-range (scRGB) output.
+    pub(crate) hdr: Hdr,
+    /// Linear-light multiplier for the window target when HDR is active: 1.0 for SDR, and
+    /// `HDR_WHITE_SCALE` so UI white lands on the compositor's SDR reference white.
+    pub(crate) output_scale: f32,
     pub(crate) native_overlay: bool,
     /// The window or overlay surface's frame counts, published by its host.
     pub(crate) surface_stats: Option<std::sync::Arc<std::sync::Mutex<crate::SurfaceStats>>>,
@@ -919,6 +928,9 @@ impl<S: 'static> Runtime<S> {
             zoom: zoom::Zoom { k: 1.0, window: viewport, window_scale: env.scale },
             transparent: false,
             srgb_blend: false,
+            blend_preference: false,
+            hdr: Hdr::Off,
+            output_scale: 1.0,
             native_overlay: false,
             surface_stats: None,
             app_stats: None,

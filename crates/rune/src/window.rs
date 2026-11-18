@@ -614,6 +614,7 @@ impl<S: 'static> Host<S> {
         let titlebar = app.titlebar.filter(|_| !options.borderless);
         let chrome = app.chrome;
         let (srgb_blend, font_smoothing) = (app.srgb_blend, app.font_smoothing);
+        let hdr = app.hdr;
         let modifier_keys = app.modifier_keys;
         let tab_visits_controls = app.tab_visits_controls;
         let fit_height = app.fit_content_height;
@@ -645,6 +646,7 @@ impl<S: 'static> Host<S> {
         rt.app_ime.hook = on_ime;
         rt.set_modifier_keys(modifier_keys);
         rt.set_srgb_blend(srgb_blend); rt.set_font_smoothing(font_smoothing);
+        rt.set_hdr(hdr);
         rt.set_system_reduced_motion(crate::platform::preferences::reduced_motion());
         rt.set_system_contrast(crate::platform::preferences::contrast());
         rt.set_system_increased_contrast(crate::platform::preferences::increased_contrast());
@@ -760,24 +762,166 @@ pub(crate) fn covered_step<S: 'static>(rt: &mut Runtime<S>) { rt.covered_wake();
 /// (`slot`) rather than in `acquire`. Elsewhere two.
 pub(crate) const FRAME_LATENCY: u32 = if cfg!(target_os = "windows") { 1 } else { 2 };
 
+/// Whether a window may present extended-range HDR output.
+///
+/// Set before [`run`](crate::run) with [`App::hdr`](crate::App::hdr), or switch it from a handler
+/// with `Tx::set_hdr`. HDR needs a surface that offers `Rgba16Float` in the
+/// `ExtendedSrgbLinear` (scRGB) colour space; where it doesn't, the window stays on its SDR
+/// surface and [`hdr_status`] says so.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Hdr {
+    /// Always present the SDR surface.
+    #[default]
+    Off,
+    /// Present scRGB when the surface supports it, SDR otherwise.
+    Auto,
+}
+
+/// What the last window to ask for a surface got.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum HdrStatus {
+    /// No window has configured its surface yet.
+    #[default]
+    Unknown,
+    /// The window presents an SDR surface.
+    Off,
+    /// HDR was requested, but the surface offers no extended-range colour space (or its
+    /// compositor/display path reports no HDR headroom).
+    Unsupported,
+    /// HDR was requested and the surface took the configuration but the driver refused it; the
+    /// window fell back to SDR.
+    Failed,
+    /// The window presents extended-range linear (scRGB) output: 1.0 is 80 cd/m², and an SDR
+    /// white is [`HDR_WHITE_SCALE`].
+    Active {
+        format: &'static str,
+        color_space: &'static str,
+    },
+}
+
+/// The last surface choice, for an app's settings and diagnostics. A window updates it when it
+/// opens, when it is reconfigured, and when a driver refuses an HDR configuration.
+static HDR_STATUS: std::sync::RwLock<HdrStatus> = std::sync::RwLock::new(HdrStatus::Unknown);
+
+/// Reads [`HdrStatus`] without blocking on a writer for longer than the status write takes.
+pub fn hdr_status() -> HdrStatus {
+    *HDR_STATUS.read().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+pub(crate) fn set_hdr_status(status: HdrStatus) {
+    let mut current = HDR_STATUS.write().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if *current != status {
+        match status {
+            HdrStatus::Active { format, color_space } => eprintln!("rune: HDR output on ({format}, {color_space})"),
+            HdrStatus::Unsupported => eprintln!("rune: HDR was requested but this surface offers no extended-range colour space; using SDR"),
+            HdrStatus::Failed => eprintln!("rune: HDR was requested but the driver refused the surface; using SDR"),
+            HdrStatus::Off | HdrStatus::Unknown => {}
+        }
+        *current = status;
+    }
+}
+
+/// SDR white in scRGB units: BT.2408 graphics white (203 cd/m²) over scRGB's 80 cd/m² unit. The
+/// Wayland colour-management protocol suggests exactly this reference for Windows-scRGB, and
+/// KWin maps SDR content against it; a UI drawn at 1.0 would be a dim 80 cd/m² otherwise.
+pub const HDR_WHITE_SCALE: f32 = 203.0 / 80.0;
+
+/// What a surface presents, and the target format the renderer draws into.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct SurfaceOutput {
+    /// The surface carries extended-range linear colour (`ExtendedSrgbLinear`).
+    pub hdr: bool,
+    pub format: wgpu::TextureFormat,
+    pub color_space: wgpu::SurfaceColorSpace,
+}
+
+impl SurfaceOutput {
+    /// The renderer's target: an sRGB format is drawn into its non-sRGB twin when blending is
+    /// in sRGB encoding, and a float HDR target keeps its own format.
+    pub(crate) fn target(self, srgb_blend: bool) -> wgpu::TextureFormat {
+        if srgb_blend { self.format.remove_srgb_suffix() } else { self.format }
+    }
+}
+
+fn format_name(format: wgpu::TextureFormat) -> &'static str {
+    match format {
+        wgpu::TextureFormat::Rgba16Float => "Rgba16Float",
+        wgpu::TextureFormat::Rgb10a2Unorm => "Rgb10a2Unorm",
+        wgpu::TextureFormat::Bgra8Unorm => "Bgra8Unorm",
+        wgpu::TextureFormat::Bgra8UnormSrgb => "Bgra8UnormSrgb",
+        wgpu::TextureFormat::Rgba8Unorm => "Rgba8Unorm",
+        wgpu::TextureFormat::Rgba8UnormSrgb => "Rgba8UnormSrgb",
+        _ => "other",
+    }
+}
+
+fn color_space_name(color_space: wgpu::SurfaceColorSpace) -> &'static str {
+    match color_space {
+        wgpu::SurfaceColorSpace::Auto => "Auto",
+        wgpu::SurfaceColorSpace::Srgb => "Srgb",
+        wgpu::SurfaceColorSpace::ExtendedSrgbLinear => "ExtendedSrgbLinear (scRGB)",
+        wgpu::SurfaceColorSpace::ExtendedSrgb => "ExtendedSrgb",
+        wgpu::SurfaceColorSpace::DisplayP3 => "DisplayP3",
+        wgpu::SurfaceColorSpace::ExtendedDisplayP3 => "ExtendedDisplayP3",
+        wgpu::SurfaceColorSpace::Bt2100Pq => "Bt2100Pq (HDR10)",
+        wgpu::SurfaceColorSpace::Bt2100Hlg => "Bt2100Hlg",
+    }
+}
+
+/// Picks the surface's format and colour space. HDR is `Rgba16Float` in scRGB: a float target
+/// carries the whole linear range without a PQ pass, the shader writes linear light, and the
+/// compositor owns gamut mapping, tone mapping and HDR metadata. `Rgb10a2Unorm` + PQ is not
+/// chosen: it would need every pass to encode PQ before blending.
+pub(crate) fn choose_output(caps: &wgpu::SurfaceCapabilities, srgb_blend: bool, hdr: Hdr) -> SurfaceOutput {
+    if hdr != Hdr::Off
+        && caps.color_spaces(wgpu::TextureFormat::Rgba16Float).contains(wgpu::SurfaceColorSpaces::EXTENDED_SRGB_LINEAR)
+    {
+        return SurfaceOutput {
+            hdr: true,
+            format: wgpu::TextureFormat::Rgba16Float,
+            color_space: wgpu::SurfaceColorSpace::ExtendedSrgbLinear,
+        };
+    }
+    let fallback = caps.formats.first().copied().unwrap_or(wgpu::TextureFormat::Bgra8UnormSrgb);
+    let srgb = caps.formats.iter().copied().find(|f| f.is_srgb()).unwrap_or(fallback);
+    let (format, color_space) = if srgb_blend {
+        let non_srgb = srgb.remove_srgb_suffix();
+        if caps.formats.contains(&non_srgb) {
+            (non_srgb, wgpu::SurfaceColorSpace::Auto)
+        } else {
+            (srgb, wgpu::SurfaceColorSpace::Auto)
+        }
+    } else {
+        (srgb, wgpu::SurfaceColorSpace::Auto)
+    };
+    SurfaceOutput { hdr: false, format, color_space }
+}
+
 /// A vsynced sRGB (or non-sRGB when `srgb_blend` is set) configuration for the surface, and the
 /// first alpha mode it supports that composites translucent pixels.
 pub(crate) fn surface_config(surface: &wgpu::Surface, adapter: &wgpu::Adapter, (width, height): (u32, u32), srgb_blend: bool)
     -> Option<(wgpu::SurfaceConfiguration, Option<wgpu::CompositeAlphaMode>)> {
+    surface_config_hdr(surface, adapter, (width, height), srgb_blend, Hdr::Off)
+        .map(|(config, alpha, _)| (config, alpha))
+}
+
+/// [`surface_config`] with this window's HDR preference. The returned output says whether the
+/// surface is HDR, so the caller can put the runtime into linear blending and scale its white.
+pub(crate) fn surface_config_hdr(surface: &wgpu::Surface, adapter: &wgpu::Adapter, (width, height): (u32, u32),
+    srgb_blend: bool, hdr: Hdr)
+    -> Option<(wgpu::SurfaceConfiguration, Option<wgpu::CompositeAlphaMode>, SurfaceOutput)> {
     let mut config = surface.get_default_config(adapter, width.max(1), height.max(1))?;
     let caps = surface.get_capabilities(adapter);
-    let srgb = caps.formats.iter().copied().find(|f| f.is_srgb()).unwrap_or(config.format);
-    config.format = if srgb_blend {
-        let non_srgb = srgb.remove_srgb_suffix();
-        if caps.formats.contains(&non_srgb) {
-            non_srgb
-        } else {
+    let output = choose_output(&caps, srgb_blend, hdr);
+    config.format = output.format;
+    config.color_space = output.color_space;
+    if !output.hdr && srgb_blend {
+        // Gamma blending into an sRGB format's non-sRGB twin, or an sRGB-encoded view of it.
+        let non_srgb = output.format.remove_srgb_suffix();
+        if non_srgb != output.format && !caps.formats.contains(&non_srgb) {
             config.view_formats = vec![non_srgb];
-            srgb
         }
-    } else {
-        srgb
-    };
+    }
     // Backdrop copies read the drawable mid-frame (`ActivePass::split`: backdrop blur, effect
     // backdrops, rune-fx blend modes). On Metal it costs `framebufferOnly`, but without it they
     // quietly fall back.
@@ -787,38 +931,56 @@ pub(crate) fn surface_config(surface: &wgpu::Surface, adapter: &wgpu::Adapter, (
     config.usage |= caps.usages & wgpu::TextureUsages::COPY_DST;
     config.present_mode = wgpu::PresentMode::AutoVsync;
     config.desired_maximum_frame_latency = FRAME_LATENCY;
-    Some((config, crate::render::translucency::mode(surface, adapter)))
+    Some((config, crate::render::translucency::mode(surface, adapter), output))
 }
 
-/// Follows a blend switch (`Tx::set_srgb_blend`) on a configured surface: reconfigures it for
-/// `rt`'s mode at its size and alpha mode, rebuilds `renderer` when its target format changes,
-/// and rebuilds the `alpha` pass (when there is one) for the new format. Returns false when the
-/// surface can't be configured.
+/// Follows a blend or HDR switch on a configured surface: reconfigures it for `rt`'s mode at its
+/// size and alpha mode, rebuilds `renderer` when its target format changes, and rebuilds the
+/// `alpha` pass (when there is one) for the new format. Returns false when the surface can't be
+/// configured.
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 pub(crate) fn reblend<S: 'static>(surface: &wgpu::Surface, gpu: &Gpu, config: &mut wgpu::SurfaceConfiguration,
     renderer: &mut Renderer, alpha: &mut Option<crate::render::surface_alpha::AlphaSurface>, rt: &mut Runtime<S>) -> bool {
-    let srgb = rt.srgb_blend();
-    let Some((next, _)) = surface_config(surface, &gpu.adapter, (config.width, config.height), srgb) else { return false };
-    if (config.format, &config.view_formats) != (next.format, &next.view_formats) {
-        (config.format, config.view_formats) = (next.format, next.view_formats);
+    // The app's own blend mode picks the SDR format, so negotiate with it rather than with a
+    // blend a previous HDR configuration forced.
+    let preference = rt.blend_preference();
+    let Some((next, _, output)) = surface_config_hdr(surface, &gpu.adapter, (config.width, config.height), preference, rt.hdr()) else { return false };
+    if output.hdr {
+        rt.force_srgb_blend(false);
+        rt.set_output_scale(HDR_WHITE_SCALE);
+    } else {
+        rt.force_srgb_blend(preference);
+        rt.set_output_scale(1.0);
+    }
+    if (config.format, config.color_space, &config.view_formats) != (next.format, next.color_space, &next.view_formats) {
+        (config.format, config.color_space, config.view_formats) = (next.format, next.color_space, next.view_formats);
         if let Err(error) = configure(surface, gpu, config) {
             eprintln!("rune: could not reconfigure a surface for a blend switch: {error}");
+            set_hdr_status(HdrStatus::Failed);
             return false;
         }
     }
-    let target = if srgb { config.format.remove_srgb_suffix() } else { config.format };
+    let target = output.target(rt.srgb_blend());
     rebuild_renderer(&gpu.device, renderer, target, rt);
     if alpha.is_some() {
         *alpha = Some(crate::render::surface_alpha::AlphaSurface::new(&gpu.device, target, (config.width, config.height)));
     }
+    set_hdr_status(if output.hdr {
+        HdrStatus::Active { format: format_name(output.format), color_space: color_space_name(output.color_space) }
+    } else if rt.hdr() == Hdr::Off {
+        HdrStatus::Off
+    } else {
+        HdrStatus::Unsupported
+    });
     true
 }
 
 /// Switches `renderer` to `target` when its format changed, keeping its atlases, layer targets
-/// and extra pipelines, and sets its blend mode to `rt`'s.
+/// and extra pipelines, and sets its blend mode and output scale to `rt`'s.
 pub(crate) fn rebuild_renderer<S: 'static>(device: &wgpu::Device, renderer: &mut Renderer, target: wgpu::TextureFormat, rt: &mut Runtime<S>) {
     renderer.set_format(device, target);
     renderer.set_srgb_blend(rt.srgb_blend());
+    renderer.set_output_scale(rt.output_scale());
     // Before the first frame, so its glyph masks go to the GPU fill when the renderer has one.
     renderer.attach_text(&mut rt.text.atlas);
 }

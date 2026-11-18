@@ -205,17 +205,24 @@ fn wgsl_shader(device: &wgpu::Device, wgsl: &str) -> wgpu::ShaderModule {
 
 pub(super) fn uber_shader_and_pipeline(
     device: &wgpu::Device,
+    hdr: bool,
     mut make_pipeline: impl FnMut(&super::dxbc::Shaders) -> wgpu::RenderPipeline,
 ) -> (super::dxbc::Shaders, wgpu::RenderPipeline) {
     #[cfg(target_os = "macos")]
-    if metallib_enabled()
+    if !hdr
+        && metallib_enabled()
         && let Some((shader, pipeline)) = try_uber_metallib(device, uber_metallib(device), UBER_WGSL_BLAKE3, |shader| make_pipeline(&super::dxbc::Shaders::one(shader.clone())))
     {
         METALLIB_LOADS.with(|n| n.set(n.get() + 1));
         return (super::dxbc::Shaders::one(shader), pipeline);
     }
     // Windows ships bytecode for Windfoil alone (render/dxbc.rs): Classic compiles its WGSL there.
-    let shaders = super::dxbc::Shaders::one(wgsl_shader(device, uber_wgsl()));
+    // An HDR frame's shader is a runtime variant of the canonical WGSL, so neither library applies.
+    let variant = if hdr { super::uber_wgsl::hdr(uber_wgsl()) } else { None };
+    let shaders = super::dxbc::Shaders::one(match &variant {
+        Some(wgsl) => wgsl_shader(device, wgsl),
+        None => wgsl_shader(device, uber_wgsl()),
+    });
     let pipeline = make_pipeline(&shaders);
     (shaders, pipeline)
 }

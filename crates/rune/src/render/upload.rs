@@ -28,8 +28,8 @@ pub(super) struct Uploads {
     has_layers: bool,
     /// The viewport last written to globals (`width << 32 | height`, `u64::MAX` before any).
     viewport: AtomicU64,
-    /// Gamma-space blend and byte-source flags last written to globals.
-    srgb: Option<(bool, bool)>,
+    /// Gamma-space blend, byte-source and output-scale flags last written to globals.
+    srgb: Option<(bool, bool, u32)>,
     /// `Staging::lost` as last seen by `prepare` and by `upload_images`.
     lost: (u64, u64),
     /// The paint the next `prepare`'s instances come from, and which of them alone changed
@@ -280,9 +280,9 @@ impl Renderer {
             staging.write_buffer(&self.globals, 0, bytemuck::cast_slice(&[viewport.0 as f32, viewport.1 as f32]));
             #[cfg(test)] { self.uploads.globals_writes += 1; }
         }
-        let mode = (self.srgb_blend, byte_source);
+        let mode = (self.srgb_blend, byte_source, self.output_scale.to_bits());
         if self.uploads.srgb.replace(mode) != Some(mode) {
-            let flags: [f32; 4] = [self.srgb_blend as u8 as f32, byte_source as u8 as f32, 0.0, 0.0];
+            let flags: [f32; 4] = [self.srgb_blend as u8 as f32, byte_source as u8 as f32, self.output_scale, 0.0];
             staging.write_buffer(&self.globals, 16, bytemuck::cast_slice(&flags));
             #[cfg(test)] { self.uploads.globals_writes += 1; }
         }
@@ -360,6 +360,7 @@ impl Renderer {
             };
             let mut surfaces = built.unwrap_or_else(fresh);
             surfaces.set_srgb_blend(self.srgb_blend);
+            surfaces.set_output_scale(self.output_scale);
             surfaces.set_staging(self.uploads.staging(device, queue));
             for (format, _) in &self.extra { surfaces.add_format(device, *format); }
             self.surfaces = Some(surfaces);

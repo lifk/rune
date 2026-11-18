@@ -1,6 +1,8 @@
 struct Uniforms {
     viewport: vec4<f32>, node: vec4<f32>, image: vec4<f32>, radii: vec4<f32>,
     clip: vec4<f32>, fade: vec4<u32>, color: vec4<f32>, sampling: vec4<f32>, orient: vec4<f32>,
+    // Window linear-light scale, HDR flag (absolute light, no tone map), and two unused lanes.
+    output: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var plane0: texture_2d<f32>;
@@ -38,6 +40,21 @@ fn bt2020_to_709(v: vec3<f32>) -> vec3<f32> {
         dot(v, vec3<f32>(-0.0182, -0.1006, 1.1187)),
     );
 }
+// SDR white as the compositor's reference (BT.2408 graphics white, 203 cd/m²). An HDR window
+// writes light in that unit: 1.0 here, and the window pass scales it into scRGB's 80 cd/m² unit.
+const SDR_WHITE_NITS: f32 = 203.0;
+
+/// HDR display light in cd/m² for linear BT.709: PQ's 0..1 is 0..10,000 cd/m² absolute, and
+/// HLG's 0..1 is a 1,000 cd/m² nominal peak through the BT.2100 OOTF (which puts 75% signal,
+/// graphics white, at 203 cd/m²).
+fn hdr_display(v: vec3<f32>, hlg: bool) -> vec3<f32> {
+    if hlg {
+        let y = dot(v, vec3<f32>(0.2126, 0.7152, 0.0722));
+        return v * pow(max(y, 1e-5), 0.2) * 1000.0;
+    }
+    return v * 10000.0;
+}
+
 fn tone_map(v: vec3<f32>, hlg: bool) -> vec3<f32> {
     // PQ's output is display linear with 1.0 = 10,000 nits, so SDR reference white (100 nits)
     // is 0.01; 400 puts it at 0.8 after the shoulder, and a 4,000-nit highlight lands at 0.994.
@@ -74,6 +91,10 @@ fn convert(a: vec4<f32>, uv: vec2<f32>) -> vec4<f32> {
         let encoded = vec3<f32>(r, g, b);
         var hdr = select(hlg_eotf(encoded), pq_eotf(encoded), u.color.z < 3.5);
         hdr = bt2020_to_709(hdr);
+        if u.output.y > 0.5 {
+            // An HDR window keeps the grade's highlights; the compositor tone maps to the display.
+            return vec4<f32>(hdr_display(hdr, u.color.z > 3.5) / SDR_WHITE_NITS, 1.0);
+        }
         return vec4<f32>(tone_map(hdr, u.color.z > 3.5), 1.0);
     }
     return vec4<f32>(linear(vec3<f32>(r,g,b)), 1.0);
@@ -170,5 +191,8 @@ fn ramp(d: f32, width: f32) -> f32 {
             mask = clamp(0.5-d,0.0,1.0);
         }
     }
-    return col * (clamp(0.5-distance,0.0,1.0)*clip*mask*u.color.w);
+    let cover = clamp(0.5-distance,0.0,1.0)*clip*mask*u.color.w;
+    // Premultiplied light, scaled only in the window pass: an isolated layer keeps 1.0 = SDR
+    // white and takes the scale when the layer is composited.
+    return vec4<f32>(col.rgb * (cover * u.output.x), col.a * cover);
 }
