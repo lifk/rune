@@ -264,8 +264,12 @@ impl TextSystem {
                 }
                 continue;
             }
-            // Windows' fallback covers symbol blocks; only math alphanumerics want one math font.
-            math |= self.math.is_none() && if cfg!(windows) { fallback::is_math_alphanumeric(ch) } else { fallback::needs_symbols(ch) };
+            // Math alphanumerics always want one math font. Other symbol blocks want it only
+            // for a glyph the app's own fonts lack: those families are also where a covered
+            // `✓` used to land, paying for Noto Sans Math, Noto Music and Symbola (23 ms of
+            // a 103 ms first frame), while an uncovered arrow still needs them to draw at all.
+            math |= self.math.is_none()
+                && (fallback::is_math_alphanumeric(ch) || (fallback::needs_symbols(ch) && !covered(ch)));
             // An emoji by default (✅ ⚡) wants the colour emoji family as `U+FE0F` does.
             emoji |= (ch == '\u{FE0F}' || fallback::is_emoji(ch.encode_utf8(&mut [0; 4]))) && self.emoji.is_none() && !self.fallbacks.asked.contains(&'\u{FE0F}');
             if !needs_no_font(ch) && !self.fallbacks.asked.contains(&ch) && !missing.contains(&ch) && !covered(ch) {
