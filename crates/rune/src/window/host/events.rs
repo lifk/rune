@@ -288,7 +288,7 @@ impl Host {
         let Some(l) = self.win.as_mut() else { return };
         let gpu = self.gpu.as_ref().map(|(gpu, _)| &**gpu);
         let app = &mut *self.app;
-        let scale = l.window.scale_factor() as f32;
+        let scale = crate::window::window_scale(&l.window);
         let (chrome, titlebar) = (self.chrome, self.titlebar);
         // A finger presses through `WindowEvent::Touch`; the mouse events a system makes up
         // from it (Windows promotes touches) would press a second time.

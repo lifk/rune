@@ -245,7 +245,7 @@ impl Host {
         // Metal's PostMultiplied mode only makes CAMetalLayer non-opaque; Core Animation
         // still composites premultiplied pixels. Other backends follow wgpu's straight-alpha contract.
         let alpha = alpha_pass(gpu, self.options.transparent, &config, target_format);
-        let scale = window.scale_factor() as f32;
+        let scale = crate::window::window_scale(&window);
         {
             let rt = self.app.rt_mut();
             rt.set_system_dark(crate::platform::preferences::window_dark(&window, self.args.theme.as_deref()));

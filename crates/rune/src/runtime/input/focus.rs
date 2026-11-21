@@ -256,6 +256,7 @@ impl RuntimeCore {
     fn takes_return(&self, i: usize) -> bool {
         self.edit.link_focused(&self.tree.nodes[i]) || self.tree.nodes[i].focus.highlight.is_some()
             || (self.commit.defaults.web_focus && self.tree.nodes[i].handlers.on_press.is_some() && self.takes_focus(&self.tree.nodes[i]))
+            || (crate::return_activates() && self.tree.nodes[i].handlers.on_press.is_some())
             || self.focus_group(i).is_some_and(|g| LIST_ROLES.contains(&self.tree.nodes[g].role) || VERTICAL_ROLES.contains(&self.tree.nodes[g].role))
     }
     /// Return with no modifiers presses the window's default button (`El::default_button`)

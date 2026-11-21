@@ -30,6 +30,39 @@ mod app_events;
 mod chrome;
 mod hdr;
 
+/// A TV/console UI scale: the logical viewport height in points. Zero means the display's own
+/// scale factor. Set before `run`; the runtime scale becomes the window's physical height
+/// divided by this, so a 720 design is 1.5x at 1080p and 3x at 4K with one number.
+static DESIGN_HEIGHT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Set the design height for a UI that should keep a fixed logical viewport (a 10-foot layout).
+/// `None` returns to the display's scale factor. Call before the app runs; a later call applies
+/// on the next resize. Headless renders keep using `Env::scale`/`--scale`.
+pub fn set_design_height(height: Option<f32>) {
+    let bits = height
+        .filter(|h| h.is_finite() && *h > 0.0)
+        .map_or(0, f32::to_bits);
+    DESIGN_HEIGHT.store(bits, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub(crate) fn design_height() -> Option<f32> {
+    let bits = DESIGN_HEIGHT.load(std::sync::atomic::Ordering::Relaxed);
+    (bits != 0).then(|| f32::from_bits(bits))
+}
+
+/// The scale a window's points are drawn at: its physical height over the design height when
+/// one is set, else the display's own factor.
+pub(crate) fn window_scale(window: &winit::window::Window) -> f32 {
+    if let Some(design) = design_height() {
+        let physical = window.inner_size().height as f32;
+        if physical >= 1.0 {
+            return (physical / design).clamp(0.5, 8.0);
+        }
+    }
+    window.scale_factor() as f32
+}
+
+
 pub use hdr::{HDR_WHITE_SCALE, Hdr, HdrStatus, hdr_status};
 pub(crate) use hdr::{SurfaceOutput, choose_output, color_space_name, format_name, set_hdr_status};
 mod event_loop;
