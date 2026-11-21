@@ -676,6 +676,13 @@ impl<S: 'static> AppHandle<S> {
     #[inline]
     pub fn wake(&self) { self.shared.core.wake_app(); }
 
+    /// Send a key to the window's runtime, as if the keyboard produced it. For a background
+    /// input source (a gamepad listener) that maps its buttons through the same focus, shortcut
+    /// and handler path as the keyboard. Safe from another thread; wakes the loop.
+    pub fn key(&self, key: crate::KeyEvent) {
+        self.shared.core.key(key);
+    }
+
     /// Show the window (creating it if needed), restore it if minimized, and activate the app
     /// with it in front, including the first open of a window that doesn't exist yet. A
     /// nonactivating panel takes keys without activating. The window open at launch doesn't

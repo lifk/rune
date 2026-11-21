@@ -221,6 +221,13 @@ impl Host {
         let polled = wake && !quiet && self.poll_hidden(event_loop, shows);
         if let Some(position) = requests.position { self.set_position(event_loop, position); }
         if let Some(place) = requests.place { self.place(event_loop, place); }
+        for key in requests.keys {
+            if self.app.injected_key(key)
+                && let Some(w) = &self.win
+            {
+                w.window.request_redraw();
+            }
+        }
         if let Some(request) = requests.window { self.window_request(event_loop, request); }
         if requests.activation == Some(Activation::Focus) { self.focus(event_loop); }
         // After the show it may follow; `focus` and `minimize` are last-wins (`AppHandle`).

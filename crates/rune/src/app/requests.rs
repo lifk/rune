@@ -10,7 +10,7 @@ pub(crate) fn window_request_order() -> NonZeroU64 {
     NonZeroU64::new(NEXT.fetch_add(1, Ordering::Relaxed)).expect("window request order exhausted")
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum WindowRequest {
     /// Show and focus, with an activation token when one was forwarded.
     Open(Option<String>),
@@ -35,6 +35,9 @@ pub(crate) enum Activation {
 pub(crate) struct WindowRequests {
     last_cancel: Option<NonZeroU64>,
     pub window: Option<WindowRequest>,
+    /// Keys a background input source injected (`AppHandle::key`), applied in order before the
+    /// window request so a press and a close cannot swallow one another.
+    pub keys: Vec<crate::KeyEvent>,
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub dock: Option<bool>,
     /// `AppHandle::focus` or `AppHandle::minimize`; last-wins (`cancel_minimize`).
@@ -122,6 +125,10 @@ impl SharedCore {
 
     pub(crate) fn wake_app(&self) {
         self.request(|q| q.woken = true);
+    }
+
+    pub(crate) fn key(&self, key: crate::KeyEvent) {
+        self.request(|q| q.keys.push(key));
     }
 
     pub(crate) fn open(&self) {

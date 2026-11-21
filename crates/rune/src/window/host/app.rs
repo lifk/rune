@@ -41,6 +41,10 @@ pub(in crate::window) trait WindowApp {
     fn run_on_rest(&mut self);
     fn queue_on_reopen(&mut self, has_visible_windows: bool) -> Option<Arc<AtomicBool>>;
     fn drain_startup(&mut self, shortcuts: &crate::shortcuts::Guard, menus: &mut crate::native_menu::MenuGuard);
+    /// A key from outside the window, the way `AppHandle::key` delivers a gamepad's press:
+    /// through the same focus, shortcut and handler path a keyboard's press takes.
+    #[allow(unused_variables)]
+    fn injected_key(&mut self, key: crate::KeyEvent) -> bool { false }
     fn drain_window(&mut self, shortcuts: &crate::shortcuts::Guard, menus: &mut crate::native_menu::MenuGuard) -> (WindowRequests, bool, bool);
     fn has_updates(&self) -> bool;
     fn has_compositor(&self) -> bool;
@@ -185,6 +189,11 @@ pub(super) struct TypedWindowApp<S: 'static> {
 }
 
 impl<S: 'static> WindowApp for TypedWindowApp<S> {
+    fn injected_key(&mut self, key: crate::KeyEvent) -> bool {
+        self.with_driver(&mut |rt, _app| rt.key(key.clone()));
+        true
+    }
+
     fn rt(&self) -> &RuntimeCore { self.rt.core() }
 
     fn rt_mut(&mut self) -> &mut RuntimeCore { self.rt.core_mut() }
