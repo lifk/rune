@@ -20,9 +20,21 @@ impl Host {
     /// (`window/host/create.rs`), and is still opaque to Rune: its clear colour, its root fill and its
     /// device are an opaque window's, and only those corner pixels are transparent (`winit` keeps
     /// the rest of the window an opaque region).
-    #[cfg_attr(not(all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android"))), allow(unused_variables))]
+    #[cfg_attr(
+        any(
+            not(all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android"))),
+            not(feature = "wayland-csd-corners")
+        ),
+        allow(unused_variables)
+    )]
     pub(in crate::window) fn client_frame(&self, window: &winit::window::Window) -> bool {
-        #[cfg(all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android")))]
+        #[cfg(all(
+            unix,
+            not(target_os = "macos"),
+            not(target_os = "ios"),
+            not(target_os = "android"),
+            feature = "wayland-csd-corners"
+        ))]
         if self.wayland {
             return winit::platform::wayland::WindowExtWayland::has_client_side_frame(window);
         }
@@ -44,11 +56,20 @@ impl Host {
     /// such frame draws it, and when its surface can't composite translucent pixels: the content
     /// then paints as it always did, square to its edges.
     #[cfg_attr(
-        not(all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android"))),
+        any(
+            not(all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android"))),
+            not(feature = "wayland-csd-corners")
+        ),
         allow(unused_variables)
     )]
     pub(in crate::window) fn corner_radius(&self, window: &Win) -> f32 {
-        #[cfg(all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android")))]
+        #[cfg(all(
+            unix,
+            not(target_os = "macos"),
+            not(target_os = "ios"),
+            not(target_os = "android"),
+            feature = "wayland-csd-corners"
+        ))]
         if self.rounds_corners() && window.config.alpha_mode != wgpu::CompositeAlphaMode::Opaque {
             let radius = winit::platform::wayland::WindowExtWayland::content_corner_radius(&*window.window);
             return radius * self.app.rt().env.scale;

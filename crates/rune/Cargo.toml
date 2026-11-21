@@ -7,6 +7,11 @@ description = "GPU-rendered Rust UI framework (wgpu, winit) with keyed element t
 autotests = false
 
 [features]
+# Wayland client-side frame corners ask winit for an extension only Rune's vendored winit adds
+# (`WindowExtWayland::has_client_side_frame`, `content_corner_radius`). crates.io winit has neither,
+# and cargo resolves this crate for external apps too, so the rounding is opt-in: without it a
+# window keeps square bottom corners instead of failing to build.
+wayland-csd-corners = []
 default = ["accessibility", "dbus", "embedded-fonts", "metal-backend", "ogg-audio", "svg", "rune-gpu/default", "rune-image/default", "rune-media/default", "rune-text/default"]
 # Bundle Inter (Regular, Medium, SemiBold; on web also IBM Plex Mono) as the fonts text falls back
 # to when the app registers none. Disable when AppSpec::fonts supplies the app's own fonts to omit

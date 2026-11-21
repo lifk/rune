@@ -25,7 +25,7 @@ use crate::window::surface::native;
 use crate::window::surface::win;
 use crate::window::surface::{
     Backoff, BackoffEvent, HiddenPace, LoopFrame, Native, Redraw, SurfaceRetries, SurfaceStep,
-    SURFACE_TRIES, TimerFrame, Win, configure, rebuild_renderer_core, surface_config, surface_config_hdr,
+    SURFACE_TRIES, TimerFrame, Win, configure, rebuild_renderer_core, surface_config_hdr,
 };
 #[cfg(target_os = "windows")]
 use crate::window::win32::{covered_draw::CoveredDraw, cpu_frame, handover};
