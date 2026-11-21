@@ -317,6 +317,9 @@ impl Host {
         if self.app.rt_mut().take_toggle_full_screen() && let Some(w) = self.shown_win() {
             chrome::toggle_full_screen(&w.window);
         }
+        if let Some(fullscreen) = self.app.rt_mut().take_set_fullscreen() && let Some(w) = self.shown_win() {
+            chrome::set_full_screen(&w.window, fullscreen);
+        }
         if let Some(menu) = self.app.rt_mut().take_window_menu() && let Some(w) = self.shown_win() {
             chrome::window_menu(&w.window, menu, None);
         }

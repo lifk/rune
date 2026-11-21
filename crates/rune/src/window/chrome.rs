@@ -128,6 +128,12 @@ pub(in crate::window) fn open_as(window: &Window, open_as: crate::windows::OpenA
 }
 
 /// Takes the window full screen, borderless over its display, or brings it back.
+/// Enter or leave full screen without toggling: what `Tx::set_fullscreen` asks for, and the
+/// launch path (`open_as.full_screens()`).
+pub(in crate::window) fn set_full_screen(window: &Window, fullscreen: bool) {
+    window.set_fullscreen(fullscreen.then_some(winit::window::Fullscreen::Borderless(None)));
+}
+
 pub(in crate::window) fn toggle_full_screen(window: &Window) {
     let full = window.fullscreen().is_some();
     window.set_fullscreen((!full).then_some(winit::window::Fullscreen::Borderless(None)));

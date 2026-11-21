@@ -77,6 +77,8 @@ pub struct Tx {
     pub(crate) toggle_maximized: bool,
     /// `Tx::toggle_full_screen`.
     pub(crate) toggle_full_screen: bool,
+    /// `Tx::set_fullscreen`; the shell takes the latest.
+    pub(crate) fullscreen: Option<bool>,
     /// `Tx::send_key`, in order.
     pub(crate) keys: Vec<crate::KeyEvent>,
     /// `Tx::drop_point`.
@@ -421,6 +423,12 @@ impl Tx {
     /// Does nothing for overlays and headless runs.
     pub fn toggle_full_screen(&mut self) {
         self.toggle_full_screen = true;
+    }
+
+    /// Enter or leave full screen, for a handler that already knows which (a player entering on
+    /// play, a settings row). [`Self::toggle_full_screen`] flips whatever the window has.
+    pub fn set_fullscreen(&mut self, fullscreen: bool) {
+        self.fullscreen = Some(fullscreen);
     }
 
     /// Deliver `ev` once this handler is done, as if it were typed: to the focused field, then

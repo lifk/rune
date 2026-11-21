@@ -263,6 +263,7 @@ impl<S: 'static> Runtime<S> {
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     #[inline(always)]
     pub(crate) fn take_toggle_full_screen(&mut self) -> bool { self.core_mut().take_toggle_full_screen() }
+    pub(crate) fn take_set_fullscreen(&mut self) -> Option<bool> { self.core_mut().take_set_fullscreen() }
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     #[inline(always)]
     pub(crate) fn take_window_menu(&mut self) -> Option<WindowMenu> { self.core_mut().take_window_menu() }

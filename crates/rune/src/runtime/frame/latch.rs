@@ -62,6 +62,9 @@ impl RuntimeCore {
         if tx.minimize_order.take().is_some() { self.minimize_step(crate::window::MinimizeEvent::Asked); }
         self.host.titlebar.toggle_maximized |= std::mem::take(&mut tx.toggle_maximized);
         self.host.titlebar.toggle_full_screen |= std::mem::take(&mut tx.toggle_full_screen);
+        if let Some(fullscreen) = tx.fullscreen.take() {
+            self.host.titlebar.set_fullscreen = Some(fullscreen);
+        }
         for ev in std::mem::take(&mut tx.keys) { self.key(ev); }
         self.latch_playground(app, tx);
         for prefix in std::mem::take(&mut tx.evict_memos) { self.invalidate_memos_by_prefix(&prefix); }
