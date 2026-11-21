@@ -79,6 +79,8 @@ pub(crate) struct VirtualList {
     pub before: f32,
     pub after: f32,
     estimate: f32,
+    /// Viewports of rows mounted either side (`El::virtual_overdraw`, else [`OVERSCAN`]).
+    overscan: Option<f32>,
     /// Rows are built by index (`El::virtual_rows`), so a commit costs only the rows it mounts.
     /// Such a list moves its window in small steps and spreads rows new to it over frames.
     pub indexed: bool,
@@ -226,8 +228,9 @@ fn fixed_height(style: &CompactStyle) -> f32 {
     length(style.max_size().height).map_or(h, |m| h.min(m)).max(min)
 }
 
-/// How far ahead an index-built list keeps rows mounted, in viewports either side.
-const OVERSCAN: f32 = 2.0;
+/// How far ahead an index-built list keeps rows mounted, in viewports either side, unless
+/// `El::virtual_overdraw` says otherwise.
+pub(crate) const OVERSCAN: f32 = 2.0;
 /// An index-built list moves its window once the viewport comes this close to its edge.
 const INDEXED_EDGE: f32 = 1.75;
 /// How much of an index-built list's overscan, in viewports per side, may be new in one commit.
@@ -340,6 +343,10 @@ impl VirtualList {
     /// The rows' extent, their padding included.
     fn extent(&self) -> f32 {
         self.pad_top + self.prefix(self.keys.len()) + self.pad_bottom
+    }
+
+    pub fn set_overscan(&mut self, viewports: f32) {
+        self.overscan = Some(viewports.clamp(0.0, 8.0));
     }
 
     pub fn set_estimate(&mut self, estimate: f32) {
@@ -458,8 +465,8 @@ impl VirtualList {
         // them out (rows below a fold gliding open), within an overscan of the window.
         let (mut lo, mut hi) = (start, end);
         for i in self.drawn.iter().filter_map(|k| self.index_of(k)) {
-            if i < start && self.prefix(start) - self.prefix(i) <= self.viewport * OVERSCAN { lo = lo.min(i); }
-            if i >= end && self.row_end(i + 1) - self.row_end(end) <= self.viewport * OVERSCAN { hi = hi.max(i + 1); }
+            if i < start && self.prefix(start) - self.prefix(i) <= self.viewport * self.overscan.unwrap_or(OVERSCAN) { lo = lo.min(i); }
+            if i >= end && self.row_end(i + 1) - self.row_end(end) <= self.viewport * self.overscan.unwrap_or(OVERSCAN) { hi = hi.max(i + 1); }
         }
         (start, end) = (lo, hi);
         // A row still at its estimate grows or shrinks once measured; anchoring to it would move
@@ -498,7 +505,7 @@ impl VirtualList {
     /// The rows within the overscan around `offset`: rows ending at or above its top go, rows
     /// starting above its bottom stay.
     fn overscan(&self, offset: f32) -> (usize, usize) {
-        let lo = offset - self.viewport * OVERSCAN;
+        let lo = offset - self.viewport * self.overscan.unwrap_or(OVERSCAN);
         let hi = offset + self.viewport * (1.0 + OVERSCAN);
         let sums = self.sums();
         let start = sums[1..].partition_point(|&s| self.pad_top + s - self.gap <= lo);

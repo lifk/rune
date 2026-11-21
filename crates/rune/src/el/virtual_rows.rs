@@ -39,6 +39,14 @@ impl El {
         self
     }
 
+    /// How many viewports of rows a virtual list keeps mounted either side of what it shows
+    /// (two by default). A short list of tall rows — Home's rails — wants one: the reader never
+    /// sees more than the next row coming, and each mounted row is expensive to build.
+    pub fn virtual_overdraw(mut self, viewports: f32) -> Self {
+        self.cold_mut().virtual_overdraw = Some(viewports.clamp(0.0, 8.0));
+        self
+    }
+
     /// [`El::virtualize`] with rows built by index: `count` rows, row `i` keyed `key(s, i)` and
     /// built by `build(s, i)`. Layout calls `build` only for the rows in the mounted window (the
     /// viewport and up to two viewports either side), after it knows where that window is, so a

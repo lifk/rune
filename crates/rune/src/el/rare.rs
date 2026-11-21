@@ -39,6 +39,9 @@ pub(crate) struct ElCold {
     pub(crate) scroll_edges: ScrollEdges,
     pub(crate) growth: Option<Box<GrowthSpec>>,
     pub(crate) virtual_estimate: Option<f32>,
+    /// [`El::virtual_overdraw`](crate::El::virtual_overdraw): viewports mounted either side of a
+    /// virtual list's viewport, instead of the default two.
+    pub(crate) virtual_overdraw: Option<f32>,
     /// Rows `El::virtual_rows` builds at layout time, in place of `children`.
     pub(crate) virtual_rows: Option<Rc<crate::el::virtual_rows::RowSource>>,
     /// [`El::virtual_rows_version`](crate::El::virtual_rows_version), hashed.
@@ -92,6 +95,7 @@ impl Empty for ElCold {
         scroll_edges: ScrollEdges { fade: 0.0, fade_style: crate::el::FadeStyle::SMOOTH, margin: 0.0, anchor: false },
         growth: None,
         virtual_estimate: None,
+        virtual_overdraw: None,
         virtual_rows: None,
         virtual_rows_version: None,
         expanded_memo: None,
