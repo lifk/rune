@@ -70,10 +70,13 @@ objc2-core-text = { version = "0.3.2", default-features = false, features = ["st
 objc2 = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-# `dictionary::set_dictionary_segmenter` (vendor/parley_engine), for `icu.dll`'s words, and
-# `line-dictionaries`: Thai, Lao, Khmer and Burmese line breaks from ICU4X's baked line dictionaries,
-# so no line ever waits for `icu.dll`.
-parley_engine = { workspace = true, features = ["line-dictionaries"] }
+# `dictionary::set_dictionary_segmenter` (vendor/parley_engine), for `icu.dll`'s words.
+# `line-dictionaries` (Thai, Lao, Khmer and Burmese breaks from ICU4X's baked dictionaries) is a
+# feature of Rune's vendored parley_engine only: cargo resolves this edge for every target, so an
+# external Linux build fails on a feature crates.io parley_engine does not have. Dropped, as the
+# fork did before the split; Windows line breaks fall back to `icu.dll`, and Runefin does not
+# target Windows.
+parley_engine = { workspace = true }
 windows = { workspace = true, features = ["Win32_Foundation", "Win32_Globalization", "Win32_Graphics_DirectWrite"] }
 windows-core = { workspace = true }
 windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Globalization", "Win32_System_LibraryLoader"] }
