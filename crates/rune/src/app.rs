@@ -161,6 +161,15 @@ impl<S: 'static> App<S> {
         self
     }
 
+    /// Whether a window may present extended-range (scRGB) HDR when its surface offers it:
+    /// `Rgba16Float` in `ExtendedSrgbLinear`, drawn in linear light with interface white at
+    /// BT.2408's 203 cd/m². A surface that offers none stays SDR, and `crate::hdr_status`
+    /// reports which it got. `Tx::set_hdr` switches it at runtime.
+    pub fn hdr(mut self, hdr: crate::window::Hdr) -> Self {
+        self.runtime.hdr = hdr;
+        self
+    }
+
     /// How this app's windows rasterise and place glyphs (see [`crate::FontSmoothing`]):
     /// `On` by default on macOS and in a Mac's browser, `Off` elsewhere (CoreGraphics' pipeline
     /// without font smoothing's dilation, as `-webkit-font-smoothing: antialiased` draws).

@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::text::FontSmoothing;
+use crate::window::Hdr;
 
 impl RuntimeCore {
     /// Enable or disable gamma-space (sRGB) blending for translucent fills, shadows, blurs,
@@ -12,6 +13,21 @@ impl RuntimeCore {
     /// headless snapshot) then draws with `Renderer::set_srgb_blend(true)` into a non-sRGB
     /// target (`format.remove_srgb_suffix()`), cleared to `clear_color()`.
     pub fn set_srgb_blend(&mut self, enabled: bool) {
+        self.blend_preference = enabled;
+        // An HDR surface always blends in linear light: the preference is remembered for the
+        // switch back to SDR, not applied while the window presents scRGB.
+        if self.hdr == Hdr::Off {
+            self.set_effective_blend(enabled);
+        }
+    }
+
+    /// The blend mode the app asked for, before HDR forced linear light.
+    pub(crate) fn blend_preference(&self) -> bool { self.blend_preference }
+
+    /// Puts the window into the mode a surface needs without changing the app's preference.
+    pub(crate) fn force_srgb_blend(&mut self, enabled: bool) { self.set_effective_blend(enabled); }
+
+    pub(crate) fn set_effective_blend(&mut self, enabled: bool) {
         if self.paint.set_srgb_blend(enabled) {
             self.commit.dirty = true;
         }
@@ -19,6 +35,35 @@ impl RuntimeCore {
 
     pub fn srgb_blend(&self) -> bool {
         self.paint.srgb_blend()
+    }
+
+    /// Whether this window may present extended-range (scRGB) output, as `App::hdr` set it and
+    /// `Tx::set_hdr` can change it.
+    pub fn hdr(&self) -> Hdr { self.hdr }
+
+    /// Asks for HDR output from the next frame. A window reconfigures its surface on the frame
+    /// that changes; an unsupported surface stays SDR and `crate::hdr_status` says so. Turning
+    /// HDR off returns the window to the blend mode the app asked for.
+    pub fn set_hdr(&mut self, hdr: Hdr) {
+        if self.hdr != hdr {
+            self.hdr = hdr;
+            self.commit.dirty = true;
+            if hdr == Hdr::Off {
+                let preference = self.blend_preference;
+                self.set_effective_blend(preference);
+            }
+        }
+    }
+
+    /// The linear-light multiplier the window target applies when HDR is active.
+    pub(crate) fn output_scale(&self) -> f32 { self.output_scale }
+
+    pub(crate) fn set_output_scale(&mut self, scale: f32) {
+        let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
+        if self.output_scale != scale {
+            self.output_scale = scale;
+            self.commit.dirty = true;
+        }
     }
 
     /// Rasterise and place glyphs in `mode` from the next frame, as `App::font_smoothing` does
@@ -42,7 +87,8 @@ impl RuntimeCore {
             if self.paint.srgb_blend {
                 [srgb_encode(c.r), srgb_encode(c.g), srgb_encode(c.b), 1.0]
             } else {
-                [c.r, c.g, c.b, 1.0]
+                let k = self.output_scale;
+                [c.r * k, c.g * k, c.b * k, 1.0]
             }
         })
     }

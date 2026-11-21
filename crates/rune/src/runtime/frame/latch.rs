@@ -99,6 +99,7 @@ impl RuntimeCore {
         if let Some(mode) = tx.font_smoothing.take() { self.set_font_smoothing(mode); }
         if let Some((sans, mono)) = tx.font_families.take() { self.set_font_families(&sans, &mono); }
         if let Some(srgb) = tx.srgb_blend.take() { self.set_srgb_blend(srgb); }
+        if let Some(hdr) = tx.hdr.take() { self.set_hdr(hdr); }
         if let Some(rewind) = tx.rewind.take() { self.motion.set_rewind(rewind); }
         if std::mem::take(&mut tx.blur) {
             if self.kbd.focus.path().is_some() {

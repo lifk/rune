@@ -17,6 +17,8 @@ pub(crate) struct RuntimeConfig<S: 'static> {
     pub(crate) modifier_keys: bool,
     pub(crate) tab_visits_controls: bool,
     pub(crate) srgb_blend: bool,
+    /// `App::hdr`: whether a window may present scRGB output.
+    pub(crate) hdr: crate::window::Hdr,
     pub(crate) font_smoothing: crate::FontSmoothing,
     pub(crate) dev_stats: Option<fn() -> String>,
 }
@@ -37,6 +39,7 @@ impl<S: 'static> Default for RuntimeConfig<S> {
             modifier_keys: false,
             tab_visits_controls: false,
             srgb_blend: true,
+            hdr: crate::window::Hdr::Off,
             font_smoothing: crate::FontSmoothing::default(),
             dev_stats: None,
         }
@@ -56,6 +59,7 @@ impl<S: 'static> RuntimeConfig<S> {
             modifier_keys,
             tab_visits_controls,
             srgb_blend,
+            hdr,
             font_smoothing,
             dev_stats,
         } = self;
@@ -67,6 +71,7 @@ impl<S: 'static> RuntimeConfig<S> {
             modifier_keys,
             tab_visits_controls,
             srgb_blend,
+            hdr,
             font_smoothing,
             dev_stats,
         }
@@ -79,12 +84,14 @@ impl crate::runtime::RuntimeCore {
         modifier_keys: bool,
         tab_visits_controls: bool,
         srgb_blend: bool,
+        hdr: crate::window::Hdr,
         font_smoothing: crate::FontSmoothing,
         dev_stats: Option<fn() -> String>,
     ) {
         self.set_modifier_keys(modifier_keys);
         self.set_tab_visits_controls(tab_visits_controls);
         self.set_srgb_blend(srgb_blend);
+        self.set_hdr(hdr);
         self.set_font_smoothing(font_smoothing);
         self.host.set_app_stats(dev_stats);
     }
@@ -101,6 +108,7 @@ impl<S: 'static> Runtime<S> {
             modifier_keys,
             tab_visits_controls,
             srgb_blend,
+            hdr,
             font_smoothing,
             dev_stats,
         } = config;
@@ -108,7 +116,7 @@ impl<S: 'static> Runtime<S> {
         self.hooks.on_mods = on_mods;
         self.hooks.on_visibility = on_visibility;
         self.hooks.on_ime = on_ime;
-        self.core_mut().configure_core(modifier_keys, tab_visits_controls, srgb_blend, font_smoothing, dev_stats);
+        self.core_mut().configure_core(modifier_keys, tab_visits_controls, srgb_blend, hdr, font_smoothing, dev_stats);
     }
 }
 

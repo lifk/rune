@@ -923,7 +923,9 @@ fn wgsl_generated_constants_match_naga_ir() {
         let m = wgsl::parse_str(&src).expect("parse pinned WGSL");
         assert_eq!(eval_f32(&m, const_expr(&m, "PINNED_KIND")), kind as f32);
     }
-    let dual = wgsl::parse_str(&variant::dual_wgsl().expect("dual_wgsl")).expect("parse dual WGSL");
+    let dual = wgsl::parse_str(&variant::dual_wgsl(false).expect("dual_wgsl")).expect("parse dual WGSL");
+    // The HDR variant is WGSL too: it scales the window return by the globals' output scale.
+    wgsl::parse_str(&variant::dual_wgsl(true).expect("the HDR dual variant")).expect("parse HDR dual WGSL");
     assert!(eval_bool(&dual, const_expr(&dual, "OUTLINE_SUBPIXEL")));
 
     // `layer_blur.wgsl` overrides and `Uniforms.taps` array length.

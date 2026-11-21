@@ -25,11 +25,32 @@ use crate::window::surface::native;
 use crate::window::surface::win;
 use crate::window::surface::{
     Backoff, BackoffEvent, HiddenPace, LoopFrame, Native, Redraw, SurfaceRetries, SurfaceStep,
-    SURFACE_TRIES, TimerFrame, Win, configure, rebuild_renderer_core, surface_config,
+    SURFACE_TRIES, TimerFrame, Win, configure, rebuild_renderer_core, surface_config, surface_config_hdr,
 };
 #[cfg(target_os = "windows")]
 use crate::window::win32::{covered_draw::CoveredDraw, cpu_frame, handover};
 use crate::window::{WakeEvent, sync_screen_origin_core};
+
+/// Puts the runtime into the mode an HDR surface needs and records what it got, for the app's
+/// settings and diagnostics.
+pub(crate) fn apply_hdr_output(rt: &mut crate::runtime::RuntimeCore, output: crate::window::SurfaceOutput) {
+    if output.hdr {
+        rt.force_srgb_blend(false);
+        rt.set_output_scale(crate::window::HDR_WHITE_SCALE);
+    } else {
+        rt.set_output_scale(1.0);
+    }
+    crate::window::set_hdr_status(if output.hdr {
+        crate::window::HdrStatus::Active {
+            format: crate::window::format_name(output.format),
+            color_space: crate::window::color_space_name(output.color_space),
+        }
+    } else if rt.hdr() == crate::window::Hdr::Off {
+        crate::window::HdrStatus::Off
+    } else {
+        crate::window::HdrStatus::Unsupported
+    });
+}
 
 impl Host {
     #[cfg_attr(not(all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android"))), allow(unused_variables))]
@@ -178,8 +199,9 @@ impl Host {
         let adapter = &gpu.as_ref().or(self.gpu.as_ref().map(|g| &g.0)).unwrap().adapter;
         let phys = window.inner_size();
         let srgb_blend = self.app.rt().srgb_blend();
-        let (mut config, translucent) = surface_config(&surface, adapter, (phys.width, phys.height), srgb_blend)
+        let (mut config, translucent, output) = surface_config_hdr(&surface, adapter, (phys.width, phys.height), srgb_blend, self.app.rt().hdr())
             .ok_or("the GPU adapter can't present to this window")?;
+        apply_hdr_output(self.app.rt_mut(), output);
         #[cfg(target_os = "macos")]
         let launch_drawables = LaunchDrawables::cap(&mut config);
         // A window with a client-side frame keeps its pixels' alpha for the frame's corner arcs;
@@ -194,7 +216,7 @@ impl Host {
             }
             self.app.rt_mut().transparent = config.alpha_mode != wgpu::CompositeAlphaMode::Opaque;
         }
-        let target_format = if srgb_blend { config.format.remove_srgb_suffix() } else { config.format };
+        let target_format = output.target(self.app.rt().srgb_blend());
         if let Some(gpu) = gpu {
             crate::marks::mark("renderer.begin");
             let mut renderer = prewarmed.unwrap_or_else(|| Renderer::new(&gpu.device, target_format));
@@ -417,8 +439,9 @@ impl Host {
         let gpu = Arc::new(gpu);
         let size = window.inner_size();
         let srgb_blend = self.app.rt().srgb_blend();
-        let (mut config, translucent) = surface_config(&surface, &gpu.adapter, (size.width, size.height), srgb_blend)
+        let (mut config, translucent, output) = surface_config_hdr(&surface, &gpu.adapter, (size.width, size.height), srgb_blend, self.app.rt().hdr())
             .ok_or("the GPU adapter can't present to this window")?;
+        apply_hdr_output(self.app.rt_mut(), output);
         let client_frame = self.client_frame(&window);
         if transparent || client_frame {
             config.alpha_mode = alpha_mode(transparent, client_frame, translucent);
@@ -428,7 +451,7 @@ impl Host {
         if let Err(error) = configure(&surface, &gpu, &config) {
             return Err(format!("the new GPU surface refused its configuration: {error}"));
         }
-        let target_format = if srgb_blend { config.format.remove_srgb_suffix() } else { config.format };
+        let target_format = output.target(self.app.rt().srgb_blend());
         let mut renderer = prewarmed.unwrap_or_else(|| Renderer::new(&gpu.device, target_format));
         renderer.set_srgb_blend(srgb_blend);
         rebuild_renderer_core(&gpu.device, &mut renderer, target_format, self.app.rt_mut());

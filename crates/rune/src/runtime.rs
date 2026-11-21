@@ -338,6 +338,14 @@ runtime_core_fields! {
     pub settled: bool,
     /// Transparent native surfaces/headless exports clear to transparent black.
     pub transparent: bool,
+    /// The blend mode the app asked for, before an HDR surface forces linear light. A switch
+    /// back to SDR returns to this (`RuntimeCore::set_srgb_blend`).
+    pub(crate) blend_preference: bool,
+    /// Whether this window may present extended-range (scRGB) output.
+    pub(crate) hdr: crate::window::Hdr,
+    /// Linear-light multiplier for the window target when HDR is active: 1.0 for SDR, and
+    /// `HDR_WHITE_SCALE` so UI white lands on the compositor's SDR reference white.
+    pub(crate) output_scale: f32,
 
     /// Retained node tree, id/key lookup tables and per-commit capability flags.
     pub(crate) tree: types::TreeState,

@@ -304,6 +304,9 @@ pub struct Renderer {
     spring_instances: usize,
     layers: layers::Layers,
     srgb_blend: bool,
+    /// Linear-light multiplier for the window target: 1.0 for SDR, `HDR_WHITE_SCALE` on an HDR
+    /// surface. Only the window pass applies it; layers hold unscaled linear light.
+    output_scale: f32,
     /// Effect slots of the uploaded instances, by index.
     effects: Vec<(u32, Instance)>,
     /// Pooled viewport-sized backdrop copies, allocated only when a slot sets `effect_backdrop`
@@ -346,6 +349,18 @@ impl Renderer {
         if let Some(s) = &mut self.surfaces {
             s.set_srgb_blend(enabled);
         }
+    }
+
+    /// Scale the window target's linear light, as an HDR surface does so SDR white lands on the
+    /// compositor's reference white. Layers keep unscaled light and are scaled when composited.
+    pub fn set_output_scale(&mut self, scale: f32) {
+        let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
+        self.output_scale = scale;
+    }
+
+    /// The window target's linear-light multiplier (`Renderer::set_output_scale`).
+    pub fn output_scale(&self) -> f32 {
+        self.output_scale
     }
 
     /// Opt-in retained geometry. IDs map instances to shared translation/opacity nodes.

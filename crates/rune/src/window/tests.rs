@@ -800,3 +800,56 @@ fn a_square_window_never_fades_its_corners() {
         assert_eq!(pixel[3], 255, "pixel {i} faded with no radius");
     }
 }
+
+fn caps(formats: &[wgpu::TextureFormat], spaces: wgpu::SurfaceColorSpaces) -> wgpu::SurfaceCapabilities {
+    wgpu::SurfaceCapabilities {
+        formats: formats.to_vec(),
+        format_capabilities: formats
+            .iter()
+            .map(|format| wgpu::SurfaceFormatCapabilities { format: *format, color_spaces: spaces })
+            .collect(),
+        present_modes: vec![wgpu::PresentMode::Fifo],
+        alpha_modes: vec![wgpu::CompositeAlphaMode::Opaque],
+        usages: wgpu::TextureUsages::RENDER_ATTACHMENT,
+    }
+}
+
+#[test]
+fn hdr_needs_a_float_surface_in_scrg() {
+    use wgpu::TextureFormat::{Bgra8Unorm, Bgra8UnormSrgb, Rgba16Float};
+    let with_scrg = caps(
+        &[Bgra8UnormSrgb, Rgba16Float],
+        wgpu::SurfaceColorSpaces::SRGB | wgpu::SurfaceColorSpaces::EXTENDED_SRGB_LINEAR,
+    );
+    let out = choose_output(&with_scrg, true, Hdr::Auto);
+    assert!(out.hdr);
+    assert_eq!(out.format, Rgba16Float);
+    assert_eq!(out.color_space, wgpu::SurfaceColorSpace::ExtendedSrgbLinear);
+    assert_eq!(out.target(true), Rgba16Float, "an HDR target keeps its float format");
+
+    let off = choose_output(&with_scrg, true, Hdr::Off);
+    assert!(!off.hdr);
+    assert_eq!(off.format, Bgra8UnormSrgb);
+    assert_eq!(off.target(true), Bgra8Unorm);
+}
+
+#[test]
+fn hdr_is_not_invented_without_the_extended_colour_space() {
+    use wgpu::TextureFormat::{Bgra8UnormSrgb, Rgba16Float};
+    let srgb_only = caps(&[Bgra8UnormSrgb, Rgba16Float], wgpu::SurfaceColorSpaces::SRGB);
+    assert!(!choose_output(&srgb_only, false, Hdr::Auto).hdr, "an sRGB 16F target would clamp");
+    let pq_only = caps(
+        &[Bgra8UnormSrgb],
+        wgpu::SurfaceColorSpaces::SRGB | wgpu::SurfaceColorSpaces::BT2100_PQ,
+    );
+    assert!(!choose_output(&pq_only, false, Hdr::Auto).hdr, "PQ would need a pass in every shader");
+}
+
+#[test]
+fn sdr_linear_blending_uses_the_srgb_format() {
+    use wgpu::TextureFormat::Bgra8UnormSrgb;
+    let one = caps(&[Bgra8UnormSrgb], wgpu::SurfaceColorSpaces::SRGB);
+    let out = choose_output(&one, false, Hdr::Off);
+    assert_eq!((out.format, out.hdr), (Bgra8UnormSrgb, false));
+    assert_eq!(out.target(false), Bgra8UnormSrgb);
+}

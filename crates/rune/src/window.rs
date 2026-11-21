@@ -28,6 +28,10 @@ use crate::tooling::Chrome;
 
 mod app_events;
 mod chrome;
+mod hdr;
+
+pub use hdr::{HDR_WHITE_SCALE, Hdr, HdrStatus, hdr_status};
+pub(crate) use hdr::{SurfaceOutput, choose_output, color_space_name, format_name, set_hdr_status};
 mod event_loop;
 mod file_drop;
 mod handle;
