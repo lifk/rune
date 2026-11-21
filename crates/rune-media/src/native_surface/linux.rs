@@ -45,6 +45,20 @@ pub struct DmabufBuffer {
     size: [u32; 2],
 }
 
+impl DmabufPlane {
+    /// Duplicates a producer's descriptor into an owned handle, for a library that hands out
+    /// its own (`GstDmaBufMemory::fd`). The offset and stride are in bytes.
+    #[allow(unsafe_code)]
+    pub fn from_raw_fd(fd: std::os::fd::RawFd, offset: u32, stride: u32, modifier: u64) -> Result<Self, String> {
+        // SAFETY: `fd` is a live descriptor for the call; the clone shares the file description
+        // and this handle closes it.
+        let fd = unsafe { std::os::fd::BorrowedFd::borrow_raw(fd) }
+            .try_clone_to_owned()
+            .map_err(|error| format!("could not duplicate the dmabuf descriptor: {error}"))?;
+        Ok(Self { fd, offset, stride, modifier })
+    }
+}
+
 impl DmabufBuffer {
     /// A `size` (width, height) buffer of DRM format `fourcc` in `plane`. Only
     /// [`DRM_FORMAT_ARGB8888`] with [`DRM_FORMAT_MOD_LINEAR`] imports; rows must hold the width and

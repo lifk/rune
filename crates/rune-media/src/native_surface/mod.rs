@@ -28,11 +28,17 @@ use std::sync::{Arc, Mutex};
 pub enum Matrix {
     Bt601,
     Bt709,
+    /// ITU-R BT.2020 non-constant luminance, what HDR10 and HLG grades use.
+    Bt2020,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Transfer {
     Srgb,
     Bt709,
+    /// SMPTE ST 2084: the 0..1 signal is an absolute 0..10,000 cd/m².
+    Pq,
+    /// BT.2100 HLG: a 1,000 cd/m² nominal peak through the OOTF.
+    Hlg,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Format {
@@ -427,12 +433,16 @@ pub fn nv12_reference(y: u8, cb: u8, cr: u8, format: Format, color: ColorInfo) -
     let (kr, kb) = match color.matrix {
         Matrix::Bt601 => (0.299, 0.114),
         Matrix::Bt709 => (0.2126, 0.0722),
+        Matrix::Bt2020 => (0.2627, 0.0593),
     };
     let r = y + 2.0 * (1.0 - kr) * v;
     let b = y + 2.0 * (1.0 - kb) * u;
     let g = (y - kr * r - kb * b) / (1.0 - kr - kb);
     [r, g, b].map(|x| linear(x.clamp(0.0, 1.0), color.transfer))
 }
+/// Linear light for an encoded sample. `Srgb`/`Bt709` return display light where 1.0 is an
+/// SDR white; `Pq` returns ST 2084's absolute signal (1.0 = 10,000 cd/m²) and `Hlg` the BT.2100
+/// scene light before the OOTF (1.0 = the signal's peak). The shader converts both for display.
 pub fn linear(x: f32, transfer: Transfer) -> f32 {
     match transfer {
         Transfer::Srgb => rune_core::color::srgb_decode(x),
@@ -441,6 +451,28 @@ pub fn linear(x: f32, transfer: Transfer) -> f32 {
                 x / 4.5
             } else {
                 ((x + 0.099) / 1.099).powf(1.0 / 0.45)
+            }
+        }
+        Transfer::Pq => {
+            // SMPTE ST 2084 EOTF: the constants are the standard's.
+            const M1: f32 = 0.159_301_76;
+            const M2: f32 = 78.843_75;
+            const C1: f32 = 0.835_937_5;
+            const C2: f32 = 18.851_562;
+            const C3: f32 = 18.687_5;
+            let e = x.clamp(0.0, 1.0).powf(1.0 / M2);
+            ((e - C1).max(0.0) / (C2 - C3 * e).max(1e-6)).powf(1.0 / M1)
+        }
+        Transfer::Hlg => {
+            // BT.2100 inverse OETF: 0..1 signal to scene light, with the standard's constants.
+            const A: f32 = 0.178_832_77;
+            const B: f32 = 0.284_668_92;
+            const C: f32 = 0.559_910_73;
+            let x = x.clamp(0.0, 1.0);
+            if x <= 0.5 {
+                x * x / 3.0
+            } else {
+                ((x - C).exp() + B) / A
             }
         }
     }
