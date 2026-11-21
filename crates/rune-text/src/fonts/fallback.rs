@@ -17,8 +17,11 @@ pub(crate) enum Route {
     Emoji,
 }
 
-// Math alphanumerics and other symbol blocks. Loaded only when a text has a character in
-// `needs_symbols`, and appended after the eager symbol families so existing picks don't move.
+// Math alphanumerics and the symbol blocks the app's own fonts lack. Loaded when a text has a
+// math alphanumeric (`is_math_alphanumeric`), or a symbol glyph no own font covers, and appended
+// after the eager symbol families so existing picks don't move. A covered `✓` or `—` must not
+// load them: Noto Sans Math, Noto Music and Symbola cost the first frame 23 ms for a glyph none
+// of them drew.
 #[cfg(target_os = "macos")]
 pub(crate) const MATH_FONT_FILES: &[&str] = &["stixtwomath"];
 #[cfg(target_os = "macos")]

@@ -343,6 +343,19 @@ fn faces(ts: &mut TextSystem, text: &str, spans: &[Span], style: TextStyle) -> V
     out
 }
 
+/// A covered symbol is not math. A `✓` and an em dash draw from the app's fonts or the symbol
+/// families; loading Noto Sans Math, Noto Music and Symbola for them cost the first frame 23 ms
+/// of a 103 ms launch on Linux. An uncovered arrow still wants the math families to draw at all.
+#[test]
+fn a_covered_symbol_does_not_load_a_math_font() {
+    let mut ts = TextSystem::default();
+    ts.layout_rich("Done ✓ — 2 · 3", &[], TextStyle::new(13.0, 400.0), 2.0, None);
+    assert!(ts.math.is_none(), "a checkmark is not math: {:?}", ts.math);
+    let mut ts = TextSystem::default();
+    ts.layout_rich("\u{2922}", &[], TextStyle::new(13.0, 400.0), 2.0, None);
+    assert!(ts.math.is_some(), "an uncovered symbol still wants the math fallbacks");
+}
+
 /// Math alphanumerics load the math fallback on first use and shape from one math font,
 /// mono spans included; Latin around them stays on the app's font.
 #[test]
