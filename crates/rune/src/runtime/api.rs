@@ -557,10 +557,9 @@ impl<S: 'static> Runtime<S> {
     #[inline(always)]
     pub(super) fn drawn_box(&self, i: usize) -> [f32; 4] { self.core().drawn_box(i) }
 
-    #[cfg(test)]
-    #[inline(always)]
     /// The focused element's key: its link id, its `El::key`, or its path's last segment.
     /// `None` when nothing has focus. For tests and tools.
+    #[inline(always)]
     pub fn focused_key(&self) -> Option<String> { self.core().focused_key() }
 
     #[cfg(test)]
