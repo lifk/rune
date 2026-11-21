@@ -231,17 +231,11 @@ pub(crate) fn merge(tx: &mut Tx, one: Tx) {
     tx.toggle_maximized |= one.toggle_maximized;
     tx.toggle_full_screen |= one.toggle_full_screen;
     tx.keys.extend(one.keys);
-    // A `Tx::focus_key` from `App::poll` or `AppHandle::update` names an element to focus;
-    // dropping it here leaves a launched 10-foot screen with nothing focused, and arrows and
-    // Space then do nothing.
-    tx.focus_keys.extend(one.focus_keys);
-    tx.focus_keys_quiet.extend(one.focus_keys_quiet);
     if one.title.is_some() { tx.title = one.title; }
     if one.announce.is_some() { tx.announce = one.announce; }
     tx.playground.extend(one.playground);
     tx.open_urls.extend(one.open_urls);
     tx.srgb_blend = one.srgb_blend.or(tx.srgb_blend);
-    tx.hdr = one.hdr.or(tx.hdr);
     tx.font_smoothing = one.font_smoothing.or(tx.font_smoothing);
     if one.font_families.is_some() { tx.font_families = one.font_families; }
     if one.rewind.is_some() { tx.rewind = one.rewind; }

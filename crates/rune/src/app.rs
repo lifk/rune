@@ -161,18 +161,6 @@ impl<S: 'static> App<S> {
         self
     }
 
-    /// Present extended-range HDR when the surface supports it (`Hdr::Auto`), or always present
-    /// SDR (`Hdr::Off`, the default). An HDR window uses the `Rgba16Float` surface in
-    /// `ExtendedSrgbLinear` (scRGB): the renderer writes linear light with SDR white at
-    /// [`HDR_WHITE_SCALE`](crate::window::HDR_WHITE_SCALE), HDR video keeps highlight detail above
-    /// it, and the compositor maps gamut, tone and HDR metadata for the display. Where the surface
-    /// has no such colour space the window stays SDR; [`crate::hdr_status`] says which it got.
-    /// A handler can switch it while running with `Tx::set_hdr`. Off by default.
-    pub fn hdr(mut self, hdr: crate::window::Hdr) -> Self {
-        self.hdr = hdr;
-        self
-    }
-
     /// How this app's windows rasterise and place glyphs (see [`crate::FontSmoothing`]):
     /// `On` by default on macOS and in a Mac's browser, `Off` elsewhere (CoreGraphics' pipeline
     /// without font smoothing's dilation, as `-webkit-font-smoothing: antialiased` draws).
@@ -679,17 +667,6 @@ impl<S: 'static> AppHandle<S> {
     #[inline]
     pub fn wake(&self) { self.shared.core.wake_app(); }
 
-    /// Send a key to the window's runtime, as if the keyboard produced it. For a background input
-    /// source (a gamepad listener) that maps its buttons through the same focus and shortcut path.
-    /// Safe from another thread; wakes the loop.
-    pub fn key(&self, key: crate::KeyEvent) {
-        self.request(|q| {
-            q.keys.push(key);
-            q.woken = true;
-        });
-        self.wake();
-    }
-
     /// Show the window (creating it if needed), restore it if minimized, and activate the app
     /// with it in front, including the first open of a window that doesn't exist yet. A
     /// nonactivating panel takes keys without activating. The window open at launch doesn't
@@ -741,14 +718,6 @@ impl<S: 'static> AppHandle<S> {
     /// an earlier `focus`.
     #[inline]
     pub fn minimize(&self) { self.shared.core.minimize(); }
-
-    /// Put the window into or out of fullscreen, as the window manager's fullscreen action
-    /// would. A hidden window remembers the request and opens fullscreen; a panel, launcher or
-    /// overlay ignores it. On Wayland this is a compositor request, so the actual mode is the
-    /// compositor's to grant.
-    pub fn set_fullscreen(&self, fullscreen: bool) {
-        self.request(|q| q.fullscreen = Some(fullscreen));
-    }
 
     /// Quit the app: every open window's `App::on_quit` runs, the window closes without
     /// `on_close`, and `run` returns.

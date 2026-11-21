@@ -272,23 +272,15 @@ impl Renderer {
         let bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: None, entries: &windfoil_bind_entries() });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[Some(&bind_layout)], immediate_size: 0 });
         let make_pipeline = |shader: &dxbc::Shaders| Self::pipeline(device, &layout, shader, format, vertex_entry, Blend::SourceOver);
-        // An HDR frame's shader is a runtime variant of the canonical WGSL, so the precompiled
-        // libraries (built from the canonical source) do not apply to it.
-        let hdr = format == wgpu::TextureFormat::Rgba16Float;
         #[cfg(target_os = "windows")]
-        if !hdr && let Some((shader, pipeline)) = dxbc::uber(device, make_pipeline) {
+        if let Some((shader, pipeline)) = dxbc::uber(device, make_pipeline) {
             return Ok(Built { bind_layout, layout, shader, pipeline, source: Source::Precompiled });
         }
         #[cfg(target_os = "macos")]
-        if !hdr && let Some((shader, pipeline)) = windfoil_metallib::load(device, make_pipeline) {
+        if let Some((shader, pipeline)) = windfoil_metallib::load(device, make_pipeline) {
             return Ok(Built { bind_layout, layout, shader: dxbc::Shaders::one(shader), pipeline, source: Source::Precompiled });
         }
-        let source = if hdr {
-            super::uber_wgsl::hdr(windfoil_wgsl()).ok_or("shader.wgsl's fragment return moved")?
-        } else {
-            windfoil_wgsl().to_string()
-        };
-        let (shader, pipeline) = compile(device, &source, make_pipeline)?;
+        let (shader, pipeline) = compile(device, windfoil_wgsl(), make_pipeline)?;
         Ok(Built { bind_layout, layout, shader, pipeline, source: Source::Compiled })
     }
 
@@ -336,11 +328,10 @@ impl Renderer {
         if !device.features().contains(wgpu::Features::DUAL_SOURCE_BLENDING) {
             return Err("the device has no dual-source blending".into());
         }
-        let hdr = self.format == wgpu::TextureFormat::Rgba16Float;
-        let wgsl = dual_wgsl(hdr).ok_or("shader.wgsl's fragment entry moved")?;
+        let wgsl = dual_wgsl().ok_or("shader.wgsl's fragment entry moved")?;
         let (layout, format, entry) = (self.layout.clone(), self.format, self.vertex_entry);
         #[cfg(target_os = "windows")]
-        if !hdr && let Some((_, pipeline)) = dxbc::uber_dual(device, |shader| lcd_pipeline(device, &layout, format, entry, shader)) {
+        if let Some((_, pipeline)) = dxbc::uber_dual(device, |shader| lcd_pipeline(device, &layout, format, entry, shader)) {
             return Ok(Lcd::Built(pipeline));
         }
         #[cfg(target_arch = "wasm32")]
@@ -378,8 +369,7 @@ impl Renderer {
     /// its HLSL (`regen_dxbc`): it bypasses the shipped bytecode.
     #[doc(hidden)]
     pub fn compile_subpixel_now(&mut self, device: &wgpu::Device) -> Result<(), String> {
-        let wgsl = dual_wgsl(self.format == wgpu::TextureFormat::Rgba16Float)
-            .ok_or("shader.wgsl's fragment entry moved")?;
+        let wgsl = dual_wgsl().ok_or("shader.wgsl's fragment entry moved")?;
         let (layout, format, entry) = (self.layout.clone(), self.format, self.vertex_entry);
         let (_, pipeline) = compile(device, &wgsl, |shader| lcd_pipeline(device, &layout, format, entry, shader))?;
         self.lcd = Lcd::Built(pipeline);

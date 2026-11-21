@@ -39,8 +39,6 @@ pub(crate) struct WindowRequests {
     pub dock: Option<bool>,
     /// `AppHandle::focus` or `AppHandle::minimize`; last-wins (`cancel_minimize`).
     pub activation: Option<Activation>,
-    /// `AppHandle::set_fullscreen` / `Tx::set_fullscreen`; last-wins.
-    pub fullscreen: Option<bool>,
     pub position: Option<(i32, i32)>,
     pub place: Option<crate::windows::PlaceRequest>,
     /// `AppHandle::quit` or `AppHandle::relaunch`, and what follows the exit.
@@ -53,11 +51,7 @@ impl WindowRequests {
     /// Asks something of the window itself: show, hide or close it, focus or minimize it, or
     /// move it. A request added here reaches both `only_updates` and `Shared::window_pending`.
     fn asks_window(&self) -> bool {
-        self.window.is_some()
-            || self.activation.is_some()
-            || self.fullscreen.is_some()
-            || self.position.is_some()
-            || self.place.is_some()
+        self.window.is_some() || self.activation.is_some() || self.position.is_some() || self.place.is_some()
     }
 
     /// A later open, hide, close or focus takes a minimize back out; a show leaves it, so a
@@ -69,7 +63,7 @@ impl WindowRequests {
 
     /// Nothing but updates: no wake for `poll`, no window, focus or geometry request.
     pub(crate) fn only_updates(&self) -> bool {
-        !self.woken && !self.asks_window() && self.fullscreen.is_none() && self.keys.is_empty()
+        !self.woken && !self.asks_window()
     }
 }
 

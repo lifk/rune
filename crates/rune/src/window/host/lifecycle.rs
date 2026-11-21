@@ -98,14 +98,7 @@ impl Host {
                     #[cfg(target_os = "macos")]
                     if focus && self.started && let Some(w) = self.shown_win() { w.focus(); }
                 }
-                RevealEffect::OrderIn { focus } => {
-                    if let Some(w) = &self.win { w.show(focus); }
-                    if self.rt.fullscreen && !self.options.borderless {
-                        if let Some(w) = &self.win {
-                            w.window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
-                        }
-                    }
-                }
+                RevealEffect::OrderIn { focus } => if let Some(w) = &self.win { w.show(focus) },
                 RevealEffect::Unminimize => if let Some(w) = &self.win { w.window.set_minimized(false) },
                 RevealEffect::Settle => {
                     if !built { self.app.rt_mut().settle_all(); }

@@ -19,9 +19,6 @@ struct Uniforms {
     sampling: [f32; 4],
     // `Orient`: centred upright to centred buffer coordinates.
     orient: [f32; 4],
-    // Window linear-light scale, HDR flag (keeps absolute light instead of tone mapping), and
-    // two unused lanes.
-    output: [f32; 4],
 }
 
 const _: () = {
@@ -91,7 +88,6 @@ impl SurfaceRenderer {
                 && (image[3] - upright[1] as f32).abs() < 0.001
                 && (image[0] - image[0].round()).abs() < 0.001
                 && (image[1] - image[1].round()).abs() < 0.001;
-            let hdr = self.output_scale != 1.0;
             let u = Uniforms {
                 viewport: [viewport.0 as f32, viewport.1 as f32, 0.0, 0.0],
                 node: d.rect,
@@ -104,27 +100,13 @@ impl SurfaceRenderer {
                         Format::Bgra => 0.0,
                         Format::Nv12Video => 1.0,
                         Format::Nv12Full => 2.0,
-                        Format::P010Video => 3.0,
-                        Format::P010Full => 4.0,
                     },
-                    match f.color.matrix {
-                        Matrix::Bt601 => 0.0,
-                        Matrix::Bt709 => 1.0,
-                        Matrix::Bt2020 => 2.0,
-                    },
-                    if self.srgb_blend { 2.0 } else {
-                        match f.color.transfer {
-                            Transfer::Srgb => 0.0,
-                            Transfer::Bt709 => 1.0,
-                            Transfer::Pq => 3.0,
-                            Transfer::Hlg => 4.0,
-                        }
-                    },
+                    if f.color.matrix == Matrix::Bt709 { 1.0 } else { 0.0 },
+                    if self.srgb_blend { 2.0 } else if f.color.transfer == Transfer::Srgb { 0.0 } else { 1.0 },
                     d.opacity,
                 ],
                 sampling: [if exact { 1.0 } else { 0.0 }, f.size[0] as f32, f.size[1] as f32, if mirrored { 1.0 } else { 0.0 }],
                 orient: f.orient.0.map(f32::from),
-                output: [self.output_scale, if hdr { 1.0 } else { 0.0 }, 0.0, 0.0],
             };
             // The same draw with a new picture keeps its uniform buffer, and its bind group too
             // when the picture is in textures it bound before.
@@ -134,30 +116,6 @@ impl SurfaceRenderer {
                     Some(s) => s.write_buffer(&p.uniform, 0, bytemuck::bytes_of(&u)),
                     None => queue.write_buffer(&p.uniform, 0, bytemuck::bytes_of(&u)),
                 }
-                // A layer draws the same picture unscaled and is scaled when composited.
-                if hdr {
-                    let mut layer = u;
-                    layer.output[0] = 1.0;
-                    let buffer = match p.uniform_layer.take() {
-                        Some(buffer) => buffer,
-                        None => device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("video node layer"),
-                            contents: bytemuck::bytes_of(&layer),
-                            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                        }),
-                    };
-                    match &self.staging {
-                        Some(s) => s.write_buffer(&buffer, 0, bytemuck::bytes_of(&layer)),
-                        None => queue.write_buffer(&buffer, 0, bytemuck::bytes_of(&layer)),
-                    }
-                    if p.bind_layer.is_none() {
-                        p.bind_layer = Some(bind_group(device, &self.layout, &self.sampler, &buffer, &imported.textures));
-                    }
-                    p.uniform_layer = Some(buffer);
-                } else {
-                    p.uniform_layer = None;
-                    p.bind_layer = None;
-                }
                 if !Arc::ptr_eq(&p.imported, &imported) && p.imported.textures != imported.textures {
                     let old = std::mem::replace(&mut p.bind, match p.binds.iter().position(|(t, _)| *t == imported.textures) {
                         Some(i) => p.binds.remove(i).1,
@@ -166,9 +124,6 @@ impl SurfaceRenderer {
                     p.binds.push((p.imported.textures.clone(), old));
                     if p.binds.len() > KEPT_BINDS {
                         p.binds.remove(0);
-                    }
-                    if let Some(uniform_layer) = &p.uniform_layer {
-                        p.bind_layer = Some(bind_group(device, &self.layout, &self.sampler, uniform_layer, &imported.textures));
                     }
                 }
                 p.imported = imported;
@@ -181,26 +136,11 @@ impl SurfaceRenderer {
                     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 });
                 let bind = bind_group(device, &self.layout, &self.sampler, &uniform, &imported.textures);
-                let (uniform_layer, bind_layer) = if hdr {
-                    let mut layer = u;
-                    layer.output[0] = 1.0;
-                    let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("video node layer"),
-                        contents: bytemuck::bytes_of(&layer),
-                        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                    });
-                    let bind = bind_group(device, &self.layout, &self.sampler, &buffer, &imported.textures);
-                    (Some(buffer), Some(bind))
-                } else {
-                    (None, None)
-                };
                 let p = Prepared {
                     drawn: std::sync::atomic::AtomicBool::new(false),
                     before: d.before_instance,
                     bind,
                     uniform,
-                    bind_layer,
-                    uniform_layer,
                     imported,
                     surface: d.surface.clone(),
                     binds: Vec::new(),
@@ -260,12 +200,6 @@ impl SurfaceRenderer {
                     upload(device, queue, b.width / 2, b.height / 2, wgpu::TextureFormat::Rg8Unorm, &b.planes[1])
                 };
                 [a, b]
-            }
-            #[cfg(target_os = "linux")]
-            Source::Dmabuf(b) => {
-                let adapter = self.adapter.clone().ok_or("this renderer has no adapter for DMA-BUF import")?;
-                if self.importer.is_none() { self.importer = Some(dmabuf::Importer::new(device, queue, &adapter)?); }
-                self.importer.as_ref().ok_or("DMA-BUF importer was not created")?.import(device, queue, b)?
             }
             #[cfg(target_os = "macos")]
             Source::PixelBuffer(b) => {
@@ -349,7 +283,7 @@ impl SurfaceRenderer {
     #[doc(hidden)]
     pub fn draw_isolated(&self, pass: &mut wgpu::RenderPass<'_>, index: usize, format: wgpu::TextureFormat, blend: Blend) {
         self.draws[index].isolated.store(true, std::sync::atomic::Ordering::Relaxed);
-        self.draw_into(pass, index, format, blend, true);
+        self.draw_blended(pass, index, format, blend);
     }
 
     pub fn before_instance(&self, index: usize) -> u32 {
@@ -377,8 +311,7 @@ impl SurfaceRenderer {
         } else if format == self.format { &self.pipeline } else {
             &self.extra.iter().find(|(f, _)| *f == format).expect("SurfaceRenderer::add_format first").1
         });
-        let bind = if layer { self.draws[index].bind_layer.as_ref().unwrap_or(&self.draws[index].bind) } else { &self.draws[index].bind };
-        pass.set_bind_group(0, bind, &[]);
+        pass.set_bind_group(0, &self.draws[index].bind, &[]);
         pass.draw(0..4, 0..1);
     }
     #[cfg(target_arch = "wasm32")]

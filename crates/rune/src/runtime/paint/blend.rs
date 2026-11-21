@@ -21,38 +21,6 @@ impl RuntimeCore {
         self.paint.srgb_blend()
     }
 
-    /// Whether this window may present extended-range (scRGB) output, as
-    /// [`App::hdr`](crate::App::hdr) set it and `Tx::set_hdr` can change it.
-    pub fn hdr(&self) -> Hdr {
-        self.hdr
-    }
-
-    /// Asks for HDR output from the next frame. A window reconfigures its surface on the frame
-    /// that changes; an unsupported surface stays SDR and [`crate::hdr_status`] says so. Turning
-    /// HDR off returns the window to the blend mode the app asked for.
-    pub fn set_hdr(&mut self, hdr: Hdr) {
-        if self.hdr != hdr {
-            self.hdr = hdr;
-            self.dirty = true;
-            if hdr == Hdr::Off {
-                self.set_effective_blend(self.blend_preference);
-            }
-        }
-    }
-
-    /// The linear-light multiplier the window target applies when HDR is active.
-    pub(crate) fn output_scale(&self) -> f32 {
-        self.output_scale
-    }
-
-    pub(crate) fn set_output_scale(&mut self, scale: f32) {
-        let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
-        if self.output_scale != scale {
-            self.output_scale = scale;
-            self.dirty = true;
-        }
-    }
-
     /// Rasterise and place glyphs in `mode` from the next frame, as `App::font_smoothing` does
     /// for a window. Glyphs already rasterised in another mode stay cached for a switch back.
     /// Blending is separate: both modes match CoreText with [`Self::set_srgb_blend`] on.
@@ -74,8 +42,7 @@ impl RuntimeCore {
             if self.paint.srgb_blend {
                 [srgb_encode(c.r), srgb_encode(c.g), srgb_encode(c.b), 1.0]
             } else {
-                let k = self.output_scale;
-                [c.r * k, c.g * k, c.b * k, 1.0]
+                [c.r, c.g, c.b, 1.0]
             }
         })
     }

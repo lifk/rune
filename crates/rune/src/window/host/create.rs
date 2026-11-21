@@ -57,15 +57,11 @@ impl Host {
             }
         }
         let open_as = if !self.shown && self.options.resizable { self.open_as } else { crate::windows::OpenAs::Normal };
-        // A window the app asked to be fullscreen opens that way; a borderless window already
-        // covers its display.
-        let opens_full = open_as.full_screens()
-            || (self.rt.fullscreen && !self.options.borderless);
         // Windows maximizes it once cloaked: maximizing shows a window.
         #[cfg(not(target_os = "windows"))]
         {
             attrs = attrs.with_maximized(open_as.maximizes());
-            if opens_full { attrs = attrs.with_fullscreen(Some(winit::window::Fullscreen::Borderless(None))); }
+            if open_as.full_screens() { attrs = attrs.with_fullscreen(Some(winit::window::Fullscreen::Borderless(None))); }
         }
         let chrome = frame_chrome(self.chrome, self.titlebar, self.app.rt().titlebar_set());
         #[cfg(target_os = "macos")]
@@ -99,9 +95,6 @@ impl Host {
             cloak.hold(&window, crate::time::now() + win::READY_FALLBACK, focus);
             window.set_visible(true);
             chrome::open_as(&window, open_as);
-            if self.rt.fullscreen && !self.options.borderless && !open_as.full_screens() {
-                window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
-            }
         }
         crate::marks::mark("window.framed");
         // First, before anything observes the view (macOS) or an assistive client asks. On Windows,
@@ -182,20 +175,11 @@ impl Host {
                 (Some(gpu), surface)
             }
         };
-        let adapter = gpu.as_ref().or(self.gpu.as_ref().map(|g| &g.0)).unwrap().adapter.clone();
+        let adapter = &gpu.as_ref().or(self.gpu.as_ref().map(|g| &g.0)).unwrap().adapter;
         let phys = window.inner_size();
         let srgb_blend = self.app.rt().srgb_blend();
         let (mut config, translucent) = surface_config(&surface, adapter, (phys.width, phys.height), srgb_blend)
             .ok_or("the GPU adapter can't present to this window")?;
-        if output.hdr {
-            // scRGB carries linear light: blend it linearly and put UI white on the compositor's
-            // SDR reference white.
-            self.rt.force_srgb_blend(false);
-            self.rt.set_output_scale(HDR_WHITE_SCALE);
-        } else {
-            self.rt.force_srgb_blend(self.rt.blend_preference());
-            self.rt.set_output_scale(1.0);
-        }
         #[cfg(target_os = "macos")]
         let launch_drawables = LaunchDrawables::cap(&mut config);
         // A window with a client-side frame keeps its pixels' alpha for the frame's corner arcs;
@@ -213,9 +197,7 @@ impl Host {
         let target_format = if srgb_blend { config.format.remove_srgb_suffix() } else { config.format };
         if let Some(gpu) = gpu {
             crate::marks::mark("renderer.begin");
-            let mut renderer = prewarmed.unwrap_or_else(|| {
-                Renderer::new_with_adapter(&gpu.device, target_format, &gpu.adapter)
-            });
+            let mut renderer = prewarmed.unwrap_or_else(|| Renderer::new(&gpu.device, target_format));
             crate::marks::note("uber", renderer.uber_shader());
             crate::marks::mark("renderer.ready");
             renderer.set_srgb_blend(srgb_blend);
@@ -225,26 +207,7 @@ impl Host {
         rebuild_renderer_core(&gpu.device, renderer, target_format, self.app.rt_mut());
         // A refused configuration (the driver's, or a device that is gone) leaves a surface
         // wgpu panics on its next drawable: the window closes, and the next open makes both.
-        let mut refused = configure(&surface, gpu, &config).err().map(|error| (gpu.is_lost(), error));
-        let mut hdr_failed = false;
-        if refused.is_some() && output.hdr && !gpu.is_lost() {
-            // A driver can advertise a float HDR swap chain and still refuse it (a compositor
-            // without the colour-management path). Keep the window on SDR and say why.
-            eprintln!("rune: the surface refused HDR (Rgba16Float + scRGB); falling back to SDR");
-            if let Some((mut sdr, _, sdr_output)) = surface_config_hdr(&surface, &adapter, (phys.width, phys.height), self.rt.blend_preference(), Hdr::Off) {
-                sdr.alpha_mode = config.alpha_mode;
-                if configure(&surface, gpu, &sdr).is_ok() {
-                    config = sdr;
-                    output = sdr_output;
-                    hdr_failed = true;
-                    self.rt.force_srgb_blend(self.rt.blend_preference());
-                    self.rt.set_output_scale(1.0);
-                    target_format = output.target(self.rt.srgb_blend());
-                    rebuild_renderer(&gpu.device, renderer, target_format, &mut self.rt);
-                    refused = None;
-                }
-            }
-        }
+        let refused = configure(&surface, gpu, &config).err().map(|error| (gpu.is_lost(), error));
         if let Some((lost, error)) = refused {
             if lost {
                 self.gpu = None;
@@ -252,15 +215,6 @@ impl Host {
             }
             return Err(format!("the window's GPU surface refused its configuration: {error}"));
         }
-        set_hdr_status(if output.hdr {
-            HdrStatus::Active { format: format_name(output.format), color_space: color_space_name(output.color_space) }
-        } else if hdr_failed {
-            HdrStatus::Failed
-        } else if self.rt.hdr() == Hdr::Off {
-            HdrStatus::Off
-        } else {
-            HdrStatus::Unsupported
-        });
         crate::marks::mark("gpu.surface");
         #[cfg(target_os = "macos")]
         crate::platform::macos::pin_contents_top_left(&surface);
@@ -333,7 +287,6 @@ impl Host {
             first_frame: FirstFrame::opened(crate::time::now()),
             surface: Some(surface),
             config,
-            hdr_pref: self.rt.hdr(),
             surface_ok: true,
             surface_retries: SurfaceRetries::default(),
             window,
@@ -491,7 +444,6 @@ impl Host {
         let Some(w) = self.win.as_mut() else { return Err("the window closed while it made a new surface".into()) };
         w.surface = Some(surface);
         w.config = config;
-        w.hdr_pref = self.rt.hdr();
         w.surface_ok = true;
         w.alpha = alpha;
         #[cfg(target_os = "windows")]

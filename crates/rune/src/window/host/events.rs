@@ -284,7 +284,6 @@ impl Host {
             return;
         }
         if matches!(event, WindowEvent::Moved(_) | WindowEvent::ScaleFactorChanged { .. }) { self.sync_origin(); }
-        let scale = self.effective_scale();
         // A window the CPU renderer draws has no GPU yet; its input goes on all the same.
         let Some(l) = self.win.as_mut() else { return };
         let gpu = self.gpu.as_ref().map(|(gpu, _)| &**gpu);
@@ -360,9 +359,7 @@ impl Host {
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 #[cfg(target_os = "macos")]
                 if let Some(shadow) = &l.native.shadow { shadow.redraw(); }
-                // A design height keeps the logical viewport fixed across displays, so a
-                // ScaleFactorChanged must not undo it.
-                let scale = if design_height().is_some() { scale } else { scale_factor as f32 };
+                let scale = scale_factor as f32;
                 let size = l.window.inner_size();
                 // Still the old scale's size: Windows resizes the window after this event.
                 #[cfg(target_os = "windows")]

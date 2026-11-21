@@ -10,8 +10,6 @@ mod gpu_tests;
 pub mod linux;
 #[cfg(test)]
 mod place_tests;
-#[cfg(target_os = "linux")]
-pub mod dmabuf;
 #[cfg(target_os = "macos")]
 pub mod macos;
 mod pipeline;
@@ -30,22 +28,17 @@ use std::sync::{Arc, Mutex};
 pub enum Matrix {
     Bt601,
     Bt709,
-    Bt2020,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Transfer {
     Srgb,
     Bt709,
-    Pq,
-    Hlg,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Format {
     Bgra,
     Nv12Video,
     Nv12Full,
-    P010Video,
-    P010Full,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct ColorInfo {
@@ -69,8 +62,6 @@ pub struct ByteFrame {
 
 pub(crate) enum Source {
     Bytes(ByteFrame),
-    #[cfg(target_os = "linux")]
-    Dmabuf(dmabuf::DmabufFrame),
     #[cfg(target_os = "macos")]
     PixelBuffer(macos::PixelBuffer),
     #[cfg(target_os = "windows")]
@@ -259,27 +250,6 @@ impl NativeSurface {
     pub fn push_bytes(&self, frame: ByteFrame, frame_id: u64) -> Result<(), String> {
         self.push_bytes_oriented(frame, frame_id, Orient::UP)
     }
-
-    /// Hand over a decoder's buffer without copying it to the CPU.
-    ///
-    /// The frame is validated by [`dmabuf::DmabufFrame::new`] before it gets here. The import
-    /// runs later, on the renderer's thread, because it needs the GPU device; a failure is
-    /// reported through [`Self::last_error`] and the surface draws nothing.
-    #[cfg(target_os = "linux")]
-    pub fn push_dmabuf(&self, frame: dmabuf::DmabufFrame, frame_id: u64) -> Result<(), String> {
-        let size = [frame.width, frame.height];
-        let format = frame.format;
-        let color = frame.color;
-        self.replace(Frame {
-            id: frame_id,
-            source: Source::Dmabuf(frame),
-            size,
-            format,
-            color,
-            orient: Orient::UP,
-        });
-        Ok(())
-    }
     pub(crate) fn push_bytes_oriented(&self, frame: ByteFrame, frame_id: u64, orient: Orient) -> Result<(), String> {
         let [w, h] = [frame.width, frame.height];
         if w == 0 || h == 0 || w > 16384 || h > 16384 {
@@ -457,29 +427,12 @@ pub fn nv12_reference(y: u8, cb: u8, cr: u8, format: Format, color: ColorInfo) -
     let (kr, kb) = match color.matrix {
         Matrix::Bt601 => (0.299, 0.114),
         Matrix::Bt709 => (0.2126, 0.0722),
-        Matrix::Bt2020 => (0.2627, 0.0593),
     };
     let r = y + 2.0 * (1.0 - kr) * v;
     let b = y + 2.0 * (1.0 - kb) * u;
     let g = (y - kr * r - kb * b) / (1.0 - kr - kb);
     [r, g, b].map(|x| linear(x.clamp(0.0, 1.0), color.transfer))
 }
-/// The SDR tone-map curve for PQ, mirrored in `video.wgsl`: display linear with 1.0 = 10,000
-/// nits, reference white (100 nits) at 0.8, and a Reinhard shoulder that keeps 4,000 nits
-/// just below clipping.
-pub fn tone_map_pq(linear: f32) -> f32 {
-    let x = linear.max(0.0) * 400.0;
-    x / (1.0 + x)
-}
-
-/// The same shoulder for HLG: scene linear, 0.75 signal is reference white, and the exposure
-/// is about 15 rather than 400. HLG and PQ cannot share one multiplier without one of them
-/// being far too dark.
-pub fn tone_map_hlg(linear: f32) -> f32 {
-    let x = linear.max(0.0) * 15.0;
-    x / (1.0 + x)
-}
-
 pub fn linear(x: f32, transfer: Transfer) -> f32 {
     match transfer {
         Transfer::Srgb => rune_core::color::srgb_decode(x),
@@ -488,25 +441,6 @@ pub fn linear(x: f32, transfer: Transfer) -> f32 {
                 x / 4.5
             } else {
                 ((x + 0.099) / 1.099).powf(1.0 / 0.45)
-            }
-        }
-        Transfer::Pq => {
-            let m1 = 0.1593017578125;
-            let m2 = 78.84375;
-            let c1 = 0.8359375;
-            let c2 = 18.8515625;
-            let c3 = 18.6875;
-            let p = x.clamp(0.0, 1.0).powf(1.0 / m2);
-            ((p - c1).max(0.0) / (c2 - c3 * p).max(1e-6)).powf(1.0 / m1)
-        }
-        Transfer::Hlg => {
-            let a = 0.17883277;
-            let b = 0.28466892;
-            let c = 0.55991073;
-            if x <= 0.5 {
-                x * x / 3.0
-            } else {
-                (((x - c) / a).exp() + b) / 12.0
             }
         }
     }

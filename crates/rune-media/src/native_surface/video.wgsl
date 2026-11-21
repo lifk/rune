@@ -1,8 +1,6 @@
 struct Uniforms {
     viewport: vec4<f32>, node: vec4<f32>, image: vec4<f32>, radii: vec4<f32>,
     clip: vec4<f32>, fade: vec4<u32>, color: vec4<f32>, sampling: vec4<f32>, orient: vec4<f32>,
-    // Window linear-light scale, HDR flag (absolute light, no tone map), and two unused lanes.
-    output: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var plane0: texture_2d<f32>;
@@ -21,82 +19,16 @@ fn linear(v: vec3<f32>) -> vec3<f32> {
     if u.color.z < 0.5 { return select(pow((x + 0.055) / 1.055, vec3<f32>(2.4)), x / 12.92, x <= vec3<f32>(0.04045)); }
     return select(pow((x + 0.099) / 1.099, vec3<f32>(1.0 / 0.45)), x / 4.5, x < vec3<f32>(0.081));
 }
-fn pq_eotf(v: vec3<f32>) -> vec3<f32> {
-    let m1 = 0.1593017578125; let m2 = 78.84375;
-    let c1 = 0.8359375; let c2 = 18.8515625; let c3 = 18.6875;
-    let p = pow(max(v, vec3<f32>(0.0)), vec3<f32>(1.0 / m2));
-    return pow(max(p - vec3<f32>(c1), vec3<f32>(0.0)) / max(vec3<f32>(c2) - vec3<f32>(c3) * p, vec3<f32>(1e-6)), vec3<f32>(1.0 / m1));
-}
-fn hlg_eotf(v: vec3<f32>) -> vec3<f32> {
-    let a = 0.17883277; let b = 0.28466892; let c = 0.55991073;
-    let low = (v * v) / 3.0;
-    let high = (exp((v - vec3<f32>(c)) / a) + vec3<f32>(b)) / 12.0;
-    return select(high, low, v <= vec3<f32>(0.5));
-}
-fn bt2020_to_709(v: vec3<f32>) -> vec3<f32> {
-    return vec3<f32>(
-        dot(v, vec3<f32>(1.6605, -0.5876, -0.0728)),
-        dot(v, vec3<f32>(-0.1246, 1.1329, -0.0083)),
-        dot(v, vec3<f32>(-0.0182, -0.1006, 1.1187)),
-    );
-}
-// SDR white as the compositor's reference (BT.2408 graphics white, 203 cd/m²). An HDR window
-// writes light in that unit: 1.0 here, and the window pass scales it into scRGB's 80 cd/m² unit.
-const SDR_WHITE_NITS: f32 = 203.0;
-
-/// HDR display light in cd/m² for linear BT.709: PQ's 0..1 is 0..10,000 cd/m² absolute, and
-/// HLG's 0..1 is a 1,000 cd/m² nominal peak through the BT.2100 OOTF (which puts 75% signal,
-/// graphics white, at 203 cd/m²).
-fn hdr_display(v: vec3<f32>, hlg: bool) -> vec3<f32> {
-    if hlg {
-        let y = dot(v, vec3<f32>(0.2126, 0.7152, 0.0722));
-        return v * pow(max(y, 1e-5), 0.2) * 1000.0;
-    }
-    return v * 10000.0;
-}
-
-fn tone_map(v: vec3<f32>, hlg: bool) -> vec3<f32> {
-    // PQ's output is display linear with 1.0 = 10,000 nits, so SDR reference white (100 nits)
-    // is 0.01; 400 puts it at 0.8 after the shoulder, and a 4,000-nit highlight lands at 0.994.
-    // HLG's output is scene linear: its 0.75 signal is reference white (≈0.265), which needs
-    // about 15 instead. One curve, two exposures; neither is a brightness knob.
-    let x = max(v, vec3<f32>(0.0)) * select(400.0, 15.0, hlg);
-    return x / (vec3<f32>(1.0) + x);
-}
 fn convert(a: vec4<f32>, uv: vec2<f32>) -> vec4<f32> {
     if u.color.x < 0.5 { return vec4<f32>(linear(a.rgb) * a.a, a.a); }
-    let p010 = u.color.x > 2.5;
-    let limited = u.color.x < 1.5 || (u.color.x > 2.5 && u.color.x < 3.5);
-    let ten_bit = p010;
-    let scale = select(1.0, 1.0009765625, ten_bit);
-    let center = select(128.0 / 255.0, 512.0 / 1023.0, ten_bit);
-    var y = a.r * scale;
-    var c = (uv - vec2<f32>(center)) * scale;
-    if limited {
-        if ten_bit {
-            y = (y - 64.0 / 1023.0) * (1023.0 / 876.0);
-            c *= 1023.0 / 896.0;
-        } else {
-            y = (y - 16.0 / 255.0) * (255.0 / 219.0);
-            c *= 255.0 / 224.0;
-        }
-    }
+    var y = a.r;
+    var c = uv - vec2<f32>(128.0 / 255.0);
+    if u.color.x < 1.5 { y = (y - 16.0 / 255.0) * (255.0 / 219.0); c *= 255.0 / 224.0; }
     var kr = 0.299; var kb = 0.114;
-    if u.color.y > 1.5 { kr = 0.2627; kb = 0.0593; }
-    else if u.color.y > 0.5 { kr = 0.2126; kb = 0.0722; }
+    if u.color.y > 0.5 { kr = 0.2126; kb = 0.0722; }
     let r = y + 2.0 * (1.0 - kr) * c.y;
     let b = y + 2.0 * (1.0 - kb) * c.x;
     let g = (y - kr * r - kb * b) / (1.0 - kr - kb);
-    if u.color.z > 2.5 {
-        let encoded = vec3<f32>(r, g, b);
-        var hdr = select(hlg_eotf(encoded), pq_eotf(encoded), u.color.z < 3.5);
-        hdr = bt2020_to_709(hdr);
-        if u.output.y > 0.5 {
-            // An HDR window keeps the grade's highlights; the compositor tone maps to the display.
-            return vec4<f32>(hdr_display(hdr, u.color.z > 3.5) / SDR_WHITE_NITS, 1.0);
-        }
-        return vec4<f32>(tone_map(hdr, u.color.z > 3.5), 1.0);
-    }
     return vec4<f32>(linear(vec3<f32>(r,g,b)), 1.0);
 }
 fn sample_linear(uv: vec2<f32>) -> vec4<f32> {
@@ -194,8 +126,5 @@ fn ramp(d: f32, width: f32) -> f32 {
         let h = (u.clip.zw-u.clip.xy)*0.5;
         mask = clamp(0.5 - sd_rounded(p-u.clip.xy-h, h, unpack_clip_radii(u.fade.w)), 0.0, 1.0);
     }
-    let cover = clamp(0.5-distance,0.0,1.0)*clip*mask*u.color.w;
-    // Premultiplied light, scaled only in the window pass: an isolated layer keeps 1.0 = SDR
-    // white and takes the scale when the layer is composited.
-    return vec4<f32>(col.rgb * (cover * u.output.x), col.a * cover);
+    return col * (clamp(0.5-distance,0.0,1.0)*clip*mask*u.color.w);
 }

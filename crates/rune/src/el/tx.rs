@@ -70,11 +70,6 @@ pub struct Tx {
     pub(crate) scroll_offsets: Vec<crate::runtime::ScrollRequest>,
     /// Elements to hold where they show across this commit (`Tx::keep_on_screen`).
     pub(crate) keep_on_screen: Vec<String>,
-    /// Keys to focus by name (`Tx::focus_key`), for a launch or a route change.
-    pub(crate) focus_keys: Vec<String>,
-    /// Keys to focus without Rune's own instant reveal (`Tx::focus_key_quiet`). A router that
-    /// animates its scroll requests this and places the viewport itself.
-    pub(crate) focus_keys_quiet: Vec<String>,
     pub(crate) wakes: Vec<std::time::Duration>,
     pub(crate) shell: Option<Shell>,
     pub(crate) minimize_order: Option<std::num::NonZeroU64>,
@@ -82,8 +77,6 @@ pub struct Tx {
     pub(crate) toggle_maximized: bool,
     /// `Tx::toggle_full_screen`.
     pub(crate) toggle_full_screen: bool,
-    /// `Tx::set_fullscreen`; the shell takes the latest.
-    pub(crate) fullscreen: Option<bool>,
     /// `Tx::send_key`, in order.
     pub(crate) keys: Vec<crate::KeyEvent>,
     /// `Tx::drop_point`.
@@ -102,8 +95,6 @@ pub struct Tx {
     /// Modifier keys held as the handler runs.
     pub(crate) mods: crate::Mods,
     pub(crate) srgb_blend: Option<bool>,
-    /// `Tx::set_hdr`: the window's HDR preference from the next frame.
-    pub(crate) hdr: Option<crate::window::Hdr>,
     /// `Tx::record_rewind`.
     pub(crate) rewind: Option<Option<crate::rewind::Rewind>>,
     pub(crate) font_smoothing: Option<crate::text::FontSmoothing>,
@@ -288,19 +279,6 @@ impl Shell {
 }
 
 impl Tx {
-    /// Focus the element keyed `key`, as a controller or a launch does, and reveal it. The
-    /// element must be in the tree built this frame; a missing key is ignored.
-    pub fn focus_key(&mut self, key: impl Into<String>) {
-        self.focus_keys.push(key.into());
-    }
-
-    /// [`Tx::focus_key`] without the instant scroll-into-view Rune adds for it. Use this when
-    /// the caller queues its own animated scroll (see [`Tx::scroll_center`]); the two together
-    /// glide to the newly focused control instead of jumping to it first.
-    pub fn focus_key_quiet(&mut self, key: impl Into<String>) {
-        self.focus_keys_quiet.push(key.into());
-    }
-
     /// Pick from the last presented frame, with the geometry and visibility rules of
     /// [`Runtime::element_at`](crate::Runtime::element_at). Runs `f` after this handler,
     /// before its view commit. Pass `PointerEvent::window_x` and `window_y`, not local points.
@@ -347,10 +325,7 @@ impl Tx {
     /// Work only a frame carries out that changes its pixels without a model change: a scroll
     /// or a text flight. A `wake_after` only schedules.
     pub(crate) fn frame_work(&self) -> bool {
-        !self.pick_reads.is_empty()
-            || !self.focus_keys.is_empty()
-            || !self.focus_keys_quiet.is_empty()
-            || !self.scroll_to.is_empty() || !self.scroll_bottom.is_empty() || !self.scroll_pages.is_empty() || !self.scroll_offsets.is_empty()
+        !self.pick_reads.is_empty() || !self.scroll_to.is_empty() || !self.scroll_bottom.is_empty() || !self.scroll_pages.is_empty() || !self.scroll_offsets.is_empty()
             || !self.keep_on_screen.is_empty() || !self.text_flights.is_empty() || !self.launches.is_empty() || self.select.is_some()
     }
 
@@ -444,13 +419,6 @@ impl Tx {
     /// Does nothing for overlays and headless runs.
     pub fn toggle_full_screen(&mut self) {
         self.toggle_full_screen = true;
-    }
-
-    /// Put this window into or out of fullscreen after this handler. A hidden window remembers
-    /// the request and opens fullscreen; a panel, launcher or overlay ignores it. On Wayland
-    /// the compositor grants the mode, so it may not change immediately (or at all).
-    pub fn set_fullscreen(&mut self, fullscreen: bool) {
-        self.fullscreen = Some(fullscreen);
     }
 
     /// Deliver `ev` once this handler is done, as if it were typed: to the focused field, then
@@ -629,15 +597,6 @@ impl Tx {
     /// Windows, overlays, the web canvas and headless runs all follow.
     pub fn set_srgb_blend(&mut self, enabled: bool) {
         self.srgb_blend = Some(enabled);
-    }
-
-    /// Ask this window for HDR (`scRGB`) output from the next frame, or turn it off, as if it
-    /// had launched with [`App::hdr`](crate::App::hdr). The window reconfigures its surface and
-    /// rebuilds its renderer once, on the frame that changes. A surface without an extended-range
-    /// colour space stays on SDR; [`crate::hdr_status`] reports which it got. HDR always blends in
-    /// linear light, and turning it off returns to the mode [`Self::set_srgb_blend`] last set.
-    pub fn set_hdr(&mut self, hdr: crate::window::Hdr) {
-        self.hdr = Some(hdr);
     }
 
     /// Record this window's presented frames into `rewind` from the next frame, or stop with

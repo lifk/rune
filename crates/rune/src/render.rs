@@ -262,10 +262,6 @@ pub struct Renderer {
     surfaces: Option<crate::native_surface::SurfaceRenderer>,
     /// The native surface renderer while its pipeline compiles (`build_surfaces`).
     surfaces_building: Option<crate::native_surface::Building>,
-    /// The adapter DMA-BUF surfaces import through. Only the window's renderer gets one;
-    /// headless and overlay renderers keep the CPU path.
-    #[cfg(target_os = "linux")]
-    adapter: Option<wgpu::Adapter>,
     pipeline: wgpu::RenderPipeline,
     format: wgpu::TextureFormat,
     shader: dxbc::Shaders,
@@ -308,9 +304,6 @@ pub struct Renderer {
     spring_instances: usize,
     layers: layers::Layers,
     srgb_blend: bool,
-    /// Linear-light multiplier for the window target: 1.0 for SDR, `HDR_WHITE_SCALE` on an HDR
-    /// surface. Only the window pass applies it; layers hold unscaled linear light.
-    output_scale: f32,
     /// Effect slots of the uploaded instances, by index.
     effects: Vec<(u32, Instance)>,
     /// Pooled viewport-sized backdrop copies, allocated only when a slot sets `effect_backdrop`
@@ -348,47 +341,11 @@ impl Renderer {
         Self::create(device, format, None, cfg!(target_os = "macos"))
     }
 
-    /// Like [`Self::new`], remembering the adapter DMA-BUF surfaces import through, so a
-    /// decoder's frame never copies to the CPU. Platforms without DMA-BUF ignore it.
-    pub fn new_with_adapter(device: &wgpu::Device, format: wgpu::TextureFormat, adapter: &wgpu::Adapter) -> Renderer {
-        let mut renderer = Self::new(device, format);
-        #[cfg(target_os = "linux")]
-        { renderer.adapter = Some(adapter.clone()); }
-        #[cfg(not(target_os = "linux"))]
-        let _ = adapter;
-        renderer
-    }
-
-    /// The adapter a native surface imports DMA-BUF frames through, when this renderer has one.
-    #[cfg(target_os = "linux")]
-    pub(crate) fn import_adapter(&self) -> Option<&wgpu::Adapter> {
-        self.adapter.as_ref()
-    }
-    #[cfg(not(target_os = "linux"))]
-    pub(crate) fn import_adapter(&self) -> Option<&wgpu::Adapter> {
-        None
-    }
-
     pub fn set_srgb_blend(&mut self, enabled: bool) {
         self.srgb_blend = enabled;
         if let Some(s) = &mut self.surfaces {
             s.set_srgb_blend(enabled);
         }
-    }
-
-    /// Scale the window target's linear light, as an HDR surface does so SDR white lands on the
-    /// compositor's reference white. Layers keep unscaled light and are scaled when composited.
-    pub fn set_output_scale(&mut self, scale: f32) {
-        let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
-        self.output_scale = scale;
-        if let Some(s) = &mut self.surfaces {
-            s.set_output_scale(scale);
-        }
-    }
-
-    /// The window target's linear-light multiplier (`Renderer::set_output_scale`).
-    pub fn output_scale(&self) -> f32 {
-        self.output_scale
     }
 
     /// Opt-in retained geometry. IDs map instances to shared translation/opacity nodes.

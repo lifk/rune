@@ -29,8 +29,8 @@ pub(super) struct Uploads {
     has_layers: bool,
     /// The viewport last written to globals (`width << 32 | height`, `u64::MAX` before any).
     viewport: AtomicU64,
-    /// Gamma-space blend, byte-source and output-scale flags last written to globals.
-    srgb: Option<(bool, bool, u32)>,
+    /// Gamma-space blend and byte-source flags last written to globals.
+    srgb: Option<(bool, bool)>,
     /// `Staging::lost` as last seen by `prepare` and by `upload_images`.
     lost: (u64, u64),
     /// The paint the next `prepare`'s instances come from, and which of them alone changed
@@ -284,7 +284,7 @@ impl Renderer {
             staging.write_buffer(&self.globals, std::mem::offset_of!(Globals, viewport) as u64, bytemuck::cast_slice(&[viewport.0 as f32, viewport.1 as f32]));
             #[cfg(test)] { self.uploads.globals_writes += 1; }
         }
-        let mode = (self.srgb_blend, byte_source, self.output_scale.to_bits());
+        let mode = (self.srgb_blend, byte_source);
         if self.uploads.srgb.replace(mode) != Some(mode) {
             let flags: [f32; 4] = [self.srgb_blend as u8 as f32, byte_source as u8 as f32, 0.0, 0.0];
             staging.write_buffer(&self.globals, std::mem::offset_of!(Globals, flags) as u64, bytemuck::cast_slice(&flags));
@@ -326,7 +326,7 @@ impl Renderer {
     /// picture yet anyway. Without this call, `prepare_surfaces` compiles in place.
     pub(crate) fn build_surfaces(&mut self, device: &wgpu::Device, draws: &[crate::native_surface::SurfaceDraw], done: impl FnOnce() + Send + 'static) {
         if draws.is_empty() || self.surfaces.is_some() || self.surfaces_building.is_some() { return; }
-        self.surfaces_building = Some(crate::native_surface::SurfaceRenderer::build(device, self.format, self.import_adapter(), Box::new(done)));
+        self.surfaces_building = Some(crate::native_surface::SurfaceRenderer::build(device, self.format, Box::new(done)));
     }
 
     /// Punches these native surfaces' places out of the window's pixels from the next
@@ -357,14 +357,8 @@ impl Renderer {
         if built.is_some() { self.surfaces_building = None; }
         if self.surfaces.is_none() && self.surfaces_building.is_some() { return; }
         if (!draws.is_empty() || built.is_some()) && self.surfaces.is_none() {
-            let fresh = || match self.import_adapter() {
-                #[cfg(target_os = "linux")]
-                Some(adapter) => crate::native_surface::SurfaceRenderer::new_with_adapter(device, self.format, adapter),
-                _ => crate::native_surface::SurfaceRenderer::new(device, self.format),
-            };
-            let mut surfaces = built.unwrap_or_else(fresh);
+            let mut surfaces = built.unwrap_or_else(|| crate::native_surface::SurfaceRenderer::new(device, self.format));
             surfaces.set_srgb_blend(self.srgb_blend);
-            surfaces.set_output_scale(self.output_scale);
             surfaces.set_staging(self.uploads.staging(device, queue));
             for (format, _) in &self.extra { surfaces.add_format(device, *format); }
             self.surfaces = Some(surfaces);
