@@ -559,7 +559,9 @@ impl<S: 'static> Runtime<S> {
 
     #[cfg(test)]
     #[inline(always)]
-    pub(super) fn focused_key(&self) -> Option<String> { self.core().focused_key() }
+    /// The focused element's key: its link id, its `El::key`, or its path's last segment.
+    /// `None` when nothing has focus. For tests and tools.
+    pub fn focused_key(&self) -> Option<String> { self.core().focused_key() }
 
     #[cfg(test)]
     #[inline(always)]

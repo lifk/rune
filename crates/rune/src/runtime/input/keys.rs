@@ -287,7 +287,9 @@ impl RuntimeCore {
 
     /// What [`Tx::focused`] reports: the focused link's id, else the focused element's key,
     /// else its path's last segment (a field in a virtual row that scrolled out has no node).
-    pub(in crate::runtime) fn focused_key(&self) -> Option<String> {
+    /// The focused element's key, for tests and tools: its link id when it has one, else its
+    /// `El::key`, else the last segment of its focus path. `None` when nothing has focus.
+    pub fn focused_key(&self) -> Option<String> {
         let path = self.kbd.focus.path()?;
         if let Some(id) = self.focused_index().and_then(|i| self.edit.focused_link_id(&self.tree.nodes[i])) { return Some(id); }
         Some(self.focused_index().and_then(|i| self.tree.nodes[i].key.clone())
