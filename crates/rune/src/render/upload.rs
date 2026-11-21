@@ -359,6 +359,7 @@ impl Renderer {
         if (!draws.is_empty() || built.is_some()) && self.surfaces.is_none() {
             let mut surfaces = built.unwrap_or_else(|| crate::native_surface::SurfaceRenderer::new(device, self.format));
             surfaces.set_srgb_blend(self.srgb_blend);
+            surfaces.set_output_scale(self.output_scale);
             surfaces.set_staging(self.uploads.staging(device, queue));
             for (format, _) in &self.extra { surfaces.add_format(device, *format); }
             self.surfaces = Some(surfaces);

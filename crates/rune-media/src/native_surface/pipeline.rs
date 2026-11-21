@@ -40,6 +40,10 @@ struct Prepared {
     before: u32,
     bind: wgpu::BindGroup,
     uniform: wgpu::Buffer,
+    /// The same draw bound for an isolated layer: scale 1.0 (1.0 = SDR white), because the layer
+    /// is scaled when it is composited into an HDR window. Present only while the window scales.
+    bind_layer: Option<wgpu::BindGroup>,
+    uniform_layer: Option<wgpu::Buffer>,
     imported: Arc<Imported>,
     surface: NativeSurface,
     /// Bind groups this draw made for other textures, newest last: a decoder cycles a few, so
@@ -110,6 +114,10 @@ pub struct SurfaceRenderer {
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     punch_building: Option<std::sync::mpsc::Receiver<wgpu::RenderPipeline>>,
     srgb_blend: bool,
+    /// The window's linear-light multiplier (`Renderer::set_output_scale`): 1.0 for SDR, and
+    /// `HDR_WHITE_SCALE` on an HDR target. Above 1.0 the shader also keeps HDR video's absolute
+    /// light instead of tone mapping, and an isolated layer draws unscaled.
+    output_scale: f32,
     /// The owning `Renderer`'s uploads, when it has one; queue writes otherwise.
     staging: Option<rune_staging::Staging>,
     #[cfg(target_os = "macos")]
@@ -237,6 +245,7 @@ impl SurfaceRenderer {
             punch: None,
             punch_building: None,
             srgb_blend: false,
+            output_scale: 1.0,
             staging: None,
             #[cfg(target_os = "macos")]
             importer: None,
@@ -276,6 +285,10 @@ impl SurfaceRenderer {
 
     pub fn set_srgb_blend(&mut self, enabled: bool) {
         self.srgb_blend = enabled;
+    }
+
+    pub fn set_output_scale(&mut self, scale: f32) {
+        self.output_scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
     }
 
     #[doc(hidden)]

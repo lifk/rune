@@ -356,6 +356,11 @@ impl Renderer {
     pub fn set_output_scale(&mut self, scale: f32) {
         let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
         self.output_scale = scale;
+        // Video surfaces drawn into the window carry the same scale; an isolated layer resets it
+        // when composited (`SurfaceRenderer::set_output_scale`).
+        if let Some(surfaces) = &mut self.surfaces {
+            surfaces.set_output_scale(scale);
+        }
     }
 
     /// The window target's linear-light multiplier (`Renderer::set_output_scale`).
